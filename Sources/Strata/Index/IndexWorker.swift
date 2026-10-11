@@ -28,6 +28,8 @@ nonisolated final class IndexWorker: @unchecked Sendable {
     private var rescanNeeded = false
     private var flushScheduled = false
     private var saveScheduled = false
+    /// A full scan holds `queue` for its whole run; read from other threads, so `saveNow` never waits on it.
+    private let scanning = OSAllocatedUnfairLock(initialState: false)
     private let events = FSEventsStream()
 
     /// Called with each new store (after loading or a full rebuild) and every phase change.
@@ -56,8 +58,10 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         queue.async { self.rebuild() }
     }
 
-    /// Writes the index now (used at quit). Skipped while a full scan is still running.
+    /// Writes the index now (used at quit). Skipped while a full scan is still running: the scan holds the queue, and
+    /// the index on disk (or the next launch's scan) covers it.
     func saveNow() {
+        guard !scanning.withLock({ $0 }) else { return }
         queue.sync { self.save() }
     }
 
@@ -93,6 +97,8 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         let scanner = IndexScanner(store: fresh, excluded: config.excluded, noiseFolders: config.noise)
         let roots = fresh.write { config.roots.map { (fresh.addRoot(path: $0, mtime: 0), $0) } }
         onPhase?(.scanning(items: 0))
+        scanning.withLock { $0 = true }
+        defer { scanning.withLock { $0 = false } }
         let progress = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
         progress.schedule(deadline: .now() + 0.5, repeating: 0.5)
         progress.setEventHandler { [weak self] in self?.onPhase?(.scanning(items: scanner.scannedCount)) }
@@ -134,6 +140,11 @@ nonisolated final class IndexWorker: @unchecked Sendable {
     }
 
     private func save() {
+        // An invalidated index must not be saved as current: the older file on disk replays the invalidating event
+        // at the next launch and rebuilds then.
+        guard !rescanNeeded else { return }
+        // Apply events already received first: the saved event ID says they're in the file.
+        if !pending.isEmpty { flush() }
         guard let config, let store, dirty || !FileManager.default.fileExists(atPath: config.file.path) else { return }
         try? IndexPersistence.save(store, eventID: lastEventID, excluded: Array(config.excluded), to: config.file)
         dirty = false
@@ -233,6 +244,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
             var existing: [String: Int32] = [:]
             for child in store.children(of: id) { existing[store.name(child)] = child }
             let inheritedNoise = store.flags[Int(id)] & IndexStore.Flag.noise != 0 || store.isOpaquePackage(id)
+            let inheritedHidden = store.flags[Int(id)] & IndexStore.Flag.hidden != 0
             var additions: [ScannedItem] = []
             var additionNoise: [Bool] = []
             for (index, item) in items.enumerated() {
@@ -247,7 +259,13 @@ nonisolated final class IndexWorker: @unchecked Sendable {
                 // it) is re-added so its whole subtree picks up the new flag.
                 let expectedNoise = item.isDirectory && (inheritedNoise || ownNoise[index] || config.noise.contains(prefix + name))
                 let noiseChanged = item.isDirectory && expectedNoise != (store.flags[o] & IndexStore.Flag.noise != 0)
-                if store.isDirectory(old) != item.isDirectory || noiseChanged {
+                // Another item under the same name (a folder swapped in by renames), or one that became hidden,
+                // visible, a symlink or a regular item: re-add it so its flags and (for folders) contents are fresh.
+                let swapped = store.fileKey[o] != 0 && item.fileKey != 0 && store.fileKey[o] != item.fileKey
+                let expectedHidden = inheritedHidden || item.isHidden
+                let flagsChanged = expectedHidden != (store.flags[o] & IndexStore.Flag.hidden != 0)
+                    || item.isSymlink != (store.flags[o] & IndexStore.Flag.symlink != 0)
+                if store.isDirectory(old) != item.isDirectory || noiseChanged || swapped || flagsChanged {
                     store.remove(old)
                     additions.append(item)
                     additionNoise.append(ownNoise[index])

@@ -4,9 +4,9 @@ import Foundation
 /// and then catch up from the FSEvents journal instead of rescanning.
 nonisolated enum IndexPersistence {
     private static let magic: UInt32 = 0x5354_5258 // "STRX"
-    // 5: only app-like packages' contents are noise, plus build output beside its project file (a full rescan picks
-    // that up).
-    private static let version: UInt32 = 5
+    // 5: only app-like packages' contents are noise, plus build output beside its project file; 6: file IDs (a full
+    // rescan picks that up).
+    private static let version: UInt32 = 6
 
     struct Header {
         var eventID: UInt64
@@ -49,6 +49,7 @@ nonisolated enum IndexPersistence {
             putColumn(store.size)
             putColumn(store.fileCount)
             putColumn(store.mtime)
+            putColumn(store.fileKey)
             putColumn(store.flags)
             putColumn(store.names)
         }
@@ -105,12 +106,14 @@ nonisolated enum IndexPersistence {
         store.size = try getColumn(Int64.self)
         store.fileCount = try getColumn(UInt32.self)
         store.mtime = try getColumn(UInt32.self)
+        store.fileKey = try getColumn(UInt32.self)
         store.flags = try getColumn(UInt8.self)
         store.names = try getColumn(UInt8.self)
         store.roots = header.roots
         let count = store.parent.count
         guard [store.firstChild.count, store.nextSibling.count, store.nameStart.count, store.nameLength.count,
-               store.size.count, store.fileCount.count, store.mtime.count, store.flags.count].allSatisfy({ $0 == count })
+               store.size.count, store.fileCount.count, store.mtime.count, store.fileKey.count,
+               store.flags.count].allSatisfy({ $0 == count })
         else { throw Corrupt() }
         try reader.finish()
         return (store, header)

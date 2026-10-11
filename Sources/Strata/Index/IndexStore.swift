@@ -11,6 +11,8 @@ nonisolated struct ScannedItem: Sendable {
     var isMountPoint: Bool
     var size: Int64
     var mtime: UInt32
+    /// The file system's ID for the item, folded to 32 bits: tells a folder apart from another swapped into its name.
+    var fileKey: UInt32 = 0
 }
 
 /// Every file and folder under the indexed roots, stored column by column so millions of entries stay compact
@@ -40,6 +42,8 @@ nonisolated final class IndexStore: @unchecked Sendable {
     /// Files: 1. Folders: number of files inside.
     var fileCount = ContiguousArray<UInt32>()
     var mtime = ContiguousArray<UInt32>()
+    /// `ScannedItem.fileKey` (0 for roots and unknown).
+    var fileKey = ContiguousArray<UInt32>()
     var flags = ContiguousArray<UInt8>()
     var names = ContiguousArray<UInt8>()
     /// Root entries and their absolute paths.
@@ -99,7 +103,7 @@ nonisolated final class IndexStore: @unchecked Sendable {
             if item.isHidden { f |= Flag.hidden }
             if noise[index] { f |= Flag.noise }
             appendRaw(parent: parentID, name: name, flags: f, size: item.isDirectory ? 0 : item.size,
-                      files: item.isDirectory ? 0 : 1, mtime: item.mtime)
+                      files: item.isDirectory ? 0 : 1, mtime: item.mtime, key: item.fileKey)
         }
         let last = Int32(parent.count)
         guard first < last else { return first..<last }
@@ -114,7 +118,8 @@ nonisolated final class IndexStore: @unchecked Sendable {
         name.withUnsafeBytes { appendRaw(parent: parentID, name: $0, flags: f, size: bytes, files: files, mtime: time) }
     }
 
-    private func appendRaw(parent parentID: Int32, name: UnsafeRawBufferPointer, flags f: UInt8, size bytes: Int64, files: UInt32, mtime time: UInt32) {
+    private func appendRaw(parent parentID: Int32, name: UnsafeRawBufferPointer, flags f: UInt8, size bytes: Int64, files: UInt32,
+                           mtime time: UInt32, key: UInt32 = 0) {
         parent.append(parentID)
         firstChild.append(-1)
         nextSibling.append(-1)
@@ -124,6 +129,7 @@ nonisolated final class IndexStore: @unchecked Sendable {
         size.append(bytes)
         fileCount.append(files)
         mtime.append(time)
+        fileKey.append(key)
         flags.append(f)
     }
 
@@ -163,6 +169,7 @@ nonisolated final class IndexStore: @unchecked Sendable {
         size.reserveCapacity(entries)
         fileCount.reserveCapacity(entries)
         mtime.reserveCapacity(entries)
+        fileKey.reserveCapacity(entries)
         flags.reserveCapacity(entries)
         names.reserveCapacity(entries * 24)
     }

@@ -20,6 +20,7 @@ nonisolated enum BulkDirectoryReader {
         request.bitmapcount = u_short(ATTR_BIT_MAP_COUNT)
         request.commonattr = attrgroup_t(ATTR_CMN_RETURNED_ATTRS) | attrgroup_t(ATTR_CMN_NAME) | attrgroup_t(ATTR_CMN_ERROR)
             | attrgroup_t(ATTR_CMN_OBJTYPE) | attrgroup_t(ATTR_CMN_MODTIME) | attrgroup_t(ATTR_CMN_FLAGS)
+            | attrgroup_t(ATTR_CMN_FILEID)
         request.dirattr = attrgroup_t(ATTR_DIR_MOUNTSTATUS)
         request.fileattr = attrgroup_t(ATTR_FILE_DATALENGTH)
 
@@ -63,6 +64,12 @@ nonisolated enum BulkDirectoryReader {
                     bsdFlags = field.loadUnaligned(as: UInt32.self)
                     field += 4
                 }
+                var fileKey: UInt32 = 0
+                if returned.commonattr & attrgroup_t(ATTR_CMN_FILEID) != 0 {
+                    let id = field.loadUnaligned(as: UInt64.self)
+                    fileKey = UInt32(truncatingIfNeeded: id ^ (id >> 32))
+                    field += 8
+                }
                 var mountStatus: UInt32 = 0
                 if returned.dirattr & attrgroup_t(ATTR_DIR_MOUNTSTATUS) != 0 {
                     mountStatus = field.loadUnaligned(as: UInt32.self)
@@ -86,7 +93,8 @@ nonisolated enum BulkDirectoryReader {
                     isHidden: isDotFile || bsdFlags & UInt32(UF_HIDDEN) != 0,
                     isMountPoint: mountStatus & UInt32(DIR_MNTSTATUS_MNTPOINT) != 0,
                     size: size,
-                    mtime: mtime))
+                    mtime: mtime,
+                    fileKey: fileKey))
                 names.append(contentsOf: nameBytes)
             }
         }
