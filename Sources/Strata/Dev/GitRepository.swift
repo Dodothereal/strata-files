@@ -214,6 +214,9 @@ nonisolated enum GitRunner {
         }
         environment["GIT_OPTIONAL_LOCKS"] = "0"
         environment["GIT_NO_LAZY_FETCH"] = "1"
+        // An empty allow-list permits no transport and, unlike `protocol.allow`, a repository's own
+        // `protocol.<name>.allow` can't override it.
+        environment["GIT_ALLOW_PROTOCOL"] = ""
         environment["GIT_TERMINAL_PROMPT"] = "0"
         environment["LC_ALL"] = "C"
         process.environment = environment

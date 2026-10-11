@@ -50,7 +50,8 @@ nonisolated enum PlanValidator {
             let target = key(destination)
             if claimed.contains(target) {
                 exclude(kind, item.url, destination, "Same name as another item in this plan")
-            } else if fm.fileExists(atPath: destination.path), target != key(item.url), !vacated.contains(target) {
+            } else if TransferEngine.exists(destination), !Self.sameItem(destination, item.url), !vacated.contains(target) {
+                // Identity, not spelling: on a case-sensitive disk "Photo.jpg" can be a different file from "photo.jpg".
                 exclude(kind, item.url, destination, "Would replace “\(destination.lastPathComponent)”")
             } else {
                 claimed.insert(target)
@@ -208,6 +209,12 @@ nonisolated enum PlanValidator {
     }
 
     /// Paths compare case-insensitively (APFS default).
+    /// Whether two paths are the same file (device and inode), whatever their spelling.
+    static func sameItem(_ a: URL, _ b: URL) -> Bool {
+        var x = stat(), y = stat()
+        return lstat(a.path, &x) == 0 && lstat(b.path, &y) == 0 && x.st_dev == y.st_dev && x.st_ino == y.st_ino
+    }
+
     static func key(_ url: URL) -> String {
         url.standardizedFileURL.path.lowercased()
     }

@@ -27,6 +27,9 @@ final class OperationLog {
         var replaced: [[String]] = []
         /// Folders made to hold moved items: undo removes them once they're empty again.
         var containers: [String] = []
+        /// Which file each recorded path held right after the operation ("device:inode"): undo only touches those
+        /// same files, never something else that took their place since.
+        var identities: [String: String] = [:]
         var undone = false
 
         init(name: String, kind: Kind, pairs: [[String]] = [], created: [String] = [], replaced: [[String]] = [],
@@ -37,6 +40,9 @@ final class OperationLog {
             self.created = created
             self.replaced = replaced
             self.containers = containers
+            for path in pairs.map({ $0[1] }) + created + replaced.map({ $0[1] }) {
+                identities[path] = OperationLog.identity(path)
+            }
         }
 
         // History saved by earlier versions lacks the newer fields.
@@ -50,6 +56,7 @@ final class OperationLog {
             created = try c.decodeIfPresent([String].self, forKey: .created) ?? []
             replaced = try c.decodeIfPresent([[String]].self, forKey: .replaced) ?? []
             containers = try c.decodeIfPresent([String].self, forKey: .containers) ?? []
+            identities = try c.decodeIfPresent([String: String].self, forKey: .identities) ?? [:]
             undone = try c.decodeIfPresent(Bool.self, forKey: .undone) ?? false
         }
     }
@@ -109,28 +116,47 @@ final class OperationLog {
         pairs.map { [$0.from.path, $0.to.path] }
     }
 
-    /// Whether undoing `entry` can still work: the items are where the operation left them and nothing occupies
-    /// the places they'd go back to.
+    /// The file at `path` as "device:inode", or nil when nothing is there.
+    nonisolated static func identity(_ path: String) -> String? {
+        var info = stat()
+        guard lstat(path, &info) == 0 else { return nil }
+        return "\(info.st_dev):\(info.st_ino)"
+    }
+
+    /// `path` still holds the file the operation left there (entries from before identities were kept: it exists).
+    private func holdsOriginal(_ entry: Entry, _ path: String) -> Bool {
+        guard let current = Self.identity(path) else { return false }
+        return entry.identities[path].map { $0 == current } ?? true
+    }
+
+    /// Whether undoing `entry` can still work: the very items the operation left are still where it left them, and
+    /// nothing else occupies the places they'd go back to (a case-only rename's old spelling is the item itself).
     func canUndo(_ entry: Entry) -> Bool {
         guard !entry.undone else { return false }
-        let fm = FileManager.default
-        let movesBack = !entry.pairs.isEmpty
-            && entry.pairs.allSatisfy { fm.fileExists(atPath: $0[1]) && !fm.fileExists(atPath: $0[0]) }
+        let movesBack = !entry.pairs.isEmpty && entry.pairs.allSatisfy { pair in
+            holdsOriginal(entry, pair[1]) && (Self.identity(pair[0]) == nil || Self.identity(pair[0]) == Self.identity(pair[1]))
+        }
         switch entry.kind {
         case .move:
             return movesBack
         case .create:
-            return entry.created.contains { fm.fileExists(atPath: $0) } || movesBack
+            return entry.created.contains { holdsOriginal(entry, $0) } || movesBack
         }
     }
 
     /// Reverses `entry`: created items go to the Trash, moves go back, replaced items come back out of the Trash, and
     /// folders made for moved items are removed if empty. The reversal is itself undoable with ⌘Z.
     func undo(_ entry: Entry, undoManager: UndoManager?) async throws {
+        // Checked again now: the window may have been open a while.
+        guard canUndo(entry) else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [
+                NSLocalizedDescriptionKey: "“\(entry.name)” can’t be undone: its items have moved or changed since.",
+            ])
+        }
         let fm = FileManager.default
-        let existing = entry.created.filter { fm.fileExists(atPath: $0) }.map { URL(fileURLWithPath: $0) }
+        let existing = entry.created.filter { holdsOriginal(entry, $0) }.map { URL(fileURLWithPath: $0) }
         if !existing.isEmpty { try FileOps.trash(existing, undo: undoManager, record: false) }
-        let back = (entry.pairs.reversed() + entry.replaced.reversed()).map {
+        let back = (entry.pairs.reversed() + entry.replaced.reversed().filter { holdsOriginal(entry, $0[1]) }).map {
             (from: URL(fileURLWithPath: $0[1]), to: URL(fileURLWithPath: $0[0]))
         }
         if !back.isEmpty { try await FileOps.move(back, actionName: "Undo \(entry.name)", undo: undoManager, record: false) }

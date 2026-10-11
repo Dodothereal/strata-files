@@ -11,9 +11,11 @@ enum FileOps {
 
     static func rename(_ url: URL, to name: String, undo: UndoManager?) async throws -> URL {
         let destination = url.deletingLastPathComponent().appending(path: name)
-        if FileManager.default.fileExists(atPath: destination.path),
-           destination.path.lowercased() != url.path.lowercased() {
-            throw CocoaError(.fileWriteFileExists, userInfo: [NSFilePathErrorKey: destination.path])
+        if TransferEngine.exists(destination), destination.path.lowercased() != url.path.lowercased() {
+            throw CocoaError(.fileWriteFileExists, userInfo: [
+                NSFilePathErrorKey: destination.path,
+                NSLocalizedDescriptionKey: "The name “\(name)” is already taken. Please choose a different name.",
+            ])
         }
         try await move([(from: url, to: destination)], actionName: "Rename", undo: undo)
         return destination
@@ -62,7 +64,8 @@ enum FileOps {
     /// `name 2.txt`, `name 3.txt`… or Finder's `name copy.txt`, `name copy 2.txt`… for copies next to the original.
     static func available(_ url: URL, copyStyle: Bool) -> URL {
         let fm = FileManager.default
-        guard fm.fileExists(atPath: url.path) else { return url }
+        // lstat-based: a dangling symlink still takes the name.
+        guard TransferEngine.exists(url) else { return url }
         let directory = url.deletingLastPathComponent()
         var isDir: ObjCBool = false
         fm.fileExists(atPath: url.path, isDirectory: &isDir)
@@ -72,8 +75,11 @@ enum FileOps {
         var n = 1
         while true {
             let suffix = copyStyle ? (n == 1 ? " copy" : " copy \(n)") : " \(n + 1)"
-            let candidate = directory.appending(path: base + suffix + (ext.isEmpty ? "" : "." + ext))
-            if !fm.fileExists(atPath: candidate.path) { return candidate }
+            let tail = suffix + (ext.isEmpty ? "" : "." + ext)
+            // Shorten the base so the new name still fits the 255-byte limit.
+            let fitted = TransferEngine.fitting(base, maxBytes: max(1, 255 - tail.utf8.count))
+            let candidate = directory.appending(path: fitted + tail)
+            if !TransferEngine.exists(candidate) { return candidate }
             n += 1
         }
     }
@@ -85,6 +91,15 @@ enum FileOps {
     private static func registerTrashUndo(_ created: [URL], _ actionName: String, _ undo: UndoManager?) {
         guard !created.isEmpty else { return }
         register(actionName, undo) { undo in try? trash(created, undo: undo, record: false) }
+    }
+
+    /// ⌘Z couldn't put things back (something now sits where an item would return, say): say so rather than fail
+    /// silently.
+    static func reportUndoFailure(_ actionName: String, _ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = "Couldn’t undo “\(actionName)”"
+        alert.informativeText = error.localizedDescription
+        if let window = NSApp.keyWindow { alert.beginSheetModal(for: window) } else { alert.runModal() }
     }
 
     /// Registers, in the current undo group, flipping History entry `id` to `undone` (and back on redo), so the
@@ -113,7 +128,13 @@ enum FileOps {
         register(actionName, undo) { undo in
             let back = moves.reversed().map { (from: $0.to, to: $0.from) }
             registerMoveUndo(back, actionName, undo)
-            Task { try? await move(back, actionName: actionName, undo: nil, record: false) }
+            Task {
+                do {
+                    try await move(back, actionName: actionName, undo: nil, record: false)
+                } catch {
+                    reportUndoFailure(actionName, error)
+                }
+            }
         }
     }
 

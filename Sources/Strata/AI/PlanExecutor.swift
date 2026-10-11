@@ -82,15 +82,7 @@ final class PlanTransaction {
                 outcome.failures.append("Couldn’t create “\(folder.lastPathComponent)”: \(error.localizedDescription)")
             }
         }
-        for pair in moves {
-            do {
-                try await Self.move(pair)
-                done.append(pair)
-                outcome.results.append(pair.to)
-            } catch {
-                outcome.failures.append("“\(pair.from.lastPathComponent)”: \(error.localizedDescription)")
-            }
-        }
+        // Trash first: a plan may rename something into a name it frees ("trash X, rename Y to X").
         for url in trashItems {
             do {
                 var result: NSURL?
@@ -100,13 +92,23 @@ final class PlanTransaction {
                 outcome.failures.append("“\(url.lastPathComponent)” couldn’t be moved to the Trash: \(error.localizedDescription)")
             }
         }
+        for pair in moves {
+            do {
+                try await Self.move(pair)
+                done.append(pair)
+                outcome.results.append(pair.to)
+            } catch {
+                outcome.failures.append("“\(pair.from.lastPathComponent)”: \(error.localizedDescription)")
+            }
+        }
         outcome.applied = done.count + trashed.count
         return outcome
     }
 
     func revert() async {
-        for pair in trashed.reversed() { try? await Self.move((pair.to, pair.from)) }
+        // The reverse of `perform`: moves back first (freeing names), then the Trash.
         for pair in done.reversed() { try? await Self.move((pair.to, pair.from)) }
+        for pair in trashed.reversed() { try? await Self.move((pair.to, pair.from)) }
         let fm = FileManager.default
         for folder in created.reversed() {
             // Only remove what is (still) empty: never delete something the user put there meanwhile.
@@ -120,7 +122,13 @@ final class PlanTransaction {
         if pair.from.path != pair.to.path, pair.from.path.lowercased() == pair.to.path.lowercased() {
             let temporary = pair.from.deletingLastPathComponent().appending(path: ".strata-rename-\(UUID().uuidString)")
             try await FileOps.move([(from: pair.from, to: temporary)], actionName: "", undo: nil, record: false)
-            try await FileOps.move([(from: temporary, to: pair.to)], actionName: "", undo: nil, record: false)
+            do {
+                try await FileOps.move([(from: temporary, to: pair.to)], actionName: "", undo: nil, record: false)
+            } catch {
+                // Never leave the item under its hidden temporary name.
+                try? await FileOps.move([(from: temporary, to: pair.from)], actionName: "", undo: nil, record: false)
+                throw error
+            }
         } else {
             try await FileOps.move([pair], actionName: "", undo: nil, record: false)
         }

@@ -45,6 +45,8 @@ final class TransferJob {
     private weak var undoManager: UndoManager?
     /// False for jobs that are an undo or redo of something History already records.
     var logsHistory = true
+    /// Items moved so far, with where they actually landed (a clash may have renamed them).
+    private(set) var completedMoves: [TransferMove] = []
     private weak var queue: TransferQueue?
     private var rememberedDecision: ConflictDecision?
     private var decisionTask: Task<ConflictResolution, Never>?
@@ -303,7 +305,7 @@ final class TransferJob {
             fail(index, "The item couldn’t be found")
         } else if !TransferEngine.exists(item.destination.deletingLastPathComponent()) {
             fail(index, "The destination folder couldn’t be found")
-        } else if folder == source.path || folder.hasPrefix(source.path + "/") {
+        } else if Self.isInside(folder, source.path) {
             fail(index, "A folder can’t be \(mode == .copy ? "copied" : "moved") into itself")
         } else if mode == .move, sameFolder, item.destination.lastPathComponent == source.lastPathComponent {
             items[index].outcome = .done   // Already there.
@@ -427,6 +429,18 @@ final class TransferJob {
         return "Not enough space on “\(volume)”: \(Format.bytes(needed)) needed, \(Format.bytes(available)) available"
     }
 
+    /// Whether `folder` is `item` or inside it, comparing real paths (a symlink can make a folder look like it's
+    /// elsewhere, and copying a folder into itself recurses until names get too long).
+    static func isInside(_ folder: String, _ item: String) -> Bool {
+        func real(_ path: String) -> String {
+            guard let resolved = realpath(path, nil) else { return URL(fileURLWithPath: path).standardizedFileURL.path }
+            defer { free(resolved) }
+            return String(cString: resolved)
+        }
+        let (folder, item) = (real(folder), real(item))
+        return folder == item || folder.hasPrefix(item == "/" ? "/" : item + "/")
+    }
+
     // MARK: - Results
 
     private func fail(_ index: Int, _ message: String) {
@@ -441,12 +455,18 @@ final class TransferJob {
         failures += result.failures
         switch result.outcome {
         case .done, .partial:
+            // A move whose original couldn't be (or wasn't) removed leaves the only complete copy at the destination:
+            // undo must not trash it.
+            let originalKept = mode == .move && result.failures.contains { $0.stage == .removeSource }
+            if result.sourceRemoved {
+                completedMoves.append(TransferMove(from: items[index].source, to: result.destination))
+            }
             if !isRetry {
                 completedItems += 1
                 createdItems.append(result.destination)
                 if result.sourceRemoved {
                     journalMoved.append(TransferMove(from: items[index].source, to: result.destination))
-                } else {
+                } else if !originalKept {
                     journalCreated.append(result.destination)
                 }
             } else if result.sourceRemoved {

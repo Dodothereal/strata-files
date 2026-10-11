@@ -132,7 +132,7 @@ enum FileDrop {
     static func operation(_ urls: [URL], into target: URL, info: NSDraggingInfo) -> NSDragOperation {
         guard let first = urls.first else { return [] }
         let targetPath = target.standardizedFileURL.path
-        if urls.contains(where: { targetPath == $0.standardizedFileURL.path || targetPath.hasPrefix($0.standardizedFileURL.path + "/") }) {
+        if urls.contains(where: { TransferJob.isInside(targetPath, $0.path) }) {
             return []
         }
         let mask = info.draggingSourceOperationMask

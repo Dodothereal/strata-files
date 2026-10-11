@@ -178,8 +178,14 @@ nonisolated enum TransferEngine {
             return result
         }
         if let fatal = copy.fatal {
-            removeIfPresent(target)
+            if !copy.destinationExisted { removeIfPresent(target) }
             return fail(fatal)
+        }
+        if copy.cloned {
+            progress.update {
+                $0.files += item.files
+                $0.bytes += item.bytes
+            }
         }
         var failures = copy.errors.map { error in
             TransferFailure(item: index, stage: .copy, source: URL(fileURLWithPath: error.source),
@@ -234,6 +240,14 @@ nonisolated enum TransferEngine {
             return result
         }
         if operation == .copyThenDelete {
+            // Anything saved into the original while it was being copied isn't in the copy: keep the original then.
+            if let change = changedSinceCopy(item.source, copy: item.destination) {
+                result.failures.append(TransferFailure(item: index, stage: .removeSource, source: item.source,
+                                                       destination: item.destination,
+                                                       message: "Copied, but the original was kept because it changed during the move (\(change))"))
+                result.outcome = .partial
+                return result
+            }
             if let message = removeSource(item.source) {
                 result.failures.append(TransferFailure(item: index, stage: .removeSource, source: item.source,
                                                        destination: item.destination, message: message))
@@ -327,6 +341,10 @@ nonisolated enum TransferEngine {
         var cancelled = false
         /// Nothing could be copied at all.
         var fatal: String?
+        /// The copy was refused because something already sits at the destination: that item isn't ours to remove.
+        var destinationExisted = false
+        /// Made as one APFS clone of the whole item (no per-file progress was reported).
+        var cloned = false
     }
 
     /// Recursive `copyfile(3)` with every piece of metadata, APFS clones where possible, per-file progress, and
@@ -335,7 +353,13 @@ nonisolated enum TransferEngine {
                      progress: TransferProgress) -> CopyOutcome {
         guard !exists(destination) else {
             // copyfile would copy *into* an existing folder; the planner guarantees this never happens.
-            return CopyOutcome(fatal: describe(EEXIST))
+            return CopyOutcome(fatal: describe(EEXIST), destinationExisted: true)
+        }
+        if clone {
+            // One clone of the whole tree: instant on APFS, and unlike copyfile's per-file cloning it copes with
+            // read-only folders. Another volume (or no clone support) falls through to a regular copy.
+            if clonefile(source.path, destination.path, UInt32(CLONE_NOFOLLOW)) == 0 { return CopyOutcome(cloned: true) }
+            if errno == EEXIST { return CopyOutcome(fatal: describe(EEXIST), destinationExisted: true) }
         }
         let session = CopySession(control: control, progress: progress, throttle: hooks.throttleBytesPerSecond)
         guard let state = copyfile_state_alloc() else { return CopyOutcome(fatal: describe(ENOMEM)) }
@@ -343,8 +367,7 @@ nonisolated enum TransferEngine {
         let callback: copyfile_callback_t = copyCallback
         copyfile_state_set(state, UInt32(COPYFILE_STATE_STATUS_CB), unsafeBitCast(callback, to: UnsafeRawPointer.self))
         copyfile_state_set(state, UInt32(COPYFILE_STATE_STATUS_CTX), Unmanaged.passUnretained(session).toOpaque())
-        var flags = COPYFILE_ALL | COPYFILE_RECURSIVE | COPYFILE_NOFOLLOW_SRC | COPYFILE_EXCL
-        if clone { flags |= COPYFILE_CLONE }
+        let flags = COPYFILE_ALL | COPYFILE_RECURSIVE | COPYFILE_NOFOLLOW_SRC | COPYFILE_EXCL
         let status = copyfile(source.path, destination.path, state, copyfile_flags_t(flags))
         let code = errno
         withExtendedLifetime(session) {}
@@ -354,6 +377,8 @@ nonisolated enum TransferEngine {
             outcome.cancelled = true
         } else if status != 0, session.errors.isEmpty {
             outcome.fatal = describe(code)
+            // Something appeared at the destination meanwhile (COPYFILE_EXCL refused): leave it alone.
+            outcome.destinationExisted = code == EEXIST
         } else if !exists(destination), session.errors.contains(where: { $0.source == source.path }) {
             // The top-level item itself failed (unreadable file, folder that can't be listed…).
             outcome.fatal = session.errors.first { $0.source == source.path }?.message
@@ -480,6 +505,33 @@ nonisolated enum TransferEngine {
         try? FileManager.default.removeItem(at: url)
     }
 
+    /// The first difference between `source` and its copy (an item added, or a file whose size or modification date
+    /// changed after it was copied), or nil when the copy has everything the original has.
+    static func changedSinceCopy(_ source: URL, copy: URL) -> String? {
+        let root = source.path
+        guard let cpath = strdup(root) else { return "it couldn’t be checked" }
+        defer { free(cpath) }
+        var paths: [UnsafeMutablePointer<CChar>?] = [cpath, nil]
+        guard let fts = fts_open(&paths, FTS_PHYSICAL | FTS_NOCHDIR, nil) else { return "it couldn’t be checked" }
+        defer { fts_close(fts) }
+        while let entry = fts_read(fts) {
+            let info = Int32(entry.pointee.fts_info)
+            if info == FTS_DP { continue }
+            let path = String(cString: entry.pointee.fts_path)
+            let relative = path.count > root.count ? String(path.dropFirst(root.count)) : ""
+            let name = relative.isEmpty ? source.lastPathComponent : String(relative.dropFirst())
+            var original = stat(), copied = stat()
+            guard lstat(path, &original) == 0 else { continue }   // Removed meanwhile: nothing to lose.
+            guard lstat(copy.path + relative, &copied) == 0,
+                  original.st_mode & S_IFMT == copied.st_mode & S_IFMT else { return "“\(name)” is new" }
+            if original.st_mode & S_IFMT == S_IFREG,
+               original.st_size != copied.st_size || original.st_mtimespec.tv_sec != copied.st_mtimespec.tv_sec {
+                return "“\(name)” was modified"
+            }
+        }
+        return nil
+    }
+
     /// Removes the original after a cross-volume move. Returns an error message, or nil on success.
     private static func removeSource(_ url: URL) -> String? {
         do {
@@ -493,7 +545,20 @@ nonisolated enum TransferEngine {
 
     static func temporaryURL(for destination: URL) -> URL {
         let token = UUID().uuidString.prefix(8)
-        return destination.deletingLastPathComponent().appending(path: ".\(destination.lastPathComponent).strata-\(token)")
+        // ".<name>.strata-XXXXXXXX" must stay within the 255-byte name limit.
+        let name = fitting(destination.lastPathComponent, maxBytes: 255 - 17)
+        return destination.deletingLastPathComponent().appending(path: ".\(name).strata-\(token)")
+    }
+
+    /// `name` cut (at a character boundary) to at most `maxBytes` of UTF-8.
+    static func fitting(_ name: String, maxBytes: Int) -> String {
+        guard name.utf8.count > maxBytes else { return name }
+        var result = ""
+        for character in name {
+            guard result.utf8.count + String(character).utf8.count <= maxBytes else { break }
+            result.append(character)
+        }
+        return result
     }
 
     static func describe(_ code: Int32) -> String {

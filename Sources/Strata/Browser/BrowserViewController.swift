@@ -850,13 +850,56 @@ final class BrowserViewController: NSViewController {
 
     // MARK: - Rename
 
+    /// Renames with Finder's checks: no "/" or leading dot, and a confirmation when a file's extension changes.
     func renameItem(_ url: URL, to newName: String) {
-        guard !newName.isEmpty, !newName.contains("/") else { return }
-        performAsync { [self] in
-            let renamed = try await FileOps.rename(url, to: newName, undo: undoManager)
-            pendingSelection = [renamed]
-            refresh()
+        let oldName = url.lastPathComponent
+        guard !newName.isEmpty, newName != oldName else { return }
+        if newName.contains("/") {
+            renameRefused("The name “\(newName)” can’t be used.", "Names can’t contain “/”. Try a different name.")
+            return
         }
+        if newName.hasPrefix("."), !oldName.hasPrefix(".") {
+            renameRefused("You can’t use a name that begins with a dot “.”.",
+                          "These names are reserved for the system, and the item would be hidden. Please choose another name.")
+            return
+        }
+        let commit = { [self] in
+            performAsync { [self] in
+                let renamed = try await FileOps.rename(url, to: newName, undo: undoManager)
+                pendingSelection = [renamed]
+                refresh()
+            }
+        }
+        let isFolder = (try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])).map {
+            $0.isDirectory == true && $0.isPackage != true
+        } ?? false
+        let (oldExtension, newExtension) = ((oldName as NSString).pathExtension, (newName as NSString).pathExtension)
+        guard !isFolder, oldExtension.lowercased() != newExtension.lowercased(), let window = view.window else {
+            commit()
+            return
+        }
+        let alert = NSAlert()
+        if oldExtension.isEmpty {
+            alert.messageText = "Are you sure you want to add the extension “.\(newExtension)” to the end of the name?"
+        } else if newExtension.isEmpty {
+            alert.messageText = "Are you sure you want to remove the extension “.\(oldExtension)”?"
+        } else {
+            alert.messageText = "Are you sure you want to change the extension from “.\(oldExtension)” to “.\(newExtension)”?"
+        }
+        alert.informativeText = "If you make this change, your document may open in a different app."
+        alert.addButton(withTitle: oldExtension.isEmpty ? "Don’t Add" : "Keep .\(oldExtension)")
+        alert.addButton(withTitle: newExtension.isEmpty ? "Remove" : "Use .\(newExtension)")
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertSecondButtonReturn { commit() }
+        }
+    }
+
+    private func renameRefused(_ message: String, _ detail: String) {
+        guard let window = view.window else { return }
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = detail
+        alert.beginSheetModal(for: window)
     }
 
     private func beginRename(_ url: URL) {

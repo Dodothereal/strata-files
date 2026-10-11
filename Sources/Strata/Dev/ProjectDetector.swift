@@ -160,7 +160,14 @@ nonisolated enum ProjectDetector {
         }
         func addArtifact(_ relative: String, _ kind: ProjectKind, _ role: ProjectArtifact.Role) {
             let url = folder.appending(path: relative, directoryHint: .isDirectory)
-            guard isRealDirectory(url.path), seen.insert(url.path).inserted else { return }
+            // Every folder on the way must be real: a symlinked parent ("vendor" → elsewhere) would put the
+            // artifact outside the project.
+            var step = folder
+            for part in relative.split(separator: "/") {
+                step = step.appending(path: String(part), directoryHint: .isDirectory)
+                guard isRealDirectory(step.path) else { return }
+            }
+            guard seen.insert(url.path).inserted else { return }
             artifacts.append(ProjectArtifact(name: relative, urls: [url], kind: kind, role: role))
         }
 

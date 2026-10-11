@@ -227,7 +227,17 @@ enum TransferUndo {
             }
         } else {
             // Part of an undo or redo: History already has the operation.
-            TransferQueue.shared.enqueue(moves: moves, mode: .move, undo: nil, conflicts: .keepBoth, logHistory: false)
+            let job = TransferQueue.shared.enqueue(moves: moves, mode: .move, undo: nil, conflicts: .keepBoth,
+                                                   logHistory: false)
+            guard let undo else { return }
+            // Clashes may rename items on the way, so the inverse uses where they actually landed.
+            undo.registerUndo(withTarget: undo) { undo in
+                MainActor.assumeIsolated {
+                    perform(job.completedMoves.reversed().map(\.reversed), actionName: actionName, undo: undo)
+                }
+            }
+            undo.setActionName(actionName)
+            return
         }
         guard let undo, !done.isEmpty else { return }
         let inverse = done.reversed().map(\.reversed)

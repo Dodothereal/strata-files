@@ -200,20 +200,21 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         onSelect?(item.target)
     }
 
-    // Drop files on a sidebar location to move them there (Option copies).
+    // Drop files on a sidebar location with Finder's rules (shared with every view): move on the same disk, copy
+    // onto another one, Option copies.
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?,
                      proposedChildIndex index: Int) -> NSDragOperation {
-        guard (item as? SidebarItem)?.url != nil, index == NSOutlineViewDropOnItemIndex else { return [] }
-        return NSEvent.modifierFlags.contains(.option) ? .copy : .move
+        guard let target = (item as? SidebarItem)?.url, index == NSOutlineViewDropOnItemIndex else { return [] }
+        return FileDrop.operation(FileDrop.urls(info), into: target, info: info)
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
-        guard let target = (item as? SidebarItem)?.url,
-              let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
-              !urls.isEmpty else { return false }
-        let copy = NSEvent.modifierFlags.contains(.option)
-        TransferQueue.shared.enqueue(urls, to: target, mode: copy ? .copy : .move, undo: view.window?.undoManager,
-                                     conflicts: .sheet(for: view.window))
+        guard let target = (item as? SidebarItem)?.url else { return false }
+        let urls = FileDrop.urls(info)
+        let operation = FileDrop.operation(urls, into: target, info: info)
+        guard !urls.isEmpty, !operation.isEmpty else { return false }
+        TransferQueue.shared.enqueue(urls, to: target, mode: operation == .move ? .move : .copy,
+                                     undo: view.window?.undoManager, conflicts: .sheet(for: view.window))
         return true
     }
 }
