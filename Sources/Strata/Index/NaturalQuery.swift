@@ -37,8 +37,8 @@ nonisolated enum NaturalQuery {
         query.extensions = extensions
         query.minSize = filter.minSize
         query.maxSize = filter.maxSize
-        query.modifiedAfter = filter.modifiedAfter.map { UInt32(clamping: Int($0.timeIntervalSince1970)) }
-        query.modifiedBefore = filter.modifiedBefore.map { UInt32(clamping: Int($0.timeIntervalSince1970)) }
+        query.modifiedAfter = filter.modifiedAfter.map(indexStamp)
+        query.modifiedBefore = filter.modifiedBefore.map(indexStamp)
         let mentioned = (filter.nameContains + filter.keywords).map { $0.lowercased() }
         query.includeHidden = mentioned.contains { $0.hasPrefix(".") }
         return (query, filter)

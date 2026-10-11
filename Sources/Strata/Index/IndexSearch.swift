@@ -1,5 +1,24 @@
 import Foundation
 
+/// `value` as Int64, clamped to its range (a typed "size:9e30" or "1e20 days" must not trap); nil for NaN.
+nonisolated func saturatingInt64(_ value: Double) -> Int64? {
+    guard !value.isNaN else { return nil }
+    if value >= 9.2e18 { return .max }
+    if value <= -9.2e18 { return .min }
+    return Int64(value)
+}
+
+/// A count of days, weeks… from a query, kept to a sane range (date arithmetic overflows on absurd values).
+nonisolated func boundedCount(_ value: Double) -> Int {
+    guard value.isFinite else { return 0 }
+    return Int(max(-1_000_000, min(1_000_000, value)))
+}
+
+/// Seconds since 1970 as the index's 32-bit timestamp, clamped.
+nonisolated func indexStamp(_ date: Date) -> UInt32 {
+    UInt32(clamping: saturatingInt64(date.timeIntervalSince1970) ?? 0)
+}
+
 /// A parsed search: plain words match names (all must appear), plus Everything-style filters:
 /// `ext:pdf;png`, `*.pdf`, `kind:image|video|audio|doc|code|archive|app|folder|file`, `size:>100mb`, `size:1mb..1gb`,
 /// `modified:today|yesterday|<7d|>30d|2026`, `in:~/Documents` or `in:github` (any enclosing folder name),
@@ -114,9 +133,9 @@ nonisolated struct IndexQuery: Sendable {
         let units: [(String, Double)] = [("tb", 1e12), ("gb", 1e9), ("mb", 1e6), ("kb", 1e3), ("t", 1e12), ("g", 1e9), ("m", 1e6), ("k", 1e3), ("b", 1)]
         for (suffix, multiplier) in units where text.hasSuffix(suffix) {
             guard let number = Double(text.dropLast(suffix.count)) else { return nil }
-            return Int64(number * multiplier)
+            return saturatingInt64(number * multiplier)
         }
-        return Double(text).map { Int64($0) }
+        return Double(text).flatMap(saturatingInt64)
     }
 
     private static func sizeRange(_ value: String) -> (Int64?, Int64?) {
@@ -125,8 +144,8 @@ nonisolated struct IndexQuery: Sendable {
         }
         if value.hasPrefix(">=") { return (bytes(String(value.dropFirst(2))), nil) }
         if value.hasPrefix("<=") { return (nil, bytes(String(value.dropFirst(2)))) }
-        if value.hasPrefix(">") { return (bytes(String(value.dropFirst())).map { $0 + 1 }, nil) }
-        if value.hasPrefix("<") { return (nil, bytes(String(value.dropFirst())).map { $0 - 1 }) }
+        if value.hasPrefix(">") { return (bytes(String(value.dropFirst())).map { $0 == .max ? .max : $0 + 1 }, nil) }
+        if value.hasPrefix("<") { return (nil, bytes(String(value.dropFirst())).map { $0 == .min ? .min : $0 - 1 }) }
         switch value {
         case "empty": return (0, 0)
         case "tiny": return (0, 10_000)
@@ -143,10 +162,13 @@ nonisolated struct IndexQuery: Sendable {
     private static func dateRange(_ value: String, now: Date) -> (UInt32?, UInt32?) {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
-        func stamp(_ date: Date) -> UInt32 { UInt32(clamping: Int(date.timeIntervalSince1970)) }
+        func stamp(_ date: Date) -> UInt32 { indexStamp(date) }
+        // Calendar days, not 86,400 s: a day around a daylight-saving change is 23 or 25 hours.
+        func dayAfter(_ date: Date) -> Date { calendar.date(byAdding: .day, value: 1, to: date) ?? date.addingTimeInterval(86_400) }
         switch value {
         case "today": return (stamp(today), nil)
-        case "yesterday": return (stamp(today.addingTimeInterval(-86_400)), stamp(today))
+        case "yesterday":
+            return (stamp(calendar.date(byAdding: .day, value: -1, to: today) ?? today.addingTimeInterval(-86_400)), stamp(today))
         case "thisweek", "week": return (stamp(now.addingTimeInterval(-7 * 86_400)), nil)
         case "thismonth", "month": return (stamp(now.addingTimeInterval(-30 * 86_400)), nil)
         default: break
@@ -168,7 +190,7 @@ nonisolated struct IndexQuery: Sendable {
            let end = calendar.date(from: DateComponents(year: year + 1, month: 1, day: 1)) {
             return (stamp(start), stamp(end))
         }
-        if let date = day(value) { return (stamp(date), stamp(date.addingTimeInterval(86_400))) }
+        if let date = day(value) { return (stamp(date), stamp(dayAfter(date))) }
         return (nil, nil)
     }
 

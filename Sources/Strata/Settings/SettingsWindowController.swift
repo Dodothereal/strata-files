@@ -74,6 +74,11 @@ private struct GeneralSettings: View {
                     Text("Your home folder").tag(true)
                 }
             }
+            Section("Copying") {
+                PrefToggle(title: "Verify copies",
+                           caption: "Reads every copied file back and compares it with the original. Slower, but catches failing disks and cables.",
+                           get: { Prefs.verifyCopies }, set: { Prefs.verifyCopies = $0 })
+            }
             Section {
                 Toggle(isOn: Binding(get: { isFileViewer }, set: { isFileViewer = $0; FileViewer.setStrata($0) })) {
                     Text("Open “Reveal in Finder” in Strata")
@@ -86,7 +91,7 @@ private struct GeneralSettings: View {
                 LabeledContent("strata") {
                     Button("Install…") { CommandLineTool.install() }
                 }
-                Text("`strata .` opens the current folder; `strata -s \"ext:pdf invoice\"` searches.")
+                Text("Then `strata .` opens the current folder in Strata, and `strata -s \"ext:pdf invoice\"` searches.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

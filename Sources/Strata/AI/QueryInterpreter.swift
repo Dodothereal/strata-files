@@ -266,12 +266,12 @@ private nonisolated final class Parser {
         }
         consume("\\bsize\\s*:\\s*(>=|<=|>|<|=)?\\s*(\\d+(?:\\.\\d+)?)\\s*\(Self.sizeUnit)?\\b") { m in
             guard let value = Double(m[2] ?? "") else { return false }
-            let bytes = Int64(value * Self.multiplier(m[3] ?? "mb"))
+            let bytes = saturatingInt64(value * Self.multiplier(m[3] ?? "mb")) ?? 0
             switch m[1] {
             case "<", "<=": self.filter.maxSize = bytes
             case "=":
-                self.filter.minSize = Int64(Double(bytes) * 0.9)
-                self.filter.maxSize = Int64(Double(bytes) * 1.1)
+                self.filter.minSize = saturatingInt64(Double(bytes) * 0.9)
+                self.filter.maxSize = saturatingInt64(Double(bytes) * 1.1)
             default: self.filter.minSize = bytes
             }
             return true
@@ -313,34 +313,34 @@ private nonisolated final class Parser {
         consume("\\bbetween\\s+(\\d+(?:[.,]\\d+)?)\\s*\(Self.sizeUnit)?\\s*(?:and|to|-)\\s*(\\d+(?:[.,]\\d+)?)\\s*\(Self.sizeUnit)\\b") { m in
             guard let low = Self.number(m[1]), let high = Self.number(m[3]) else { return false }
             let unit = m[4] ?? "mb"
-            self.filter.minSize = Int64(low * Self.multiplier(m[2] ?? unit))
-            self.filter.maxSize = Int64(high * Self.multiplier(unit))
+            self.filter.minSize = saturatingInt64(low * Self.multiplier(m[2] ?? unit))
+            self.filter.maxSize = saturatingInt64(high * Self.multiplier(unit))
             return true
         }
         consume("\\b(?:bigger|larger|greater|heavier|more|over|above|exceeding|at least)\\s*(?:than\\s+|then\\s+)?\(Self.num)\\s*\(Self.sizeUnit)\\b") { m in
             guard let value = Self.number(m[1]) else { return false }
-            self.filter.minSize = Int64(value * Self.multiplier(m[2] ?? "mb"))
+            self.filter.minSize = saturatingInt64(value * Self.multiplier(m[2] ?? "mb"))
             return true
         }
         consume("\\b(?:smaller|less|lighter|under|below|at most|up to|no more)\\s*(?:than\\s+|then\\s+)?\(Self.num)\\s*\(Self.sizeUnit)\\b") { m in
             guard let value = Self.number(m[1]) else { return false }
-            self.filter.maxSize = Int64(value * Self.multiplier(m[2] ?? "mb"))
+            self.filter.maxSize = saturatingInt64(value * Self.multiplier(m[2] ?? "mb"))
             return true
         }
         consume("(?:^|\\s)(>=?|<=?)\\s*(\\d+(?:[.,]\\d+)?)\\s*\(Self.sizeUnit)\\b") { m in
             guard let value = Self.number(m[2]) else { return false }
-            let bytes = Int64(value * Self.multiplier(m[3] ?? "mb"))
+            let bytes = saturatingInt64(value * Self.multiplier(m[3] ?? "mb")) ?? 0
             if m[1]?.hasPrefix(">") == true { self.filter.minSize = bytes } else { self.filter.maxSize = bytes }
             return true
         }
         consume("\\b(\\d+(?:[.,]\\d+)?)\\s*\(Self.sizeUnit)\\s*(\\+|or (?:more|bigger|larger|above)|and (?:up|above))") { m in
             guard let value = Self.number(m[1]) else { return false }
-            self.filter.minSize = Int64(value * Self.multiplier(m[2] ?? "mb"))
+            self.filter.minSize = saturatingInt64(value * Self.multiplier(m[2] ?? "mb"))
             return true
         }
         consume("\\b(\\d+(?:[.,]\\d+)?)\\s*\(Self.sizeUnit)\\s*or (?:less|smaller|below)\\b") { m in
             guard let value = Self.number(m[1]) else { return false }
-            self.filter.maxSize = Int64(value * Self.multiplier(m[2] ?? "mb"))
+            self.filter.maxSize = saturatingInt64(value * Self.multiplier(m[2] ?? "mb"))
             return true
         }
         // Adjectives, as rough sizes (only if nothing more precise was said).
@@ -367,27 +367,27 @@ private nonisolated final class Parser {
         let num = Self.num, unit = Self.timeUnit
         consume("\\b(?:older than|more than|over|at least|not (?:modified|touched|changed|opened|edited|used) (?:in|for)(?: the)?(?: last| past)?)\\s+\(num)\\s+\(unit)(?:\\s+(?:old|ago))?\\b") { m in
             guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
-            self.filter.modifiedBefore = self.dates.ago(Int(count), component)
+            self.filter.modifiedBefore = self.dates.ago(boundedCount(count), component)
             return true
         }
         consume("\\b(?:newer|younger|less|fewer) than\\s+\(num)\\s+\(unit)(?:\\s+(?:old|ago))?\\b") { m in
             guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
-            self.filter.modifiedAfter = self.dates.ago(Int(count), component)
+            self.filter.modifiedAfter = self.dates.ago(boundedCount(count), component)
             return true
         }
         consume("\\b(?:(?:in|within|during|from|over|for)\\s+)?(?:the\\s+)?(?:last|past|previous)\\s+\(num)\\s+\(unit)\\b") { m in
             guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
-            self.filter.modifiedAfter = self.dates.ago(Int(count), component)
+            self.filter.modifiedAfter = self.dates.ago(boundedCount(count), component)
             return true
         }
         consume("\\b\(num)\\s+\(unit)\\s+old\\b") { m in
             guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
-            self.filter.modifiedBefore = self.dates.ago(Int(count), component)
+            self.filter.modifiedBefore = self.dates.ago(boundedCount(count), component)
             return true
         }
         consume("\\b\(num)\\s+\(unit)\\s+ago\\b") { m in
             guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
-            self.setDates(self.dates.unit(containing: Int(count), component))
+            self.setDates(self.dates.unit(containing: boundedCount(count), component))
             return true
         }
         // Rolling: "in the last week", "past month". Calendar: "last week", "this month".
@@ -679,7 +679,7 @@ private nonisolated final class Parser {
         let ns = text as NSString
         guard let value = number(ns.substring(with: match.range(at: 1))) else { return nil }
         let unit = match.range(at: 2).location == NSNotFound ? "mb" : ns.substring(with: match.range(at: 2))
-        return Int64(value * multiplier(unit))
+        return saturatingInt64(value * multiplier(unit))
     }
 
     static func timeComponent(_ unit: String) -> Calendar.Component? {

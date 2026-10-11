@@ -26,7 +26,7 @@ final class TransferQueue {
     /// Copies or moves `sources` into the folder `destination`. Name clashes go to `conflicts`; with `verify`, every
     /// copied file is read back and compared (SHA-256). When the job finishes, its undo is registered on `undo`.
     @discardableResult
-    func enqueue(_ sources: [URL], to destination: URL, mode: TransferMode, verify: Bool = false,
+    func enqueue(_ sources: [URL], to destination: URL, mode: TransferMode, verify: Bool = Prefs.verifyCopies,
                  undo: UndoManager?, conflicts: ConflictResolver) -> TransferJob {
         var options = TransferEngine.Options()
         options.verify = verify
@@ -44,7 +44,7 @@ final class TransferQueue {
     /// Item-by-item destinations, for undoing moves whose items came from different folders.
     @discardableResult
     func enqueue(moves: [TransferMove], destination: URL? = nil, mode: TransferMode,
-                 options: TransferEngine.Options = .init(), undo: UndoManager?, conflicts: ConflictResolver,
+                 options: TransferEngine.Options = .userDefault, undo: UndoManager?, conflicts: ConflictResolver,
                  logHistory: Bool = true) -> TransferJob {
         let folder = destination ?? moves.first?.to.deletingLastPathComponent() ?? URL(fileURLWithPath: "/")
         let job = TransferJob(mode: mode, moves: moves, destination: folder, options: options, undo: undo,
@@ -245,5 +245,14 @@ enum TransferUndo {
             MainActor.assumeIsolated { perform(inverse, actionName: actionName, undo: undo) }
         }
         undo.setActionName(actionName)
+    }
+}
+
+extension TransferEngine.Options {
+    /// Options for transfers the user starts, following Settings (Verify copies).
+    static var userDefault: TransferEngine.Options {
+        var options = TransferEngine.Options()
+        options.verify = Prefs.verifyCopies
+        return options
     }
 }

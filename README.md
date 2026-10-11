@@ -22,13 +22,13 @@ Finder is fine until you need to find something, figure out what's eating your d
 without a beachball. Strata keeps everything you already know: the look, the shortcuts, drag and drop, Quick Look,
 tabs. Then it adds what you've been missing:
 
-- **Search that keeps up with you.** Every file on your Mac, searchable as you type. Results arrive in a few
-  milliseconds, even across millions of files.
-- **Sizes you can trust.** Every folder shows its real size, instantly and always up to date.
+- **Search that keeps up with you.** Every file in your home folder and Applications, searchable as you type.
+  Once the index is built, results arrive in milliseconds, even across millions of files.
+- **Sizes you can trust.** Folders show their real size the moment you open them, kept current as files change.
 - **A keyboard-first workflow.** Jump anywhere with ⌘K, type to filter any folder, and keep your hands off the
   mouse if you like.
 - **File operations without fear.** Pause and resume big copies, see conflicts side by side before replacing
-  anything, and undo any operation, even after you quit.
+  anything, and undo past operations, even after you quit.
 - **Made for people who build things.** Git status on every file, project-aware cleanup, Open in Terminal, and
   previews for code, data and archives.
 
@@ -42,22 +42,22 @@ before you finish typing. Save any search to the sidebar and it stays live as fi
 
 ## Jump anywhere with ⌘K
 
-One shortcut opens a command palette that knows your most-used folders, everything on your disk and every command
-in the app. Type `acme-web/` to list a project's contents without opening a single window.
+One shortcut opens a command palette that knows your most-used folders, the files in your index and Strata's
+commands. Type `acme-web/` to list a project's contents without opening a single window.
 
 <p align="center"><img src="docs/screenshots/palette.png" alt="The command palette listing the contents of a project" width="820"></p>
 
 ## See where your space went
 
-Folder sizes appear the moment you open a folder, with no waiting on "Calculating…". Switch to **Disk Usage** to see
+Folder sizes appear the moment you open a folder, without waiting on "Calculating…". Switch to **Disk Usage** to see
 your folders as a map, then use **Large Files** and **Duplicates** in the sidebar to reclaim gigabytes in minutes.
 
 <p align="center"><img src="docs/screenshots/treemap.png" alt="The disk usage map of a folder" width="820"></p>
 
 ## Four views. Two panes.
 
-List, Icons, Columns and Disk Usage, one keystroke apart. Turn on **Dual Pane** to work with two folders side by
-side: copy or move between them, compare, organize.
+Icons, List, Columns and Disk Usage, one keystroke apart (⌘1–⌘4, like Finder). Turn on **Dual Pane** to work with
+two folders side by side and copy or move between them with a keystroke.
 
 <table>
   <tr>
@@ -68,10 +68,10 @@ side: copy or move between them, compare, organize.
 
 ## Made for developers
 
-Strata knows your projects. Every file shows its git status, the current branch sits in the path bar, and the
-inspector recognizes Node, Rust, Swift, .NET, Python, Go and more. It lists a project's scripts and frees up the
-space taken by build folders like `node_modules` with one click (they go to the Trash, so nothing is lost). Code,
-Markdown, JSON, CSV, SQLite databases and zip archives preview right in the inspector, beautifully.
+Strata knows your projects. Files show their git status in list view, the current branch sits in the path bar, and
+the inspector recognizes Node, Rust, Swift, .NET, Python, Go and more. It lists a project's scripts and frees up the
+space taken by build folders like `node_modules` in a click (they go to the Trash, so nothing is lost). Code,
+Markdown, JSON, CSV, SQLite databases and archives preview right in the inspector, beautifully.
 
 <table>
   <tr>
@@ -84,33 +84,33 @@ Markdown, JSON, CSV, SQLite databases and zip archives preview right in the insp
 
 | | |
 |---|---|
-| **Copy queue** | Big copies run in the background with progress you can pause, resume or cancel. Conflicts are asked up front, with a side-by-side comparison and a diff for text files. Optional verification makes sure every byte arrived. |
-| **History** | Every rename, move, copy and trash is recorded. Undo any of them later, even days later and after a restart. |
-| **Recents** | Everything you changed this week, across all your folders, in one place. |
+| **Copy queue** | Big copies run in the background with progress you can pause, resume or cancel. Conflicts are asked up front, with a side-by-side comparison and a diff for text files. Turn on **Verify copies** in Settings to check that every byte arrived. Moves between disks keep the original if it changed while copying. |
+| **History** | Renames, moves, copies and deletions are recorded. Undo them later, even days later and after a restart, as long as the items are still where they were left. |
+| **Recents** | Files you changed in the last 7 days, across your home folder, in one place. |
 | **Shelf** | Collect files from anywhere, then drop them all at once. |
 | **Workspaces** | Save a set of tabs and panes, and reopen them together. |
-| **Ask Strata** | Describe a bulk change ("rename these photos by date taken") and review the plan before anything happens. Runs on device with Apple Intelligence. |
-| **Summaries** | Get the gist of a PDF or document in the inspector, written on your Mac. Nothing ever leaves it. |
-| **Command line** | `strata .` opens the current folder; `strata -s "invoice pdf"` searches from your terminal. |
+| **Ask Strata** | Describe a bulk change ("rename these photos by date taken") and review the plan before anything happens. Runs on your Mac: built-in rules handle common requests, and Apple Intelligence handles the rest. |
+| **Summaries** | Get the gist of a PDF or document in the inspector: a short summary written by Apple Intelligence, or the key sentences without it. Nothing ever leaves your Mac. |
+| **Command line** | Install it from Settings, then `strata .` opens the current folder and `strata -s "invoice pdf"` searches from your terminal. |
 
 ## Keyboard first
 
-Every action has a shortcut, and the ones you already know from Finder still work. Can't remember one? Click
-**Keyboard Shortcuts** at the bottom of the sidebar, or press ⌘/.
+Most actions have a shortcut, and most of the ones you know from Finder work the same way. Can't remember one?
+Click **Keyboard Shortcuts** at the bottom of the sidebar, or press ⌘/.
 
 <p align="center"><img src="docs/screenshots/shortcuts.png" alt="The keyboard shortcuts window" width="420"></p>
 
 ## Private by design
 
 Strata runs entirely on your Mac. The search index, summaries and AI features are local: no accounts, no tracking,
-no cloud. Its index and history are encrypted on disk with a key in your keychain, so other apps can't read through
-Strata what macOS wouldn't show them directly. Folders you browse can't run their own code just because you looked
-at them.
+no cloud. Its file index, content index and history are encrypted on disk with a key in your keychain. And a
+folder you browse can't run its own code just because you looked at it: Strata switches off the git features a
+downloaded repository could use to do that.
 
 ## Get Strata
 
-Strata is in early development. To try it today you need a Mac running **macOS 26** and the Swift toolchain
-(Xcode or the Command Line Tools):
+Strata is in early development. To try it today you need an Apple silicon Mac running **macOS 26** and the Swift
+toolchain (Xcode or the Command Line Tools):
 
 ```sh
 git clone https://github.com/cristipufu/strata.git

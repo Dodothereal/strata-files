@@ -16,6 +16,7 @@ enum Prefs {
         static let newWindowsAtHome = "newWindowsAtHome"
         static let viewMode = "viewMode"
         static let gridIconSize = "gridIconSize"
+        static let verifyCopies = "verifyCopies"
     }
 
     static func register() {
@@ -52,6 +53,12 @@ enum Prefs {
     static var gridIconSize: Double {
         get { defaults.double(forKey: Key.gridIconSize) }
         set { defaults.set(newValue, forKey: Key.gridIconSize) }
+    }
+
+    /// Read every copied file back and compare it with the original (slower; catches failing disks and cables).
+    static var verifyCopies: Bool {
+        get { defaults.bool(forKey: Key.verifyCopies) }
+        set { defaults.set(newValue, forKey: Key.verifyCopies) }
     }
 
     static var newWindowsAtHome: Bool {
