@@ -17,10 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         StrataAI.startIndexing()
         // Loads history now, so a plain copy left by an earlier build is removed right away.
         _ = OperationLog.shared
-        if windowControllers.isEmpty {
-            let last = Prefs.lastLocation.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
-            openWindow(at: Prefs.newWindowsAtHome ? Places.home : last ?? Places.home)
-        }
+        if windowControllers.isEmpty { openWindow(at: startLocation) }
         if !Privacy.hasFullDiskAccess, !UserDefaults.standard.bool(forKey: "welcomeShown"),
            let window = windowControllers.first?.window {
             let sheet = WelcomeSheetController()
@@ -105,8 +102,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag { openWindow(at: Places.home) }
+        if !flag { openWindow(at: startLocation) }
         return true
+    }
+
+    /// Where a new window opens: Settings ▸ "New windows open" (where you left off, or home).
+    private var startLocation: URL {
+        let last = Prefs.lastLocation.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+        return Prefs.newWindowsAtHome ? Places.home : last ?? Places.home
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -121,6 +124,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func toggleShelf(_ sender: Any?) {
         ShelfPanel.shared.toggle()
+    }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(toggleShelf(_:)) { item.state = ShelfPanel.shared.isVisible ? .on : .off }
+        return true
     }
 
     /// Reopens a saved workspace as one window with a tab per saved tab.

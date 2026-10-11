@@ -23,11 +23,13 @@ final class SidebarItem {
     let title: String
     let target: SidebarTarget
     let symbol: String
+    var isEjectable = false
 
     init(_ place: Place) {
         title = place.title
         target = .folder(place.url.standardizedFileURL)
         symbol = place.symbol
+        isEjectable = place.isEjectable
     }
 
     init(title: String, target: SidebarTarget, symbol: String) {
@@ -44,6 +46,8 @@ final class SidebarItem {
 
 final class SidebarViewController: NSViewController {
     var onSelect: ((SidebarTarget) -> Void)?
+    /// "Open in New Tab" from the context menu.
+    var onOpenInNewTab: ((URL) -> Void)?
 
     private let outline = NSOutlineView()
     private var sections: [SidebarSection] = []
@@ -285,15 +289,47 @@ final class SidebarCellView: NSTableCellView {
     }
 }
 
-/// Right-click on a saved search offers to remove it.
+/// Right-click: folders and volumes open in a new tab, copy their path or eject; saved searches can be removed.
 extension SidebarViewController: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        guard let item = outline.item(atRow: outline.clickedRow) as? SidebarItem, case .search(let search) = item.target else { return }
-        let remove = NSMenuItem(title: "Remove “\(search.name)”", action: #selector(removeSearch(_:)), keyEquivalent: "")
-        remove.target = self
-        remove.representedObject = SavedSearchBox(search: search)
-        menu.addItem(remove)
+        guard let item = outline.item(atRow: outline.clickedRow) as? SidebarItem else { return }
+        if case .search(let search) = item.target {
+            let remove = NSMenuItem(title: "Remove “\(search.name)”", action: #selector(removeSearch(_:)), keyEquivalent: "")
+            remove.target = self
+            remove.representedObject = SavedSearchBox(search: search)
+            menu.addItem(remove)
+            return
+        }
+        guard let url = item.url else { return }
+        func add(_ title: String, _ action: Selector) {
+            let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            entry.target = self
+            entry.representedObject = url
+            menu.addItem(entry)
+        }
+        add("Open in New Tab", #selector(openInNewTab(_:)))
+        add("Copy Path", #selector(copyItemPath(_:)))
+        if item.isEjectable {
+            menu.addItem(.separator())
+            add("Eject “\(item.title)”", #selector(ejectItem(_:)))
+        }
+    }
+
+    @objc private func openInNewTab(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        onOpenInNewTab?(url)
+    }
+
+    @objc private func copyItemPath(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url.path, forType: .string)
+    }
+
+    @objc private func ejectItem(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        Places.eject(url, from: view.window)
     }
 }
 

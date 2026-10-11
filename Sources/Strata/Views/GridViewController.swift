@@ -484,6 +484,9 @@ final class GridCollectionView: NSCollectionView {
         case 53:
             if !controller.handleKey(.escape) { super.keyDown(with: event) }
             return
+        case 48 where mods.isEmpty:
+            if !controller.handleKey(.tab) { super.keyDown(with: event) }
+            return
         case 51 where mods.isDisjoint(with: [.command, .control, .option]):
             if !controller.handleKey(.backspace) { super.keyDown(with: event) }
             return

@@ -43,6 +43,18 @@ nonisolated enum AIModel {
         }
     }
 
+    /// A short phrase for captions: what to do (or why not) when the model isn't available.
+    static var shortStatus: String {
+        switch status {
+        case .available: "Apple Intelligence · On this Mac"
+        case .appleIntelligenceNotEnabled: "Apple Intelligence is off"
+        case .deviceNotEligible: "Apple Intelligence isn’t available on this Mac"
+        case .modelNotReady: "Apple Intelligence is getting ready"
+        case .unsupportedLanguage: "Apple Intelligence doesn’t support this language yet"
+        case .disabled: "Apple Intelligence is turned off"
+        }
+    }
+
     /// Whether opening System Settings can fix it.
     static var canOpenSettings: Bool { status == .appleIntelligenceNotEnabled }
 

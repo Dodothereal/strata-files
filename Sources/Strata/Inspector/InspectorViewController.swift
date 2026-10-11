@@ -173,13 +173,21 @@ final class InspectorViewController: NSViewController {
             titleLabel.stringValue = Format.count(items.count, "item", "items")
             let known = items.compactMap { $0.isDirectory ? folderSize($0.url)?.bytes : $0.size }
             let total = known.reduce(0, +)
-            let pending = known.count < items.count
-            subtitleLabel.stringValue = Format.bytes(total) + (pending ? "+" : "")
+            // Symlinked folders, volumes and folders macOS guards aren't measured: their size never arrives, so they
+            // mustn't leave the total "calculating" forever.
+            let unmeasured = items.filter { item in
+                item.isDirectory && folderSize(item.url) == nil
+                    && (item.isSymlink || item.isVolume
+                        || Privacy.measuringWouldPrompt(item.url, browsing: item.url.deletingLastPathComponent()))
+            }.count
+            let pending = known.count + unmeasured < items.count
+            subtitleLabel.stringValue = Format.bytes(total) + (pending || unmeasured > 0 ? "+" : "")
             let folders = items.filter(\.isFolder).count
+            let note = pending ? " (calculating…)" : unmeasured > 0 ? " (\(Format.count(unmeasured, "folder", "folders")) not measured)" : ""
             setRows([
                 ("Folders", folders.formatted()),
                 ("Files", (items.count - folders).formatted()),
-                ("Total", Format.bytes(total) + (pending ? " (calculating…)" : "")),
+                ("Total", Format.bytes(total) + note),
             ])
             if !sameItems {
                 previewWork?.cancel()

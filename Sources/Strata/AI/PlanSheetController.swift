@@ -245,7 +245,7 @@ final class PlanSheetController: NSViewController {
             rows = []
             badge.set(nil)
             summary.stringValue = AIModel.isAvailable ? "Plans are made on this Mac and shown before anything changes."
-                : "Apple Intelligence is off — Strata’s built-in rules handle common requests."
+                : "\(AIModel.shortStatus) — Strata’s built-in rules handle common requests."
             showSuggestions(PlanGenerator.suggestions(for: items), title: items.isEmpty ? nil : "Try one of these")
             applyButton.title = "Apply"
             applyButton.isEnabled = false
@@ -309,6 +309,9 @@ final class PlanSheetController: NSViewController {
         if plan.unaffected > 0 { text += " · \(plan.unaffected.formatted()) unchanged" }
         summary.stringValue = text
         let count = plan.changeCount
+        // A new plan after a partly failed one: the button applies again (it had become "Done").
+        applyButton.action = #selector(apply(_:))
+        summary.textColor = .secondaryLabelColor
         applyButton.title = count == 0 ? "Apply" : "Apply \(AIText.count(count, "Change", "Changes"))"
         applyButton.isEnabled = count > 0
     }
@@ -541,7 +544,7 @@ final class PlanRowView: NSTableCellView {
         case (false, .createFolder): (symbolName, tint) = ("folder.badge.plus", .systemGreen)
         case (false, .trash): (symbolName, tint) = ("trash", .systemRed)
         }
-        icon.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: step.kind.rawValue)
+        icon.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: step.kind.title)
         icon.symbolConfiguration = .init(pointSize: 12, weight: .medium)
         icon.contentTintColor = tint
         icon.alphaValue = step.isEnabled || excluded ? 1 : 0.45
@@ -578,7 +581,8 @@ final class PlanRowView: NSTableCellView {
         if let note = step.note { tip += "\n" + note }
         if let problem = step.problem { tip += "\n" + problem }
         toolTip = tip
-        setAccessibilityLabel("\(step.kind.rawValue) \(before.stringValue) to \(after.stringValue)")
+        setAccessibilityLabel(step.kind == .trash ? "\(step.kind.title): \(before.stringValue)"
+                              : "\(step.kind.title): \(before.stringValue) to \(after.stringValue)")
         needsLayout = true
     }
 

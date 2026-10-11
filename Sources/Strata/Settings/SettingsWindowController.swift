@@ -207,6 +207,9 @@ enum CommandLineTool {
     static func install() {
         let tool = Bundle.main.bundleURL.appending(path: "Contents/Helpers/strata").path
         let link = "/usr/local/bin/strata"
+        // /usr/local/bin may not exist yet; the app's path is quoted for the shell ("'" becomes '\'').
+        let quoted = "'" + tool.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        let command = "sudo mkdir -p /usr/local/bin && sudo ln -sf \(quoted) \(link)"
         let alert = NSAlert()
         if (try? FileManager.default.destinationOfSymbolicLink(atPath: link)) == tool {
             alert.messageText = "The strata command is already installed."
@@ -215,19 +218,19 @@ enum CommandLineTool {
             do {
                 try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: tool)
                 alert.messageText = "Installed the strata command."
-                alert.informativeText = "Try `strata .` in a terminal."
+                alert.informativeText = "Try “strata .” in a terminal."
             } catch {
                 alert.messageText = "Couldn’t install the strata command."
                 alert.informativeText = error.localizedDescription
             }
         } else {
             alert.messageText = "Install the strata command"
-            alert.informativeText = "/usr/local/bin isn’t writable without an administrator password. Run this in a terminal:\n\nsudo ln -sf '\(tool)' \(link)"
+            alert.informativeText = "/usr/local/bin isn’t writable without an administrator password. Run this in a terminal:\n\n\(command)"
             alert.addButton(withTitle: "Copy Command")
             alert.addButton(withTitle: "Close")
             if alert.runModal() == .alertFirstButtonReturn {
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString("sudo ln -sf '\(tool)' \(link)", forType: .string)
+                NSPasteboard.general.setString(command, forType: .string)
             }
             return
         }

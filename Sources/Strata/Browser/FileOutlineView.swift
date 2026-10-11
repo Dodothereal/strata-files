@@ -9,7 +9,8 @@ final class FileOutlineView: NSOutlineView {
     var onSpace: (() -> Void)?
     var contextMenu: (() -> NSMenu?)?
     /// Tab with no modifiers (switches panes in dual-pane mode); nil keeps the default key-view loop.
-    var onTab: (() -> Void)?
+    /// Tab; return false to let it move focus to the next control as usual.
+    var onTab: (() -> Bool)?
 
     override func keyDown(with event: NSEvent) {
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -21,9 +22,8 @@ final class FileOutlineView: NSOutlineView {
         case 49 where plain: // Space
             onSpace?()
             return
-        case 48 where mods.isEmpty && onTab != nil: // Tab
-            onTab?()
-            return
+        case 48 where mods.isEmpty: // Tab
+            if onTab?() == true { return }
         case 53: // Escape
             if onEscape?() == true { return }
         case 51 where mods.isDisjoint(with: [.command, .control, .option]): // Delete

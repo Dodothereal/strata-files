@@ -17,6 +17,8 @@ final class Pane {
     var backStack: [Destination] = []
     var forwardStack: [Destination] = []
     var folderEntry: FileEntry?
+    /// In column view, the folder of the focused column (deeper than `location`).
+    var columnLocation: URL?
     var searchGeneration = 0
     var duplicateSearch: CancelFlag?
     let host: PaneHostViewController
@@ -160,6 +162,9 @@ private final class PaneHeaderView: NSVisualEffectView {
 
     func configure(title: String, symbol: String, active: Bool) {
         label.stringValue = title
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(active ? "\(title), focused pane" : "\(title), pane")
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         label.textColor = active ? .labelColor : .secondaryLabelColor
         icon.contentTintColor = active ? .controlAccentColor : .tertiaryLabelColor
@@ -170,6 +175,11 @@ private final class PaneHeaderView: NSVisualEffectView {
 
     override func mouseDown(with event: NSEvent) {
         onClick?()
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        onClick?()
+        return true
     }
 }
 

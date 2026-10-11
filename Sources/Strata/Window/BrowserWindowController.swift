@@ -70,6 +70,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
         configure(first)
         split.sidebar.onSelect = { [weak self] target in self?.open(target) }
+        split.sidebar.onOpenInNewTab = { [weak self] url in
+            guard let self, let app = NSApp.delegate as? AppDelegate else { return }
+            app.openWindow(at: url, tabbedWith: self.window)
+        }
         pathBar.onNavigate = { [weak self] url, select in self?.navigate(to: url, select: select) }
         pathBar.onFinishEditing = { [weak self] in self?.focusList() }
         split.scopeBar.onScopeChange = { [weak self] everywhere in self?.changeSearchScope(everywhere: everywhere) }
@@ -98,7 +102,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             activate(pane)
             window?.makeFirstResponder(pane.browser.focusView)
         }
-        pane.browser.outlineView.onTab = { [weak self] in self?.focusOtherPane(nil) }
+        let tab: () -> Bool = { [weak self] in
+            guard let self, isDualPane else { return false }
+            focusOtherPane(nil)
+            return true
+        }
+        pane.browser.onTab = tab
+        pane.browser.outlineView.onTab = tab
     }
 
     // MARK: - Panes
@@ -181,6 +191,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     private func go(_ target: Destination, in targetPane: Pane? = nil, select: URL? = nil, recordHistory: Bool = true) {
         let p = targetPane ?? pane
+        p.columnLocation = nil
         if target != .duplicates { p.duplicateSearch?.set() }
         if recordHistory, target != p.destination {
             p.backStack.append(p.destination)
@@ -285,8 +296,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func goToEnclosingFolder(_ sender: Any?) {
         if case .folder = destination {
-            guard location.path != "/" else { return }
-            navigate(to: location.deletingLastPathComponent(), select: location)
+            // In column view "here" is the focused column's folder, not the first column's.
+            let current = (browser.mode == .columns ? pane.columnLocation : nil) ?? location
+            guard current.path != "/" else { return }
+            navigate(to: current.deletingLastPathComponent(), select: current)
         } else {
             navigate(to: location)
         }
@@ -302,12 +315,38 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     @objc func goToFolder(_ sender: Any?) { pathBar.beginEditing() }
     @objc func focusSearch(_ sender: Any?) { searchItem?.beginSearchInteraction() }
 
+    /// Ask Strata needs something to work on: a selection, or a folder with items.
+    private var canAskStrata: Bool {
+        guard case .folder = destination else { return !browser.selectedURLs.isEmpty }
+        return !browser.selectedURLs.isEmpty || !browser.topLevelEntries.isEmpty
+    }
+
+    /// Volumes ⌘E would eject: selected volume roots, else the volume whose top level is showing.
+    private var ejectTargets: [URL] {
+        let selected = browser.selectedURLs.filter(Places.isEjectableVolume)
+        if !selected.isEmpty { return selected }
+        if case .folder = destination, Places.isEjectableVolume(location) { return [location] }
+        return []
+    }
+
+    @objc func ejectVolume(_ sender: Any?) {
+        for url in ejectTargets {
+            if location.standardizedFileURL.path == url.standardizedFileURL.path { navigate(to: Places.home) }
+            Places.eject(url, from: window)
+        }
+    }
+
     override func newWindowForTab(_ sender: Any?) {
         (NSApp.delegate as? AppDelegate)?.openWindow(at: location, tabbedWith: window)
     }
 
     @objc private func viewModeChanged(_ sender: NSToolbarItemGroup) {
         browser.setViewMode(sender)
+    }
+
+    /// Points the toolbar's view switcher at the current mode.
+    func syncViewModeItem() {
+        viewModeItem?.selectedIndex = browser.mode.position
     }
 
     /// Keeps the toolbar's view switcher in sync when ⌘1–⌘4 change the mode.
@@ -403,8 +442,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                 p.browser.showResults(entries, total: result.total + byContent.count)
                 guard p === pane else { return }
                 let place = scope.map { "in “\(FileManager.default.displayName(atPath: $0.path))”" } ?? "everywhere"
-                var summary = result.total + byContent.count == 0 ? "No matches \(place)"
-                    : "\(Format.count(result.total + byContent.count, "match", "matches")) \(place)"
+                var summary = result.total + byContent.count == 0 ? "No results \(place)"
+                    : "\(Format.count(result.total + byContent.count, "result", "results")) \(place)"
                 if !byContent.isEmpty { summary += " · \(byContent.count) by content" }
                 if let filter = result.interpretation { summary += " · " + filter.summary }
                 split.scopeBar.setSummary(summary)
@@ -560,6 +599,7 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
     /// Column view went deeper: show that folder in the path bar and title, without a new history entry.
     func browser(_ browser: BrowserViewController, columnLocationChanged url: URL) {
         guard browser === pane.browser, case .folder = destination else { return }
+        pane.columnLocation = url
         pathBar.url = url
         window?.title = FileManager.default.displayName(atPath: url.path)
         pane.folderEntry = FileEntry(url: url)
@@ -650,6 +690,10 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             return true
         case #selector(focusOtherPane(_:)):
             return isDualPane
+        case #selector(ejectVolume(_:)):
+            return !ejectTargets.isEmpty
+        case #selector(askStrata(_:)):
+            return canAskStrata
         case #selector(copyToOtherPane(_:)), #selector(moveToOtherPane(_:)):
             guard isDualPane, let other = panes.first(where: { $0 !== pane }), case .folder = other.destination else { return false }
             return !browser.selectedURLs.isEmpty

@@ -525,6 +525,9 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
         case 49 where plain:
             if controller?.handleKey(.space) != true { super.keyDown(with: event) }
             return
+        case 48 where event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty:
+            if controller?.handleKey(.tab) != true { super.keyDown(with: event) }
+            return
         case 53:
             if controller?.handleKey(.escape) == true { return }
             if !selectedKeys.isEmpty {

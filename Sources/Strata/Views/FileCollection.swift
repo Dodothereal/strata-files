@@ -13,6 +13,8 @@ enum FileViewKey: Equatable {
     case escape
     case returnKey
     case space
+    /// Plain Tab: switches panes in dual-pane mode; otherwise the usual move to the next control.
+    case tab
 }
 
 protocol FileCollectionViewDelegate: AnyObject {

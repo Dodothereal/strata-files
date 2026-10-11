@@ -124,12 +124,12 @@ class PreviewView: NSView {
         switch (error.domain, error.code) {
         case (NSCocoaErrorDomain, CocoaError.fileReadNoPermission.rawValue), (NSPOSIXErrorDomain, Int(EACCES)),
              (NSPOSIXErrorDomain, Int(EPERM)):
-            return ("lock", "You don't have permission to read this file.")
+            return ("lock", "You don’t have permission to read this file.")
         case (NSCocoaErrorDomain, CocoaError.fileReadNoSuchFile.rawValue), (NSCocoaErrorDomain, CocoaError.fileNoSuchFile.rawValue),
              (NSPOSIXErrorDomain, Int(ENOENT)):
             return ("questionmark.folder", "This file no longer exists.")
         default:
-            return ("exclamationmark.triangle", "This file couldn't be read.")
+            return ("exclamationmark.triangle", "This file couldn’t be read.")
         }
     }
 }

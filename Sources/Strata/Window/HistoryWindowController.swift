@@ -5,6 +5,7 @@ final class HistoryWindowController: NSWindowController {
     static let shared = HistoryWindowController()
 
     private let table = NSTableView()
+    private let empty = NSTextField(wrappingLabelWithString: "Moves, copies, renames and deletions show up here, so you can undo them later, even after quitting.")
     private var entries: [OperationLog.Entry] = []
     private let relative: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
@@ -50,6 +51,16 @@ final class HistoryWindowController: NSWindowController {
         stack.orientation = .vertical
         stack.spacing = 0
         window.contentView = stack
+        empty.font = .systemFont(ofSize: 13)
+        empty.textColor = .secondaryLabelColor
+        empty.alignment = .center
+        empty.translatesAutoresizingMaskIntoConstraints = false
+        stack.addSubview(empty)
+        NSLayoutConstraint.activate([
+            empty.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
+            empty.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
+            empty.widthAnchor.constraint(lessThanOrEqualTo: scroll.widthAnchor, constant: -60),
+        ])
         NotificationCenter.default.addObserver(self, selector: #selector(reload), name: .operationLogChanged, object: nil)
         reload()
     }
@@ -59,10 +70,20 @@ final class HistoryWindowController: NSWindowController {
     @objc private func reload() {
         entries = OperationLog.shared.entries.reversed()
         table.reloadData()
+        empty.isHidden = !entries.isEmpty
     }
 
     @objc private func clearHistory() {
-        OperationLog.shared.clear()
+        guard let window, !entries.isEmpty else { return }
+        let alert = NSAlert()
+        alert.messageText = "Clear the history of file operations?"
+        alert.informativeText = "You won’t be able to undo these operations from History any more. Nothing on disk changes, and items in the Trash stay there."
+        alert.addButton(withTitle: "Clear History")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons[0].hasDestructiveAction = true
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertFirstButtonReturn { OperationLog.shared.clear() }
+        }
     }
 
     fileprivate func undo(_ entry: OperationLog.Entry) {
@@ -172,6 +193,7 @@ private final class HistoryCell: NSTableCellView {
         detail.stringValue = "\(summary) · \(when)"
         button.isHidden = entry.undone
         button.isEnabled = canUndo
+        button.setAccessibilityLabel("Undo \(entry.name): \(summary)")
         button.toolTip = canUndo ? nil : "The items have moved or been changed since."
         action = undo
     }

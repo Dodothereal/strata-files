@@ -88,22 +88,47 @@ extension BrowserWindowController {
         }
         var commands = [
             command("New Folder", "folder.badge.plus", "⇧⌘N") { [weak self] in self?.browser.newFolder(nil) },
-            command("New Tab", "plus.square.on.square", "⌘T") { [weak self] in self?.newWindowForTab(nil) },
+            command("New Tab", "plus.rectangle.on.rectangle", "⌘T") { [weak self] in self?.newWindowForTab(nil) },
             command("New Window", "macwindow.badge.plus", "⌘N") { (NSApp.delegate as? AppDelegate)?.newWindow(nil) },
             command("Open in Terminal", "terminal", "⌃⌘T") { [weak self] in self?.browser.openInTerminal(nil) },
             command("Copy Path", "link", "⌥⌘C") { [weak self] in self?.browser.copyPath(nil) },
-            command(Prefs.showHidden ? "Hide Hidden Files" : "Show Hidden Files", "eye", "⇧⌘.") { Prefs.showHidden.toggle() },
+            command(Prefs.showHidden ? "Hide Hidden Files" : "Show Hidden Files", Prefs.showHidden ? "eye.slash" : "eye.circle", "⇧⌘.") {
+                Prefs.showHidden.toggle()
+            },
             command(Prefs.foldersFirst ? "Mix Folders with Files" : "Keep Folders on Top", "folder", nil) { Prefs.foldersFirst.toggle() },
-            command("Toggle Inspector", "sidebar.right", "⌘I") { [weak self] in self?.splitController.toggleInspector(nil) },
-            command("Toggle Sidebar", "sidebar.left", "⌃⌘S") { [weak self] in self?.splitController.toggleSidebar(nil) },
+            command(splitController.splitViewItems.last?.isCollapsed == true ? "Show Inspector" : "Hide Inspector", "sidebar.right", "⌘I") { [weak self] in
+                self?.splitController.toggleInspector(nil)
+            },
+            command(splitController.splitViewItems.first?.isCollapsed == true ? "Show Sidebar" : "Hide Sidebar", "sidebar.left", "⌃⌘S") { [weak self] in
+                self?.splitController.toggleSidebar(nil)
+            },
+            command(isDualPane ? "Single Pane" : "Dual Pane", "rectangle.split.2x1", "⌘\\") { [weak self] in self?.toggleDualPane(nil) },
+            command("View as Icons", "square.grid.2x2", "⌘1") { [weak self] in self?.browser.setMode(.grid); self?.syncViewModeItem() },
+            command("View as List", "list.bullet", "⌘2") { [weak self] in self?.browser.setMode(.list); self?.syncViewModeItem() },
+            command("View as Columns", "rectangle.split.3x1", "⌘3") { [weak self] in self?.browser.setMode(.columns); self?.syncViewModeItem() },
+            command("View as Disk Usage", "square.split.bottomrightquarter", "⌘4") { [weak self] in
+                self?.browser.setMode(.treemap)
+                self?.syncViewModeItem()
+            },
+            command("Back", "chevron.left", "⌘[") { [weak self] in self?.goBack(nil) },
+            command("Forward", "chevron.right", "⌘]") { [weak self] in self?.goForward(nil) },
+            command("Recents", "clock", "⇧⌘F") { [weak self] in self?.goRecents(nil) },
+            command("Go to Folder…", "folder.badge.questionmark", "⇧⌘G") { [weak self] in self?.goToFolder(nil) },
+            command("Undo", "arrow.uturn.backward", "⌘Z") { [weak self] in self?.window?.undoManager?.undo() },
+            command("History…", "clock.arrow.circlepath", "⌥⌘Z") { (NSApp.delegate as? AppDelegate)?.showHistory(nil) },
+            command("Shelf", "tray", "⌥⌘S") { (NSApp.delegate as? AppDelegate)?.toggleShelf(nil) },
+            command("Settings…", "gearshape", "⌘,") { (NSApp.delegate as? AppDelegate)?.showSettings(nil) },
+            command("Keyboard Shortcuts", "keyboard", "⌘/") { (NSApp.delegate as? AppDelegate)?.showShortcuts(nil) },
             command("Edit Location", "character.cursor.ibeam", "⌘L") { [weak self] in self?.goToFolder(nil) },
             command("Enclosing Folder", "arrow.up", "⌘↑") { [weak self] in self?.goToEnclosingFolder(nil) },
             command("Reload", "arrow.clockwise", "⌘R") { [weak self] in self?.browser.reloadFolder(nil) },
             command("Show in Finder", "macwindow", nil) { [weak self] in self?.browser.showInFinder(nil) },
+            command("Duplicates", "square.on.square", nil) { [weak self] in self?.showDuplicates() },
         ]
         if hasSelection {
             commands.insert(contentsOf: [
                 command("Quick Look", "eye", "Space") { [weak self] in self?.browser.toggleQuickLook(nil) },
+                command("Add to Shelf", "tray.and.arrow.down", nil) { [weak self] in self?.browser.addToShelf(nil) },
                 command("Duplicate", "plus.square.on.square", "⌘D") { [weak self] in self?.browser.duplicate(nil) },
                 command("Rename", "pencil", "↩") { [weak self] in self?.browser.renameSelection(nil) },
                 command("Move to Trash", "trash", "⌘⌫") { [weak self] in self?.browser.moveToTrash(nil) },

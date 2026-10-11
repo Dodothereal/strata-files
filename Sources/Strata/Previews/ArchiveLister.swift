@@ -96,7 +96,7 @@ nonisolated enum ArchiveLister {
         }
         if entries.isEmpty {
             if run.timedOut { throw PreviewError.message("Listing this archive took too long.", symbol: "clock") }
-            if run.status != 0 { throw PreviewError.message("This archive couldn't be read.", symbol: "archivebox") }
+            if run.status != 0 { throw PreviewError.message("This archive couldn’t be read.", symbol: "archivebox") }
             throw PreviewError.message("This archive is empty.", symbol: "archivebox")
         }
 

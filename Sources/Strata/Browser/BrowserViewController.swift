@@ -48,6 +48,8 @@ final class BrowserViewController: NSViewController {
     private(set) var directory: URL?
     private(set) var loadError: Error?
     private(set) var isLoaded = false
+    /// Tab in any view; the window switches panes in dual-pane mode (true) or lets focus move on (false).
+    var onTab: (() -> Bool)?
     /// A different folder is being read; the rows still showing belong to the previous one, so file commands wait.
     private(set) var isLoadingFolder = false
     /// Folder sizes for the sort in progress, by standardized path.
@@ -379,11 +381,11 @@ final class BrowserViewController: NSViewController {
             }
         } else if isLoaded && rows.isEmpty {
             if isShowingResults && filter.isEmpty {
-                emptyState.show(symbol: "magnifyingglass", title: "No results")
+                emptyState.show(symbol: "magnifyingglass", title: "No Results")
             } else if filter.isEmpty {
                 emptyState.show(symbol: "folder", title: "Empty Folder")
             } else {
-                emptyState.show(symbol: "magnifyingglass", title: "No matches", message: "Nothing here matches “\(filter)”. Press Esc to clear the filter.")
+                emptyState.show(symbol: "magnifyingglass", title: "No Matches", message: "Nothing here matches “\(filter)”. Press Esc to clear the filter.")
             }
         } else {
             emptyState.isHidden = true
@@ -690,8 +692,39 @@ final class BrowserViewController: NSViewController {
         if let first = rows.firstIndex(where: { removed.contains(Self.key($0.url)) }), !survivors.isEmpty {
             pendingSelection = [survivors[min(first, survivors.count - 1)].url]
         }
-        perform { try FileOps.trash(urls, undo: self.undoManager) }
-        refresh()
+        Task {
+            do {
+                try await FileOps.trashInBackground(urls, undo: undoManager)
+            } catch let noTrash as FileOps.NoTrash {
+                confirmDeleteImmediately(noTrash.urls)
+            } catch {
+                presentFileError(error)
+            }
+            refresh()
+        }
+    }
+
+    /// Finder's fallback for disks without a Trash: ask, then delete for good.
+    private func confirmDeleteImmediately(_ urls: [URL]) {
+        guard let window = view.window, let first = urls.first else { return }
+        let alert = NSAlert()
+        alert.messageText = urls.count == 1
+            ? "“\(first.lastPathComponent)” will be deleted immediately."
+            : "These \(urls.count) items will be deleted immediately."
+        alert.informativeText = "Their disk has no Trash. You can’t undo this."
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons[0].hasDestructiveAction = true
+        alert.buttons[0].keyEquivalent = ""
+        alert.buttons[1].keyEquivalent = "\r"
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            self?.performAsync { [weak self] in
+                try await FileOps.deleteImmediately(urls)
+                self?.refresh()
+            }
+        }
     }
 
     @objc func duplicate(_ sender: Any?) {
@@ -765,7 +798,8 @@ final class BrowserViewController: NSViewController {
     }
 
     @objc func copyPath(_ sender: Any?) {
-        let urls = selectedURLs.isEmpty ? [directory].compactMap { $0 } : selectedURLs
+        let here = (effectiveMode == .columns ? columns.activeDirectory : nil) ?? directory
+        let urls = selectedURLs.isEmpty ? [here].compactMap { $0 } : selectedURLs
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(urls.map(\.path).joined(separator: "\n"), forType: .string)
     }

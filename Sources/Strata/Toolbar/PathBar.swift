@@ -8,8 +8,14 @@ final class PathBar: NSView, NSTextFieldDelegate {
     var onFinishEditing: (() -> Void)?
 
     var url: URL? {
-        didSet { if !isEditing { rebuild() } }
+        didSet {
+            title = nil
+            if !isEditing { rebuild() }
+        }
     }
+
+    /// A title shown instead of breadcrumbs (Search, Recents…), kept across editing.
+    private var title: (text: String, symbol: String)?
 
     /// Root of the git work tree being shown, if any; the branch pill follows its crumb.
     var gitRoot: URL? {
@@ -76,6 +82,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
 
     /// Shows a single non-navigating crumb, for places that aren't folders (Search, Recents).
     func showTitle(_ title: String, symbol: String) {
+        self.title = (title, symbol)
         if isEditing { endEditing(restoreFocus: false) }
         crumbs.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let crumb = CrumbButton(title: title, symbol: symbol, emphasized: true)
@@ -86,6 +93,10 @@ final class PathBar: NSView, NSTextFieldDelegate {
     // MARK: - Breadcrumbs
 
     private func rebuild() {
+        if let title {
+            showTitle(title.text, symbol: title.symbol)
+            return
+        }
         crumbs.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard let url else { return }
         let parts = Self.components(of: url)
@@ -330,6 +341,7 @@ final class ChevronButton: NSButton {
         target = self
         action = #selector(showMenu)
         toolTip = "Folders in \(folder.lastPathComponent)"
+        setAccessibilityLabel("Folders in \(FileManager.default.displayName(atPath: folder.path))")
     }
 
     required init?(coder: NSCoder) { fatalError() }

@@ -118,8 +118,11 @@ enum ProjectActions {
             return "• \(artifact.name)\(multiple)\(size)"
         }
         let hasEnvironment = artifacts.contains { $0.role == .environment }
+        // Sizes still being measured make any total an understatement.
+        let measured = artifacts.allSatisfy { $0.bytes != nil }
+        let frees = measured ? "Frees \(Format.bytes(total)). " : total > 0 ? "Frees at least \(Format.bytes(total)). " : ""
         alert.informativeText = lines.joined(separator: "\n") + "\n\n"
-            + "Frees \(Format.bytes(total)). They’re rebuilt by the next install or build"
+            + frees + "They’re rebuilt by the next install or build"
             + (hasEnvironment ? "; virtual environments need to be recreated." : ".")
             + " You can undo this with ⌘Z."
         alert.alertStyle = .warning

@@ -153,7 +153,8 @@ final class SummaryView: NSView {
         case .idle:
             let text = AIModel.isAvailable
                 ? "Get the gist of this document in a few lines, written on your Mac."
-                : "Pull out the key sentences of this document. Turn on Apple Intelligence for written summaries."
+                : "Pull out the key sentences of this document."
+                    + (AIModel.canOpenSettings ? " Turn on Apple Intelligence for written summaries." : "")
             body.addArrangedSubview(wrapping(text, size: 12, color: .secondaryLabelColor))
             let button = NSButton(title: "Summarize", image: NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)!,
                                   target: self, action: #selector(summarize(_:)))
@@ -202,7 +203,7 @@ final class SummaryView: NSView {
             row.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
         }
         guard !streaming else { return }
-        let source = summary.method == .model ? "Apple Intelligence · On this Mac" : "Key sentences · Apple Intelligence is off"
+        let source = summary.method == .model ? "Apple Intelligence · On this Mac" : "Key sentences · \(AIModel.shortStatus)"
         let footer = caption([source, summary.note].compactMap { $0 }.joined(separator: "\n"))
         if let last = body.arrangedSubviews.last { body.setCustomSpacing(10, after: last) }
         body.addArrangedSubview(footer)

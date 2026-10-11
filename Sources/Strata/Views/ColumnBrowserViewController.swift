@@ -397,6 +397,8 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private let scrollView = NSScrollView()
     private let divider = ColumnDividerView()
     private let spinner = NSProgressIndicator()
+    /// Shown instead of rows when the folder can't be read.
+    private let message = NSTextField(wrappingLabelWithString: "")
     private var watcher: DirectoryWatcher?
     private var generation = 0
     private var suppressSelection = false
@@ -454,6 +456,11 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
         addSubview(spinner)
+        message.font = .systemFont(ofSize: 12)
+        message.textColor = .secondaryLabelColor
+        message.alignment = .center
+        message.isHidden = true
+        addSubview(message)
 
         divider.onDrag = { [weak self] delta, all, start in
             guard let self else { return }
@@ -477,6 +484,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         divider.frame = NSRect(x: bounds.width - 5, y: 0, width: 5, height: bounds.height)
         spinner.sizeToFit()
         spinner.frame.origin = NSPoint(x: (bounds.width - spinner.frame.width) / 2, y: 40)
+        message.frame = NSRect(x: 12, y: 30, width: max(bounds.width - 24, 40), height: 48)
     }
 
     override func resizeSubviews(withOldSize oldSize: NSSize) {
@@ -512,11 +520,23 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
             }
         }
         Task { [weak self] in
-            let entries = (try? await DirectoryLoader.load(folder, showHidden: showHidden)) ?? []
+            let result: Result<[FileEntry], Error>
+            do { result = .success(try await DirectoryLoader.load(folder, showHidden: showHidden)) } catch { result = .failure(error) }
             guard let self, gen == self.generation else { return }
-            let sorted = self.order.map { entries.sorted(by: $0) } ?? entries
             self.spinner.stopAnimation(nil)
-            self.setEntries(sorted, matches: [:])
+            switch result {
+            case .success(let entries):
+                self.message.isHidden = true
+                self.setEntries(self.order.map { entries.sorted(by: $0) } ?? entries, matches: [:])
+            case .failure(let error):
+                // An unreadable folder says so instead of looking empty.
+                let code = (error as NSError).code
+                let denied = code == NSFileReadNoPermissionError
+                    || ((error as NSError).userInfo[NSUnderlyingErrorKey] as? NSError).map { $0.code == Int(EPERM) || $0.code == Int(EACCES) } == true
+                self.message.stringValue = denied ? "No permission to see this folder’s contents" : "This folder couldn’t be read"
+                self.message.isHidden = false
+                self.setEntries([], matches: [:])
+            }
         }
     }
 
@@ -665,6 +685,9 @@ final class ColumnTableView: NSTableView {
             return
         case 49 where plain:
             if !pane.handleKey(.space) { super.keyDown(with: event) }
+            return
+        case 48 where event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty:
+            if !pane.handleKey(.tab) { super.keyDown(with: event) }
             return
         case 53:
             if !pane.handleKey(.escape) { super.keyDown(with: event) }

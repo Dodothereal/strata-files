@@ -299,9 +299,11 @@ final class TransferRowView: NSView {
         pauseButton.isHidden = !(job.canPause || job.canResume)
         if job.canResume {
             pauseButton.toolTip = "Resume"
+            pauseButton.setAccessibilityLabel("Resume")
             setSymbol("play.circle.fill", on: pauseButton)
         } else {
             pauseButton.toolTip = "Pause"
+            pauseButton.setAccessibilityLabel("Pause")
             setSymbol("pause.circle.fill", on: pauseButton)
         }
         cancelButton.isHidden = !job.canCancel

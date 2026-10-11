@@ -32,6 +32,7 @@ enum MainMenu {
             item("Copy to Other Pane", #selector(BrowserWindowController.copyToOtherPane(_:)), function(NSF5FunctionKey), []),
             item("Move to Other Pane", #selector(BrowserWindowController.moveToOtherPane(_:)), function(NSF6FunctionKey), []),
             item("Move to Trash", #selector(BrowserViewController.moveToTrash(_:)), "\u{8}"),
+            item("Eject", #selector(BrowserWindowController.ejectVolume(_:)), "e"),
             .separator(),
             item("Close Window", #selector(NSWindow.performClose(_:)), "w"),
         ]))
@@ -51,6 +52,7 @@ enum MainMenu {
         main.addItem(submenu("View", BrowserViewMode.menuItems(action: #selector(BrowserWindowController.syncViewMode(_:))) + [
             .separator(),
             item("Bigger Icons", #selector(BrowserViewController.biggerIcons(_:)), "+"),
+            hidden(item("Bigger Icons", #selector(BrowserViewController.biggerIcons(_:)), "=")),
             item("Smaller Icons", #selector(BrowserViewController.smallerIcons(_:)), "-"),
             .separator(),
             sortByMenu(),
@@ -95,7 +97,6 @@ enum MainMenu {
             item("Zoom", #selector(NSWindow.performZoom(_:))),
             .separator(),
             item("Shelf", #selector(AppDelegate.toggleShelf(_:)), "s", [.command, .option]),
-            item("History", #selector(AppDelegate.showHistory(_:))),
             workspaces,
             .separator(),
             item("Bring All to Front", #selector(NSApplication.arrangeInFront(_:))),
@@ -114,6 +115,13 @@ enum MainMenu {
                              _ modifiers: NSEvent.ModifierFlags = .command) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.keyEquivalentModifierMask = modifiers
+        return item
+    }
+
+    /// A menu item that isn't shown but whose shortcut still works (⌘= for Bigger Icons on keyboards where + needs Shift).
+    private static func hidden(_ item: NSMenuItem) -> NSMenuItem {
+        item.isHidden = true
+        item.allowsKeyEquivalentWhenHidden = true
         return item
     }
 

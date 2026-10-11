@@ -94,6 +94,10 @@ final class TransferQueue {
         alert.informativeText = "Quitting stops them. Items already copied stay; the item being copied right now is removed."
         alert.addButton(withTitle: "Stop and Quit")
         alert.addButton(withTitle: "Cancel")
+        // Return keeps the transfers going; stopping them takes a deliberate click.
+        alert.buttons[0].hasDestructiveAction = true
+        alert.buttons[0].keyEquivalent = ""
+        alert.buttons[1].keyEquivalent = "\r"
         guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
         active.forEach { $0.cancel() }
         Task {

@@ -61,6 +61,50 @@ enum FileOps {
         trashSound?.play()
     }
 
+    /// Items that couldn't go to the Trash because their disk has none (network shares, some external disks).
+    struct NoTrash: Error {
+        let urls: [URL]
+    }
+
+    /// Moves `urls` to the Trash off the main thread (a big selection or a slow disk would freeze the window), then
+    /// records and registers undo like `trash`. Items on disks without a Trash come back in `NoTrash`.
+    static func trashInBackground(_ urls: [URL], undo: UndoManager?) async throws {
+        let (moved, noTrash, failure) = await trashItems(urls)
+        let entry = OperationLog.shared.recordMove("Move to Trash", moved)
+        registerMoveUndo(moved, "Move to Trash", undo)
+        if let entry, let undo { registerLogMark(entry, undone: true, undo) }
+        if !moved.isEmpty {
+            trashSound?.stop()
+            trashSound?.play()
+        }
+        if let failure { throw failure }
+        if !noTrash.isEmpty { throw NoTrash(urls: noTrash) }
+    }
+
+    @concurrent
+    private static func trashItems(_ urls: [URL]) async -> (moved: [Move], noTrash: [URL], failure: Error?) {
+        var moved: [Move] = []
+        var noTrash: [URL] = []
+        for url in urls {
+            var result: NSURL?
+            do {
+                try FileManager.default.trashItem(at: url, resultingItemURL: &result)
+                if let result { moved.append((from: url, to: result as URL)) }
+            } catch let error as CocoaError where error.code == .featureUnsupported {
+                noTrash.append(url)
+            } catch {
+                return (moved, noTrash, error)
+            }
+        }
+        return (moved, noTrash, nil)
+    }
+
+    /// Deletes for good, off the main thread. Only after the user confirmed (there's no undo).
+    @concurrent
+    static func deleteImmediately(_ urls: [URL]) async throws {
+        for url in urls { try FileManager.default.removeItem(at: url) }
+    }
+
     /// `name 2.txt`, `name 3.txt`… or Finder's `name copy.txt`, `name copy 2.txt`… for copies next to the original.
     static func available(_ url: URL, copyStyle: Bool) -> URL {
         let fm = FileManager.default

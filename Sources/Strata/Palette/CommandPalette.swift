@@ -310,6 +310,9 @@ private final class PaletteCell: NSTableCellView {
     private let title = NSTextField(labelWithString: "")
     private let subtitle = NSTextField(labelWithString: "")
     private let accessory = NSTextField(labelWithString: "")
+    /// The title sits above center with a subtitle, centered without one.
+    private var titleAboveSubtitle: NSLayoutConstraint!
+    private var titleCentered: NSLayoutConstraint!
     private var item: PaletteItem?
     private var matches: [Int] = []
     /// The palette's selection is a gray highlight (the field keeps focus), so the cell tracks it itself.
@@ -332,13 +335,15 @@ private final class PaletteCell: NSTableCellView {
         accessory.setContentCompressionResistancePriority(.required, for: .horizontal)
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         subtitle.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        titleAboveSubtitle = title.bottomAnchor.constraint(equalTo: centerYAnchor, constant: 1)
+        titleCentered = title.centerYAnchor.constraint(equalTo: centerYAnchor)
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 26),
             icon.heightAnchor.constraint(equalToConstant: 26),
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 12),
-            title.bottomAnchor.constraint(equalTo: centerYAnchor, constant: 1),
+            titleAboveSubtitle,
             title.trailingAnchor.constraint(lessThanOrEqualTo: accessory.leadingAnchor, constant: -12),
             subtitle.leadingAnchor.constraint(equalTo: title.leadingAnchor),
             subtitle.topAnchor.constraint(equalTo: centerYAnchor, constant: 2),
@@ -387,6 +392,8 @@ private final class PaletteCell: NSTableCellView {
         subtitle.stringValue = item.subtitle
         subtitle.textColor = secondary
         subtitle.isHidden = item.subtitle.isEmpty
+        titleAboveSubtitle.isActive = !item.subtitle.isEmpty
+        titleCentered.isActive = item.subtitle.isEmpty
         accessory.stringValue = item.shortcut ?? item.kind.rawValue
         accessory.textColor = selected ? secondary : .tertiaryLabelColor
     }

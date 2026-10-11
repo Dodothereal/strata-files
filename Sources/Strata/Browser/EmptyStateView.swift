@@ -119,6 +119,9 @@ final class FilterPill: NSView {
         }
         query.stringValue = text
         count.stringValue = matches == 1 ? "1 match" : "\(matches) matches"
+        // VoiceOver hears how the filter is doing as you type.
+        NSAccessibility.post(element: self, notification: .announcementRequested,
+                             userInfo: [.announcement: "\(count.stringValue) for \(text)", .priority: NSAccessibilityPriorityLevel.low.rawValue])
         count.textColor = matches == 0 ? .systemRed : .secondaryLabelColor
         if isHidden {
             isHidden = false

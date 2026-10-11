@@ -104,7 +104,19 @@ nonisolated enum ProposedOperation: Sendable, Hashable {
 
 /// One validated, reviewable change.
 nonisolated struct PlanStep: Sendable, Hashable, Identifiable {
-    enum Kind: String, Sendable { case rename, move, createFolder, trash }
+    enum Kind: String, Sendable {
+        case rename, move, createFolder, trash
+
+        /// For VoiceOver and other spoken or written descriptions.
+        var title: String {
+            switch self {
+            case .rename: "Rename"
+            case .move: "Move"
+            case .createFolder: "New folder"
+            case .trash: "Move to Trash"
+            }
+        }
+    }
 
     let id: Int
     let kind: Kind
