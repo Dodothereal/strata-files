@@ -133,7 +133,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         for path in config.excluded.subtracting(old).sorted() {
             store.write {
                 guard let id = store.lookup(path) else { return }
-                for child in store.children(of: id) { store.remove(child) }
+                store.removeChildren(store.children(of: id), of: id)
             }
         }
         markChanged()
@@ -211,6 +211,19 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         config.excluded.contains { path == $0 || path.hasPrefix($0 + "/") }
     }
 
+    /// Deleted entries are only flagged; when they pile up (caches, build folders and node_modules churn), memory,
+    /// the saved file and every search grow with them. Past a quarter of the index, rebuild it without them.
+    private func compactIfNeeded() {
+        guard let store else { return }
+        let (total, deleted) = store.read { (store.count, store.deletedCount()) }
+        guard deleted >= 50_000, deleted * 4 >= total else { return }
+        let fresh = store.read { store.compacted() }
+        self.store = fresh
+        dirty = true
+        onStore?(fresh)
+        log.info("Compacted index: \(total) → \(fresh.count) entries")
+    }
+
     private func markChanged() {
         dirty = true
         onChange?()
@@ -218,6 +231,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         saveScheduled = true
         queue.asyncAfter(deadline: .now() + 120) {
             self.saveScheduled = false
+            self.compactIfNeeded()
             self.save()
         }
     }
@@ -278,7 +292,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
                     store.mtime[o] = item.mtime
                 }
             }
-            for gone in existing.values { store.remove(gone) }
+            store.removeChildren(Array(existing.values), of: id)
             guard !additions.isEmpty else { return firstNew }
             let ids = names.withUnsafeBytes { store.appendChildren(additions, nameBuffer: $0, of: id, ownNoise: additionNoise) }
             for (offset, item) in additions.enumerated() where item.isDirectory && !item.isMountPoint {

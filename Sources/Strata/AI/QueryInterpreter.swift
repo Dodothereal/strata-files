@@ -412,6 +412,13 @@ private nonisolated final class Parser {
             if m[1] == "since" { self.filter.modifiedAfter = range.0 } else { self.setDates(range) }
             return true
         }
+        // Two ISO dates make one range ("between 2025-03-03 and 2025-04-09", "from … to …"); before single dates.
+        consume("\\b(?:between|from)\\s+(\\d{4})-(\\d{1,2})-(\\d{1,2})\\s+(?:and|to|-)\\s+(\\d{4})-(\\d{1,2})-(\\d{1,2})\\b") { m in
+            let v = (1...6).compactMap { m[$0].flatMap(Int.init) }
+            guard v.count == 6 else { return false }
+            self.setDates((self.dates.day(year: v[0], month: v[1], day: v[2]).0, self.dates.day(year: v[3], month: v[4], day: v[5]).1))
+            return true
+        }
         consume("\\b(before|until|till|prior to|after|since|from|on)?\\s*(\\d{4})-(\\d{1,2})-(\\d{1,2})\\b") { m in
             guard let y = Int(m[2] ?? ""), let mo = Int(m[3] ?? ""), let d = Int(m[4] ?? "") else { return false }
             self.apply(m[1], self.dates.day(year: y, month: mo, day: d))
@@ -427,12 +434,6 @@ private nonisolated final class Parser {
             let start = m[2].flatMap(Int.init).map { self.dates.day(year: startYear, month: first, day: $0) } ?? self.dates.month(first, year: startYear)
             let end = m[5].flatMap(Int.init).map { self.dates.day(year: endYear, month: second, day: $0) } ?? self.dates.month(second, year: endYear)
             self.setDates((start.0, end.1))
-            return true
-        }
-        consume("\\bbetween\\s+(\\d{4})-(\\d{1,2})-(\\d{1,2})\\s+(?:and|to|-)\\s+(\\d{4})-(\\d{1,2})-(\\d{1,2})\\b") { m in
-            let v = (1...6).compactMap { m[$0].flatMap(Int.init) }
-            guard v.count == 6 else { return false }
-            self.setDates((self.dates.day(year: v[0], month: v[1], day: v[2]).0, self.dates.day(year: v[3], month: v[4], day: v[5]).1))
             return true
         }
         consume("\\b(?:(before|until|till|prior to|after|since|in|from|during|on|of)\\s+)?\(monthPattern)\\.?(?:\\s+(\\d{1,2})(?:st|nd|rd|th)?)?(?:,?\\s+(\\d{4}))?\\b") { m in

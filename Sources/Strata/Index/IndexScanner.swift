@@ -121,7 +121,14 @@ nonisolated final class IndexScanner: @unchecked Sendable {
     private var jobs: [Job] = []
     private var active = 0
     private var cancelled = false
-    private(set) var scannedCount = 0
+    private var scanned = 0
+
+    /// Items scanned so far (read from the progress timer on another thread, so under the lock).
+    var scannedCount: Int {
+        condition.lock()
+        defer { condition.unlock() }
+        return scanned
+    }
 
     /// - Parameters:
     ///   - excluded: absolute paths not to descend into (they still appear as entries).
@@ -198,7 +205,7 @@ nonisolated final class IndexScanner: @unchecked Sendable {
         condition.lock()
         jobs.append(contentsOf: children)
         active -= 1
-        scannedCount += scanned
+        self.scanned += scanned
         condition.broadcast()
         condition.unlock()
     }

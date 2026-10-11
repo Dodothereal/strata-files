@@ -50,6 +50,8 @@ final class BrowserViewController: NSViewController {
     private(set) var isLoaded = false
     /// A different folder is being read; the rows still showing belong to the previous one, so file commands wait.
     private(set) var isLoadingFolder = false
+    /// Folder sizes for the sort in progress, by standardized path.
+    private var sizeMemo: [String: Int64]?
     private(set) var filter = ""
     private(set) var availableCapacity: Int64?
 
@@ -479,6 +481,15 @@ final class BrowserViewController: NSViewController {
     // MARK: - Sorting and filtering
 
     private func sort(_ list: inout [FileNode]) {
+        // Sorting by size needs every folder's size: look them up once per folder, not twice per comparison.
+        let ownsMemo = sortKey == .size && sizeMemo == nil
+        if ownsMemo {
+            sizeMemo = [:]
+            for folder in Set(list.map { $0.url.deletingLastPathComponent() }) {
+                for (path, size) in FileIndex.shared.childFolderSizes(folder) { sizeMemo?[path] = size.bytes }
+            }
+        }
+        defer { if ownsMemo { sizeMemo = nil } }
         list.sort { ordered($0.entry, $1.entry) }
         for node in list { if var children = node.children { sort(&children); node.children = children } }
     }
@@ -502,7 +513,12 @@ final class BrowserViewController: NSViewController {
     }
 
     private func sizeValue(_ entry: FileEntry) -> Int64 {
-        entry.isDirectory ? (folderSize(entry.url)?.bytes ?? -1) : (entry.size ?? 0)
+        guard entry.isDirectory else { return entry.size ?? 0 }
+        let key = entry.url.standardizedFileURL.path
+        if let cached = sizeMemo?[key] { return cached }
+        let bytes = folderSize(entry.url)?.bytes ?? -1
+        sizeMemo?[key] = bytes
+        return bytes
     }
 
     func setFilter(_ text: String) {

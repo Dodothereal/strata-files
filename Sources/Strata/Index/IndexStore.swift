@@ -30,6 +30,8 @@ nonisolated final class IndexStore: @unchecked Sendable {
         /// Inside build output, caches, VCS internals or ~/Library: indexed for sizes, kept out of search by default.
         static let noise: UInt8 = 1 << 4
         static let deleted: UInt8 = 1 << 5
+        /// The name has non-ASCII bytes, so search also compares it Unicode-aware (accents, NFC/NFD, non-Latin case).
+        static let unicodeName: UInt8 = 1 << 6
     }
 
     var parent = ContiguousArray<Int32>()
@@ -130,7 +132,7 @@ nonisolated final class IndexStore: @unchecked Sendable {
         fileCount.append(files)
         mtime.append(time)
         fileKey.append(key)
-        flags.append(f)
+        flags.append(name.contains(where: { $0 >= 0x80 }) ? f | Flag.unicodeName : f)
     }
 
     /// Sums file sizes and counts into every folder. Run once after a full scan.
@@ -212,6 +214,81 @@ nonisolated final class IndexStore: @unchecked Sendable {
         }
     }
 
+    /// Entries flagged deleted (they stay until `compacted()`).
+    func deletedCount() -> Int {
+        flags.withUnsafeBufferPointer { flags in flags.reduce(0) { $0 + ($1 & Flag.deleted != 0 ? 1 : 0) } }
+    }
+
+    /// A copy without deleted entries (ids change; parents still precede children). Callers hold the read lock.
+    func compacted() -> IndexStore {
+        let fresh = IndexStore()
+        var map = [Int32](repeating: -1, count: count)
+        let live = flags.indices.filter { flags[$0] & Flag.deleted == 0 }
+        fresh.reserve(entries: live.count)
+        for old in live {
+            map[old] = Int32(fresh.parent.count)
+            let p = parent[old]
+            let start = Int(nameStart[old])
+            fresh.parent.append(p >= 0 ? map[Int(p)] : -1)
+            fresh.firstChild.append(-1)
+            fresh.nextSibling.append(-1)
+            fresh.nameStart.append(UInt32(fresh.names.count))
+            fresh.nameLength.append(nameLength[old])
+            fresh.names.append(contentsOf: names[start..<(start + Int(nameLength[old]))])
+            fresh.size.append(size[old])
+            fresh.fileCount.append(fileCount[old])
+            fresh.mtime.append(mtime[old])
+            fresh.fileKey.append(fileKey[old])
+            fresh.flags.append(flags[old])
+        }
+        // Children keep their order: walk each live folder's list (deleted entries are already unlinked from it).
+        for old in live {
+            var child = firstChild[old]
+            var previous: Int32 = -1
+            while child >= 0 {
+                let mapped = map[Int(child)]
+                if mapped >= 0 {
+                    if previous < 0 { fresh.firstChild[Int(map[old])] = mapped } else { fresh.nextSibling[Int(previous)] = mapped }
+                    previous = mapped
+                }
+                child = nextSibling[Int(child)]
+            }
+        }
+        fresh.roots = roots.compactMap { root in map[Int(root.id)] >= 0 ? (map[Int(root.id)], root.path) : nil }
+        return fresh
+    }
+
+    /// Removes several children of one folder with a single pass over its child list (removing them one by one
+    /// walks the list each time: deleting 60k files in one folder took over a second under the write lock).
+    func removeChildren(_ ids: [Int32], of parentID: Int32) {
+        let gone = Set(ids.filter { flags[Int($0)] & Flag.deleted == 0 && parent[Int($0)] == parentID })
+        guard !gone.isEmpty else { return }
+        for id in gone {
+            propagate(from: id, bytes: -size[Int(id)], files: -Int64(fileCount[Int(id)]))
+            var stack: [Int32] = [id]
+            while let current = stack.popLast() {
+                flags[Int(current)] |= Flag.deleted
+                var child = firstChild[Int(current)]
+                while child >= 0 {
+                    stack.append(child)
+                    child = nextSibling[Int(child)]
+                }
+            }
+        }
+        var head: Int32 = -1, tail: Int32 = -1
+        var child = firstChild[Int(parentID)]
+        while child >= 0 {
+            let next = nextSibling[Int(child)]
+            if !gone.contains(child) {
+                if tail < 0 { head = child } else { nextSibling[Int(tail)] = child }
+                tail = child
+            }
+            child = next
+        }
+        if tail >= 0 { nextSibling[Int(tail)] = -1 }
+        firstChild[Int(parentID)] = head
+    }
+
     private func unlink(_ id: Int32) {
         let p = parent[Int(id)]
         guard p >= 0 else { return }
@@ -286,14 +363,20 @@ nonisolated final class IndexStore: @unchecked Sendable {
             if nameEquals(child, wanted) { return child }
             child = nextSibling[Int(child)]
         }
-        // Names can differ only in Unicode normalization (NFC typed vs NFD on disk).
+        // Names can differ only in Unicode normalization (NFC typed vs NFD on disk), or only in case (the usual disk
+        // ignores it, so "~/documents" is "~/Documents").
+        let target = String(component)
         if wanted.contains(where: { $0 >= 0x80 }) {
-            let target = String(component)
             child = firstChild[Int(id)]
             while child >= 0 {
                 if name(child) == target { return child }
                 child = nextSibling[Int(child)]
             }
+        }
+        child = firstChild[Int(id)]
+        while child >= 0 {
+            if name(child).caseInsensitiveCompare(target) == .orderedSame { return child }
+            child = nextSibling[Int(child)]
         }
         return nil
     }

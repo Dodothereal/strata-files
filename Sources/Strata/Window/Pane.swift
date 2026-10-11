@@ -31,7 +31,7 @@ final class Pane {
     var title: (text: String, symbol: String) {
         switch destination {
         case .folder(let url): (FileManager.default.displayName(atPath: url.path), "folder")
-        case .search(let text, _): ("Search: \(text)", "magnifyingglass")
+        case .search(let text, _): (BrowserWindowController.searchTitle(text), "magnifyingglass")
         case .recents: ("Recents", "clock")
         case .duplicates: ("Duplicates", "square.on.square")
         }

@@ -12,7 +12,12 @@ extension NSToolbarItem.Identifier {
 /// One browser window (or tab): one or two panes, each with its own place and history, sharing the sidebar,
 /// path bar, search field and inspector, which follow whichever pane has focus.
 final class BrowserWindowController: NSWindowController, NSWindowDelegate {
-    static let largeFilesQuery = "size:>500mb"
+    static let largeFilesQuery = "kind:file size:>500mb"
+
+    /// What a search is called in titles: Large Files by name, others by their text.
+    static func searchTitle(_ text: String) -> String {
+        text == largeFilesQuery ? "Large Files" : "Search: \(text)"
+    }
 
     private var panes: [Pane]
     /// The pane with focus; navigation, search and the inspector act on it.
@@ -221,7 +226,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             } else {
                 split.sidebar.highlight(SavedSearches.all.first { $0.query == text && $0.scopePath == scope?.path }.map { .search($0) })
             }
-            window?.title = "Search: \(text)"
+            window?.title = Self.searchTitle(text)
             window?.representedURL = nil
             split.scopeBar.configure(folderName: FileManager.default.displayName(atPath: (scope ?? location).path),
                                      everywhere: scope == nil)
@@ -332,7 +337,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         }
         if case .search(_, let scope) = destination {
             destination = .search(query, scope: scope)
-            window?.title = "Search: \(query)"
+            window?.title = Self.searchTitle(query)
             updateHeaders()
             runSearch(in: pane)
         } else {
@@ -376,8 +381,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                     p.browser.showMessage(symbol: "hourglass", title: "Indexing…", message: "Search works as soon as the first index is built.")
                     return
                 }
-                // Documents whose text matches (on-device, Documents/Desktop/Downloads) follow the name matches.
-                let contentQuery = result.interpretation?.contentQuery ?? (result.interpretation == nil ? text : nil)
+                // Documents whose text matches (on-device, Documents/Desktop/Downloads) follow the name matches. Explicit
+                // filters (ext:, size:…) apply to them too: they're skipped for syntax searches, and a plain-English
+                // reading's kinds, sizes and dates must hold for each one.
+                let plainNames = result.interpretation == nil && !IndexQuery.parse(text).hasFilters
+                let contentQuery = result.interpretation?.contentQuery ?? (plainNames ? text : nil)
+                var structural = result.interpretation
+                structural?.nameContains = []
+                structural?.keywords = []
                 let contentHits = contentQuery.map { $0.count >= 3 } == true ? await StrataAI.index.search(contentQuery!, limit: 15) : []
                 guard generation == p.searchGeneration, p.destination == target else { return }
                 var entries = result.hits.map(FileEntry.init(hit:))
@@ -387,6 +398,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                         !known.contains(hit.url.standardizedFileURL.path) && (scope.map { hit.url.path.hasPrefix($0.path + "/") } ?? true)
                     }
                     .compactMap { FileEntry(url: $0.url) }
+                    .filter { entry in structural.map { $0.matches(entry) } ?? true }
                 entries += byContent
                 p.browser.showResults(entries, total: result.total + byContent.count)
                 guard p === pane else { return }

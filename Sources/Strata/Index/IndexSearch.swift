@@ -43,21 +43,38 @@ nonisolated struct IndexQuery: Sendable {
     var includeNoise = false
     var includeHidden = false
 
+    /// Anything beyond plain name words (extensions, kind, size, dates, exclusions, folder parts).
+    var hasFilters: Bool {
+        !extensions.isEmpty || kind != nil || minSize != nil || maxSize != nil || modifiedAfter != nil
+            || modifiedBefore != nil || !excludedTerms.isEmpty || !scopeNames.isEmpty || !pathTerms.isEmpty
+    }
+
     var isEmpty: Bool {
         terms.isEmpty && pathTerms.isEmpty && extensions.isEmpty && kind == nil && minSize == nil && maxSize == nil
             && modifiedAfter == nil && modifiedBefore == nil && scopeNames.isEmpty
+    }
+
+    /// How names and terms are compared: composed Unicode, without case or accents ("Café", "cafe" and a decomposed
+    /// "Cafe\u{301}" from Foundation all match).
+    static func foldText(_ text: String) -> String {
+        text.precomposedStringWithCanonicalMapping.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
     }
 
     static func parse(_ text: String, now: Date = .now) -> IndexQuery {
         var query = IndexQuery()
         for token in tokenize(text) {
             let lower = token.lowercased()
+            let folded = foldText(token)
             if let value = value(of: lower, keys: ["ext:", "extension:"]) {
                 query.extensions.formUnion(value.split(whereSeparator: { ";,|".contains($0) }).map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ".")) })
             } else if lower.hasPrefix("*."), lower.count > 2, !lower.dropFirst(2).contains("*") {
-                query.extensions.insert(String(lower.dropFirst(2)))
+                // "*.tar.gz": the last extension, plus the whole suffix as part of the name.
+                let suffix = String(lower.dropFirst(2))
+                query.extensions.insert(String(suffix.split(separator: ".").last ?? Substring(suffix)))
+                if suffix.contains(".") { query.terms.append(Array(suffix.utf8)) }
             } else if let value = value(of: lower, keys: ["kind:", "type:", "is:"]) {
-                query.kind = kind(value)
+                // "kind:pdf" names an extension rather than a kind.
+                if let kind = kind(value) { query.kind = kind } else { query.extensions.insert(value) }
             } else if let value = value(of: lower, keys: ["size:"]) {
                 (query.minSize, query.maxSize) = sizeRange(value)
             } else if let value = value(of: lower, keys: ["modified:", "mod:", "date:", "dm:"]) {
@@ -66,21 +83,23 @@ nonisolated struct IndexQuery: Sendable {
                 if value.hasPrefix("/") || value.hasPrefix("~") {
                     query.scopePath = (value as NSString).expandingTildeInPath
                 } else {
-                    query.scopeNames.append(Array(value.lowercased().utf8))
+                    query.scopeNames.append(Array(foldText(value).utf8))
                 }
-            } else if lower.hasPrefix("!") || (lower.hasPrefix("-") && lower.count > 1) {
-                query.excludedTerms.append(Array(lower.dropFirst().utf8))
+            } else if (lower.hasPrefix("!") || lower.hasPrefix("-")) && lower.count > 1 {
+                query.excludedTerms.append(Array(folded.dropFirst().utf8))
+            } else if lower == "!" || lower == "-" {
+                continue   // Half-typed exclusion: not a term yet.
             } else if lower.contains("/") {
-                let parts = lower.split(separator: "/").map { Array($0.utf8) }
+                let parts = folded.split(separator: "/").map { Array($0.utf8) }
                 if parts.count == 1 { query.terms.append(parts[0]) } else if parts.count > 1 { query.pathTerms.append(parts) }
             } else if !lower.isEmpty {
-                query.terms.append(Array(lower.utf8))
+                query.terms.append(Array(folded.utf8))
             }
         }
         let mentioned = (query.terms + query.pathTerms.flatMap { $0 } + query.scopeNames).map { String(decoding: $0, as: UTF8.self) }
-        query.includeHidden = mentioned.contains { $0.hasPrefix(".") }
         // `in:target` (or another build/cache folder name) means you want to look inside such folders.
         let scopes = query.scopeNames.map { String(decoding: $0, as: UTF8.self) }
+        query.includeHidden = mentioned.contains { $0.hasPrefix(".") } || scopes.contains { noiseWords.contains($0) }
         query.includeNoise = mentioned.contains { noiseWords.contains($0) || $0.hasPrefix(".") }
             || scopes.contains { buildFolderWords.contains($0) }
         return query
@@ -130,7 +149,10 @@ nonisolated struct IndexQuery: Sendable {
     }
 
     static func bytes(_ text: String) -> Int64? {
-        let units: [(String, Double)] = [("tb", 1e12), ("gb", 1e9), ("mb", 1e6), ("kb", 1e3), ("t", 1e12), ("g", 1e9), ("m", 1e6), ("k", 1e3), ("b", 1)]
+        let units: [(String, Double)] = [
+            ("tib", 1_099_511_627_776), ("gib", 1_073_741_824), ("mib", 1_048_576), ("kib", 1024),
+            ("tb", 1e12), ("gb", 1e9), ("mb", 1e6), ("kb", 1e3), ("t", 1e12), ("g", 1e9), ("m", 1e6), ("k", 1e3), ("b", 1),
+        ]
         for (suffix, multiplier) in units where text.hasSuffix(suffix) {
             guard let number = Double(text.dropLast(suffix.count)) else { return nil }
             return saturatingInt64(number * multiplier)
@@ -259,6 +281,8 @@ nonisolated enum IndexSearch {
             // Searching inside a cache or build folder (in:, or the scope bar while browsing it) includes its contents.
             var scoped = query
             if let scopeID, store.flags[Int(scopeID)] & IndexStore.Flag.noise != 0 { scoped.includeNoise = true }
+            // Same for hidden folders (~/Library is hidden, and so is everything in it).
+            if let scopeID, store.flags[Int(scopeID)] & IndexStore.Flag.hidden != 0 { scoped.includeHidden = true }
             let query = scoped
             let extensions = query.kind.flatMap { extensionsByKind[$0] }.map { query.extensions.isEmpty ? $0 : $0.intersection(query.extensions) }
                 ?? query.extensions
@@ -268,12 +292,17 @@ nonisolated enum IndexSearch {
             let chunks = max(1, min(64, count / 50_000))
             let partials = Partials(count: chunks)
             store.withColumns { columns in
+                // `a/b` and `in:name` need folder parts matched by ancestors: work out, in one pass from the roots down,
+                // how many leading parts each folder's path has matched (instead of walking every candidate's
+                // ancestors, which made such searches ~100× slower).
+                let chains = query.pathTerms.map { Array($0.dropLast()) } + query.scopeNames.map { [$0] }
+                let progress = chains.map { ancestorProgress($0, columns, count) }
                 DispatchQueue.concurrentPerform(iterations: chunks) { chunk in
                     let lower = count * chunk / chunks
                     let upper = count * (chunk + 1) / chunks
                     var found: [(id: Int32, score: Int32)] = []
                     for id in lower..<upper {
-                        if let score = match(id, query, columns, scopeID, wantedExtensions, now) {
+                        if let score = match(id, query, columns, scopeID, wantedExtensions, now, progress) {
                             found.append((Int32(id), Int32(score)))
                         }
                     }
@@ -318,7 +347,7 @@ nonisolated enum IndexSearch {
 
     // Called under the read lock from many threads at once.
     private static func match(_ i: Int, _ query: IndexQuery, _ c: IndexStore.Columns, _ scopeID: Int32?,
-                              _ extensions: [UInt64], _ now: Int) -> Int? {
+                              _ extensions: [UInt64], _ now: Int, _ progress: [[UInt8]]) -> Int? {
         let flags = c.flags[i]
         if flags & IndexStore.Flag.deleted != 0 || c.parent[i] < 0 { return nil }
         if !query.includeNoise && flags & IndexStore.Flag.noise != 0 { return nil }
@@ -337,6 +366,12 @@ nonisolated enum IndexSearch {
         if let before = query.modifiedBefore, c.mtime[i] >= before { return nil }
 
         let name = c.name(i)
+        // Names with non-ASCII bytes are compared Unicode-aware (folded once); ASCII names take the byte search alone.
+        let foldedName: [UInt8]? = flags & IndexStore.Flag.unicodeName != 0 ? folded(name) : nil
+        @inline(__always) func locate(_ term: [UInt8]) -> Int? {
+            if let foldedName { return foldedName.withUnsafeBufferPointer { find(term, in: $0) } }
+            return find(term, in: name)
+        }
         if query.kind == .app {
             guard hasSuffix(name, appSuffix) else { return nil }
         } else if !extensions.isEmpty {
@@ -345,18 +380,17 @@ nonisolated enum IndexSearch {
         }
         var score = 0
         for (index, term) in query.terms.enumerated() {
-            guard let position = find(term, in: name) else { return nil }
-            score += index == 0 ? positionScore(position, term.count, name) : 10
+            guard let position = locate(term) else { return nil }
+            score += index == 0 ? positionScore(min(position, name.count - 1), term.count, name) : 10
         }
-        for term in query.excludedTerms where find(term, in: name) != nil { return nil }
-        for parts in query.pathTerms {
-            guard let last = parts.last, let position = find(last, in: name) else { return nil }
-            guard ancestorsMatch(parts.dropLast(), from: c.parent[i], c) else { return nil }
-            score += positionScore(position, last.count, name) + 20
+        for term in query.excludedTerms where locate(term) != nil { return nil }
+        let parent = Int(c.parent[i])
+        for (index, parts) in query.pathTerms.enumerated() {
+            guard let last = parts.last, let position = locate(last) else { return nil }
+            guard parts.count == 1 || Int(progress[index][parent]) >= parts.count - 1 else { return nil }
+            score += positionScore(min(position, name.count - 1), last.count, name) + 20
         }
-        for scope in query.scopeNames {
-            guard ancestorsMatch([scope][...], from: c.parent[i], c) else { return nil }
-        }
+        for index in query.scopeNames.indices where progress[query.pathTerms.count + index][parent] < 1 { return nil }
         // Depth doubles as the scope check: walk to the root once.
         var depth = 0
         var inScope = scopeID == nil
@@ -396,16 +430,32 @@ nonisolated enum IndexSearch {
         return 20
     }
 
-    /// Each part (in order, nearest last) must be found in some ancestor's name, walking up from `start`.
-    private static func ancestorsMatch(_ parts: ArraySlice<[UInt8]>, from start: Int32, _ c: IndexStore.Columns) -> Bool {
-        var remaining = parts
-        var ancestor = start
-        while let part = remaining.last {
-            guard ancestor >= 0 else { return false }
-            if find(part, in: c.name(Int(ancestor))) != nil { remaining.removeLast() }
-            ancestor = c.parent[Int(ancestor)]
+    /// For each entry, how many of `parts` (in order) are found in the names along its path, root first, itself
+    /// included. Parents have smaller ids than their children, so one forward pass computes it; only folders can be
+    /// ancestors, so files just inherit.
+    private static func ancestorProgress(_ parts: [[UInt8]], _ c: IndexStore.Columns, _ count: Int) -> [UInt8] {
+        var progress = [UInt8](repeating: 0, count: count)
+        guard !parts.isEmpty else { return progress }
+        for i in 0..<count {
+            let p = Int(c.parent[i])
+            var value = p >= 0 ? progress[p] : 0
+            if c.flags[i] & IndexStore.Flag.directory != 0, Int(value) < parts.count {
+                let name = c.name(i)
+                let part = parts[Int(value)]
+                let found = c.flags[i] & IndexStore.Flag.unicodeName != 0
+                    ? folded(name)?.withUnsafeBufferPointer({ find(part, in: $0) }) != nil
+                    : find(part, in: name) != nil
+                if found { value += 1 }
+            }
+            progress[i] = value
         }
-        return true
+        return progress
+    }
+
+    /// `name` folded with `foldText`, or nil when it's plain ASCII (the byte search already covers it).
+    private static func folded(_ name: UnsafeBufferPointer<UInt8>) -> [UInt8]? {
+        guard name.contains(where: { $0 >= 0x80 }) else { return nil }
+        return Array(IndexQuery.foldText(String(decoding: name, as: UTF8.self)).utf8)
     }
 
     @inline(__always)

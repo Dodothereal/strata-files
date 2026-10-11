@@ -74,6 +74,22 @@ final class FileIndex {
         }
     }
 
+    /// Sizes of every indexed subfolder of `folder`, by path, from one walk of its children (looking each up by path
+    /// re-walks the sibling list every time).
+    func childFolderSizes(_ folder: URL) -> [String: FolderSize] {
+        guard let store else { return [:] }
+        let base = folder.standardizedFileURL.path
+        return store.read {
+            guard let id = store.lookup(base) else { return [:] }
+            var sizes: [String: FolderSize] = [:]
+            let prefix = base == "/" ? "/" : base + "/"
+            for child in store.children(of: id) where store.isDirectory(child) && !isExcludedLocked(store, child) {
+                sizes[prefix + store.name(child)] = FolderSize(bytes: store.size[Int(child)], files: Int(store.fileCount[Int(child)]))
+            }
+            return sizes
+        }
+    }
+
     /// Excluded folders are present as entries but never descended into, so their size would read as zero.
     private func isExcludedLocked(_ store: IndexStore, _ id: Int32) -> Bool {
         store.firstChild[Int(id)] < 0 && store.size[Int(id)] == 0 && excludedPaths.contains(store.path(of: id))
@@ -95,8 +111,15 @@ final class FileIndex {
         }
         var query = interpreted.query
         if let scope { query.scopePath = scope.standardizedFileURL.path }
+        // The words may also be a name ("Code", "Pictures", "notes.txt"): those matches come first, then what the
+        // plain-English reading found.
+        var plain = IndexQuery.parse(text)
+        if let scope { plain.scopePath = scope.standardizedFileURL.path }
+        let named: (hits: [IndexHit], total: Int) = plain.isEmpty ? ([], 0) : await Self.run(plain, store, 50)
         let result = await Self.run(query, store, limit)
-        return (result.hits, result.total, interpreted.filter)
+        let namedPaths = Set(named.hits.map(\.path))
+        let rest = result.hits.filter { !namedPaths.contains($0.path) }
+        return (named.hits + rest, named.hits.count + result.total - (result.hits.count - rest.count), interpreted.filter)
     }
 
     func recentFiles(days: Int = 7, limit: Int = 400) async -> [IndexHit]? {

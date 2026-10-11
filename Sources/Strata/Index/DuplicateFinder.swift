@@ -35,12 +35,20 @@ nonisolated enum DuplicateFinder {
             if isCancelled() { return [] }
             progress(index, total)
             let size = group[0].size
+            // Hard links are one file under several names: deleting one frees nothing, so each counts once.
+            var inodes: Set<[UInt64]> = []
+            let distinct = group.filter { file in
+                var info = stat()
+                guard lstat(file.path, &info) == 0 else { return false }
+                return inodes.insert([UInt64(bitPattern: Int64(info.st_dev)), info.st_ino]).inserted
+            }
+            guard distinct.count > 1 else { continue }
             var byQuickHash: [Data: [String]] = [:]
-            for file in group {
+            for file in distinct {
                 if let hash = quickHash(file.path, size: size) { byQuickHash[hash, default: []].append(file.path) }
             }
             for paths in byQuickHash.values where paths.count > 1 {
-                // Small files are fully covered by the quick hash.
+                // Up to 128 KB the head and tail hashes cover the whole file.
                 if size <= 128 * 1024 {
                     groups.append(DuplicateGroup(size: size, paths: paths.sorted()))
                     continue
@@ -66,7 +74,7 @@ nonisolated enum DuplicateFinder {
         var hasher = SHA256()
         guard let head = try? handle.read(upToCount: chunk) else { return nil }
         hasher.update(data: head)
-        if size > Int64(chunk * 2) {
+        if size > Int64(chunk) {
             guard (try? handle.seek(toOffset: UInt64(size) - UInt64(chunk))) != nil, let tail = try? handle.read(upToCount: chunk) else { return nil }
             hasher.update(data: tail)
         }
