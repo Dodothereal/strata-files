@@ -1,0 +1,88 @@
+import Foundation
+
+nonisolated struct FolderSize: Sendable {
+    let bytes: Int64
+    let files: Int
+}
+
+/// Computes folder sizes in the background. Results are shared by every window; each browser owns
+/// its own queue so leaving a folder cancels only that browser's pending walks.
+final class FolderSizer {
+    private static var cache: [URL: FolderSize] = [:]
+
+    var onUpdate: ((URL) -> Void)?
+    private let queue = OperationQueue()
+    private var pending: Set<URL> = []
+
+    init() {
+        queue.maxConcurrentOperationCount = 4
+        queue.qualityOfService = .utility
+    }
+
+    func cached(_ url: URL) -> FolderSize? { Self.cache[url] }
+
+    func request(_ url: URL) {
+        guard Self.cache[url] == nil, pending.insert(url).inserted else { return }
+        let op = SizeOperation(path: url.path)
+        op.completionBlock = { [unowned op, weak self] in
+            let result = op.result
+            Task { @MainActor in self?.finish(url, result) }
+        }
+        queue.addOperation(op)
+    }
+
+    func cancelPending() {
+        queue.cancelAllOperations()
+        pending.removeAll()
+    }
+
+    /// Drops cached sizes for `url` and every folder above it, since a change inside changes all of them.
+    static func invalidate(_ url: URL) {
+        var current = url.standardizedFileURL
+        while current.path != "/" {
+            cache[current] = nil
+            current = current.deletingLastPathComponent()
+        }
+    }
+
+    private func finish(_ url: URL, _ result: FolderSize?) {
+        pending.remove(url)
+        guard let result else { return }
+        Self.cache[url] = result
+        onUpdate?(url)
+    }
+
+    nonisolated static func measure(_ path: String, isCancelled: () -> Bool) -> FolderSize? {
+        guard let cpath = strdup(path) else { return nil }
+        defer { free(cpath) }
+        var paths: [UnsafeMutablePointer<CChar>?] = [cpath, nil]
+        guard let fts = fts_open(&paths, FTS_PHYSICAL | FTS_NOCHDIR | FTS_XDEV, nil) else { return nil }
+        defer { fts_close(fts) }
+        var bytes: Int64 = 0
+        var files = 0
+        var visited = 0
+        while let entry = fts_read(fts) {
+            visited += 1
+            if visited & 2047 == 0, isCancelled() { return nil }
+            switch Int32(entry.pointee.fts_info) {
+            case FTS_F, FTS_SL, FTS_SLNONE, FTS_DEFAULT:
+                if let stat = entry.pointee.fts_statp { bytes += Int64(stat.pointee.st_size) }
+                files += 1
+            default:
+                break
+            }
+        }
+        return FolderSize(bytes: bytes, files: files)
+    }
+}
+
+nonisolated private final class SizeOperation: Operation, @unchecked Sendable {
+    let path: String
+    var result: FolderSize?
+
+    init(path: String) { self.path = path }
+
+    override func main() {
+        result = FolderSizer.measure(path) { [unowned self] in isCancelled }
+    }
+}

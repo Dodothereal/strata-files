@@ -1,0 +1,128 @@
+<p align="center">
+  <img src="docs/icon.png" width="128" height="128" alt="Strata icon">
+</p>
+
+<h1 align="center">Strata</h1>
+
+<p align="center">
+  <b>The file manager your Mac deserves.</b><br>
+  Find anything in milliseconds, see exactly where your space went, and fly through your files from the keyboard,<br>
+  in a native app that feels like it shipped with macOS.
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/hero.png" alt="Strata showing a folder with live sizes and a Markdown preview in the inspector" width="900">
+</p>
+
+---
+
+## Why Strata
+
+Finder is fine until you need to find something, figure out what's eating your disk, or move a few hundred files
+without a beachball. Strata keeps everything you already know: the look, the shortcuts, drag and drop, Quick Look,
+tabs. Then it adds what you've been missing:
+
+- **Search that keeps up with you.** Every file on your Mac, searchable as you type. Results arrive in a few
+  milliseconds, even across millions of files.
+- **Sizes you can trust.** Every folder shows its real size, instantly and always up to date.
+- **A keyboard-first workflow.** Jump anywhere with ⌘K, type to filter any folder, and keep your hands off the
+  mouse if you like.
+- **File operations without fear.** Pause and resume big copies, see conflicts side by side before replacing
+  anything, and undo any operation, even after you quit.
+- **Made for people who build things.** Git status on every file, project-aware cleanup, Open in Terminal, and
+  previews for code, data and archives.
+
+## Find anything, instantly
+
+Type a name, use precise filters, or just say what you mean: *"videos bigger than 500 MB"*,
+*"pdfs from last month"*. Strata understands plain English, shows you how it read your search, and answers
+before you finish typing. Save any search to the sidebar and it stays live as files change.
+
+<p align="center"><img src="docs/screenshots/search.png" alt="A plain-English search showing large videos" width="820"></p>
+
+## Jump anywhere with ⌘K
+
+One shortcut opens a command palette that knows your most-used folders, everything on your disk and every command
+in the app. Type `acme-web/` to list a project's contents without opening a single window.
+
+<p align="center"><img src="docs/screenshots/palette.png" alt="The command palette listing the contents of a project" width="820"></p>
+
+## See where your space went
+
+Folder sizes appear the moment you open a folder, with no waiting on "Calculating…". Switch to **Disk Usage** to see
+your folders as a map, then use **Large Files** and **Duplicates** in the sidebar to reclaim gigabytes in minutes.
+
+<p align="center"><img src="docs/screenshots/treemap.png" alt="The disk usage map of a folder" width="820"></p>
+
+## Four views. Two panes.
+
+List, Icons, Columns and Disk Usage, one keystroke apart. Turn on **Dual Pane** to work with two folders side by
+side: copy or move between them, compare, organize.
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/grid.png" alt="Icon view with image thumbnails"></td>
+    <td><img src="docs/screenshots/dual.png" alt="Dual pane with a project and a photo folder"></td>
+  </tr>
+</table>
+
+## Made for developers
+
+Strata knows your projects. Every file shows its git status, the current branch sits in the path bar, and the
+inspector recognizes Node, Rust, Swift, .NET, Python, Go and more. It lists a project's scripts and frees up the
+space taken by build folders like `node_modules` with one click (they go to the Trash, so nothing is lost). Code,
+Markdown, JSON, CSV, SQLite databases and zip archives preview right in the inspector, beautifully.
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/devmode.png" alt="Git badges, branch pill and a code preview"></td>
+    <td><img src="docs/screenshots/project.png" alt="The project inspector with build artifacts and scripts"></td>
+  </tr>
+</table>
+
+## Everything else you'd expect, done right
+
+| | |
+|---|---|
+| **Copy queue** | Big copies run in the background with progress you can pause, resume or cancel. Conflicts are asked up front, with a side-by-side comparison and a diff for text files. Optional verification makes sure every byte arrived. |
+| **History** | Every rename, move, copy and trash is recorded. Undo any of them later, even days later and after a restart. |
+| **Recents** | Everything you changed this week, across all your folders, in one place. |
+| **Shelf** | Collect files from anywhere, then drop them all at once. |
+| **Workspaces** | Save a set of tabs and panes, and reopen them together. |
+| **Ask Strata** | Describe a bulk change ("rename these photos by date taken") and review the plan before anything happens. Runs on device with Apple Intelligence. |
+| **Summaries** | Get the gist of a PDF or document in the inspector, written on your Mac. Nothing ever leaves it. |
+| **Command line** | `strata .` opens the current folder; `strata -s "invoice pdf"` searches from your terminal. |
+
+## Keyboard first
+
+Every action has a shortcut, and the ones you already know from Finder still work. Can't remember one? Click
+**Keyboard Shortcuts** at the bottom of the sidebar, or press ⌘/.
+
+<p align="center"><img src="docs/screenshots/shortcuts.png" alt="The keyboard shortcuts window" width="420"></p>
+
+## Private by design
+
+Strata runs entirely on your Mac. The search index, summaries and AI features are local: no accounts, no tracking,
+no cloud. Its index and history are encrypted on disk with a key in your keychain, so other apps can't read through
+Strata what macOS wouldn't show them directly. Folders you browse can't run their own code just because you looked
+at them.
+
+## Get Strata
+
+Strata is in early development. To try it today you need a Mac running **macOS 26** and the Swift toolchain
+(Xcode or the Command Line Tools):
+
+```sh
+git clone https://github.com/cristipufu/strata.git
+cd strata
+scripts/build.sh release --open
+```
+
+For the best experience, give Strata **Full Disk Access** in System Settings ▸ Privacy & Security, so it can search
+and measure everything without asking folder by folder. Strata walks you through it on first launch.
+
+---
+
+<p align="center">
+  Found a bug or have an idea? <a href="https://github.com/cristipufu/strata/issues">Open an issue</a>.
+</p>

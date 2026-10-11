@@ -1,0 +1,118 @@
+import AppKit
+
+extension BrowserWindowController {
+    @objc func showCommandPalette(_ sender: Any?) {
+        guard let window else { return }
+        if palette.isVisible {
+            palette.close()
+            return
+        }
+        palette.goToPath = { [weak self] url in
+            var isDirectory: ObjCBool = false
+            FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+            if isDirectory.boolValue, !NSWorkspace.shared.isFilePackage(atPath: url.path) {
+                self?.navigate(to: url)
+            } else {
+                self?.navigate(to: url.deletingLastPathComponent(), select: url)
+            }
+        }
+        pathQuery = PathQuery()
+        palette.queryItems = { [weak self] query in self?.pathQueryItems(query) ?? [] }
+        palette.lateItems = { [weak self] query in await self?.indexItems(query) ?? [] }
+        palette.show(in: window, items: paletteItems())
+    }
+
+    /// Anything on disk, from the index; ranked below folders you use and items in this folder.
+    private func indexItems(_ query: String) async -> [PaletteItem] {
+        guard query.count >= 2, !query.hasPrefix("/"), !query.hasPrefix("~"),
+              let result = await FileIndex.shared.search(query, limit: 30) else { return [] }
+        let folderIcon = NSWorkspace.shared.icon(for: .folder)
+        return result.hits.map { hit in
+            let entry = FileEntry(hit: hit)
+            let isFolder = entry.isFolder
+            let matches = Fuzzy.match(query.split(separator: " ").first.map(String.init) ?? query, entry.name)?.indices ?? []
+            return PaletteItem(title: entry.name, subtitle: Format.tildePath(entry.url.deletingLastPathComponent()),
+                               icon: isFolder ? folderIcon : IconCache.shared.icon(for: entry), kind: isFolder ? .folder : .match,
+                               fixedScore: max(0, hit.score - 1000) / 2 + 8, titleMatches: matches, url: entry.url) { [weak self] in
+                if isFolder { self?.navigate(to: entry.url) } else { self?.navigate(to: entry.url.deletingLastPathComponent(), select: entry.url) }
+            }
+        }
+    }
+
+    private func pathQueryItems(_ query: String) -> [PaletteItem] {
+        let visited = Array(Frecency.shared.ranked().prefix(400))
+        let roots = (Places.favorites() + Places.volumes()).map(\.url) + [Places.home] + visited.prefix(100)
+        let folderIcon = NSWorkspace.shared.icon(for: .folder)
+        return pathQuery.resolve(query, roots: roots, visited: visited).map { hit in
+            let url = hit.url
+            return PaletteItem(title: url.lastPathComponent, subtitle: Format.tildePath(url.deletingLastPathComponent()),
+                               icon: hit.isFolder ? folderIcon : IconCache.shared.icon(forPath: url.path),
+                               kind: hit.isFolder ? .folder : .match, fixedScore: hit.score, titleMatches: hit.nameMatches, url: url) { [weak self] in
+                if hit.isFolder { self?.navigate(to: url) } else { self?.navigate(to: url.deletingLastPathComponent(), select: url) }
+            }
+        }
+    }
+
+    private func paletteItems() -> [PaletteItem] {
+        var items: [PaletteItem] = []
+        var seen: Set<String> = [location.path]
+        let folderIcon = NSWorkspace.shared.icon(for: .folder)
+
+        // Here first: what's in this folder is the most likely target.
+        for entry in browser.topLevelEntries {
+            items.append(PaletteItem(title: entry.name, subtitle: entry.kind, icon: IconCache.shared.icon(for: entry),
+                                     kind: .file, boost: 6, url: entry.url) { [weak self] in
+                guard let self else { return }
+                if entry.isFolder { navigate(to: entry.url) } else { NSWorkspace.shared.open(entry.url); browser.select([entry.url]) }
+            })
+            if entry.isFolder { seen.insert(entry.url.path) }
+        }
+        for (rank, url) in Frecency.shared.ranked().prefix(400).enumerated() where seen.insert(url.path).inserted {
+            items.append(PaletteItem(title: FileManager.default.displayName(atPath: url.path),
+                                     subtitle: Format.tildePath(url.deletingLastPathComponent()), icon: folderIcon,
+                                     kind: .folder, boost: max(0, 24 - rank / 2), url: url) { [weak self] in self?.navigate(to: url) })
+        }
+        for place in Places.favorites() + Places.volumes() where seen.insert(place.url.path).inserted {
+            items.append(PaletteItem(title: place.title, subtitle: Format.tildePath(place.url), icon: IconCache.shared.icon(forPath: place.url.path),
+                                     kind: .folder, boost: 4, url: place.url) { [weak self] in self?.navigate(to: place.url) })
+        }
+        return items + commandItems()
+    }
+
+    private func commandItems() -> [PaletteItem] {
+        let hasSelection = !browser.selectedURLs.isEmpty
+        func command(_ title: String, _ symbol: String, _ shortcut: String?, _ run: @escaping () -> Void) -> PaletteItem {
+            let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
+            return PaletteItem(title: title, subtitle: "", icon: image, kind: .action, shortcut: shortcut, run: run)
+        }
+        var commands = [
+            command("New Folder", "folder.badge.plus", "⇧⌘N") { [weak self] in self?.browser.newFolder(nil) },
+            command("New Tab", "plus.square.on.square", "⌘T") { [weak self] in self?.newWindowForTab(nil) },
+            command("New Window", "macwindow.badge.plus", "⌘N") { (NSApp.delegate as? AppDelegate)?.newWindow(nil) },
+            command("Open in Terminal", "terminal", "⌃⌘T") { [weak self] in self?.browser.openInTerminal(nil) },
+            command("Copy Path", "link", "⌥⌘C") { [weak self] in self?.browser.copyPath(nil) },
+            command(Prefs.showHidden ? "Hide Hidden Files" : "Show Hidden Files", "eye", "⇧⌘.") { Prefs.showHidden.toggle() },
+            command(Prefs.foldersFirst ? "Mix Folders with Files" : "Keep Folders on Top", "folder", nil) { Prefs.foldersFirst.toggle() },
+            command("Toggle Inspector", "sidebar.right", "⌘I") { [weak self] in self?.splitController.toggleInspector(nil) },
+            command("Toggle Sidebar", "sidebar.left", "⌃⌘S") { [weak self] in self?.splitController.toggleSidebar(nil) },
+            command("Edit Location", "character.cursor.ibeam", "⌘L") { [weak self] in self?.goToFolder(nil) },
+            command("Enclosing Folder", "arrow.up", "⌘↑") { [weak self] in self?.goToEnclosingFolder(nil) },
+            command("Reload", "arrow.clockwise", "⌘R") { [weak self] in self?.browser.reloadFolder(nil) },
+            command("Show in Finder", "macwindow", nil) { [weak self] in self?.browser.showInFinder(nil) },
+        ]
+        if hasSelection {
+            commands.insert(contentsOf: [
+                command("Quick Look", "eye", "Space") { [weak self] in self?.browser.toggleQuickLook(nil) },
+                command("Duplicate", "plus.square.on.square", "⌘D") { [weak self] in self?.browser.duplicate(nil) },
+                command("Rename", "pencil", "↩") { [weak self] in self?.browser.renameSelection(nil) },
+                command("Move to Trash", "trash", "⌘⌫") { [weak self] in self?.browser.moveToTrash(nil) },
+            ], at: 0)
+        }
+        commands.append(contentsOf: aiPaletteItems())
+        if !Privacy.hasFullDiskAccess {
+            commands.append(command("Grant Full Disk Access…", "lock.open", nil) { NSWorkspace.shared.open(Privacy.settingsURL) })
+        }
+        return commands
+    }
+}

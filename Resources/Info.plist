@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Strata</string>
+	<key>CFBundleDisplayName</key>
+	<string>Strata</string>
+	<key>CFBundleIdentifier</key>
+	<string>dev.strata.app</string>
+	<key>CFBundleExecutable</key>
+	<string>Strata</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Strata</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Folder</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.folder</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>dev.strata.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>strata</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Strata shows the files on your Desktop.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Strata shows the files in your Documents folder.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Strata shows the files in your Downloads folder.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Strata shows the files on external drives.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>Strata shows the files on network volumes.</string>
+</dict>
+</plist>

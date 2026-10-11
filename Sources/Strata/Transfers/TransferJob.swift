@@ -1,0 +1,549 @@
+import AppKit
+
+/// One copy or move. It plans every top-level item, measures them, settles name conflicts up front, then hands the
+/// items one at a time to its worker queue. Errors on one file never stop the rest; they can be retried afterwards.
+final class TransferJob {
+    let id = UUID()
+    let mode: TransferMode
+    let sources: [URL]
+    /// The folder items go into (for undo jobs that restore to several places, the first one).
+    let destination: URL
+    let options: TransferEngine.Options
+
+    private(set) var state: TransferState = .queued
+    /// Queued behind another transfer writing to the same disk.
+    private(set) var isWaitingForDisk = false
+    /// A conflict sheet is up and the job is waiting for the answer.
+    private(set) var isAwaitingDecision = false
+    private(set) var totalBytes: Int64 = 0
+    private(set) var totalFiles = 0
+    private(set) var completedBytes: Int64 = 0
+    private(set) var completedFiles = 0
+    private(set) var verifiedBytes: Int64 = 0
+    private(set) var isVerifying = false
+    private(set) var currentItemName: String?
+    /// Bytes per second averaged over the last three seconds. Nil until there's a steady reading.
+    private(set) var throughput: Double?
+    private(set) var estimatedTimeRemaining: TimeInterval?
+    private(set) var failures: [TransferFailure] = []
+    /// A problem with the job as a whole (not enough space…). Retry runs it again.
+    private(set) var errorMessage: String?
+    /// Items that exist at the destination because of this job, in order. Handy for selecting them afterwards.
+    private(set) var createdItems: [URL] = []
+    private(set) var skippedCount = 0
+    /// Top-level items done (moved, copied, or copied with some failures inside).
+    private(set) var completedItems = 0
+
+    /// Called on the main actor every time the job finishes a pass (including after a retry).
+    var onFinish: ((TransferJob) -> Void)?
+
+    private var items: [TransferItem]
+    private var control = TransferControl()
+    private let progress = TransferProgress()
+    private let worker: TransferWorker
+    private let resolver: ConflictResolver
+    private weak var undoManager: UndoManager?
+    private weak var queue: TransferQueue?
+    private var rememberedDecision: ConflictDecision?
+    private var decisionTask: Task<ConflictResolution, Never>?
+    private var heldDisk: dev_t?
+    /// The disk a paused job gave up, to take back when it resumes.
+    private var pausedDisk: dev_t?
+    private var started = false
+    private var finishWaiters: [CheckedContinuation<Void, Never>] = []
+    private var isRunningPass = false
+    private var measured = false
+
+    // Undo journal for the current pass.
+    private var journalCreated: [URL] = []
+    private var journalMoved: [TransferMove] = []
+    private var journalReplaced: [TransferMove] = []
+
+    // Throughput: rates over a sliding window of recent samples.
+    private var samples: [(time: TimeInterval, work: Double, bytes: Int64)] = []
+    private var workRate: Double?
+    private var runningSince: TimeInterval?
+    private static let rateWindow: TimeInterval = 3
+
+    /// Per-file overhead counted as this many bytes when estimating progress, so thousands of tiny files don't
+    /// look finished while they're still being created.
+    private static let fileWeight: Double = 64 * 1024
+
+    init(mode: TransferMode, moves: [TransferMove], destination: URL, options: TransferEngine.Options,
+         undo: UndoManager?, conflicts: ConflictResolver, queue: TransferQueue) {
+        self.mode = mode
+        self.sources = moves.map(\.from)
+        self.destination = destination
+        self.options = options
+        self.resolver = conflicts
+        self.undoManager = undo
+        self.queue = queue
+        self.worker = TransferWorker(label: "dev.strata.transfer")
+        self.items = moves.map { TransferItem(source: $0.from.standardizedFileURL, destination: $0.to, operation: .copy) }
+    }
+
+    // MARK: - Derived values
+
+    var canPause: Bool { state == .running }
+    var canResume: Bool { state == .paused }
+    var canCancel: Bool { state.isActive }
+    var canRetry: Bool { (state == .finished || state == .failed) && (!failures.isEmpty || errorMessage != nil) }
+
+    var totalWork: Double {
+        Double(totalBytes) * (options.verify ? 2 : 1) + Double(totalFiles) * Self.fileWeight
+    }
+
+    var completedWork: Double {
+        Double(completedBytes) + Double(verifiedBytes) + Double(completedFiles) * Self.fileWeight
+    }
+
+    /// 0…1, or nil while the size isn't known yet.
+    var fractionCompleted: Double? {
+        if state == .finished { return 1 }
+        guard measured, state != .scanning else { return nil }
+        guard totalWork > 0 else { return state.isActive ? nil : 1 }
+        return min(1, completedWork / totalWork)
+    }
+
+    // MARK: - Control
+
+    /// Stops at the next block. A paused job lets other transfers to the same disk go ahead.
+    func pause() {
+        guard canPause else { return }
+        control.pause()
+        state = .paused
+        if let disk = heldDisk {
+            heldDisk = nil
+            pausedDisk = disk
+            queue?.releaseDisk(disk, for: self)
+        }
+        resetRate()
+        changed()
+    }
+
+    /// Carries on, after the disk is free again if another transfer took it meanwhile.
+    func resume() {
+        guard canResume else { return }
+        Task {
+            if let disk = pausedDisk, let queue {
+                if !queue.isDiskFree(disk, for: self) {
+                    isWaitingForDisk = true
+                    state = .queued
+                    changed()
+                }
+                let granted = await queue.acquireDisk(disk, for: self)
+                isWaitingForDisk = false
+                if granted {
+                    pausedDisk = nil
+                    heldDisk = disk
+                }
+                guard granted, !control.isCancelled else { return }
+            }
+            control.resume()
+            state = .running
+            runningSince = ProcessInfo.processInfo.systemUptime
+            changed()
+        }
+    }
+
+    func cancel() {
+        guard canCancel else { return }
+        control.cancel()
+        decisionTask?.cancel()
+        queue?.stopWaiting(self)
+        if !started { finish() } else { changed() }
+    }
+
+    /// Runs the failed parts again: whole items that failed, single files inside items, or removing originals.
+    func retryFailed() {
+        guard canRetry else { return }
+        let previous = failures
+        failures = []
+        errorMessage = nil
+        control = TransferControl()
+        state = .scanning
+        isRunningPass = true
+        changed()
+        Task { await runRetry(previous) }
+    }
+
+    // MARK: - Running
+
+    func start() {
+        guard !started else { return }
+        started = true
+        isRunningPass = true
+        Task { await run() }
+    }
+
+    /// Waits until the current pass (first run or a retry) is over: finished, failed or cancelled.
+    func finished() async {
+        guard isRunningPass else { return }
+        await withCheckedContinuation { finishWaiters.append($0) }
+    }
+
+    private func run() async {
+        state = .scanning
+        changed()
+        plan()
+        await measure(items.indices.filter { items[$0].outcome == .pending })
+        if !control.isCancelled { await resolveConflicts() }
+        if !control.isCancelled, let problem = spaceProblem() {
+            errorMessage = problem
+            return finish()
+        }
+        if !control.isCancelled {
+            await execute(needsDisk: items.contains { $0.outcome == .pending && $0.operation != .rename }) {
+                await self.performPending()
+            }
+        }
+        finish()
+    }
+
+    private func runRetry(_ previous: [TransferFailure]) async {
+        var entries: [Int: [TransferFailure]] = [:]
+        for failure in previous {
+            switch failure.stage {
+            case .item:
+                items[failure.item].outcome = .pending
+                items[failure.item].decision = nil
+                planItem(failure.item)
+            case .copy, .verify, .removeSource:
+                entries[failure.item, default: []].append(failure)
+            }
+        }
+        let pending = items.indices.filter { items[$0].outcome == .pending }
+        progress.reset()
+        totalBytes = 0
+        totalFiles = 0
+        await measure(pending)
+        // Sizes of the individual files and folders being retried.
+        let retrySources = entries.values.flatMap { $0 }.filter { $0.stage != .removeSource }.map(\.source)
+        let control = control
+        let sizes = await worker.run { retrySources.map { TransferEngine.scan($0, control: control) } }
+        totalBytes += sizes.reduce(0) { $0 + ($1?.bytes ?? 0) }
+        totalFiles += sizes.reduce(0) { $0 + ($1?.files ?? 0) }
+
+        if !control.isCancelled, let problem = spaceProblem() {
+            errorMessage = problem
+            failures += previous.filter { $0.stage != .item }
+            return finish()
+        }
+        if !control.isCancelled {
+            let needsDisk = !entries.isEmpty || items.contains { $0.outcome == .pending && $0.operation != .rename }
+            await execute(needsDisk: needsDisk) {
+                await self.performPending()
+                for (index, list) in entries.sorted(by: { $0.key < $1.key }) {
+                    if self.control.isCancelled {
+                        self.failures += list
+                        continue
+                    }
+                    let item = self.items[index]
+                    let options = self.options, control = self.control, progress = self.progress
+                    let result = await self.worker.run {
+                        TransferEngine.retry(index, item, failures: list, options: options, control: control, progress: progress)
+                    }
+                    self.apply(result, to: index, isRetry: true)
+                }
+            }
+        } else {
+            failures += previous.filter { $0.stage != .item }
+        }
+        finish()
+    }
+
+    /// Waits for the destination disk if bytes need copying, then runs `body` in the running state.
+    private func execute(needsDisk: Bool, _ body: () async -> Void) async {
+        if needsDisk, let queue, let disk = TransferEngine.device(destination) {
+            if !queue.isDiskFree(disk, for: self) {
+                isWaitingForDisk = true
+                state = .queued
+                changed()
+            }
+            let granted = await queue.acquireDisk(disk, for: self)
+            isWaitingForDisk = false
+            if granted { heldDisk = disk }
+            guard granted, !control.isCancelled else { return }
+        }
+        state = control.isPaused ? .paused : .running
+        runningSince = ProcessInfo.processInfo.systemUptime
+        changed()
+        await body()
+    }
+
+    private func performPending() async {
+        for index in items.indices where items[index].outcome == .pending {
+            if control.isCancelled { break }
+            guard await prepare(index) else { continue }
+            let item = items[index]
+            let options = options, control = control, progress = progress
+            let result = await worker.run {
+                TransferEngine.perform(index, item, options: options, control: control, progress: progress)
+            }
+            apply(result, to: index, isRetry: false)
+        }
+    }
+
+    // MARK: - Planning
+
+    private func plan() {
+        for index in items.indices { planItem(index) }
+    }
+
+    /// Checks an item can be transferred at all and picks how: rename, copy, or copy then delete.
+    private func planItem(_ index: Int) {
+        let item = items[index]
+        let source = item.source
+        let parent = source.deletingLastPathComponent().standardizedFileURL.path
+        let folder = item.destination.deletingLastPathComponent().standardizedFileURL.path
+        let sameFolder = parent == folder
+        if !TransferEngine.exists(source) {
+            fail(index, "The item couldn’t be found")
+        } else if !TransferEngine.exists(item.destination.deletingLastPathComponent()) {
+            fail(index, "The destination folder couldn’t be found")
+        } else if folder == source.path || folder.hasPrefix(source.path + "/") {
+            fail(index, "A folder can’t be \(mode == .copy ? "copied" : "moved") into itself")
+        } else if mode == .move, sameFolder, item.destination.lastPathComponent == source.lastPathComponent {
+            items[index].outcome = .done   // Already there.
+        } else if mode == .copy {
+            items[index].operation = .copy
+            items[index].copyStyleName = sameFolder && item.destination.lastPathComponent == source.lastPathComponent
+        } else {
+            let sameDisk = TransferEngine.device(source) == TransferEngine.device(item.destination.deletingLastPathComponent())
+            items[index].operation = sameDisk ? .rename : .copyThenDelete
+        }
+    }
+
+    private func measure(_ indices: [Int]) async {
+        let renames = indices.filter { items[$0].operation == .rename }
+        for index in renames {
+            items[index].bytes = 0
+            items[index].files = 1
+        }
+        let copies = indices.filter { items[$0].operation != .rename }
+        let urls = copies.map { items[$0].source }
+        let control = control
+        let sizes = await worker.run { urls.map { TransferEngine.scan($0, control: control) } }
+        for (index, size) in zip(copies, sizes) {
+            items[index].bytes = size?.bytes ?? 0
+            items[index].files = max(1, size?.files ?? 1)
+        }
+        totalBytes += indices.reduce(0) { $0 + items[$1].bytes }
+        totalFiles += indices.reduce(0) { $0 + items[$1].files }
+        measured = true
+        changed()
+    }
+
+    /// Asks about every name clash before any byte moves, so a long copy never stalls halfway on a question.
+    private func resolveConflicts() async {
+        let clashes = items.indices.filter {
+            items[$0].outcome == .pending && !items[$0].copyStyleName && TransferEngine.exists(items[$0].destination)
+        }
+        for (position, index) in clashes.enumerated() {
+            guard !control.isCancelled else { return }
+            let decision = await decide(index, remaining: clashes.count - position)
+            apply(decision, to: index)
+        }
+    }
+
+    private func decide(_ index: Int, remaining: Int) async -> ConflictDecision {
+        if let rememberedDecision { return rememberedDecision }
+        let conflict = TransferConflict(mode: mode, source: items[index].source, existing: items[index].destination,
+                                        remaining: remaining)
+        isAwaitingDecision = true
+        changed()
+        let resolver = resolver
+        let task = Task { await resolver.resolve(conflict) }
+        decisionTask = task
+        let answer = await task.value
+        decisionTask = nil
+        isAwaitingDecision = false
+        if control.isCancelled { return .stop }
+        if answer.applyToAll, answer.decision != .stop { rememberedDecision = answer.decision }
+        return answer.decision
+    }
+
+    private func apply(_ decision: ConflictDecision, to index: Int) {
+        let item = items[index]
+        switch decision {
+        case .replace:
+            let existing = item.destination.standardizedFileURL.path
+            if item.source.path.hasPrefix(existing + "/") {
+                fail(index, "“\(item.destination.lastPathComponent)” can’t be replaced by an item inside it")
+            } else {
+                items[index].decision = .replace
+            }
+        case .keepBoth:
+            items[index].decision = .keepBoth
+        case .skip:
+            items[index].decision = .skip
+            items[index].outcome = .skipped
+            skippedCount += 1
+            totalBytes -= item.bytes
+            totalFiles -= item.files
+        case .stop:
+            cancel()
+        }
+        changed()
+    }
+
+    /// Picks the final name right before writing, and catches clashes that appeared since planning
+    /// (another app, or two sources with the same name). Returns false when the item shouldn't be written.
+    private func prepare(_ index: Int) async -> Bool {
+        let item = items[index]
+        if item.copyStyleName {
+            items[index].destination = FileOps.available(item.destination, copyStyle: true)
+        } else if item.decision == .keepBoth {
+            items[index].destination = FileOps.available(item.destination, copyStyle: false)
+        } else if item.decision == .replace {
+            if !TransferEngine.exists(item.destination) { items[index].decision = nil }
+        } else if TransferEngine.exists(item.destination) {
+            let decision = await decide(index, remaining: 1)
+            apply(decision, to: index)
+            if items[index].decision == .keepBoth {
+                items[index].destination = FileOps.available(item.destination, copyStyle: false)
+            }
+        }
+        return items[index].outcome == .pending && !control.isCancelled
+    }
+
+    /// Bytes that will really land on the destination disk (clones on the same APFS volume are free).
+    private func spaceProblem() -> String? {
+        guard let disk = TransferEngine.device(destination) else { return nil }
+        let values = try? destination.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey,
+                                                               .volumeAvailableCapacityKey,
+                                                               .volumeSupportsFileCloningKey, .volumeNameKey])
+        // "Important usage" counts purgeable space on the startup disk but reads 0 on many other volumes.
+        let available = max(values?.volumeAvailableCapacityForImportantUsage ?? 0, Int64(values?.volumeAvailableCapacity ?? 0))
+        guard available > 0 else { return nil }
+        let clones = options.clone && (values?.volumeSupportsFileCloning ?? false)
+        let needed = items.filter { $0.outcome == .pending && $0.operation != .rename }
+            .filter { !(clones && TransferEngine.device($0.source) == disk) }
+            .reduce(Int64(0)) { $0 + $1.bytes }
+        guard needed > available else { return nil }
+        let volume = values?.volumeName ?? "the disk"
+        return "Not enough space on “\(volume)”: \(Format.bytes(needed)) needed, \(Format.bytes(available)) available"
+    }
+
+    // MARK: - Results
+
+    private func fail(_ index: Int, _ message: String) {
+        items[index].outcome = .failed
+        failures.append(TransferFailure(item: index, stage: .item, source: items[index].source,
+                                        destination: items[index].destination, message: message))
+    }
+
+    private func apply(_ result: TransferItemResult, to index: Int, isRetry: Bool) {
+        items[index].outcome = result.outcome
+        items[index].destination = result.destination
+        failures += result.failures
+        switch result.outcome {
+        case .done, .partial:
+            if !isRetry {
+                completedItems += 1
+                createdItems.append(result.destination)
+                if result.sourceRemoved {
+                    journalMoved.append(TransferMove(from: items[index].source, to: result.destination))
+                } else {
+                    journalCreated.append(result.destination)
+                }
+            } else if result.sourceRemoved {
+                // A retry finished a cross-volume move: the earlier pass recorded it as a copy.
+                journalMoved.append(TransferMove(from: items[index].source, to: result.destination))
+            }
+            if let replaced = result.replaced { journalReplaced.append(replaced) }
+        case .cancelled:
+            items[index].outcome = .pending
+        case .pending, .failed, .skipped:
+            break
+        }
+        changed()
+    }
+
+    private func finish() {
+        if let disk = heldDisk {
+            queue?.releaseDisk(disk, for: self)
+            heldDisk = nil
+        }
+        pausedDisk = nil
+        isWaitingForDisk = false
+        queue?.stopWaiting(self)
+        sample(ProcessInfo.processInfo.systemUptime)
+        resetRate()
+        currentItemName = nil
+        isVerifying = false
+        isAwaitingDecision = false
+        if control.isCancelled {
+            state = .cancelled
+        } else if errorMessage != nil || (!failures.isEmpty && completedItems == 0) {
+            state = .failed
+        } else {
+            state = .finished
+        }
+        registerUndo()
+        FolderSizer.invalidate(destination)
+        for source in Set(sources.map { $0.deletingLastPathComponent() }) { FolderSizer.invalidate(source) }
+        changed()
+        queue?.jobDidFinish(self)
+        isRunningPass = false
+        onFinish?(self)
+        let waiters = finishWaiters
+        finishWaiters = []
+        waiters.forEach { $0.resume() }
+    }
+
+    private func registerUndo() {
+        let created = journalCreated, moved = journalMoved, replaced = journalReplaced
+        journalCreated = []
+        journalMoved = []
+        journalReplaced = []
+        // Items a retry finished moving were journaled as copies first; they're moves now.
+        let movedDestinations = Set(moved.map(\.to))
+        TransferUndo.register(created: created.filter { !movedDestinations.contains($0) }, moved: moved,
+                              replaced: replaced, actionName: mode == .copy ? "Copy" : "Move", undo: undoManager)
+    }
+
+    // MARK: - Progress
+
+    /// Pulls the worker's counters and updates throughput and time left. Called a few times a second by the queue.
+    func sample(_ now: TimeInterval) {
+        let snapshot = progress.snapshot
+        completedBytes = snapshot.bytes
+        completedFiles = snapshot.files
+        verifiedBytes = snapshot.verifiedBytes
+        isVerifying = snapshot.isVerifying
+        if state.isActive { currentItemName = snapshot.currentName }
+        guard state == .running else {
+            resetRate()
+            return
+        }
+        let work = completedWork
+        let bytes = completedBytes + verifiedBytes
+        if let last = samples.last, now - last.time < 0.1 { return }
+        samples.append((now, work, bytes))
+        while samples.count > 2, now - samples[0].time > Self.rateWindow { samples.removeFirst() }
+        if let first = samples.first, now - first.time >= 0.5 {
+            let dt = now - first.time
+            workRate = (work - first.work) / dt
+            throughput = Double(bytes - first.bytes) / dt
+        }
+        // Give the estimate a moment to settle before showing it.
+        if let since = runningSince, now - since >= 1.5, let rate = workRate, rate > 1 {
+            estimatedTimeRemaining = max(0, (totalWork - work) / rate)
+        } else {
+            estimatedTimeRemaining = nil
+        }
+    }
+
+    private func resetRate() {
+        samples = []
+        workRate = nil
+        throughput = nil
+        estimatedTimeRemaining = nil
+        runningSince = state == .running ? ProcessInfo.processInfo.systemUptime : nil
+    }
+
+    private func changed() {
+        queue?.jobDidChange(self)
+    }
+}

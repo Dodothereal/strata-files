@@ -1,0 +1,196 @@
+import AppKit
+
+/// The last column when a file is selected: a large thumbnail, the name, and compact metadata.
+final class ColumnPreviewPane: NSView {
+    private let imageView = NSImageView()
+    private let nameLabel = NSTextField(wrappingLabelWithString: "")
+    private let subtitle = NSTextField(labelWithString: "")
+    private let grid = NSGridView()
+    private var imageSide: NSLayoutConstraint!
+    private var imageHeight: NSLayoutConstraint!
+    private var labelColumnWidth: CGFloat = 0
+    private var entry: FileEntry?
+    private var thumbnailTicket: FileThumbnails.Ticket?
+    private var infoTicket: ItemInfoLoader.Ticket?
+    private var dimensionsField: NSTextField?
+
+    override var isFlipped: Bool { true }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.imageAlignment = .alignCenter
+        imageView.wantsLayer = true
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.setAccessibilityElement(false)
+
+        nameLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        nameLabel.alignment = .center
+        nameLabel.maximumNumberOfLines = 3
+        nameLabel.lineBreakMode = .byTruncatingMiddle
+        nameLabel.isSelectable = true
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        subtitle.font = FileViewStyle.detailFont
+        subtitle.textColor = .secondaryLabelColor
+        subtitle.alignment = .center
+        subtitle.lineBreakMode = .byTruncatingTail
+        subtitle.translatesAutoresizingMaskIntoConstraints = false
+        subtitle.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        grid.rowSpacing = 5
+        grid.columnSpacing = 8
+        grid.translatesAutoresizingMaskIntoConstraints = false
+
+        let separator = NSBox()
+        separator.boxType = .separator
+        separator.translatesAutoresizingMaskIntoConstraints = false
+
+        let stack = NSStackView(views: [imageView, nameLabel, subtitle, separator, grid])
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 4
+        stack.setCustomSpacing(14, after: imageView)
+        stack.setCustomSpacing(12, after: subtitle)
+        stack.setCustomSpacing(10, after: separator)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+
+        imageSide = imageView.widthAnchor.constraint(equalToConstant: 200)
+        imageHeight = imageView.heightAnchor.constraint(equalToConstant: 200)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 22),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
+            imageSide,
+            imageHeight,
+            nameLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            subtitle.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor),
+            separator.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            grid.widthAnchor.constraint(equalTo: stack.widthAnchor),
+        ])
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        // Preview as large as the column allows, within reason.
+        let side = min(max(bounds.width - 56, 96), 260).rounded()
+        if imageSide.constant != side {
+            imageSide.constant = side
+            fitImageHeight()
+            if let entry { requestThumbnail(entry, side: side) }
+        }
+        // Labels right-aligned to a shared axis a little left of center, values to its right.
+        let labelWidth = ((bounds.width - 36) * 0.4).rounded()
+        if labelWidth != labelColumnWidth, grid.numberOfColumns == 2 {
+            labelColumnWidth = labelWidth
+            grid.column(at: 0).width = labelWidth
+        }
+        super.layout()
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        guard superview == nil else { return }
+        FileThumbnails.shared.cancel(thumbnailTicket)
+        ItemInfoLoader.shared.cancel(infoTicket)
+        thumbnailTicket = nil
+        infoTicket = nil
+    }
+
+    func show(_ entry: FileEntry) {
+        self.entry = entry
+        nameLabel.stringValue = entry.name
+        subtitle.stringValue = [entry.kind, entry.size.map(Format.bytes)].compactMap { $0 }.joined(separator: " · ")
+        setAccessibilityLabel("Preview of \(entry.name)")
+        setImage(IconCache.shared.icon(for: entry), animated: false)
+        requestThumbnail(entry, side: imageSide.constant)
+
+        var rows: [(String, String)] = [
+            ("Created", Format.date(entry.created)),
+            ("Modified", Format.date(entry.modified)),
+        ]
+        if let added = entry.added { rows.append(("Added", Format.date(added))) }
+        let wantsDimensions = entry.contentType?.conforms(to: .image) == true
+        if wantsDimensions { rows.append(("Dimensions", "…")) }
+        setRows(rows)
+        if wantsDimensions {
+            ItemInfoLoader.shared.cancel(infoTicket)
+            infoTicket = ItemInfoLoader.shared.request(entry, showHidden: true) { [weak self] text in
+                guard let self, self.entry == entry else { return }
+                self.dimensionsField?.stringValue = text
+            }
+        }
+    }
+
+    /// Wide thumbnails get a shorter box so the name sits right under them; icons stay square.
+    private func fitImageHeight() {
+        let side = imageSide.constant
+        guard let image = imageView.image, image.size.width > 0 else {
+            imageHeight.constant = side
+            return
+        }
+        let aspect = image.size.height / image.size.width
+        var height = side * min(max(aspect, 0.45), 1)
+        if imageView.imageScaling == .scaleProportionallyDown {
+            height = min(height, max(image.size.height * min(side / image.size.width, 1), 64))
+        }
+        imageHeight.constant = height.rounded()
+    }
+
+    private func setImage(_ image: NSImage, animated: Bool, upscale: Bool = true) {
+        imageView.imageScaling = upscale ? .scaleProportionallyUpOrDown : .scaleProportionallyDown
+        if animated {
+            let fade = CATransition()
+            fade.type = .fade
+            fade.duration = 0.2
+            imageView.layer?.add(fade, forKey: "thumbnail")
+        }
+        imageView.image = image
+        fitImageHeight()
+    }
+
+    private func requestThumbnail(_ entry: FileEntry, side: CGFloat) {
+        FileThumbnails.shared.cancel(thumbnailTicket)
+        let scale = window?.backingScaleFactor ?? 2
+        if let cached = FileThumbnails.shared.cached(entry, size: side, scale: scale) {
+            setImage(cached.image, animated: false, upscale: !cached.exact)
+            if cached.exact { return }
+        }
+        thumbnailTicket = FileThumbnails.shared.request(entry, size: side, scale: scale) { [weak self] image in
+            guard let self, self.entry == entry else { return }
+            self.setImage(image, animated: true, upscale: false)
+        }
+    }
+
+    private func setRows(_ rows: [(String, String)]) {
+        while grid.numberOfRows > 0 {
+            let row = grid.row(at: 0)
+            for index in 0..<row.numberOfCells { row.cell(at: index).contentView?.removeFromSuperview() }
+            grid.removeRow(at: 0)
+        }
+        dimensionsField = nil
+        for (name, value) in rows {
+            let label = NSTextField(labelWithString: name)
+            label.font = FileViewStyle.detailFont
+            label.textColor = .secondaryLabelColor
+            label.alignment = .right
+            let field = NSTextField(labelWithString: value)
+            field.font = FileViewStyle.detailFont
+            field.lineBreakMode = .byTruncatingTail
+            field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            if name == "Dimensions" { dimensionsField = field }
+            grid.addRow(with: [label, field])
+        }
+        if grid.numberOfColumns == 2 {
+            grid.column(at: 0).xPlacement = .trailing
+            grid.column(at: 1).xPlacement = .leading
+            labelColumnWidth = 0
+            needsLayout = true
+        }
+    }
+}

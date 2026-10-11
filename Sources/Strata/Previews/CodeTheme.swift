@@ -1,0 +1,73 @@
+import AppKit
+
+/// Xcode's default light and dark palettes, as dynamic colors that follow the view's appearance.
+nonisolated enum CodeTheme {
+    static let fontSize: CGFloat = 11.5
+
+    static let text = NSColor.labelColor
+    static let comment = dynamic(light: 0x5D6C79, dark: 0x7F8C98)
+    static let string = dynamic(light: 0xC41A16, dark: 0xFC6A5D)
+    static let number = dynamic(light: 0x1C00CF, dark: 0xD0BF69)
+    static let keyword = dynamic(light: 0x9B2393, dark: 0xFC5FA3)
+    static let type = dynamic(light: 0x3900A0, dark: 0xD0A8FF)
+    static let function = dynamic(light: 0x326D74, dark: 0x67B7A4)
+    static let declaration = dynamic(light: 0x0F68A0, dark: 0x41A1C0)
+    static let attribute = dynamic(light: 0x815F03, dark: 0xBF8555)
+    static let preprocessor = dynamic(light: 0x643820, dark: 0xFD8F3F)
+    static let key = dynamic(light: 0x0B4F79, dark: 0x5DD8FF)
+    static let inserted = dynamic(light: 0x1F7A33, dark: 0x6BD68A)
+    static let deleted = dynamic(light: 0xB3261E, dark: 0xFF7B72)
+
+    static func color(for kind: TokenKind) -> NSColor {
+        switch kind {
+        case .comment, .meta: comment
+        case .string: string
+        case .number: number
+        case .keyword: keyword
+        case .type: type
+        case .function: function
+        case .declaration: declaration
+        case .attribute: attribute
+        case .preprocessor: preprocessor
+        case .key: key
+        case .tag: keyword
+        case .inserted: inserted
+        case .deleted: deleted
+        }
+    }
+
+    static func font(size: CGFloat = fontSize) -> NSFont { .monospacedSystemFont(ofSize: size, weight: .regular) }
+    static func boldFont(size: CGFloat = fontSize) -> NSFont { .monospacedSystemFont(ofSize: size, weight: .semibold) }
+
+    /// Width of one column.
+    static func advance(of font: NSFont) -> CGFloat { font.maximumAdvancement.width }
+
+    /// Font, color, four-column tabs and a fixed, airy line height, so every line is exactly one fragment of equal height.
+    static func baseAttributes(size: CGFloat = fontSize) -> [NSAttributedString.Key: Any] {
+        let font = font(size: size)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.tabStops = []
+        paragraph.defaultTabInterval = 4 * advance(of: font)
+        paragraph.minimumLineHeight = (size * 1.45).rounded()
+        paragraph.maximumLineHeight = (size * 1.45).rounded()
+        return [.font: font, .foregroundColor: text, .paragraphStyle: paragraph, .ligature: 0]
+    }
+
+    /// Colors `tokens` into `storage` (whose base attributes are already set). Keywords and diff headers are set in semibold.
+    static func apply(_ tokens: [Token], to storage: NSMutableAttributedString, offset: Int = 0, size: CGFloat = fontSize) {
+        let bold = boldFont(size: size)
+        for token in tokens {
+            let range = NSRange(location: token.location + offset, length: token.length)
+            storage.addAttribute(.foregroundColor, value: color(for: token.kind), range: range)
+            if token.kind == .keyword || token.kind == .meta { storage.addAttribute(.font, value: bold, range: range) }
+        }
+    }
+
+    private static func dynamic(light: UInt32, dark: UInt32) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let hex = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            return NSColor(srgbRed: CGFloat(hex >> 16 & 0xFF) / 255, green: CGFloat(hex >> 8 & 0xFF) / 255,
+                           blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+        }
+    }
+}

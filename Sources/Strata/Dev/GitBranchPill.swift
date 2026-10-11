@@ -1,0 +1,273 @@
+import AppKit
+
+/// A capsule after the repository's crumb in the path bar: branch symbol, branch name, ↑ahead ↓behind, and a dot when
+/// the work tree has changes (or the operation in progress, like "Merging"). Click for a menu to copy the branch or
+/// commit. Draws itself; sizes to its content.
+final class GitBranchPill: NSView {
+    struct Model: Equatable {
+        var branch: String
+        var isDetached = false
+        var oid: String?
+        var upstream: String?
+        var ahead = 0
+        var behind = 0
+        /// Changed paths (excluding ignored), or nil while unknown.
+        var changes: Int?
+        var conflicts = 0
+        var operation: String?
+        var stashCount = 0
+        var isStale = false
+
+        init(branch: String, isDetached: Bool = false) {
+            self.branch = branch
+            self.isDetached = isDetached
+        }
+
+        init(_ snapshot: GitStatusSnapshot) {
+            branch = snapshot.branch.displayName
+            isDetached = snapshot.branch.isDetached
+            oid = snapshot.branch.oid
+            upstream = snapshot.branch.upstream
+            ahead = snapshot.branch.ahead
+            behind = snapshot.branch.behind
+            changes = snapshot.isComplete ? snapshot.counts.changed : nil
+            conflicts = snapshot.counts.conflicted
+            operation = snapshot.operation?.title
+            stashCount = snapshot.stashCount
+            isStale = !snapshot.isComplete
+        }
+
+        /// Before status arrives: the branch straight from HEAD, so the pill shows up with the crumbs.
+        init?(placeholderFor repository: GitRepository) {
+            guard let name = repository.currentBranchName() else { return nil }
+            self.init(branch: name)
+        }
+    }
+
+    var model: Model? {
+        didSet {
+            guard model != oldValue else { return }
+            isHidden = model == nil
+            updateAccessibility()
+            invalidateIntrinsicContentSize()
+            needsDisplay = true
+        }
+    }
+
+    /// Replaces the built-in menu (copy branch / commit) when set.
+    var onClick: ((GitBranchPill) -> Void)?
+
+    private var hovering = false
+    private var tracking: NSTrackingArea?
+
+    private static let height: CGFloat = 22
+    private static let padding: CGFloat = 8
+    private static let symbolSlot: CGFloat = 14
+    private static let maxNameWidth: CGFloat = 180
+    private static let nameFont = NSFont.systemFont(ofSize: 12, weight: .medium)
+    private static let countFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+    private static let tagFont = NSFont.systemFont(ofSize: 10, weight: .semibold)
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        isHidden = true
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+
+    // MARK: Layout
+
+    private struct Layout {
+        var symbol: NSImage?
+        var name: NSAttributedString
+        var nameWidth: CGFloat
+        var counts: NSAttributedString?
+        var tag: NSAttributedString?
+        var dot: NSColor?
+        var width: CGFloat
+    }
+
+    private func makeLayout() -> Layout? {
+        guard let model else { return nil }
+        let symbolName = model.isDetached ? "smallcircle.filled.circle" : "arrow.triangle.branch"
+        let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 12, weight: .medium)
+                .applying(.init(paletteColors: [.secondaryLabelColor])))
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byTruncatingMiddle
+        let nameFont = model.isDetached ? NSFont.monospacedSystemFont(ofSize: 11.5, weight: .medium) : Self.nameFont
+        let name = NSAttributedString(string: model.branch, attributes: [
+            .font: nameFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraph,
+        ])
+        let nameWidth = min(ceil(name.size().width), Self.maxNameWidth)
+
+        var countText: [String] = []
+        if model.ahead > 0 { countText.append("↑\(model.ahead)") }
+        if model.behind > 0 { countText.append("↓\(model.behind)") }
+        let counts = countText.isEmpty ? nil : NSAttributedString(string: countText.joined(separator: " "), attributes: [
+            .font: Self.countFont, .foregroundColor: NSColor.secondaryLabelColor,
+        ])
+
+        var tag: NSAttributedString?
+        if let operation = model.operation {
+            tag = NSAttributedString(string: operation.uppercased(), attributes: [
+                .font: Self.tagFont, .foregroundColor: GitColors.conflicted, .kern: 0.4,
+            ])
+        }
+        var dot: NSColor?
+        if tag == nil, let changes = model.changes, changes > 0 {
+            dot = model.conflicts > 0 ? GitColors.conflicted : GitColors.modified
+        }
+
+        var width = Self.padding + Self.symbolSlot + 4 + nameWidth
+        if let counts { width += 6 + ceil(counts.size().width) }
+        if let tag { width += 6 + ceil(tag.size().width) }
+        if dot != nil { width += 6 + 6 }
+        width += Self.padding
+        return Layout(symbol: symbol, name: name, nameWidth: nameWidth, counts: counts, tag: tag, dot: dot, width: width)
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: makeLayout()?.width ?? 0, height: Self.height)
+    }
+
+    // MARK: Drawing
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let layout = makeLayout() else { return }
+        let capsule = NSRect(x: 0, y: (bounds.height - Self.height) / 2, width: bounds.width, height: Self.height)
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let fill = NSColor.labelColor.withAlphaComponent((dark ? 0.10 : 0.06) + (hovering ? 0.05 : 0))
+        fill.setFill()
+        NSBezierPath(roundedRect: capsule, xRadius: Self.height / 2, yRadius: Self.height / 2).fill()
+
+        var x = Self.padding
+        let midY = capsule.midY
+        if let symbol = layout.symbol {
+            let size = symbol.size
+            symbol.draw(in: NSRect(x: x + (Self.symbolSlot - size.width) / 2, y: midY - size.height / 2, width: size.width, height: size.height),
+                        from: .zero, operation: .sourceOver, fraction: model?.isStale == true ? 0.5 : 1,
+                        respectFlipped: true, hints: nil)
+        }
+        x += Self.symbolSlot + 4
+        let nameHeight = layout.name.size().height
+        layout.name.draw(with: NSRect(x: x, y: midY - nameHeight / 2, width: layout.nameWidth, height: nameHeight),
+                         options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+        x += layout.nameWidth
+        if let counts = layout.counts {
+            x += 6
+            let size = counts.size()
+            counts.draw(at: NSPoint(x: x, y: midY - size.height / 2))
+            x += ceil(size.width)
+        }
+        if let tag = layout.tag {
+            x += 6
+            let size = tag.size()
+            tag.draw(at: NSPoint(x: x, y: midY - size.height / 2))
+            x += ceil(size.width)
+        }
+        if let dot = layout.dot {
+            x += 6
+            dot.setFill()
+            NSBezierPath(ovalIn: NSRect(x: x, y: midY - 3, width: 6, height: 6)).fill()
+        }
+    }
+
+    // MARK: Interaction
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp], owner: self)
+        addTrackingArea(area)
+        tracking = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true; needsDisplay = true }
+    override func mouseExited(with event: NSEvent) { hovering = false; needsDisplay = true }
+
+    // Handled here so a click on the pill doesn't fall through to the path bar and start editing.
+    override func mouseDown(with event: NSEvent) {
+        activate()
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        activate()
+        return true
+    }
+
+    private func activate() {
+        if let onClick { onClick(self) } else { showMenu() }
+    }
+
+    private func showMenu() {
+        guard let model else { return }
+        let menu = NSMenu()
+        func info(_ title: String) {
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            menu.addItem(item)
+        }
+        if let upstream = model.upstream {
+            var line = "Tracking \(upstream)"
+            if model.ahead > 0 || model.behind > 0 { line += " · \(model.ahead) ahead, \(model.behind) behind" }
+            info(line)
+        } else if !model.isDetached {
+            info("No upstream branch")
+        }
+        if let changes = model.changes { info(changes == 0 ? "Working tree clean" : Format.count(changes, "changed file", "changed files")) }
+        if model.stashCount > 0 { info(Format.count(model.stashCount, "stash", "stashes")) }
+        menu.addItem(.separator())
+        let copyBranch = NSMenuItem(title: model.isDetached ? "Copy Commit ID" : "Copy Branch Name",
+                                    action: #selector(copyBranch), keyEquivalent: "")
+        copyBranch.target = self
+        menu.addItem(copyBranch)
+        if !model.isDetached, model.oid != nil {
+            let copyCommit = NSMenuItem(title: "Copy Commit ID", action: #selector(copyCommit), keyEquivalent: "")
+            copyCommit.target = self
+            menu.addItem(copyCommit)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.height + 4), in: self)
+    }
+
+    @objc private func copyBranch() {
+        guard let model else { return }
+        copy(model.isDetached ? (model.oid ?? model.branch) : model.branch)
+    }
+
+    @objc private func copyCommit() {
+        if let oid = model?.oid { copy(oid) }
+    }
+
+    private func copy(_ string: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(string, forType: .string)
+    }
+
+    private func updateAccessibility() {
+        guard let model else {
+            setAccessibilityLabel(nil)
+            toolTip = nil
+            return
+        }
+        var parts = [model.isDetached ? "Detached at \(model.branch)" : "Branch \(model.branch)"]
+        if let operation = model.operation { parts.append(operation) }
+        if model.ahead > 0 { parts.append("\(model.ahead) ahead") }
+        if model.behind > 0 { parts.append("\(model.behind) behind") }
+        if let changes = model.changes { parts.append(changes == 0 ? "no changes" : Format.count(changes, "change", "changes")) }
+        if model.isStale { parts.append("status timed out") }
+        setAccessibilityLabel(parts.joined(separator: ", "))
+        var tip = model.isDetached ? "Detached HEAD at \(model.branch)" : "On branch \(model.branch)"
+        if let upstream = model.upstream { tip += "\nTracking \(upstream)" }
+        if model.ahead > 0 || model.behind > 0 { tip += "\n\(model.ahead) ahead, \(model.behind) behind" }
+        if let changes = model.changes { tip += "\n" + (changes == 0 ? "Working tree clean" : Format.count(changes, "changed file", "changed files")) }
+        if model.isStale { tip += "\ngit status timed out; showing the last known state" }
+        toolTip = tip
+    }
+}

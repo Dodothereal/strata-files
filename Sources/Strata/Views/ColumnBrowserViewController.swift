@@ -1,0 +1,807 @@
+import AppKit
+
+/// Miller columns: the browser's folder in the first column (fed by the browser, so its filter and sort apply),
+/// each selected folder opening the next column to the right, and a compact preview after a selected file.
+final class ColumnBrowserViewController: NSViewController, FileCollectionController {
+    weak var fileDelegate: FileCollectionViewDelegate?
+    /// The folder the user is "in": the selected folder, or the folder of the focused column. Drive the path bar
+    /// and window title from it (without reloading the browser).
+    var onLocationChange: ((URL) -> Void)?
+    /// Order for columns this view loads itself (the first column keeps the browser's order).
+    var sortComparator: @MainActor (FileEntry, FileEntry) -> Bool = ColumnBrowserViewController.defaultOrder
+    var showHidden: () -> Bool = { Prefs.showHidden }
+    var defaultColumnWidth: CGFloat = 230
+    var previewColumnWidth: CGFloat = 290
+
+    private(set) var root: URL?
+    private(set) var location: URL?
+    private var panes: [ColumnPane] = []
+    private var preview: ColumnPreviewPane?
+    private var activeIndex = 0
+    private var widths: [Int: CGFloat] = [:]
+    private let scrollView = NSScrollView()
+    private let strip = ColumnStripView()
+    /// Folders still to select, outermost first, while revealing a deep path.
+    private var pendingReveal: [URL] = []
+    private var focusWhenLoaded: ColumnPane?
+    private var lastReportedSelection: [URL] = []
+    private var renameField: InlineRenameField?
+
+    static func defaultOrder(_ a: FileEntry, _ b: FileEntry) -> Bool {
+        if Prefs.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
+        return a.name.localizedStandardCompare(b.name) == .orderedAscending
+    }
+
+    override func loadView() {
+        scrollView.documentView = strip
+        scrollView.hasHorizontalScroller = true
+        scrollView.hasVerticalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.horizontalScrollElasticity = .allowed
+        scrollView.verticalScrollElasticity = .none
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = .controlBackgroundColor
+        // The strip runs under the toolbar; each column's own scroll view insets its rows below it. Insetting the strip
+        // as well left the first rows hidden when the view was created before it had a window.
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsets()
+        view = scrollView
+        NotificationCenter.default.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        layoutColumns()
+    }
+
+    var focusView: NSView { activePane?.tableView ?? view }
+
+    private var activePane: ColumnPane? { panes.indices.contains(activeIndex) ? panes[activeIndex] : panes.first }
+
+    /// The folder shown by the focused column (new folders, pastes and background menus belong here).
+    var activeDirectory: URL? { activePane?.folder }
+
+    // MARK: - Content
+
+    /// Shows `folder` in the first column with the browser's (filtered, sorted) entries. Calling again with the same
+    /// folder updates the first column and keeps the columns opened from it as long as their folder is still selected.
+    func setRoot(_ folder: URL, entries: [FileEntry], matches: [URL: [Int]] = [:]) {
+        loadViewIfNeeded()
+        let keyed = Dictionary(matches.map { ($0.key.fileViewKey, $0.value) }, uniquingKeysWith: { a, _ in a })
+        if root?.fileViewKey != folder.fileViewKey || panes.isEmpty {
+            root = folder
+            removeColumns(after: -1)
+            let pane = makePane(folder, depth: 0)
+            pane.isRoot = true
+            panes = [pane]
+            activeIndex = 0
+            pane.setEntries(entries, matches: keyed)
+            layoutColumns()
+            scrollView.contentView.scroll(to: .zero)
+            reportLocation()
+            return
+        }
+        panes[0].setEntries(entries, matches: keyed)
+    }
+
+    var selectedEntries: [FileEntry] { activePane?.selectedEntries ?? [] }
+
+    /// Selects children of the first column; a single deeper URL is revealed column by column.
+    func select(_ urls: [URL], scroll: Bool = true) {
+        guard let rootPane = panes.first else { return }
+        let rootKey = root?.fileViewKey
+        if urls.count == 1, let url = urls.first, url.deletingLastPathComponent().fileViewKey != rootKey {
+            reveal(url)
+            return
+        }
+        rootPane.select(urls, scroll: scroll)
+    }
+
+    /// Opens the columns down to `url` (inside the root) and selects it.
+    func reveal(_ url: URL) {
+        guard let root else { return }
+        let rootPath = root.fileViewKey
+        let path = url.fileViewKey
+        guard path.hasPrefix(rootPath == "/" ? "/" : rootPath + "/") else { return }
+        var chain: [URL] = []
+        var current = URL(fileURLWithPath: path)
+        while current.fileViewKey != rootPath, current.path != "/" {
+            chain.insert(current, at: 0)
+            current = current.deletingLastPathComponent()
+        }
+        pendingReveal = chain
+        removeColumns(after: 0)
+        continueReveal()
+    }
+
+    private func continueReveal() {
+        guard let next = pendingReveal.first, let pane = panes.last, pane.isLoaded else { return }
+        guard next.deletingLastPathComponent().fileViewKey == pane.folder.fileViewKey else {
+            pendingReveal = []
+            return
+        }
+        pendingReveal.removeFirst()
+        pane.select([next], scroll: true)
+        if pendingReveal.isEmpty {
+            view.window?.makeFirstResponder(pane.tableView)
+        }
+    }
+
+    func screenRect(for url: URL) -> NSRect? {
+        for pane in panes.reversed() {
+            if let rect = pane.iconRect(for: url), let window = view.window {
+                guard pane.tableView.visibleRect.intersects(rect) else { return nil }
+                return window.convertToScreen(pane.tableView.convert(rect, to: nil))
+            }
+        }
+        return nil
+    }
+
+    // MARK: - Columns
+
+    private func makePane(_ folder: URL, depth: Int) -> ColumnPane {
+        let pane = ColumnPane(folder: folder, controller: self)
+        pane.width = widths[depth] ?? defaultColumnWidth
+        strip.addSubview(pane)
+        return pane
+    }
+
+    private func removeColumns(after index: Int) {
+        while panes.count > index + 1 {
+            let pane = panes.removeLast()
+            pane.tearDown()
+            pane.removeFromSuperview()
+        }
+        preview?.removeFromSuperview()
+        preview = nil
+        if focusWhenLoaded.map({ !panes.contains($0) }) ?? false { focusWhenLoaded = nil }
+    }
+
+    private func layoutColumns() {
+        let clip = scrollView.contentView.bounds
+        var x: CGFloat = 0
+        for pane in panes {
+            pane.frame = NSRect(x: x, y: 0, width: pane.width, height: clip.height)
+            x += pane.width
+        }
+        if let preview {
+            // The preview takes at least its width, and whatever room is left to the right.
+            let width = max(previewColumnWidth, clip.width - x)
+            preview.frame = NSRect(x: x, y: 0, width: width, height: clip.height)
+            x += width
+        }
+        strip.frame = NSRect(x: 0, y: 0, width: max(x, clip.width), height: clip.height)
+    }
+
+    /// Scrolls so the last column (or `pane`) is fully visible.
+    private func revealColumns(animated: Bool, pane: NSView? = nil) {
+        layoutColumns()
+        let clip = scrollView.contentView
+        let target = (pane ?? preview ?? panes.last)?.frame ?? .zero
+        var origin = clip.bounds.origin
+        let visible = clip.bounds
+        if target.maxX > visible.maxX { origin.x = target.maxX - visible.width }
+        if target.minX < origin.x { origin.x = target.minX }
+        origin.x = max(0, min(origin.x, strip.frame.width - visible.width))
+        guard origin != visible.origin else { return }
+        if animated, view.window != nil {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.22
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                clip.animator().setBoundsOrigin(origin)
+            } completionHandler: { [weak self] in
+                MainActor.assumeIsolated { self.map { $0.scrollView.reflectScrolledClipView($0.scrollView.contentView) } }
+            }
+        } else {
+            clip.setBoundsOrigin(origin)
+            scrollView.reflectScrolledClipView(clip)
+        }
+    }
+
+    // MARK: - Pane callbacks
+
+    fileprivate func selectionChanged(in pane: ColumnPane) {
+        guard let index = panes.firstIndex(where: { $0 === pane }) else { return }
+        activeIndex = index
+        let selected = pane.selectedEntries
+        if selected.count == 1, let entry = selected.first, entry.isFolder {
+            if panes.count > index + 1, panes[index + 1].folder.fileViewKey == entry.url.fileViewKey {
+                removeColumns(after: index + 1)
+            } else {
+                removeColumns(after: index)
+                let next = makePane(entry.url, depth: index + 1)
+                panes.append(next)
+                next.load(showHidden: showHidden(), order: sortComparator)
+            }
+        } else {
+            removeColumns(after: index)
+            if selected.count == 1, let entry = selected.first {
+                let preview = ColumnPreviewPane()
+                strip.addSubview(preview)
+                self.preview = preview
+                preview.show(entry)
+            }
+        }
+        revealColumns(animated: true)
+        reportSelection()
+        reportLocation()
+    }
+
+    fileprivate func paneLoaded(_ pane: ColumnPane) {
+        if focusWhenLoaded === pane {
+            focusWhenLoaded = nil
+            if pane.entries.isEmpty == false {
+                pane.selectRow(0)
+                view.window?.makeFirstResponder(pane.tableView)
+            }
+        }
+        continueReveal()
+    }
+
+    fileprivate func paneBecameActive(_ pane: ColumnPane) {
+        guard let index = panes.firstIndex(where: { $0 === pane }), index != activeIndex else { return }
+        activeIndex = index
+        reportSelection()
+        reportLocation()
+    }
+
+    fileprivate func moveRight(from pane: ColumnPane) {
+        guard let index = panes.firstIndex(where: { $0 === pane }), panes.count > index + 1 else { return }
+        let next = panes[index + 1]
+        if !next.isLoaded {
+            focusWhenLoaded = next
+            return
+        }
+        guard !next.entries.isEmpty else { return }
+        if next.tableView.selectedRow < 0 { next.selectRow(0) }
+        view.window?.makeFirstResponder(next.tableView)
+        revealColumns(animated: true, pane: preview ?? panes.last)
+    }
+
+    fileprivate func moveLeft(from pane: ColumnPane) {
+        guard let index = panes.firstIndex(where: { $0 === pane }), index > 0 else { return }
+        let previous = panes[index - 1]
+        // The column stays (it shows the selected folder's contents) but loses its selection, like Finder.
+        pane.deselectAll()
+        removeColumns(after: index)
+        activeIndex = index - 1
+        view.window?.makeFirstResponder(previous.tableView)
+        revealColumns(animated: true, pane: previous)
+        reportSelection()
+        reportLocation()
+    }
+
+    fileprivate func open(from pane: ColumnPane) {
+        let entries = pane.selectedEntries
+        guard !entries.isEmpty else { return }
+        // Folders are already open in the next column; only files (and packages) open.
+        let files = entries.filter { !$0.isFolder }
+        if !files.isEmpty { fileDelegate?.fileView(self, open: files) }
+    }
+
+    fileprivate func handleKey(_ key: FileViewKey, in pane: ColumnPane) -> Bool {
+        // Filtering applies to the browser's folder only; deeper columns use type-select.
+        if case .type = key, !pane.isRoot { return false }
+        if key == .backspace, !pane.isRoot { return false }
+        if fileDelegate?.fileView(self, handle: key) == true { return true }
+        if key == .returnKey {
+            open(from: pane)
+            return true
+        }
+        return false
+    }
+
+    fileprivate func menu(for pane: ColumnPane) -> NSMenu? {
+        if let index = panes.firstIndex(where: { $0 === pane }) { activeIndex = index }
+        reportSelection(force: true)
+        return fileDelegate?.fileView(self, menuFor: pane.selectedEntries)
+    }
+
+    fileprivate func drop(_ urls: [URL], onto folder: URL, from pane: ColumnPane, copy: Bool) -> Bool {
+        // A drop on the first column's background is a drop on the browser's folder.
+        let target: URL? = pane.isRoot && folder.fileViewKey == pane.folder.fileViewKey ? nil : folder
+        return fileDelegate?.fileView(self, drop: urls, onto: target, copy: copy) ?? false
+    }
+
+    fileprivate func resize(_ pane: ColumnPane, to width: CGFloat, all: Bool) {
+        let width = min(max(width, 140), 640)
+        if all {
+            for (i, p) in panes.enumerated() {
+                p.width = width
+                widths[i] = width
+            }
+            defaultColumnWidth = width
+        } else if let index = panes.firstIndex(where: { $0 === pane }) {
+            pane.width = width
+            widths[index] = width
+        }
+        layoutColumns()
+    }
+
+    private func reportSelection(force: Bool = false) {
+        let urls = selectedEntries.map(\.url)
+        guard force || urls != lastReportedSelection else { return }
+        lastReportedSelection = urls
+        fileDelegate?.fileView(self, selectionDidChange: urls)
+    }
+
+    private func reportLocation() {
+        guard let pane = activePane else { return }
+        let selected = pane.selectedEntries
+        let url = selected.count == 1 && selected[0].isFolder ? selected[0].url : pane.folder
+        guard url.fileViewKey != location?.fileViewKey else { return }
+        location = url
+        onLocationChange?(url)
+    }
+
+    @objc private func clipboardChanged() {
+        for pane in panes { pane.refreshVisibleRows() }
+    }
+
+    // MARK: - Rename
+
+    @discardableResult
+    func beginRename(_ url: URL) -> Bool {
+        guard let pane = panes.last(where: { $0.row(for: url) != nil }), let row = pane.row(for: url) else { return false }
+        let entry = pane.entries[row]
+        pane.tableView.scrollRowToVisible(row)
+        guard let cell = pane.tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? ColumnCellView else { return false }
+        renameField?.removeFromSuperview()
+        let field = InlineRenameField(name: entry.name, isFolder: entry.isFolder, centered: false)
+        let labelFrame = cell.nameCell.convert(cell.nameCell.textField?.frame ?? cell.bounds, to: pane.tableView)
+        field.frame = NSRect(x: labelFrame.minX - 3, y: labelFrame.midY - 10, width: max(pane.tableView.bounds.width - labelFrame.minX - 8, 80), height: 20)
+        cell.nameCell.textField?.isHidden = true
+        field.onCommit = { [weak self] name in
+            guard let self, name != entry.name else { return }
+            self.fileDelegate?.fileView(self, rename: entry, to: name)
+        }
+        field.onEnd = { [weak self, weak cell, weak pane] in
+            cell?.nameCell.textField?.isHidden = false
+            self?.renameField = nil
+            if let pane {
+                self?.view.window?.makeFirstResponder(pane.tableView)
+                pane.applyDeferred()
+            }
+        }
+        pane.tableView.addSubview(field)
+        renameField = field
+        field.begin(in: view.window)
+        return true
+    }
+}
+
+// MARK: - Strip
+
+/// Document view holding the columns side by side.
+final class ColumnStripView: NSView {
+    override var isFlipped: Bool { true }
+}
+
+// MARK: - Folder column
+
+final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
+    let folder: URL
+    var isRoot = false
+    var width: CGFloat = 230
+    private(set) var entries: [FileEntry] = []
+    private(set) var isLoaded = false
+    private var matches: [String: [Int]] = [:]
+    private var rowByKey: [String: Int] = [:]
+    private weak var controller: ColumnBrowserViewController?
+    let tableView = ColumnTableView()
+    private let scrollView = NSScrollView()
+    private let divider = ColumnDividerView()
+    private let spinner = NSProgressIndicator()
+    private var watcher: DirectoryWatcher?
+    private var generation = 0
+    private var suppressSelection = false
+    private var order: (@MainActor (FileEntry, FileEntry) -> Bool)?
+    private var deferred: ([FileEntry], [String: [Int]])?
+
+    func applyDeferred() {
+        guard let (entries, matches) = deferred else { return }
+        deferred = nil
+        setEntries(entries, matches: matches)
+    }
+    private var showHidden = false
+
+    init(folder: URL, controller: ColumnBrowserViewController) {
+        self.folder = folder
+        self.controller = controller
+        super.init(frame: .zero)
+
+        let column = NSTableColumn(identifier: .init("name"))
+        column.resizingMask = .autoresizingMask
+        tableView.addTableColumn(column)
+        tableView.headerView = nil
+        tableView.style = .inset
+        tableView.rowHeight = 24
+        tableView.intercellSpacing = NSSize(width: 0, height: 0)
+        tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        tableView.allowsMultipleSelection = true
+        tableView.allowsEmptySelection = true
+        tableView.allowsTypeSelect = true
+        tableView.focusRingType = .none
+        tableView.backgroundColor = .controlBackgroundColor
+        tableView.dataSource = self
+        tableView.delegate = self
+        tableView.target = self
+        tableView.doubleAction = #selector(doubleClicked(_:))
+        tableView.registerForDraggedTypes([.fileURL])
+        tableView.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
+        tableView.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
+        tableView.draggingDestinationFeedbackStyle = .regular
+        tableView.pane = self
+        tableView.setAccessibilityLabel(FileManager.default.displayName(atPath: folder.path))
+
+        scrollView.documentView = tableView
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.drawsBackground = false
+        // The column view sits between the toolbar and the status bar, so no automatic insets.
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsets()
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsets(top: 4, left: 0, bottom: 4, right: 0)
+        addSubview(scrollView)
+
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isDisplayedWhenStopped = false
+        addSubview(spinner)
+
+        divider.onDrag = { [weak self] delta, all, start in
+            guard let self else { return }
+            self.controller?.resize(self, to: start + delta, all: all)
+        }
+        divider.startWidth = { [weak self] in self?.width ?? 0 }
+        divider.onDoubleClick = { [weak self] in
+            guard let self else { return }
+            self.controller?.resize(self, to: self.fittingWidth, all: false)
+        }
+        addSubview(divider)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+
+    override func layout() {
+        super.layout()
+        scrollView.frame = NSRect(x: 0, y: 0, width: bounds.width - 1, height: bounds.height)
+        divider.frame = NSRect(x: bounds.width - 5, y: 0, width: 5, height: bounds.height)
+        spinner.sizeToFit()
+        spinner.frame.origin = NSPoint(x: (bounds.width - spinner.frame.width) / 2, y: 40)
+    }
+
+    override func resizeSubviews(withOldSize oldSize: NSSize) {
+        super.resizeSubviews(withOldSize: oldSize)
+        needsLayout = true
+    }
+
+    func tearDown() {
+        generation += 1
+        watcher = nil
+    }
+
+    // MARK: Loading
+
+    func load(showHidden: Bool, order: @escaping @MainActor (FileEntry, FileEntry) -> Bool) {
+        self.order = order
+        self.showHidden = showHidden
+        watcher = DirectoryWatcher(url: folder) { [weak self] in self?.reload() }
+        reload()
+    }
+
+    private func reload() {
+        generation += 1
+        let gen = generation
+        let folder = folder
+        let showHidden = showHidden
+        if !isLoaded {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, !self.isLoaded, gen == self.generation else { return }
+                    self.spinner.startAnimation(nil)
+                }
+            }
+        }
+        Task { [weak self] in
+            let entries = (try? await DirectoryLoader.load(folder, showHidden: showHidden)) ?? []
+            guard let self, gen == self.generation else { return }
+            let sorted = self.order.map { entries.sorted(by: $0) } ?? entries
+            self.spinner.stopAnimation(nil)
+            self.setEntries(sorted, matches: [:])
+        }
+    }
+
+    /// Replaces the rows, keeping the selection by URL. If selected items disappeared, the controller hears about it.
+    func setEntries(_ entries: [FileEntry], matches: [String: [Int]]) {
+        // A refresh while renaming in this column would reload under the field; apply it afterwards.
+        if tableView.subviews.contains(where: { $0 is InlineRenameField }) {
+            deferred = (entries, matches)
+            return
+        }
+        let wasLoaded = isLoaded
+        let before = selectedKeys
+        self.entries = entries
+        self.matches = matches
+        rowByKey.removeAll(keepingCapacity: true)
+        for (i, entry) in entries.enumerated() { rowByKey[entry.url.fileViewKey] = i }
+        isLoaded = true
+        suppressSelection = true
+        tableView.reloadData()
+        let rows = IndexSet(before.compactMap { rowByKey[$0] })
+        tableView.selectRowIndexes(rows, byExtendingSelection: false)
+        suppressSelection = false
+        if rows.count != before.count { controller?.selectionChanged(in: self) }
+        if !wasLoaded { controller?.paneLoaded(self) }
+    }
+
+    private var selectedKeys: [String] {
+        tableView.selectedRowIndexes.compactMap { $0 < entries.count ? entries[$0].url.fileViewKey : nil }
+    }
+
+    var selectedEntries: [FileEntry] {
+        tableView.selectedRowIndexes.compactMap { $0 < entries.count ? entries[$0] : nil }
+    }
+
+    func row(for url: URL) -> Int? { rowByKey[url.fileViewKey] }
+
+    func select(_ urls: [URL], scroll: Bool) {
+        let rows = IndexSet(urls.compactMap { rowByKey[$0.fileViewKey] })
+        tableView.selectRowIndexes(rows, byExtendingSelection: false)
+        if scroll, let first = rows.first { tableView.scrollRowToVisible(first) }
+    }
+
+    func selectRow(_ row: Int) {
+        guard row < entries.count else { return }
+        tableView.selectRowIndexes([row], byExtendingSelection: false)
+        tableView.scrollRowToVisible(row)
+    }
+
+    func deselectAll() {
+        suppressSelection = true
+        tableView.deselectAll(nil)
+        suppressSelection = false
+    }
+
+    func iconRect(for url: URL) -> NSRect? {
+        guard let row = row(for: url),
+              let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? ColumnCellView,
+              let icon = cell.nameCell.imageView else { return nil }
+        return icon.convert(icon.bounds, to: tableView)
+    }
+
+    func refreshVisibleRows() {
+        let visible = tableView.rows(in: tableView.visibleRect)
+        guard visible.length > 0 else { return }
+        tableView.reloadData(forRowIndexes: IndexSet(integersIn: visible.location..<NSMaxRange(visible)), columnIndexes: [0])
+    }
+
+    /// Width that shows the longest name in full.
+    var fittingWidth: CGFloat {
+        let font = FileViewStyle.nameFont
+        let longest = entries.prefix(2000).map { ($0.name as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        return ceil(longest) + 18 + 7 + 22 + 30
+    }
+
+    // MARK: Table
+
+    func numberOfRows(in tableView: NSTableView) -> Int { entries.count }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let cell = tableView.makeView(withIdentifier: ColumnCellView.identifier, owner: nil) as? ColumnCellView ?? ColumnCellView()
+        let entry = entries[row]
+        cell.configure(entry, matches: matches[entry.url.fileViewKey] ?? [], dimmed: entry.isHidden || Clipboard.isCut(entry.url))
+        return cell
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        guard !suppressSelection else { return }
+        controller?.selectionChanged(in: self)
+    }
+
+    @objc private func doubleClicked(_ sender: Any?) {
+        guard tableView.clickedRow >= 0 else { return }
+        controller?.open(from: self)
+    }
+
+    // Drag and drop
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        row < entries.count ? entries[row].url as NSURL : nil
+    }
+
+    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
+                   proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
+        let urls = FileDrop.urls(info)
+        guard !urls.isEmpty else { return [] }
+        if dropOperation == .on, row >= 0, row < entries.count, entries[row].isFolder {
+            let operation = FileDrop.operation(urls, into: entries[row].url, info: info)
+            if !operation.isEmpty { return operation }
+        }
+        tableView.setDropRow(-1, dropOperation: .on)
+        return FileDrop.operation(urls, into: folder, info: info)
+    }
+
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
+                   dropOperation: NSTableView.DropOperation) -> Bool {
+        let urls = FileDrop.urls(info)
+        let target = row >= 0 && row < entries.count && dropOperation == .on && entries[row].isFolder ? entries[row].url : folder
+        let operation = FileDrop.operation(urls, into: target, info: info)
+        guard !operation.isEmpty, let controller else { return false }
+        return controller.drop(urls, onto: target, from: self, copy: operation != .move)
+    }
+
+    // Keyboard and mouse, from the table
+
+    fileprivate func handleKey(_ key: FileViewKey) -> Bool { controller?.handleKey(key, in: self) ?? false }
+    fileprivate func moveRight() { controller?.moveRight(from: self) }
+    fileprivate func moveLeft() { controller?.moveLeft(from: self) }
+    fileprivate func becameFirstResponder() { controller?.paneBecameActive(self) }
+    fileprivate func contextMenu() -> NSMenu? { controller?.menu(for: self) }
+}
+
+/// Column table: arrows move between columns, typing filters the first column (type-select elsewhere),
+/// Return/Space/Escape go to the browser like the list.
+final class ColumnTableView: NSTableView {
+    fileprivate weak var pane: ColumnPane?
+
+    override func keyDown(with event: NSEvent) {
+        guard let pane else { return super.keyDown(with: event) }
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let plain = mods.isDisjoint(with: [.command, .control])
+        switch event.keyCode {
+        case 123 where plain && !mods.contains(.shift): pane.moveLeft(); return
+        case 124 where plain && !mods.contains(.shift): pane.moveRight(); return
+        case 36 where plain, 76 where plain:
+            if !pane.handleKey(.returnKey) { super.keyDown(with: event) }
+            return
+        case 49 where plain:
+            if !pane.handleKey(.space) { super.keyDown(with: event) }
+            return
+        case 53:
+            if !pane.handleKey(.escape) { super.keyDown(with: event) }
+            return
+        case 51 where mods.isDisjoint(with: [.command, .control, .option]):
+            if !pane.handleKey(.backspace) { super.keyDown(with: event) }
+            return
+        default:
+            break
+        }
+        if plain, event.specialKey == nil, let chars = event.characters, !chars.isEmpty,
+           chars.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }),
+           pane.handleKey(.type(chars)) {
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
+        if result { pane?.becameFirstResponder() }
+        return result
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let row = self.row(at: convert(event.locationInWindow, from: nil))
+        window?.makeFirstResponder(self)
+        if row >= 0, !selectedRowIndexes.contains(row) {
+            selectRowIndexes([row], byExtendingSelection: false)
+        } else if row < 0 {
+            deselectAll(nil)
+        }
+        return pane?.contextMenu()
+    }
+}
+
+/// The list's name cell (icon + highlighted name) with a disclosure chevron for folders.
+final class ColumnCellView: NSTableCellView {
+    static let identifier = NSUserInterfaceItemIdentifier("ColumnCell")
+
+    let nameCell = NameCellView()
+    private let chevron = NSImageView()
+    private var isFolder = false
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        identifier = Self.identifier
+        nameCell.translatesAutoresizingMaskIntoConstraints = false
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+        chevron.image = NSImage(systemSymbolName: "chevron.forward", accessibilityDescription: nil)
+        chevron.symbolConfiguration = .init(pointSize: 10, weight: .semibold)
+        chevron.setAccessibilityElement(false)
+        addSubview(nameCell)
+        addSubview(chevron)
+        textField = nameCell.textField
+        imageView = nameCell.imageView
+        // One line, truncated in the middle; the name cell's attributed text would otherwise wrap.
+        if let label = nameCell.textField {
+            label.maximumNumberOfLines = 1
+            label.usesSingleLineMode = true
+            label.cell?.wraps = false
+            label.cell?.truncatesLastVisibleLine = true
+            label.lineBreakMode = .byTruncatingMiddle
+        }
+        NSLayoutConstraint.activate([
+            nameCell.leadingAnchor.constraint(equalTo: leadingAnchor),
+            nameCell.topAnchor.constraint(equalTo: topAnchor),
+            nameCell.bottomAnchor.constraint(equalTo: bottomAnchor),
+            nameCell.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -4),
+            chevron.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            chevron.centerYAnchor.constraint(equalTo: centerYAnchor),
+            chevron.widthAnchor.constraint(equalToConstant: 10),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func configure(_ entry: FileEntry, matches: [Int], dimmed: Bool) {
+        isFolder = entry.isFolder
+        nameCell.configure(name: entry.name, icon: IconCache.shared.icon(for: entry), matches: matches, dimmed: dimmed)
+        applyTruncation()
+        chevron.isHidden = !entry.isFolder
+        setAccessibilityLabel(entry.isFolder ? "\(entry.name), folder" : entry.name)
+        updateChevron()
+    }
+
+    override var backgroundStyle: NSView.BackgroundStyle {
+        didSet {
+            nameCell.backgroundStyle = backgroundStyle
+            applyTruncation()
+            updateChevron()
+        }
+    }
+
+    /// The name cell renders an attributed string without a paragraph style, which wraps; truncate in the middle
+    /// instead so extensions stay visible in narrow columns.
+    private func applyTruncation() {
+        guard let label = nameCell.textField else { return }
+        let text = NSMutableAttributedString(attributedString: label.attributedStringValue)
+        guard text.length > 0 else { return }
+        text.addAttribute(.paragraphStyle, value: Self.truncating, range: NSRange(location: 0, length: text.length))
+        label.attributedStringValue = text
+    }
+
+    private static let truncating: NSParagraphStyle = {
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = .byTruncatingMiddle
+        return style
+    }()
+
+    private func updateChevron() {
+        chevron.contentTintColor = backgroundStyle == .emphasized ? .alternateSelectedControlTextColor : .tertiaryLabelColor
+    }
+}
+
+/// The column's right edge: a hairline you can drag to resize (Option resizes all), double-click to fit.
+final class ColumnDividerView: NSView {
+    var onDrag: ((CGFloat, Bool, CGFloat) -> Void)?
+    var onDoubleClick: (() -> Void)?
+    var startWidth: (() -> CGFloat)?
+    private var dragOrigin: CGFloat = 0
+    private var widthAtStart: CGFloat = 0
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.separatorColor.setFill()
+        NSRect(x: bounds.maxX - 1, y: 0, width: 1, height: bounds.height).fill()
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .resizeLeftRight)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            onDoubleClick?()
+            return
+        }
+        dragOrigin = event.locationInWindow.x
+        widthAtStart = startWidth?() ?? 0
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        onDrag?(event.locationInWindow.x - dragOrigin, event.modifierFlags.contains(.option), widthAtStart)
+    }
+}

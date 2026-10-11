@@ -1,0 +1,196 @@
+import AppKit
+
+/// A floating shelf: drop files from anywhere, then drag them all out at once or move/copy them into the current
+/// folder. Handy for gathering files from several places.
+final class ShelfPanel: NSPanel {
+    static let shared = ShelfPanel()
+
+    private let well = ShelfWell()
+
+    private init() {
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 240, height: 210),
+                   styleMask: [.titled, .closable, .utilityWindow, .nonactivatingPanel, .fullSizeContentView],
+                   backing: .buffered, defer: true)
+        title = "Shelf"
+        titlebarAppearsTransparent = true
+        isFloatingPanel = true
+        hidesOnDeactivate = false
+        becomesKeyOnlyIfNeeded = true
+        isMovableByWindowBackground = true
+        setFrameAutosaveName("StrataShelf")
+
+        let glass = NSGlassEffectView()
+        glass.cornerRadius = 16
+        well.translatesAutoresizingMaskIntoConstraints = false
+        let container = NSView()
+        container.addSubview(well)
+        NSLayoutConstraint.activate([
+            well.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+            well.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
+            well.topAnchor.constraint(equalTo: container.topAnchor, constant: 30),
+            well.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -10),
+        ])
+        glass.contentView = container
+        contentView = glass
+    }
+
+    func toggle() {
+        if isVisible {
+            orderOut(nil)
+        } else {
+            if frame.origin == .zero, let screen = NSScreen.main {
+                setFrameOrigin(NSPoint(x: screen.visibleFrame.maxX - frame.width - 24, y: screen.visibleFrame.midY))
+            }
+            orderFront(nil)
+        }
+    }
+
+    func add(_ urls: [URL]) {
+        well.add(urls)
+        if !isVisible { toggle() }
+    }
+}
+
+private final class ShelfWell: NSView, NSDraggingSource {
+    private var items: [URL] = []
+    private let iconView = NSImageView()
+    private let label = NSTextField(labelWithString: "")
+    private let buttons = NSStackView()
+    private var highlighted = false { didSet { needsDisplay = true } }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        registerForDraggedTypes([.fileURL])
+        iconView.imageScaling = .scaleProportionallyUpOrDown
+        label.font = .systemFont(ofSize: 12)
+        label.textColor = .secondaryLabelColor
+        label.alignment = .center
+        label.lineBreakMode = .byTruncatingMiddle
+        func button(_ title: String, _ symbol: String, _ action: Selector) -> NSButton {
+            let button = NSButton(title: title, image: NSImage(systemSymbolName: symbol, accessibilityDescription: title)!, target: self, action: action)
+            button.bezelStyle = .accessoryBarAction
+            button.controlSize = .small
+            button.imagePosition = .imageOnly
+            button.toolTip = title
+            return button
+        }
+        buttons.setViews([
+            button("Copy into Current Folder", "plus.square.on.square", #selector(copyHere)),
+            button("Move into Current Folder", "arrow.right.doc.on.clipboard", #selector(moveHere)),
+            button("Clear Shelf", "xmark.circle", #selector(clear)),
+        ], in: .center)
+        buttons.spacing = 6
+        for view in [iconView, label, buttons] as [NSView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            iconView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            iconView.topAnchor.constraint(equalTo: topAnchor, constant: 14),
+            iconView.widthAnchor.constraint(equalToConstant: 76),
+            iconView.heightAnchor.constraint(equalToConstant: 76),
+            label.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 8),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            buttons.centerXAnchor.constraint(equalTo: centerXAnchor),
+            buttons.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+        ])
+        refresh()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func add(_ urls: [URL]) {
+        let known = Set(items.map(\.path))
+        items += urls.filter { !known.contains($0.path) }
+        refresh()
+    }
+
+    private func refresh() {
+        items = items.filter { FileManager.default.fileExists(atPath: $0.path) }
+        buttons.isHidden = items.isEmpty
+        if items.isEmpty {
+            iconView.image = NSImage(systemSymbolName: "tray.and.arrow.down", accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 34, weight: .light))
+            iconView.contentTintColor = .tertiaryLabelColor
+            label.stringValue = "Drop files here"
+        } else {
+            iconView.image = items.count == 1 ? NSWorkspace.shared.icon(forFile: items[0].path)
+                : NSWorkspace.shared.icon(forFiles: items.map(\.path))
+            iconView.contentTintColor = nil
+            label.stringValue = items.count == 1 ? items[0].lastPathComponent : "\(items.count) items · drag out to drop them all"
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 12, yRadius: 12)
+        path.setLineDash([5, 4], count: 2, phase: 0)
+        path.lineWidth = 1.5
+        (highlighted ? NSColor.controlAccentColor : NSColor.tertiaryLabelColor).setStroke()
+        path.stroke()
+        if highlighted {
+            NSColor.controlAccentColor.withAlphaComponent(0.08).setFill()
+            path.fill()
+        }
+    }
+
+    // MARK: Drop in
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard sender.draggingSource as? ShelfWell !== self else { return [] }
+        highlighted = true
+        return .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) { highlighted = false }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        highlighted = false
+        let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        add(urls)
+        return !urls.isEmpty
+    }
+
+    // MARK: Drag out
+
+    override func mouseDragged(with event: NSEvent) {
+        guard !items.isEmpty else { return }
+        let draggingItems = items.enumerated().map { index, url -> NSDraggingItem in
+            let item = NSDraggingItem(pasteboardWriter: url as NSURL)
+            let offset = CGFloat(min(index, 4)) * 4
+            item.setDraggingFrame(iconView.frame.offsetBy(dx: offset, dy: -offset), contents: NSWorkspace.shared.icon(forFile: url.path))
+            return item
+        }
+        beginDraggingSession(with: draggingItems, event: event, source: self)
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        context == .outsideApplication ? [.copy, .move, .generic] : [.copy, .move, .generic]
+    }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        // Items that were moved somewhere else leave the shelf.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.refresh() }
+    }
+
+    // MARK: Actions
+
+    private func transfer(move: Bool) {
+        guard let controller = NSApp.orderedWindows.compactMap({ $0.windowController as? BrowserWindowController }).first else { return }
+        let urls = items
+        let job = TransferQueue.shared.enqueue(urls, to: controller.location, mode: move ? .move : .copy,
+                                               undo: controller.window?.undoManager, conflicts: .sheet(for: controller.window))
+        job.onFinish = { [weak self] _ in
+            if move { self?.items.removeAll() }
+            self?.refresh()
+        }
+    }
+
+    @objc private func copyHere() { transfer(move: false) }
+    @objc private func moveHere() { transfer(move: true) }
+
+    @objc private func clear() {
+        items.removeAll()
+        refresh()
+    }
+}
