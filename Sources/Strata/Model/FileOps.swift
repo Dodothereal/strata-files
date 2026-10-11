@@ -19,11 +19,14 @@ enum FileOps {
         return destination
     }
 
-    static func move(_ pairs: [Move], actionName: String, undo: UndoManager?) async throws {
+    /// `record: false` for moves that are themselves an undo or redo (or part of a larger logged operation): History
+    /// keeps one entry per operation and marks it undone instead of growing a row per ⌘Z.
+    static func move(_ pairs: [Move], actionName: String, undo: UndoManager?, record: Bool = true) async throws {
         var done: [Move] = []
         defer {
-            OperationLog.shared.recordMove(actionName, done)
+            let entry = record ? OperationLog.shared.recordMove(actionName, done) : nil
             registerMoveUndo(done, actionName, undo)
+            if let entry, let undo { registerLogMark(entry, undone: true, undo) }
         }
         for pair in pairs {
             try await moveItem(pair.from, pair.to)
@@ -34,16 +37,18 @@ enum FileOps {
     static func newFolder(in directory: URL, undo: UndoManager?) throws -> URL {
         let url = available(directory.appending(path: "untitled folder"), copyStyle: false)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
-        OperationLog.shared.recordCreate("New Folder", [url])
+        let entry = OperationLog.shared.recordCreate("New Folder", [url])
         registerTrashUndo([url], "New Folder", undo)
+        if let entry, let undo { registerLogMark(entry, undone: true, undo) }
         return url
     }
 
-    static func trash(_ urls: [URL], undo: UndoManager?) throws {
+    static func trash(_ urls: [URL], undo: UndoManager?, record: Bool = true) throws {
         var moved: [Move] = []
         defer {
-            OperationLog.shared.recordMove("Move to Trash", moved)
+            let entry = record ? OperationLog.shared.recordMove("Move to Trash", moved) : nil
             registerMoveUndo(moved, "Move to Trash", undo)
+            if let entry, let undo { registerLogMark(entry, undone: true, undo) }
         }
         for url in urls {
             var result: NSURL?
@@ -79,7 +84,18 @@ enum FileOps {
 
     private static func registerTrashUndo(_ created: [URL], _ actionName: String, _ undo: UndoManager?) {
         guard !created.isEmpty else { return }
-        register(actionName, undo) { undo in try? trash(created, undo: undo) }
+        register(actionName, undo) { undo in try? trash(created, undo: undo, record: false) }
+    }
+
+    /// Registers, in the current undo group, flipping History entry `id` to `undone` (and back on redo), so the
+    /// History window agrees with ⌘Z and ⇧⌘Z.
+    static func registerLogMark(_ id: UUID, undone: Bool, _ undo: UndoManager) {
+        undo.registerUndo(withTarget: undo) { undo in
+            MainActor.assumeIsolated {
+                OperationLog.shared.setUndone(id, undone)
+                registerLogMark(id, undone: !undone, undo)
+            }
+        }
     }
 
     private static func register(_ actionName: String, _ undo: UndoManager?, _ handler: @escaping (UndoManager) -> Void) {
@@ -97,7 +113,7 @@ enum FileOps {
         register(actionName, undo) { undo in
             let back = moves.reversed().map { (from: $0.to, to: $0.from) }
             registerMoveUndo(back, actionName, undo)
-            Task { try? await move(back, actionName: actionName, undo: nil) }
+            Task { try? await move(back, actionName: actionName, undo: nil, record: false) }
         }
     }
 

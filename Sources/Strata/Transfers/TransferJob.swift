@@ -43,6 +43,8 @@ final class TransferJob {
     private let worker: TransferWorker
     private let resolver: ConflictResolver
     private weak var undoManager: UndoManager?
+    /// False for jobs that are an undo or redo of something History already records.
+    var logsHistory = true
     private weak var queue: TransferQueue?
     private var rememberedDecision: ConflictDecision?
     private var decisionTask: Task<ConflictResolution, Never>?
@@ -500,7 +502,8 @@ final class TransferJob {
         // Items a retry finished moving were journaled as copies first; they're moves now.
         let movedDestinations = Set(moved.map(\.to))
         TransferUndo.register(created: created.filter { !movedDestinations.contains($0) }, moved: moved,
-                              replaced: replaced, actionName: mode == .copy ? "Copy" : "Move", undo: undoManager)
+                              replaced: replaced, actionName: mode == .copy ? "Copy" : "Move", undo: undoManager,
+                              logHistory: logsHistory)
     }
 
     // MARK: - Progress

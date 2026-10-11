@@ -9,7 +9,12 @@ final class SettingsWindowController: NSWindowController {
         let tabs = NSTabViewController()
         tabs.tabStyle = .toolbar
         func pane(_ title: String, _ symbol: String, _ view: some View) -> NSTabViewItem {
-            let item = NSTabViewItem(viewController: NSHostingController(rootView: view.frame(width: 520)))
+            // Each pane reports its own height, so the window resizes to fit it (like System Settings panes) instead of
+            // leaving short panes floating and cutting tall ones off; its title names the pane.
+            let host = NSHostingController(rootView: view.frame(width: 520).fixedSize(horizontal: false, vertical: true))
+            host.sizingOptions = [.preferredContentSize]
+            host.title = title
+            let item = NSTabViewItem(viewController: host)
             item.label = title
             item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
             return item
@@ -19,7 +24,7 @@ final class SettingsWindowController: NSWindowController {
         tabs.addTabViewItem(pane("Terminal", "terminal", TerminalSettings()))
         let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]
-        window.title = "Settings"
+        window.title = "General"
         super.init(window: window)
     }
 
@@ -151,7 +156,7 @@ private struct IndexSettings: View {
         switch FileIndex.shared.phase {
         case .loading: status = "Loading…"
         case .scanning(let items): status = "Indexing… \(items.formatted()) items so far"
-        case .ready: status = "\(FileIndex.shared.itemCount.formatted()) items · kept current live"
+        case .ready: status = "\(FileIndex.shared.itemCount.formatted()) items · up to date"
         }
     }
 }

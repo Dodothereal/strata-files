@@ -25,8 +25,12 @@ extension BrowserViewController {
     }
 
     @objc func setViewMode(_ sender: Any?) {
-        let tag = (sender as? NSMenuItem)?.tag ?? (sender as? NSToolbarItemGroup)?.selectedIndex ?? 0
-        guard let mode = BrowserViewMode(rawValue: tag) else { return }
+        let picked: BrowserViewMode? = if let group = sender as? NSToolbarItemGroup {
+            BrowserViewMode.ordered.indices.contains(group.selectedIndex) ? BrowserViewMode.ordered[group.selectedIndex] : nil
+        } else {
+            BrowserViewMode(rawValue: (sender as? NSMenuItem)?.tag ?? 0)
+        }
+        guard let mode = picked else { return }
         setMode(mode)
     }
 
@@ -95,7 +99,11 @@ extension BrowserViewController {
             columns.sortComparator = { [weak self] a, b in self?.ordered(a, b) ?? (a.name.localizedStandardCompare(b.name) == .orderedAscending) }
             columns.setRoot(directory, entries: shown.map(\.entry), matches: matches)
         case .treemap:
-            treemap.setEntries(allRows.map(\.entry), size: { [weak self] entry in
+            // Folders that can't be measured without Full Disk Access would silently shrink the total: say so.
+            treemap.unmeasured = shown.filter {
+                $0.entry.isDirectory && !$0.entry.isSymlink && !$0.entry.isVolume && !canMeasure($0.entry)
+            }.count
+            treemap.setEntries(shown.map(\.entry), size: { [weak self] entry in
                 guard let self else { return nil }
                 guard entry.isDirectory else { return entry.size }
                 return canMeasure(entry) ? folderSize(entry.url, request: true)?.bytes : 0
@@ -173,7 +181,8 @@ extension BrowserViewController: FileCollectionViewDelegate {
             guard !filter.isEmpty else { return false }
             setFilter("")
         case .returnKey:
-            if filter.isEmpty && !Prefs.returnOpens { renameSelection(nil) } else { openSelection(nil) }
+            // Disk Usage can't rename in place, so Return opens there.
+            if filter.isEmpty && !Prefs.returnOpens && effectiveMode != .treemap { renameSelection(nil) } else { openSelection(nil) }
         case .space:
             if filter.isEmpty { toggleQuickLook(nil) } else { setFilter(filter + " ") }
         }

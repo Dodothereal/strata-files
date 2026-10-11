@@ -59,9 +59,14 @@ extension URL {
     }
 }
 
-/// The browser's presentations, in toolbar and ⌘1–⌘4 order.
+/// The browser's presentations. Raw values are what Prefs stores; `ordered` is the toolbar and ⌘1–⌘4 order, which
+/// matches Finder (⌘1 Icons, ⌘2 List, ⌘3 Columns).
 enum BrowserViewMode: Int, CaseIterable {
     case list, grid, columns, treemap
+
+    static let ordered: [BrowserViewMode] = [.grid, .list, .columns, .treemap]
+    /// Index in `ordered` (toolbar segment, and ⌘ number minus one).
+    var position: Int { Self.ordered.firstIndex(of: self) ?? 0 }
 
     var title: String {
         switch self {
@@ -83,7 +88,7 @@ enum BrowserViewMode: Int, CaseIterable {
         }
     }
 
-    var keyEquivalent: String { String(rawValue + 1) }
+    var keyEquivalent: String { String(position + 1) }
 
     var image: NSImage {
         NSImage(systemSymbolName: symbolName, accessibilityDescription: title) ?? NSImage()
@@ -91,7 +96,7 @@ enum BrowserViewMode: Int, CaseIterable {
 
     /// A Finder-style segmented toolbar item; `action` receives the group, read `selectedIndex`.
     static func makeToolbarItem(_ identifier: NSToolbarItem.Identifier, target: AnyObject, action: Selector) -> NSToolbarItemGroup {
-        let modes = allCases
+        let modes = ordered
         let group = NSToolbarItemGroup(itemIdentifier: identifier, images: modes.map(\.image), selectionMode: .selectOne,
                                        labels: modes.map(\.title), target: target, action: action)
         group.label = "View"
@@ -103,9 +108,9 @@ enum BrowserViewMode: Int, CaseIterable {
         return group
     }
 
-    /// View menu items "as List" … "as Disk Usage" with ⌘1–⌘4; each item's tag is the mode's raw value.
+    /// View menu items "as Icons" … "as Disk Usage" with ⌘1–⌘4; each item's tag is the mode's raw value.
     static func menuItems(action: Selector) -> [NSMenuItem] {
-        allCases.map { mode in
+        ordered.map { mode in
             let item = NSMenuItem(title: mode.menuTitle, action: action, keyEquivalent: mode.keyEquivalent)
             item.keyEquivalentModifierMask = .command
             item.tag = mode.rawValue

@@ -48,6 +48,9 @@ final class TreemapViewController: NSViewController, FileCollectionController {
         relayout(animated: animated)
     }
 
+    /// Folders left out because measuring them needs Full Disk Access (the legend mentions them).
+    var unmeasured = 0
+
     /// Convenience for the browser: the folder's entries plus a size lookup (nil while a folder is measuring).
     func setEntries(_ entries: [FileEntry], size: (FileEntry) -> Int64?, animated: Bool = true) {
         self.entries = Dictionary(entries.map { ($0.url.fileViewKey, $0) }, uniquingKeysWith: { a, _ in a })
@@ -73,7 +76,7 @@ final class TreemapViewController: NSViewController, FileCollectionController {
         let total = items.reduce(Int64(0)) { $0 + max($1.bytes ?? 0, 0) }
         treemapView.totalBytes = total
         treemapView.setItems(items, animated: animated && view.window != nil)
-        legend.update(items: items, total: total)
+        legend.update(items: items, total: total, unmeasured: unmeasured)
     }
 
     // MARK: - Selection
@@ -308,8 +311,10 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
     }
 
     private func drawPlaceholder() {
+        // An empty folder (or a filter matching nothing) is the browser's empty state, drawn over the map.
+        guard !items.isEmpty else { return }
         let pending = items.contains { $0.bytes == nil }
-        let text = items.isEmpty ? "Empty Folder" : pending ? "Calculating sizes…" : "Nothing here takes up space"
+        let text = pending ? "Calculating sizes…" : "Nothing here takes up space"
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         let string = NSAttributedString(string: text, attributes: [
@@ -676,7 +681,7 @@ final class TreemapLegendView: NSView {
         NSRect(x: 0, y: bounds.maxY - 1, width: bounds.width, height: 1).fill()
     }
 
-    func update(items: [TreemapItem], total bytes: Int64) {
+    func update(items: [TreemapItem], total bytes: Int64, unmeasured: Int) {
         var byGroup: [FileKindGroup: Int64] = [:]
         for item in items { byGroup[item.group, default: 0] += max(item.bytes ?? 0, 0) }
         let groups = byGroup.filter { $0.value > 0 }.sorted { $0.value > $1.value }
@@ -690,6 +695,7 @@ final class TreemapLegendView: NSView {
         let pending = items.filter { $0.bytes == nil }.count
         var text = Format.count(items.count, "item", "items") + " · " + Format.bytes(bytes)
         if pending > 0 { text = "Measuring \(Format.count(pending, "folder", "folders"))…  " + text }
+        if unmeasured > 0 { text += " · \(Format.count(unmeasured, "folder", "folders")) need Full Disk Access to be measured" }
         total.stringValue = text
         if pending > 0 { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
         setAccessibilityLabel("Legend: " + groups.map { "\($0.key.title) \(Format.bytes($0.value))" }.joined(separator: ", ") + ". " + text)

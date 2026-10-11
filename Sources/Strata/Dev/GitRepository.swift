@@ -154,10 +154,12 @@ nonisolated enum GitRunner {
     }
 
     /// A repository you merely browse (say, one that came in a zip) brings its own `.git/config`, and git runs
-    /// commands named there during plain reads: `core.fsmonitor` on every `status`, and filter drivers' clean or
-    /// process commands when it re-hashes a changed file. Every call switches those off; `-c` settings also reach any
-    /// git that call spawns.
-    private static let hardening = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"]
+    /// commands named there during plain reads: `core.fsmonitor` on every `status`, filter drivers' clean or process
+    /// commands when it re-hashes a changed file, and, in a partial clone missing an object, a lazy fetch that runs the
+    /// remote's `uploadpack` or `sshCommand`. Every call switches those off (lazy fetch through GIT_NO_LAZY_FETCH, and
+    /// no transport is allowed at all); `-c` settings also reach any git that call spawns.
+    private static let hardening = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null",
+                                    "-c", "protocol.allow=never"]
 
     static func runBlocking(_ arguments: [String], in directory: URL, timeout: TimeInterval) -> GitRunResult {
         let start = Date()
@@ -211,6 +213,7 @@ nonisolated enum GitRunner {
             environment[key] = nil
         }
         environment["GIT_OPTIONAL_LOCKS"] = "0"
+        environment["GIT_NO_LAZY_FETCH"] = "1"
         environment["GIT_TERMINAL_PROMPT"] = "0"
         environment["LC_ALL"] = "C"
         process.environment = environment

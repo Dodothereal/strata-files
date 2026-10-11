@@ -32,6 +32,9 @@ final class PathBar: NSView, NSTextFieldDelegate {
         crumbs.spacing = 0
         crumbs.alignment = .centerY
         crumbs.detachesHiddenViews = true
+        // Let a deep path squeeze into the bar by dropping middle crumbs (their visibility priorities below) instead of
+        // forcing the bar wider: past the toolbar's room, AppKit would move every toolbar item into the overflow menu.
+        crumbs.setClippingResistancePriority(.defaultLow, for: .horizontal)
         crumbs.translatesAutoresizingMaskIntoConstraints = false
         addSubview(crumbs)
 
@@ -48,8 +51,9 @@ final class PathBar: NSView, NSTextFieldDelegate {
         field.isHidden = true
         addSubview(field)
 
+        // A wish, weaker than the toolbar's own sizing: the bar gives up width before other items overflow.
         let preferred = widthAnchor.constraint(equalToConstant: 520)
-        preferred.priority = .defaultLow
+        preferred.priority = .fittingSizeCompression
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: 32),
             widthAnchor.constraint(greaterThanOrEqualToConstant: 200),

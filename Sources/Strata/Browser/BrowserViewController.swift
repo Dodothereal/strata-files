@@ -48,6 +48,8 @@ final class BrowserViewController: NSViewController {
     private(set) var directory: URL?
     private(set) var loadError: Error?
     private(set) var isLoaded = false
+    /// A different folder is being read; the rows still showing belong to the previous one, so file commands wait.
+    private(set) var isLoadingFolder = false
     private(set) var filter = ""
     private(set) var availableCapacity: Int64?
 
@@ -205,8 +207,26 @@ final class BrowserViewController: NSViewController {
             watcher = DirectoryWatcher(url: url) { [weak self] in self?.refresh() }
             gitObservation = GitStatusStore.shared.observe(url)
             pendingSelection = select.map { [$0] } ?? []
+            isLoadingFolder = true
+            // Most folders load within a frame; a slow one (a network share, a huge folder) clears the old rows and
+            // says so instead of leaving the previous folder's files on screen under the new location.
+            let loading = generation + 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self, isLoadingFolder, generation == loading else { return }
+                showLoading()
+            }
         }
         reload(scrollToTop: isNewDirectory && select == nil)
+    }
+
+    private func showLoading() {
+        nodes = []
+        rows = []
+        nodesByPath = [:]
+        outlineView.reloadData()
+        pushContent()
+        emptyState.show(symbol: "hourglass", title: "Loading…")
+        delegate?.browserSelectionDidChange(self)
     }
 
     /// Re-reads the current folder, keeping selection, expanded folders and scroll position.
@@ -230,6 +250,7 @@ final class BrowserViewController: NSViewController {
                 let entries = try await DirectoryLoader.load(url, showHidden: showHidden)
                 guard gen == generation else { return }
                 loadError = nil
+                isLoadingFolder = false
                 Privacy.markAccessible(url)
                 apply(entries, preservingState: !scrollToTop)
                 if scrollToTop, outlineView.selectedRow < 0 { self.scrollToTop() }
@@ -323,10 +344,13 @@ final class BrowserViewController: NSViewController {
     private func showError(_ error: Error) {
         loadError = error
         isLoaded = true
+        isLoadingFolder = false
         nodes = []
         rows = []
         nodesByPath = [:]
         outlineView.reloadData()
+        // Icons, Columns and Disk Usage keep their own copy of the items: clear it too.
+        pushContent()
         updateEmptyState()
         delegate?.browserContentDidChange(self)
         delegate?.browserSelectionDidChange(self)
@@ -336,11 +360,16 @@ final class BrowserViewController: NSViewController {
         if let error = loadError as NSError? {
             let posix = (error.userInfo[NSUnderlyingErrorKey] as? NSError)?.code
             if error.code == NSFileReadNoPermissionError || posix == Int(EPERM) || posix == Int(EACCES) {
-                emptyState.show(
-                    symbol: "lock",
-                    title: "Strata can’t read this folder",
-                    message: "macOS protects this location. Give Strata Full Disk Access to browse it.",
-                    button: ("Open Privacy Settings", { NSWorkspace.shared.open(Privacy.settingsURL) }))
+                if Privacy.hasFullDiskAccess {
+                    // Full Disk Access is on, so this is ordinary file permissions (another user's or the system's).
+                    emptyState.show(symbol: "lock", title: "You don’t have permission to see this folder’s contents")
+                } else {
+                    emptyState.show(
+                        symbol: "lock",
+                        title: "Strata can’t read this folder",
+                        message: "macOS protects this location. Give Strata Full Disk Access to browse it.",
+                        button: ("Open Privacy Settings", { NSWorkspace.shared.open(Privacy.settingsURL) }))
+                }
             } else if error.code == NSFileReadNoSuchFileError {
                 emptyState.show(symbol: "questionmark.folder", title: "This folder no longer exists")
             } else {
@@ -427,6 +456,7 @@ final class BrowserViewController: NSViewController {
     }
 
     private func enterResults() {
+        isLoadingFolder = false
         if !isShowingResults {
             isShowingResults = true
             installActiveView()
@@ -679,6 +709,19 @@ final class BrowserViewController: NSViewController {
     @objc func renameSelection(_ sender: Any?) {
         guard selectedEntries.count == 1, let url = selectedURLs.first else { return }
         beginRename(url)
+    }
+
+    /// View ▸ Sort By: the same orders as the list's column headers, for every view. Tags follow `sortMenuKeys`.
+    static let sortMenuKeys: [(key: NSUserInterfaceItemIdentifier, ascending: Bool)] = [
+        (.name, true), (.kind, true), (.modified, false), (.size, false),
+    ]
+
+    @objc func sortBy(_ sender: NSMenuItem) {
+        guard Self.sortMenuKeys.indices.contains(sender.tag) else { return }
+        let choice = Self.sortMenuKeys[sender.tag]
+        // Like Finder, picking the current order again keeps its direction.
+        if outlineView.sortDescriptors.first?.key == choice.key.rawValue { return }
+        outlineView.sortDescriptors = [NSSortDescriptor(key: choice.key.rawValue, ascending: choice.ascending)]
     }
 
     @objc func copy(_ sender: Any?) {
@@ -1134,6 +1177,17 @@ extension BrowserViewController: NSTextFieldDelegate {
 
 extension BrowserViewController: NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        let fileCommands: [Selector] = [
+            #selector(openSelection(_:)), #selector(moveToTrash(_:)), #selector(duplicate(_:)), #selector(newFolder(_:)),
+            #selector(renameSelection(_:)), #selector(toggleQuickLook(_:)), #selector(pasteAndMove(_:)),
+            #selector(copy(_:)), #selector(cut(_:)), #selector(paste(_:)),
+        ]
+        // While a name is being edited, ⌘⌫, ⌘D and ⇧⌘N belong to the text, not the file. While another folder loads,
+        // the rows on screen are the previous folder's.
+        if let action = item.action, fileCommands.contains(action),
+           view.window?.firstResponder is NSText || isLoadingFolder {
+            return false
+        }
         let selectionCount = selectedEntries.count
         let hasSelection = selectionCount > 0
         switch item.action {
@@ -1141,11 +1195,12 @@ extension BrowserViewController: NSMenuItemValidation {
              #selector(copy(_:)), #selector(cut(_:)), #selector(toggleQuickLook(_:)):
             return hasSelection
         case #selector(renameSelection(_:)):
-            return selectionCount == 1
+            return selectionCount == 1 && effectiveMode != .treemap
         case #selector(paste(_:)), #selector(pasteAndMove(_:)):
             return directory != nil && !isShowingResults && Clipboard.hasFiles
         case #selector(newFolder(_:)):
-            return directory != nil && !isShowingResults && loadError == nil
+            // Disk Usage can't show an empty folder, so a new one would seem to vanish.
+            return directory != nil && !isShowingResults && loadError == nil && effectiveMode != .treemap
         case #selector(toggleHiddenFiles(_:)):
             item.state = Prefs.showHidden ? .on : .off
             return true
@@ -1154,6 +1209,10 @@ extension BrowserViewController: NSMenuItemValidation {
         case #selector(toggleFoldersFirst(_:)):
             item.state = Prefs.foldersFirst ? .on : .off
             return true
+        case #selector(sortBy(_:)):
+            let key = Self.sortMenuKeys.indices.contains(item.tag) ? Self.sortMenuKeys[item.tag].key.rawValue : ""
+            item.state = outlineView.sortDescriptors.first?.key == key ? .on : .off
+            return !isShowingResults
         default:
             return true
         }

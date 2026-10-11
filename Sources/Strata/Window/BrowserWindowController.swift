@@ -241,7 +241,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             window?.representedURL = nil
             split.scopeBar.isHidden = true
         }
-        viewModeItem?.selectedIndex = browser.mode.rawValue
+        viewModeItem?.selectedIndex = browser.mode.position
         window?.toolbar?.validateVisibleItems()
         updateHeaders()
     }
@@ -308,7 +308,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// Keeps the toolbar's view switcher in sync when ⌘1–⌘4 change the mode.
     @objc func syncViewMode(_ sender: Any?) {
         browser.setViewMode(sender)
-        viewModeItem?.selectedIndex = browser.mode.rawValue
+        viewModeItem?.selectedIndex = browser.mode.position
     }
 
     // MARK: - Search
@@ -577,6 +577,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             item.target = self
             item.action = isBack ? #selector(goBack(_:)) : #selector(goForward(_:))
             item.isBordered = true
+            item.visibilityPriority = .high
             return item
         case .pathBar:
             let item = NSToolbarItem(itemIdentifier: id)
@@ -586,7 +587,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             return item
         case .viewMode:
             let item = BrowserViewMode.makeToolbarItem(id, target: self, action: #selector(viewModeChanged(_:)))
-            item.selectedIndex = browser.mode.rawValue
+            item.selectedIndex = browser.mode.position
             item.visibilityPriority = .high
             viewModeItem = item
             return item

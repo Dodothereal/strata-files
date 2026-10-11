@@ -44,10 +44,12 @@ final class TransferQueue {
     /// Item-by-item destinations, for undoing moves whose items came from different folders.
     @discardableResult
     func enqueue(moves: [TransferMove], destination: URL? = nil, mode: TransferMode,
-                 options: TransferEngine.Options = .init(), undo: UndoManager?, conflicts: ConflictResolver) -> TransferJob {
+                 options: TransferEngine.Options = .init(), undo: UndoManager?, conflicts: ConflictResolver,
+                 logHistory: Bool = true) -> TransferJob {
         let folder = destination ?? moves.first?.to.deletingLastPathComponent() ?? URL(fileURLWithPath: "/")
         let job = TransferJob(mode: mode, moves: moves, destination: folder, options: options, undo: undo,
                               conflicts: conflicts, queue: self)
+        job.logsHistory = logHistory
         jobs.append(job)
         job.start()
         notify()
@@ -186,14 +188,17 @@ final class TransferQueue {
 /// (which registers its own redo); undoing a move moves the items back. Items a job replaced come back out of the Trash.
 enum TransferUndo {
     static func register(created: [URL], moved: [TransferMove], replaced: [TransferMove], actionName: String,
-                         undo: UndoManager?) {
-        OperationLog.shared.recordCreate(actionName, created)
-        OperationLog.shared.recordMove(actionName, moved.map { (from: $0.from, to: $0.to) })
+                         undo: UndoManager?, logHistory: Bool = true) {
+        let entry = logHistory
+            ? OperationLog.shared.recordTransfer(actionName, created: created, moved: moved.map { (from: $0.from, to: $0.to) },
+                                                 replaced: replaced.map { (from: $0.from, to: $0.to) })
+            : nil
         guard let undo, !(created.isEmpty && moved.isEmpty && replaced.isEmpty) else { return }
+        if let entry { FileOps.registerLogMark(entry, undone: true, undo) }
         undo.registerUndo(withTarget: undo) { undo in
             MainActor.assumeIsolated {
                 let existing = created.filter { TransferEngine.exists($0) }
-                if !existing.isEmpty { try? FileOps.trash(existing, undo: undo) }
+                if !existing.isEmpty { try? FileOps.trash(existing, undo: undo, record: false) }
                 // Moved items go back first, then whatever they replaced comes out of the Trash into the freed spots.
                 let back = moved.reversed().map(\.reversed) + replaced.reversed().map(\.reversed)
                 perform(back, actionName: actionName, undo: undo)
@@ -221,7 +226,8 @@ enum TransferUndo {
                 FolderSizer.invalidate(folder)
             }
         } else {
-            TransferQueue.shared.enqueue(moves: moves, mode: .move, undo: nil, conflicts: .keepBoth)
+            // Part of an undo or redo: History already has the operation.
+            TransferQueue.shared.enqueue(moves: moves, mode: .move, undo: nil, conflicts: .keepBoth, logHistory: false)
         }
         guard let undo, !done.isEmpty else { return }
         let inverse = done.reversed().map(\.reversed)

@@ -53,6 +53,8 @@ enum MainMenu {
             item("Bigger Icons", #selector(BrowserViewController.biggerIcons(_:)), "+"),
             item("Smaller Icons", #selector(BrowserViewController.smallerIcons(_:)), "-"),
             .separator(),
+            sortByMenu(),
+            .separator(),
             item("Show Hidden Files", #selector(BrowserViewController.toggleHiddenFiles(_:)), ".", [.command, .shift]),
             item("Keep Folders on Top", #selector(BrowserViewController.toggleFoldersFirst(_:))),
             .separator(),
@@ -113,6 +115,17 @@ enum MainMenu {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.keyEquivalentModifierMask = modifiers
         return item
+    }
+
+    /// Finder's Sort By shortcuts: ⌃⌥⌘1 Name, ⌃⌥⌘2 Kind, ⌃⌥⌘5 Date Modified, ⌃⌥⌘7 Size.
+    private static func sortByMenu() -> NSMenuItem {
+        let titles = [("Name", "1"), ("Kind", "2"), ("Date Modified", "5"), ("Size", "7")]
+        let items = titles.enumerated().map { index, entry in
+            let menuItem = item(entry.0, #selector(BrowserViewController.sortBy(_:)), entry.1, [.command, .option, .control])
+            menuItem.tag = index
+            return menuItem
+        }
+        return submenu("Sort By", items)
     }
 
     private static func submenu(_ title: String, _ items: [NSMenuItem]) -> NSMenuItem {

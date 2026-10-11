@@ -90,19 +90,47 @@ nonisolated enum SecureStorage {
 
     // MARK: Streams
 
-    /// Format: magic, version, then chunks of up to 1 MiB plaintext, each a length-prefixed AES-GCM box whose
-    /// associated data is its index and whether it's the last one (so chunks can't be reordered or cut off).
+    /// Format: magic, version, a random per-write salt, then chunks of up to 1 MiB plaintext, each a length-prefixed
+    /// AES-GCM box whose associated data is the salt, the store's name, the chunk's index and whether it's the last
+    /// one. So chunks can't be reordered, cut off, or mixed between stores or between versions of a store.
     private static let magic: UInt32 = 0x5354_5253 // "STRS"
-    private static let formatVersion: UInt32 = 1
+    private static let formatVersion: UInt32 = 2
+    private static let saltSize = 16
     private static let chunkSize = 1 << 20
     private static let boxOverhead = 12 + 16
 
     struct Failure: Error {}
 
-    private static func associatedData(_ index: UInt64, final: Bool) -> Data {
-        var data = withUnsafeBytes(of: index.littleEndian) { Data($0) }
+    /// The store's identity: its path inside `directory` ("semantic/index.sealed"), else its full path. Paths are used
+    /// as given: standardizing would drop a "/private" prefix only once the file exists, so writer and reader differ.
+    private static func storeName(_ url: URL) -> Data {
+        let path = url.absoluteURL.path
+        let base = directory.absoluteURL.path + "/"
+        return Data((path.hasPrefix(base) ? String(path.dropFirst(base.count)) : path).utf8)
+    }
+
+    private static func associatedData(salt: Data, name: Data, index: UInt64, final: Bool) -> Data {
+        var data = salt
+        withUnsafeBytes(of: UInt32(name.count).littleEndian) { data.append(contentsOf: $0) }
+        data.append(name)
+        withUnsafeBytes(of: index.littleEndian) { data.append(contentsOf: $0) }
         data.append(final ? 1 : 0)
         return data
+    }
+
+    /// Temporary files a crash left behind (`<name>.<uuid>.tmp`), once they're clearly not a save in progress.
+    private static func sweepStaleTemporaries(of url: URL) {
+        let folder = url.deletingLastPathComponent()
+        let prefix = url.lastPathComponent + "."
+        let cutoff = Date().addingTimeInterval(-600)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        for name in names where name.hasPrefix(prefix) && name.hasSuffix(".tmp") {
+            let path = folder.appending(path: name).path
+            if let modified = try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date,
+               modified < cutoff {
+                unlink(path)
+            }
+        }
     }
 
     /// Streams sealed chunks to a fresh temporary file; `commit()` swaps it into place.
@@ -114,11 +142,16 @@ nonisolated enum SecureStorage {
         private var buffer = Data()
         private var chunkIndex: UInt64 = 0
         private var failed = false
+        private let salt: Data
+        private let name: Data
 
         init(url: URL) throws {
             guard let key = SecureStorage.key else { throw Failure() }
             self.url = url
             self.key = key
+            salt = Data(SymmetricKey(size: .init(bitCount: saltSize * 8)).withUnsafeBytes { Data($0) })
+            name = storeName(url)
+            sweepStaleTemporaries(of: url)
             temporary = url.path + "." + UUID().uuidString + ".tmp"
             fd = open(temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
             guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
@@ -126,6 +159,7 @@ nonisolated enum SecureStorage {
             var header = Data()
             withUnsafeBytes(of: magic.littleEndian) { header.append(contentsOf: $0) }
             withUnsafeBytes(of: formatVersion.littleEndian) { header.append(contentsOf: $0) }
+            header.append(salt)
             header.withUnsafeBytes { put($0) }
         }
 
@@ -164,7 +198,8 @@ nonisolated enum SecureStorage {
         private func flush(final: Bool) {
             guard !failed else { return }
             guard let box = try? AES.GCM.seal(buffer, using: key,
-                                              authenticating: associatedData(chunkIndex, final: final)),
+                                              authenticating: associatedData(salt: salt, name: name, index: chunkIndex,
+                                                                             final: final)),
                   let combined = box.combined else {
                 failed = true
                 return
@@ -193,6 +228,8 @@ nonisolated enum SecureStorage {
         private var position = 0
         private var chunkIndex: UInt64 = 0
         private var sawFinal = false
+        private let salt: Data
+        private let name: Data
         /// Upper bound on the plaintext, for sanity-checking lengths before allocating.
         let maximumLength: Int
 
@@ -208,10 +245,12 @@ nonisolated enum SecureStorage {
             handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
             self.key = key
             maximumLength = Int(info.st_size)
-            guard let header = try handle.read(upToCount: 8), header.count == 8,
+            guard let header = try handle.read(upToCount: 8 + saltSize), header.count == 8 + saltSize,
                   header.withUnsafeBytes({ UInt32(littleEndian: $0.loadUnaligned(as: UInt32.self)) }) == magic,
                   header.withUnsafeBytes({ UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: 4, as: UInt32.self)) }) == formatVersion
             else { throw Failure() }
+            salt = header.subdata(in: 8..<(8 + saltSize))
+            name = storeName(url)
         }
 
         /// Fills `destination` completely, or throws.
@@ -255,10 +294,12 @@ nonisolated enum SecureStorage {
                   let combined = try handle.read(upToCount: length), combined.count == length else { throw Failure() }
             let box = try AES.GCM.SealedBox(combined: combined)
             // The last chunk is the only one sealed as final; try that only when a full-size chunk didn't open.
-            if let plain = try? AES.GCM.open(box, using: key, authenticating: associatedData(chunkIndex, final: false)) {
+            if let plain = try? AES.GCM.open(box, using: key, authenticating: associatedData(salt: salt, name: name,
+                                                                                             index: chunkIndex, final: false)) {
                 chunk = plain
             } else {
-                chunk = try AES.GCM.open(box, using: key, authenticating: associatedData(chunkIndex, final: true))
+                chunk = try AES.GCM.open(box, using: key, authenticating: associatedData(salt: salt, name: name,
+                                                                                         index: chunkIndex, final: true))
                 sawFinal = true
             }
             position = 0

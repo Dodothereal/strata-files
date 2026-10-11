@@ -69,6 +69,10 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         loadViewIfNeeded()
         let keyed = Dictionary(matches.map { ($0.key.fileViewKey, $0.value) }, uniquingKeysWith: { a, _ in a })
         if root?.fileViewKey != folder.fileViewKey || panes.isEmpty {
+            // Replacing the columns removes the focused table; hand focus to the new first column so keyboard
+            // commands (paste, select all, arrows) keep working after navigating.
+            let responder = view.window?.firstResponder
+            let hadFocus = (responder as? NSView).map { $0 === view || $0.isDescendant(of: view) } ?? false
             root = folder
             removeColumns(after: -1)
             let pane = makePane(folder, depth: 0)
@@ -79,6 +83,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
             layoutColumns()
             scrollView.contentView.scroll(to: .zero)
             reportLocation()
+            if hadFocus || view.window?.firstResponder === view.window { view.window?.makeFirstResponder(pane.tableView) }
             return
         }
         panes[0].setEntries(entries, matches: keyed)

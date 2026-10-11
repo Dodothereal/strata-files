@@ -17,7 +17,12 @@ enum PlanExecutor {
     static func apply(_ plan: Plan, actionName: String, undo: UndoManager?) async -> Outcome {
         let transaction = PlanTransaction(plan: plan)
         let outcome = await transaction.perform()
-        if let undo, transaction.hasChanges { transaction.registerUndo(undo, actionName: actionName) }
+        // One History entry for the whole plan, named like its undo action.
+        let entry = transaction.hasChanges ? transaction.record(actionName) : nil
+        if let undo, transaction.hasChanges {
+            transaction.registerUndo(undo, actionName: actionName)
+            if let entry { FileOps.registerLogMark(entry, undone: true, undo) }
+        }
         return outcome
     }
 
@@ -58,6 +63,10 @@ final class PlanTransaction {
     }
 
     var hasChanges: Bool { !created.isEmpty || !done.isEmpty || !trashed.isEmpty }
+
+    func record(_ name: String) -> UUID? {
+        OperationLog.shared.recordPlan(name, moved: (done + trashed).map { (from: $0.from, to: $0.to) }, containers: created)
+    }
 
     func perform() async -> PlanExecutor.Outcome {
         var outcome = PlanExecutor.Outcome()
@@ -110,10 +119,10 @@ final class PlanTransaction {
     private static func move(_ pair: Pair) async throws {
         if pair.from.path != pair.to.path, pair.from.path.lowercased() == pair.to.path.lowercased() {
             let temporary = pair.from.deletingLastPathComponent().appending(path: ".strata-rename-\(UUID().uuidString)")
-            try await FileOps.move([(from: pair.from, to: temporary)], actionName: "", undo: nil)
-            try await FileOps.move([(from: temporary, to: pair.to)], actionName: "", undo: nil)
+            try await FileOps.move([(from: pair.from, to: temporary)], actionName: "", undo: nil, record: false)
+            try await FileOps.move([(from: temporary, to: pair.to)], actionName: "", undo: nil, record: false)
         } else {
-            try await FileOps.move([pair], actionName: "", undo: nil)
+            try await FileOps.move([pair], actionName: "", undo: nil, record: false)
         }
     }
 
