@@ -95,7 +95,10 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     func select(_ urls: [URL], scroll: Bool = true) {
         guard let rootPane = panes.first else { return }
         let rootKey = root?.fileViewKey
-        if urls.count == 1, let url = urls.first, url.deletingLastPathComponent().fileViewKey != rootKey {
+        // An item the first column lists selects there, however its path is spelled (a folder reached through a
+        // symlink lists its items under the resolved path); anything else is opened down to.
+        if urls.count == 1, let url = urls.first, rootPane.row(for: url) == nil,
+           url.deletingLastPathComponent().fileViewKey != rootKey {
             reveal(url)
             return
         }

@@ -329,13 +329,15 @@ final class BrowserViewController: NSViewController {
             node.isLoadingChildren = false
             loadChildren(of: node)
         }
+        // Icons, columns and disk usage get the new rows first: selecting or renaming before that looked in the
+        // previous folder's items, so a revealed file or a new folder came up unselected outside the list.
+        pushContent(animated: preservingState)
         select(pendingSelection)
         pendingSelection = []
         if let rename = pendingRename, node(for: rename) != nil {
             pendingRename = nil
             beginRename(rename)
         }
-        pushContent(animated: preservingState)
         updateEmptyState()
         delegate?.browserContentDidChange(self)
         delegate?.browserSelectionDidChange(self)
@@ -369,6 +371,10 @@ final class BrowserViewController: NSViewController {
     static func key(_ url: URL) -> String { url.standardizedFileURL.path }
 
     private func node(for url: URL) -> FileNode? { nodesByPath[Self.key(url)] }
+
+    /// The URL a row of this folder uses for `url`. Icons, columns and disk usage match paths exactly, and a listing
+    /// reached through a symlink doesn't spell them like the folder does ("/tmp/x" lists "/private/tmp/x/a").
+    private func rowURL(_ url: URL) -> URL { node(for: url)?.url ?? url }
 
     private func rebuildIndex() {
         nodesByPath.removeAll(keepingCapacity: true)
@@ -669,7 +675,7 @@ final class BrowserViewController: NSViewController {
 
     func select(_ urls: [URL], scroll: Bool = true) {
         if let activeView {
-            activeView.select(urls, scroll: scroll)
+            activeView.select(urls.map(rowURL), scroll: scroll)
             return
         }
         let indexes = IndexSet(urls.compactMap { node(for: $0) }.map { outlineView.row(forItem: $0) }.filter { $0 >= 0 })
@@ -970,9 +976,8 @@ final class BrowserViewController: NSViewController {
                 refresh()
             }
         }
-        let isFolder = (try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])).map {
-            $0.isDirectory == true && $0.isPackage != true
-        } ?? false
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+        let isFolder = values?.isDirectory == true && values?.isPackage != true
         let (oldExtension, newExtension) = ((oldName as NSString).pathExtension, (newName as NSString).pathExtension)
         guard !isFolder, oldExtension.lowercased() != newExtension.lowercased(), let window = view.window else {
             commit()
@@ -1004,7 +1009,7 @@ final class BrowserViewController: NSViewController {
 
     private func beginRename(_ url: URL) {
         if let activeView {
-            activeView.beginRename(url)
+            activeView.beginRename(rowURL(url))
             return
         }
         guard let node = node(for: url) else { return }

@@ -309,12 +309,12 @@ final class InspectorViewController: NSViewController {
             label.font = .systemFont(ofSize: 11)
             label.textColor = .secondaryLabelColor
             label.alignment = .right
-            // Values wrap onto a second line rather than lose their middle ("671.1 MB (671,088,640 bytes)", long paths).
+            // Values wrap in full, like Get Info, rather than lose their middle ("671.1 MB (671,088,640 bytes)", deep
+            // paths). No preferred width: the field wraps at the column's real width, which follows the panel's.
             let field = NSTextField(wrappingLabelWithString: value)
             field.font = .systemFont(ofSize: 12)
-            field.maximumNumberOfLines = 2
+            field.maximumNumberOfLines = 0
             field.lineBreakMode = .byWordWrapping
-            field.preferredMaxLayoutWidth = 168
             field.isSelectable = true
             field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             grid.addRow(with: [label, field])

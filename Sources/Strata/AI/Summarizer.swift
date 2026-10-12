@@ -157,7 +157,10 @@ nonisolated enum Summarizer {
             for _ in 0..<3 {
                 let tokens = try await SystemLanguageModel.default.tokenCount(for: body)
                 guard tokens > budget else { break }
-                body = String(body.prefix(Int(Double(body.count) * Double(budget) / Double(tokens) * 0.95)))
+                // Typed steps: as one mixed Int/Double expression this took the compiler over a second.
+                let scaled: Double = Double(body.count) * Double(budget) / Double(tokens) * 0.95
+                let keep = Int(scaled)
+                body = String(body.prefix(keep))
             }
         }
         return body
@@ -186,8 +189,15 @@ nonisolated enum Summarizer {
         }
         if !current.isEmpty { parts.append(current) }
         guard parts.count > limit else { return (parts, parts.count) }
-        let indexes = (0..<limit).map { Int((Double($0) * Double(parts.count - 1) / Double(limit - 1)).rounded()) }
-        return (Array(NSOrderedSet(array: indexes)).compactMap { $0 as? Int }.map { parts[$0] }, parts.count)
+        // First, last and evenly spaced parts in between, each once and in order.
+        let step: Double = Double(parts.count - 1) / Double(limit - 1)
+        var seen = Set<Int>()
+        var kept: [String] = []
+        for i in 0..<limit {
+            let index = Int((Double(i) * step).rounded())
+            if seen.insert(index).inserted { kept.append(parts[index]) }
+        }
+        return (kept, parts.count)
     }
 
     // MARK: - Key sentences
