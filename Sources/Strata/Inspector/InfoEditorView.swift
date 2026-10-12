@@ -1,112 +1,110 @@
 import AppKit
 
-/// Get Info's editable part for one item, under the Inspector's details: Spotlight comments, the app that opens it (this
-/// file, or Change All…), Locked, and who may read and write it. Changes apply at once; what's refused says why, here.
-final class InfoEditorView: NSView, NSTextFieldDelegate, NSMenuDelegate {
+/// Get Info's editable part for one item, as three Inspector cards' contents: Spotlight comments, the app that opens it
+/// (this file, or Change All…), and Locked plus who may read and write it. Changes apply at once; what's refused says
+/// why, in the card it happened in.
+final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
     private(set) var url: URL?
     private var isFolder = false
-    private var isPackage = false
+
+    /// The cards' contents.
+    let commentsContent = NSStackView()
+    let openWithContent = NSStackView()
+    let permissionsContent = NSStackView()
+    /// Whether the item has an app to open it with (folders and packages open as themselves).
+    private(set) var hasOpenWith = false
 
     private let comments = NSTextField()
-    private let openWithTitle = InfoEditorView.header("Open With")
     private let openWith = NSPopUpButton()
-    private let changeAll = NSButton(title: "Change All…", target: nil, action: nil)
-    private let locked = NSButton(checkboxWithTitle: "Locked", target: nil, action: nil)
-    private let permissions = NSGridView()
+    private let changeAll = NSButton(title: String(localized: "Change All…", comment: "Inspector button: open every document of this kind with the chosen app"),
+                                     target: nil, action: nil)
+    private let openWithNote = NSTextField(wrappingLabelWithString: "")
+    private let locked = NSSwitch()
+    private let rows = InspectorRows()
     private var accessMenus: [FileInfoEditing.Who: NSPopUpButton] = [:]
-    private var whoLabels: [FileInfoEditing.Who: NSTextField] = [:]
-    private let message = NSTextField(wrappingLabelWithString: "")
+    private var whoNames: [FileInfoEditing.Who: String] = [:]
+    private let commentsMessage = InfoEditor.messageLabel()
+    private let openWithMessage = InfoEditor.messageLabel()
+    private let permissionsMessage = InfoEditor.messageLabel()
     private var apps: [URL] = []
     /// Whether `apps` lists every app that can open the item (read when the menu opens: it's slow to work out on every
     /// selection change).
     private var appsComplete = false
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        comments.placeholderString = "Add Comments"
+    private var window: NSWindow? { comments.window ?? openWith.window ?? locked.window }
+
+    override init() {
+        super.init()
+        comments.placeholderString = String(localized: "Add Comments", comment: "Placeholder of the Inspector’s Spotlight comments field")
         comments.font = .systemFont(ofSize: 12)
+        comments.bezelStyle = .roundedBezel
         comments.lineBreakMode = .byWordWrapping
         comments.usesSingleLineMode = false
         comments.cell?.wraps = true
         comments.cell?.isScrollable = false
         comments.maximumNumberOfLines = 4
         comments.delegate = self
-        comments.setAccessibilityLabel("Comments")
+        comments.setAccessibilityLabel(String(localized: "Comments", comment: "Inspector: the item’s Spotlight comments"))
 
         openWith.target = self
         openWith.action = #selector(openWithChanged(_:))
-        openWith.controlSize = .small
-        openWith.setAccessibilityLabel("Open With")
+        openWith.setAccessibilityLabel(String(localized: "Open With"))
         openWith.menu?.delegate = self
+        openWith.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         changeAll.target = self
         changeAll.action = #selector(changeAllClicked(_:))
         changeAll.controlSize = .small
         changeAll.bezelStyle = .push
-        changeAll.toolTip = "Open all documents like this one with this app"
+        changeAll.toolTip = String(localized: "Open all documents like this one with this app")
+        openWithNote.font = .systemFont(ofSize: 11)
+        openWithNote.textColor = .secondaryLabelColor
+        openWithNote.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
+        locked.controlSize = .mini
         locked.target = self
         locked.action = #selector(lockedChanged(_:))
-        locked.controlSize = .small
-
-        permissions.rowSpacing = 4
-        permissions.columnSpacing = 8
+        locked.setAccessibilityLabel(String(localized: "Locked", comment: "Inspector checkbox: the item is locked against changes"))
         for who in FileInfoEditing.Who.allCases {
-            let label = NSTextField(labelWithString: "")
-            label.font = .systemFont(ofSize: 11)
-            label.textColor = .secondaryLabelColor
-            label.lineBreakMode = .byTruncatingMiddle
-            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             let menu = NSPopUpButton()
             menu.controlSize = .small
-            menu.font = .systemFont(ofSize: 11)
+            menu.font = .systemFont(ofSize: 12)
+            // Truncates ("Write Only (Dro…") rather than holding the Inspector wider than you set it.
+            menu.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             menu.target = self
             menu.action = #selector(accessChanged(_:))
             menu.tag = who.rawValue
-            whoLabels[who] = label
             accessMenus[who] = menu
-            permissions.addRow(with: [label, menu])
         }
-        permissions.column(at: 0).xPlacement = .leading
-        permissions.column(at: 1).xPlacement = .trailing
 
-        message.font = .systemFont(ofSize: 11)
-        message.textColor = .systemRed
-        message.isHidden = true
-
-        let openWithRow = NSStackView(views: [openWith, changeAll])
-        openWithRow.spacing = 6
-        let stack = NSStackView(views: [
-            Self.header("Comments"), comments, openWithTitle, openWithRow, Self.header("Sharing & Permissions"), locked,
-            permissions, message,
-        ])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 6
-        stack.setCustomSpacing(12, after: comments)
-        stack.setCustomSpacing(12, after: openWithRow)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
+        for stack in [commentsContent, openWithContent, permissionsContent] {
+            stack.orientation = .vertical
+            stack.alignment = .leading
+            stack.spacing = 8
+        }
+        commentsContent.setViews([comments, commentsMessage], in: .top)
+        let noteRow = NSStackView(views: [openWithNote, NSView(), changeAll])
+        noteRow.alignment = .firstBaseline
+        noteRow.spacing = 8
+        openWithContent.setViews([openWith, noteRow, openWithMessage], in: .top)
+        permissionsContent.setViews([rows, permissionsMessage], in: .top)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            comments.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            comments.widthAnchor.constraint(equalTo: commentsContent.widthAnchor),
             // Room for a few lines: comments are often sentences.
             comments.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
-            permissions.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            message.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            openWithRow.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor),
+            commentsMessage.widthAnchor.constraint(equalTo: commentsContent.widthAnchor),
+            openWith.widthAnchor.constraint(equalTo: openWithContent.widthAnchor),
+            noteRow.widthAnchor.constraint(equalTo: openWithContent.widthAnchor),
+            openWithMessage.widthAnchor.constraint(equalTo: openWithContent.widthAnchor),
+            rows.widthAnchor.constraint(equalTo: permissionsContent.widthAnchor),
+            permissionsMessage.widthAnchor.constraint(equalTo: permissionsContent.widthAnchor),
         ])
-        openWith.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     }
 
-    required init?(coder: NSCoder) { fatalError() }
-
-    private static func header(_ text: String) -> NSTextField {
-        let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: 11, weight: .semibold)
-        label.textColor = .secondaryLabelColor
+    private static func messageLabel() -> NSTextField {
+        let label = NSTextField(wrappingLabelWithString: "")
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = .systemRed
+        label.isHidden = true
         return label
     }
 
@@ -120,8 +118,7 @@ final class InfoEditorView: NSView, NSTextFieldDelegate, NSMenuDelegate {
         }
         url = entry.url
         isFolder = entry.isDirectory
-        isPackage = entry.isDirectory && !entry.isFolder
-        if !same { message.isHidden = true }
+        if !same { [commentsMessage, openWithMessage, permissionsMessage].forEach { $0.isHidden = true } }
         let path = entry.url.path
         if !same || comments.currentEditor() == nil { comments.stringValue = FileInfoEditing.comment(at: path) }
         locked.state = FileInfoEditing.isLocked(at: path) ? .on : .off
@@ -144,16 +141,18 @@ final class InfoEditorView: NSView, NSTextFieldDelegate, NSMenuDelegate {
 
     private func loadApps(_ entry: FileEntry, same: Bool) {
         // Folders open in Strata; apps and other packages open as themselves.
-        let applies = !entry.isDirectory
-        openWithTitle.isHidden = !applies
-        openWith.superview?.isHidden = !applies
-        guard applies, !same || apps.isEmpty else { return }
+        hasOpenWith = !entry.isDirectory
+        guard hasOpenWith, !same || apps.isEmpty else { return }
         // Just the current app for now; the rest when the menu opens.
         apps = NSWorkspace.shared.urlForApplication(toOpen: entry.url).map { [$0] } ?? []
         appsComplete = false
         fillAppMenu()
         // Nothing opens it: the menu says so, and Change All has nothing to change to.
         changeAll.isEnabled = !apps.isEmpty
+        let kind = (try? entry.url.resourceValues(forKeys: [.localizedTypeDescriptionKey]))?.localizedTypeDescription
+        openWithNote.stringValue = kind.map {
+            String(localized: "For this file. Change All… sets it for every “\($0)”.", comment: "Inspector, under Open With: a kind of document")
+        } ?? String(localized: "For this file. Change All… sets it for every document like it.")
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -170,7 +169,7 @@ final class InfoEditorView: NSView, NSTextFieldDelegate, NSMenuDelegate {
         let current = NSWorkspace.shared.urlForApplication(toOpen: url)
         openWith.removeAllItems()
         if apps.isEmpty {
-            openWith.addItem(withTitle: "No App")
+            openWith.addItem(withTitle: String(localized: "No App", comment: "Inspector Open With menu: no app can open the item"))
             openWith.isEnabled = false
             return
         }
@@ -191,7 +190,7 @@ final class InfoEditorView: NSView, NSTextFieldDelegate, NSMenuDelegate {
         // Picking the app it already opens with changes nothing (and mustn't pin this file to it).
         guard app != NSWorkspace.shared.urlForApplication(toOpen: url) else { return }
         NSWorkspace.shared.setDefaultApplication(at: app, toOpenFileAt: url) { [weak self] error in
-            DispatchQueue.main.async { self?.finish(error) }
+            DispatchQueue.main.async { self?.finish(error, in: self?.openWithMessage) }
         }
     }
 
@@ -200,14 +199,15 @@ final class InfoEditorView: NSView, NSTextFieldDelegate, NSMenuDelegate {
         let kind = (try? url.resourceValues(forKeys: [.localizedTypeDescriptionKey]))?.localizedTypeDescription
         let alert = NSAlert()
         let appName = FileManager.default.displayName(atPath: app.path)
-        alert.messageText = kind.map { "Open every “\($0)” with “\(appName)”?" } ?? "Open every document like this one with “\(appName)”?"
-        alert.informativeText = "This changes the app macOS uses for every document of this kind, in Finder too."
-        alert.addButton(withTitle: "Change All")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = kind.map { String(localized: "Open every “\($0)” with “\(appName)”?", comment: "A kind of document (“PDF document”), then an app") }
+            ?? String(localized: "Open every document like this one with “\(appName)”?")
+        alert.informativeText = String(localized: "This changes the app macOS uses for every document of this kind, in Finder too.")
+        alert.addButton(withTitle: String(localized: "Change All", comment: "Alert button: open every document of this kind with the chosen app"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
             NSWorkspace.shared.setDefaultApplication(at: app, toOpenContentTypeOfFileAt: url) { error in
-                DispatchQueue.main.async { self?.finish(error) }
+                DispatchQueue.main.async { self?.finish(error, in: self?.openWithMessage) }
             }
         }
     }
@@ -224,21 +224,21 @@ final class InfoEditorView: NSView, NSTextFieldDelegate, NSMenuDelegate {
         guard text.trimmingCharacters(in: .whitespacesAndNewlines) != FileInfoEditing.comment(at: path) else { return }
         do {
             try FileInfoEditing.setComment(text, at: path)
-            finish(nil)
+            finish(nil, in: commentsMessage)
         } catch {
-            finish(error)
+            finish(error, in: commentsMessage)
         }
     }
 
     // MARK: - Locked and permissions
 
-    @objc private func lockedChanged(_ sender: NSButton) {
+    @objc private func lockedChanged(_ sender: NSSwitch) {
         guard let url else { return }
         do {
             try FileInfoEditing.setLocked(sender.state == .on, at: url.path)
-            finish(nil)
+            finish(nil, in: permissionsMessage)
         } catch {
-            finish(error)
+            finish(error, in: permissionsMessage)
         }
         locked.state = FileInfoEditing.isLocked(at: url.path) ? .on : .off
         loadPermissions(url.path)
@@ -247,15 +247,16 @@ final class InfoEditorView: NSView, NSTextFieldDelegate, NSMenuDelegate {
 
     private func loadPermissions(_ path: String) {
         guard let names = FileInfoEditing.names(at: path), let mode = FileInfoEditing.mode(at: path) else {
-            permissions.isHidden = true
+            rows.set([])
             return
         }
-        permissions.isHidden = false
-        whoLabels[.owner]?.stringValue = names.ownedByYou ? "\(names.owner) (Me)" : names.owner
-        whoLabels[.group]?.stringValue = names.group
-        whoLabels[.everyone]?.stringValue = "everyone"
+        whoNames[.owner] = names.ownedByYou
+            ? String(localized: "\(names.owner) (Me)", comment: "Sharing & Permissions: the owner’s account name when it’s you") : names.owner
+        whoNames[.group] = names.group
+        whoNames[.everyone] = String(localized: "everyone", comment: "Sharing & Permissions: everyone else (as Finder’s Get Info writes it)")
         // Only the owner may change them (and nothing changes while it's locked).
         let editable = names.ownedByYou && locked.state == .off
+        var list: [(String, NSView)] = [(String(localized: "Locked", comment: "Inspector checkbox: the item is locked against changes"), locked)]
         for who in FileInfoEditing.Who.allCases {
             guard let menu = accessMenus[who] else { continue }
             let current = FileInfoEditing.access(mode, for: who)
@@ -267,8 +268,11 @@ final class InfoEditorView: NSView, NSTextFieldDelegate, NSMenuDelegate {
             }
             menu.selectItem(withTag: current.rawValue)
             menu.isEnabled = editable
-            menu.setAccessibilityLabel("Access for \(whoLabels[who]?.stringValue ?? "")")
+            let name = whoNames[who] ?? ""
+            menu.setAccessibilityLabel(String(localized: "Access for \(name)", comment: "Accessibility: a permissions menu, then whose access it sets"))
+            list.append((name, menu))
         }
+        rows.set(list)
     }
 
     @objc private func accessChanged(_ sender: NSPopUpButton) {
@@ -277,10 +281,10 @@ final class InfoEditorView: NSView, NSTextFieldDelegate, NSMenuDelegate {
         // Taking your own access away from a folder shuts you out of it: ask first.
         if who == .owner, isFolder, access == .none || access == .writeOnly, let window {
             let alert = NSAlert()
-            alert.messageText = "Remove your own access to “\(url.lastPathComponent)”?"
-            alert.informativeText = "You won’t be able to open this folder until you give yourself access again."
-            alert.addButton(withTitle: "Remove Access")
-            alert.addButton(withTitle: "Cancel")
+            alert.messageText = String(localized: "Remove your own access to “\(url.lastPathComponent)”?")
+            alert.informativeText = String(localized: "You won’t be able to open this folder until you give yourself access again.")
+            alert.addButton(withTitle: String(localized: "Remove Access"))
+            alert.addButton(withTitle: String(localized: "Cancel"))
             alert.beginSheetModal(for: window) { [weak self] response in
                 guard let self else { return }
                 if response == .alertFirstButtonReturn { apply(access, for: who, to: url) } else { loadPermissions(url.path) }
@@ -293,18 +297,20 @@ final class InfoEditorView: NSView, NSTextFieldDelegate, NSMenuDelegate {
     private func apply(_ access: FileInfoEditing.Access, for who: FileInfoEditing.Who, to url: URL) {
         do {
             try FileInfoEditing.setAccess(access, for: who, at: url.path)
-            finish(nil)
+            finish(nil, in: permissionsMessage)
         } catch {
-            finish(error)
+            finish(error, in: permissionsMessage)
         }
         loadPermissions(url.path)
     }
 
-    /// Clears or shows the last change's problem.
-    private func finish(_ error: Error?) {
-        message.stringValue = error.map { "Couldn’t change that: \($0.localizedDescription)" } ?? ""
-        message.isHidden = error == nil
-        if error != nil, let url, let app = NSWorkspace.shared.urlForApplication(toOpen: url), let index = apps.firstIndex(of: app) {
+    /// Clears or shows the last change's problem, in the card it happened in.
+    private func finish(_ error: Error?, in label: NSTextField?) {
+        guard let label else { return }
+        label.stringValue = error.map { String(localized: "Couldn’t change that: \($0.localizedDescription)", comment: "Inspector: a change was refused, then why") } ?? ""
+        label.isHidden = error == nil
+        if error != nil, label === openWithMessage, let url, let app = NSWorkspace.shared.urlForApplication(toOpen: url),
+           let index = apps.firstIndex(of: app) {
             openWith.selectItem(at: index)
         }
     }

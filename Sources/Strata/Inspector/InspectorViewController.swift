@@ -10,11 +10,20 @@ final class InspectorViewController: NSViewController {
     private let iconView = NSImageView()
     private let titleLabel = NSTextField(wrappingLabelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
-    private let grid = NSGridView()
+    /// The details: size, dates, where it is…
+    private let infoRows = InspectorRows()
     /// The shown items' Finder tags, editable.
-    private let tagField = TagField()
+    private let tagPicker = TagPicker(listWhileEditing: true, maxRows: 6)
+    private var tagField: TagField { tagPicker.field }
     /// Comments, Open With, Locked and permissions, for one item.
-    private let infoEditor = InfoEditorView()
+    private let infoEditor = InfoEditor()
+    private var infoCard: InspectorCard!
+    private var tagsCard: InspectorCard!
+    private var commentsCard: InspectorCard!
+    private var openWithCard: InspectorCard!
+    private var permissionsCard: InspectorCard!
+    /// Shows a folder in the browser (the Where row).
+    var onShowFolder: ((_ folder: URL, _ select: URL) -> Void)?
     private var shownURLs: [URL] = []
     private var previewWork: DispatchWorkItem?
     private let projectView = ProjectInspectorView()
@@ -59,31 +68,31 @@ final class InspectorViewController: NSViewController {
         subtitleLabel.alignment = .center
         subtitleLabel.lineBreakMode = .byTruncatingTail
 
-        grid.rowSpacing = 7
-        grid.columnSpacing = 10
-        grid.translatesAutoresizingMaskIntoConstraints = false
-
-        let separator = NSBox()
-        separator.boxType = .separator
-
         projectView.isHidden = true
         projectView.onDidClean = { [weak self] _ in self?.reloadProject() }
-        tagField.isHidden = true
         NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged(_:)), name: .tagsChanged, object: nil)
-        infoEditor.isHidden = true
-        let stack = NSStackView(views: [previewBox, titleLabel, subtitleLabel, separator, grid, tagField, infoEditor, summary,
-                                        projectView])
+        // Every section is a card of the same kind, in Finder's Get Info order.
+        infoCard = InspectorCard(id: "info", title: String(localized: "Information", comment: "Inspector section: size, dates, location"),
+                                 symbol: "info.circle", content: infoRows)
+        tagsCard = InspectorCard(id: "tags", title: String(localized: "Tags", comment: "Inspector section: Finder tags"),
+                                 symbol: "tag", content: tagPicker)
+        commentsCard = InspectorCard(id: "comments", title: String(localized: "Comments", comment: "Inspector: the item’s Spotlight comments"),
+                                     symbol: "text.bubble", content: infoEditor.commentsContent)
+        openWithCard = InspectorCard(id: "openWith", title: String(localized: "Open With"), symbol: "app.badge",
+                                     content: infoEditor.openWithContent)
+        permissionsCard = InspectorCard(id: "permissions",
+                                        title: String(localized: "Sharing & Permissions", comment: "Inspector section: Locked and who may read and write"),
+                                        symbol: "lock", content: infoEditor.permissionsContent)
+        let cards: [NSView] = [infoCard, tagsCard, commentsCard, openWithCard, permissionsCard, summary, projectView]
+        for card in [tagsCard, commentsCard, openWithCard, permissionsCard] as [NSView] { card.isHidden = true }
+        let stack = NSStackView(views: [previewBox, titleLabel, subtitleLabel] + cards)
         stack.orientation = .vertical
         stack.alignment = .centerX
-        stack.spacing = 6
+        stack.spacing = 10
         stack.setCustomSpacing(14, after: previewBox)
-        stack.setCustomSpacing(14, after: subtitleLabel)
-        stack.setCustomSpacing(14, after: separator)
-        stack.setCustomSpacing(12, after: grid)
-        stack.setCustomSpacing(18, after: tagField)
-        stack.setCustomSpacing(18, after: infoEditor)
-        stack.setCustomSpacing(22, after: summary)
-        stack.edgeInsets = NSEdgeInsets(top: 16, left: 18, bottom: 18, right: 18)
+        stack.setCustomSpacing(2, after: titleLabel)
+        stack.setCustomSpacing(16, after: subtitleLabel)
+        stack.edgeInsets = NSEdgeInsets(top: 16, left: 14, bottom: 18, right: 14)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let document = FlippedView()
@@ -101,8 +110,8 @@ final class InspectorViewController: NSViewController {
             stack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
             stack.topAnchor.constraint(equalTo: document.topAnchor),
             stack.bottomAnchor.constraint(equalTo: document.bottomAnchor),
-            previewBox.leadingAnchor.constraint(equalTo: stack.leadingAnchor, constant: 18),
-            previewBox.trailingAnchor.constraint(equalTo: stack.trailingAnchor, constant: -18),
+            previewBox.leadingAnchor.constraint(equalTo: stack.leadingAnchor, constant: 14),
+            previewBox.trailingAnchor.constraint(equalTo: stack.trailingAnchor, constant: -14),
             richBackdrop.leadingAnchor.constraint(equalTo: previewBox.leadingAnchor),
             richBackdrop.trailingAnchor.constraint(equalTo: previewBox.trailingAnchor),
             richBackdrop.topAnchor.constraint(equalTo: previewBox.topAnchor),
@@ -117,13 +126,7 @@ final class InspectorViewController: NSViewController {
             iconView.heightAnchor.constraint(equalToConstant: 160),
             titleLabel.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
             subtitleLabel.widthAnchor.constraint(lessThanOrEqualTo: previewBox.widthAnchor),
-            separator.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
-            grid.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
-            tagField.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
-            infoEditor.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
-            projectView.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
-            summary.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
-        ])
+        ] + cards.map { $0.widthAnchor.constraint(equalTo: previewBox.widthAnchor) })
         previewHeight = previewBox.heightAnchor.constraint(equalToConstant: 230)
         previewHeight?.isActive = true
         view = scroll
@@ -152,7 +155,14 @@ final class InspectorViewController: NSViewController {
         let sameItems = urls == shownURLs
         shownURLs = urls
         // Volumes, links and archives opened as folders don't take tags. A refresh while you type leaves your typing alone.
-        tagField.isHidden = items.isEmpty || items.contains { $0.isVolume || !TagStore.canTag($0.url) }
+        // Typing in the tag field belongs to the items it was opened on: a new selection (or a hidden field) ends it,
+        // applying what was typed to those items.
+        let taggable = !items.isEmpty && !items.contains { $0.isVolume || !TagStore.canTag($0.url) }
+        if tagField.currentEditor() != nil, !sameItems || !taggable {
+            tagField.commit()
+            view.window?.makeFirstResponder(nil)
+        }
+        tagsCard.isHidden = !taggable
         tagField.undo = view.window?.undoManager
         tagField.errorWindow = view.window
         if !sameItems {
@@ -163,8 +173,10 @@ final class InspectorViewController: NSViewController {
 
         // Get Info's settings: one real item (not a disk, a link, or a temporary copy inside an archive).
         let editable = items.count == 1 && !items[0].isVolume && !items[0].isSymlink && !ArchiveCache.contains(items[0].url)
-        infoEditor.isHidden = !editable
         if editable { infoEditor.show(items[0]) }
+        commentsCard.isHidden = !editable
+        openWithCard.isHidden = !editable || !infoEditor.hasOpenWith
+        permissionsCard.isHidden = !editable
 
         guard let first = items.first else {
             titleLabel.stringValue = ""
@@ -183,31 +195,53 @@ final class InspectorViewController: NSViewController {
             titleLabel.stringValue = apparent?.lastPathComponent ?? entry.name
             let size = entry.isDirectory ? folderSize(entry.url).map { Format.bytes($0.bytes) } : entry.size.map(Format.bytes)
             subtitleLabel.stringValue = [entry.kind, size].compactMap { $0 }.joined(separator: " · ")
-            var rows: [(String, String)] = []
+            var rows: [(String, NSView)] = []
+            let sizeTitle = String(localized: "Size", comment: "Inspector row: how big the item is")
             if entry.isDirectory {
                 if let size = folderSize(entry.url) {
-                    rows.append(("Size", "\(Format.bytes(size.bytes)) · \(Format.count(size.files, "file", "files"))"))
+                    let files = String(localized: "\(size.files) files", comment: "plural")
+                    rows.append((sizeTitle, InspectorRows.text("\(Format.bytes(size.bytes)) · \(files)")))
                 } else if canMeasure(entry) {
-                    rows.append(("Size", "Calculating…"))
+                    rows.append((sizeTitle, InspectorRows.text(String(localized: "Calculating…"))))
                 } else if entry.isVolume || entry.isSymlink {
-                    rows.append(("Size", "—"))
+                    rows.append((sizeTitle, InspectorRows.text("—")))
                 } else {
-                    rows.append(("Size", "Needs Full Disk Access"))
+                    rows.append((sizeTitle, InspectorRows.text(String(localized: "Needs Full Disk Access", comment: "Inspector: a folder’s size can’t be measured without Full Disk Access"))))
                 }
             } else if let bytes = entry.size {
                 // The exact byte count only adds information once the size is rounded to KB or more.
-                rows.append(("Size", bytes < 1000 ? Format.bytes(bytes) : "\(Format.bytes(bytes)) (\(bytes.formatted()) bytes)"))
+                rows.append((sizeTitle, InspectorRows.text(bytes < 1000 ? Format.bytes(bytes)
+                    : String(localized: "\(Format.bytes(bytes)) (\(Int(bytes)) bytes)", comment: "plural"))))
             }
-            if let dimensions = Self.imageDimensions(entry) { rows.append(("Dimensions", dimensions)) }
-            rows.append(("Created", Format.longDate(entry.created)))
-            rows.append(("Modified", Format.longDate(entry.modified)))
-            if let added = entry.added { rows.append(("Added", Format.longDate(added))) }
-            rows.append(("Where", Format.tildePath((apparent ?? entry.url).deletingLastPathComponent())))
-            if let cloud = CloudStore.shared.status(for: entry.url) { rows.append(("Cloud", cloud.label)) }
+            if let dimensions = Self.imageDimensions(entry) {
+                rows.append((String(localized: "Dimensions", comment: "Inspector row: an image’s width × height in pixels"), InspectorRows.text(dimensions)))
+            }
+            rows.append((String(localized: "Created", comment: "Inspector row: creation date"), InspectorRows.text(Format.longDate(entry.created))))
+            rows.append((String(localized: "Modified", comment: "Inspector row: last modification date"), InspectorRows.text(Format.longDate(entry.modified))))
+            if let added = entry.added {
+                rows.append((String(localized: "Added", comment: "Inspector row: date the item was added to its folder"), InspectorRows.text(Format.longDate(added))))
+            }
+            // Where: the folder by name (and its path on one line); clicking shows it with the item selected. Inside an
+            // archive opened as a folder, it's where the item appears to be; the archive's own top is the archive, in
+            // the archive's folder.
+            let target: (folder: URL, item: URL)
+            if let (archive, top) = ArchiveCache.archive(containing: entry.url), top.standardizedFileURL == entry.url.standardizedFileURL {
+                target = (archive.deletingLastPathComponent(), archive)
+            } else {
+                target = (entry.url.deletingLastPathComponent(), entry.url)
+            }
+            let shownFolder = (apparent ?? entry.url).deletingLastPathComponent()
+            rows.append((String(localized: "Where", comment: "Inspector row: the folder the item is in"),
+                         InspectorLocationView(folder: target.folder, shownAs: shownFolder) { [weak self] in
+                             self?.onShowFolder?(target.folder, target.item)
+                         }))
+            if let cloud = CloudStore.shared.status(for: entry.url) {
+                rows.append((String(localized: "Cloud", comment: "Inspector row: iCloud or File Provider download status"), InspectorRows.text(cloud.label)))
+            }
             setRows(rows)
             if !sameItems { schedulePreview(entry) }
         } else {
-            titleLabel.stringValue = Format.count(items.count, "item", "items")
+            titleLabel.stringValue = String(localized: "\(items.count) items", comment: "plural")
             let known = items.compactMap { $0.isDirectory ? folderSize($0.url)?.bytes : $0.size }
             let total = known.reduce(0, +)
             // Symlinked folders, volumes and folders macOS guards aren't measured: their size never arrives, so they
@@ -220,11 +254,13 @@ final class InspectorViewController: NSViewController {
             let pending = known.count + unmeasured < items.count
             subtitleLabel.stringValue = Format.bytes(total) + (pending || unmeasured > 0 ? "+" : "")
             let folders = items.filter(\.isFolder).count
-            let note = pending ? " (calculating…)" : unmeasured > 0 ? " (\(Format.count(unmeasured, "folder", "folders")) not measured)" : ""
+            let totalText = pending ? String(localized: "\(Format.bytes(total)) (calculating…)", comment: "Inspector: a total size still being worked out")
+                : unmeasured > 0 ? String(localized: "\(Format.bytes(total)) (\(unmeasured) folders not measured)", comment: "plural")
+                : Format.bytes(total)
             setRows([
-                ("Folders", folders.formatted()),
-                ("Files", (items.count - folders).formatted()),
-                ("Total", Format.bytes(total) + note),
+                (String(localized: "Folders", comment: "Inspector row: how many folders are selected"), InspectorRows.text(folders.formatted())),
+                (String(localized: "Files", comment: "Inspector row: how many files are selected"), InspectorRows.text((items.count - folders).formatted())),
+                (String(localized: "Total", comment: "Inspector row: the selection’s total size"), InspectorRows.text(totalText)),
             ])
             if !sameItems {
                 previewWork?.cancel()
@@ -332,33 +368,9 @@ final class InspectorViewController: NSViewController {
         projectView.configure(info.withCurrentGit())
     }
 
-    private func setRows(_ rows: [(String, String)]) {
-        // NSGridView.removeRow leaves the cell views behind, so remove them explicitly.
-        while grid.numberOfRows > 0 {
-            let row = grid.row(at: 0)
-            for index in 0..<row.numberOfCells { row.cell(at: index).contentView?.removeFromSuperview() }
-            grid.removeRow(at: 0)
-        }
-        for (name, value) in rows {
-            let label = NSTextField(labelWithString: name)
-            label.font = .systemFont(ofSize: 11)
-            label.textColor = .secondaryLabelColor
-            label.alignment = .right
-            // Values wrap in full, like Get Info, rather than lose their middle ("671.1 MB (671,088,640 bytes)", deep
-            // paths). No preferred width: the field wraps at the column's real width, which follows the panel's.
-            let field = NSTextField(wrappingLabelWithString: value)
-            field.font = .systemFont(ofSize: 12)
-            field.maximumNumberOfLines = 0
-            field.lineBreakMode = .byWordWrapping
-            field.isSelectable = true
-            field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            grid.addRow(with: [label, field])
-        }
-        if grid.numberOfColumns == 2 {
-            grid.column(at: 0).xPlacement = .trailing
-            grid.column(at: 0).width = 74
-            grid.column(at: 1).xPlacement = .leading
-        }
+    private func setRows(_ rows: [(String, NSView)]) {
+        infoRows.set(rows)
+        infoCard.isHidden = rows.isEmpty
     }
 
     private static func imageDimensions(_ entry: FileEntry) -> String? {

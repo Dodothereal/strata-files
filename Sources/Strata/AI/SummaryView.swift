@@ -43,7 +43,7 @@ final class SummaryView: NSView {
 
     private let card = CardView()
     private let icon = NSImageView()
-    private let heading = NSTextField(labelWithString: "Summary")
+    private let heading = NSTextField(labelWithString: String(localized: "Summary", comment: "Inspector card: a short summary of the document"))
     private let accessory = NSButton()
     private let spinner = NSProgressIndicator()
     private let body = NSStackView()
@@ -101,10 +101,10 @@ final class SummaryView: NSView {
 
         accessory.isBordered = false
         accessory.bezelStyle = .accessoryBarAction
-        accessory.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Summarize Again")?
+        accessory.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: String(localized: "Summarize Again"))?
             .withSymbolConfiguration(.init(pointSize: 11, weight: .medium))
         accessory.contentTintColor = .secondaryLabelColor
-        accessory.toolTip = "Summarize Again"
+        accessory.toolTip = String(localized: "Summarize Again")
         accessory.target = self
         accessory.action = #selector(summarize(_:))
         spinner.style = .spinning
@@ -152,11 +152,13 @@ final class SummaryView: NSView {
             break
         case .idle:
             let text = AIModel.isAvailable
-                ? "Get the gist of this document in a few lines, written on your Mac."
-                : "Pull out the key sentences of this document."
-                    + (AIModel.canOpenSettings ? " Turn on Apple Intelligence for written summaries." : "")
+                ? String(localized: "Get the gist of this document in a few lines, written on your Mac.")
+                : AIModel.canOpenSettings
+                    ? String(localized: "Pull out the key sentences of this document. Turn on Apple Intelligence for written summaries.")
+                    : String(localized: "Pull out the key sentences of this document.")
             body.addArrangedSubview(wrapping(text, size: 12, color: .secondaryLabelColor))
-            let button = NSButton(title: "Summarize", image: NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)!,
+            let button = NSButton(title: String(localized: "Summarize", comment: "Button: summarize the document"),
+                                  image: NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)!,
                                   target: self, action: #selector(summarize(_:)))
             button.imagePosition = .imageLeading
             button.controlSize = .regular
@@ -171,7 +173,8 @@ final class SummaryView: NSView {
                 let shimmer = ShimmerView()
                 body.addArrangedSubview(shimmer)
                 shimmer.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
-                body.addArrangedSubview(caption(partial?.status ?? (AIModel.isAvailable ? "Reading with Apple Intelligence…" : "Reading…")))
+                body.addArrangedSubview(caption(partial?.status ?? (AIModel.isAvailable ? String(localized: "Reading with Apple Intelligence…")
+                                                                                         : String(localized: "Reading…"))))
             }
         case let .done(summary):
             accessory.isHidden = false
@@ -183,7 +186,7 @@ final class SummaryView: NSView {
             row.spacing = 6
             body.addArrangedSubview(row)
             if canRetry {
-                let retry = NSButton(title: "Try Again", target: self, action: #selector(summarize(_:)))
+                let retry = NSButton(title: String(localized: "Try Again"), target: self, action: #selector(summarize(_:)))
                 retry.controlSize = .small
                 retry.bezelStyle = .push
                 body.addArrangedSubview(retry)
@@ -203,8 +206,11 @@ final class SummaryView: NSView {
             row.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
         }
         guard !streaming else { return }
-        let source = summary.method == .model ? "Apple Intelligence · On this Mac"
-            : AIModel.isSupported ? "Key sentences · \(AIModel.shortStatus)" : "Key sentences"
+        let source = summary.method == .model
+            ? String(localized: "Apple Intelligence · On this Mac", comment: "Caption: summaries and plans are made by Apple Intelligence on this Mac")
+            : AIModel.isSupported
+                ? String(localized: "Key sentences · \(AIModel.shortStatus)", comment: "Caption: the summary is the document’s key sentences, then why Apple Intelligence wasn’t used")
+                : String(localized: "Key sentences", comment: "Caption: the summary is the document’s key sentences")
         let footer = caption([source, summary.note].compactMap { $0 }.joined(separator: "\n"))
         if let last = body.arrangedSubviews.last { body.setCustomSpacing(10, after: last) }
         body.addArrangedSubview(footer)
@@ -260,8 +266,8 @@ final class CardView: NSView {
 
     override func updateLayer() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = NSColor.quaternarySystemFill.cgColor
-            layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.2).cgColor
+            layer?.backgroundColor = NSColor.tertiarySystemFill.withAlphaComponent(0.7).cgColor
+            layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.35).cgColor
         }
         layer?.borderWidth = 0.5
     }

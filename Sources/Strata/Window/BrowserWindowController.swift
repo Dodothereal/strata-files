@@ -752,6 +752,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         let folder: FileEntry? = { if case .folder = destination { return pane.folderEntry } else { return nil } }()
         let browser = browser
         let location = location
+        split.inspector.onShowFolder = { [weak self] folder, item in self?.navigate(to: folder, select: item) }
         split.inspector.show(entries: browser.selectedEntries, folder: folder,
                              folderSize: { url in browser.folderSize(url, request: true) },
                              canMeasure: { entry in

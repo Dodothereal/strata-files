@@ -1,5 +1,23 @@
 import AppKit
 
+extension FinderTag {
+    /// The name to show. The seven colored tags are stored under their English names, as Finder stores them, and shown
+    /// in the user's language; any other tag shows as it's named.
+    nonisolated var shownName: String {
+        let stored = ["", "Gray", "Green", "Purple", "Blue", "Yellow", "Red", "Orange"]
+        guard stored.indices.contains(color), color > 0, name.caseInsensitiveCompare(stored[color]) == .orderedSame else { return name }
+        switch color {
+        case 1: return String(localized: "Gray", comment: "Finder tag color name")
+        case 2: return String(localized: "Green", comment: "Finder tag color name")
+        case 3: return String(localized: "Purple", comment: "Finder tag color name")
+        case 4: return String(localized: "Blue", comment: "Finder tag color name")
+        case 5: return String(localized: "Yellow", comment: "Finder tag color name")
+        case 6: return String(localized: "Red", comment: "Finder tag color name")
+        default: return String(localized: "Orange", comment: "Finder tag color name")
+        }
+    }
+}
+
 /// Finder's tag dots: up to three overlapping circles after a name, the most recent tag on top. A tag without a color
 /// is a hollow gray ring.
 final class TagDotsView: NSView {
@@ -8,7 +26,8 @@ final class TagDotsView: NSView {
             guard tags != oldValue else { return }
             invalidateIntrinsicContentSize()
             needsDisplay = true
-            setAccessibilityLabel(tags.isEmpty ? nil : "Tags: " + tags.map(\.name).joined(separator: ", "))
+            setAccessibilityLabel(tags.isEmpty ? nil : String(localized: "Tags: \(tags.map(\.shownName).joined(separator: ", "))",
+                                                              comment: "Accessibility; the placeholder is a list of tag names"))
             setAccessibilityElement(!tags.isEmpty)
         }
     }
