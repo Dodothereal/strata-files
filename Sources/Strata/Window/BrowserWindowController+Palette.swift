@@ -81,10 +81,11 @@ extension BrowserWindowController {
 
     private func commandItems() -> [PaletteItem] {
         let hasSelection = !browser.selectedURLs.isEmpty
-        func command(_ title: String, _ symbol: String, _ shortcut: String?, _ run: @escaping () -> Void) -> PaletteItem {
+        func command(_ title: String, _ symbol: String, _ shortcut: String?, keywords: [String] = [],
+                     _ run: @escaping () -> Void) -> PaletteItem {
             let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
-            return PaletteItem(title: title, subtitle: "", icon: image, kind: .action, shortcut: shortcut, run: run)
+            return PaletteItem(title: title, subtitle: "", icon: image, kind: .action, shortcut: shortcut, keywords: keywords, run: run)
         }
         var commands = [
             command("New Folder", "folder.badge.plus", "⇧⌘N") { [weak self] in self?.browser.newFolder(nil) },
@@ -129,6 +130,9 @@ extension BrowserWindowController {
             commands.insert(contentsOf: [
                 command("Quick Look", "eye", "Space") { [weak self] in self?.browser.toggleQuickLook(nil) },
                 command("Add to Shelf", "tray.and.arrow.down", nil) { [weak self] in self?.browser.addToShelf(nil) },
+                command("Share…", "square.and.arrow.up", nil, keywords: ["AirDrop", "Send", "Mail", "Messages"]) { [weak self] in
+                    self?.browser.share(nil)
+                },
                 command("Duplicate", "plus.square.on.square", "⌘D") { [weak self] in self?.browser.duplicate(nil) },
                 command("Rename", "pencil", "↩") { [weak self] in self?.browser.renameSelection(nil) },
                 command("Move to Trash", "trash", "⌘⌫") { [weak self] in self?.browser.moveToTrash(nil) },

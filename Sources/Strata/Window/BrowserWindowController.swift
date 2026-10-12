@@ -7,6 +7,7 @@ extension NSToolbarItem.Identifier {
     static let search = Self("search")
     static let viewMode = Self("viewMode")
     static let dualPane = Self("dualPane")
+    static let share = Self("share")
 }
 
 /// One browser window (or tab): one or two panes, each with its own place and history, sharing the sidebar,
@@ -700,7 +701,7 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
 extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, NSMenuItemValidation {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.toggleSidebar, .sidebarTrackingSeparator, .back, .forward, .flexibleSpace, .pathBar, .flexibleSpace, .viewMode,
-         .dualPane, .search, .transfers, .inspectorTrackingSeparator, .toggleInspector]
+         .dualPane, .share, .search, .transfers, .inspectorTrackingSeparator, .toggleInspector]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -743,6 +744,12 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             item.action = #selector(toggleDualPane(_:))
             item.isBordered = true
             dualPaneItem = item
+            return item
+        case .share:
+            let item = NSSharingServicePickerToolbarItem(itemIdentifier: id)
+            item.label = "Share"
+            item.toolTip = "Share the selection: AirDrop, Messages, Mail and more"
+            item.delegate = self
             return item
         case .transfers:
             let item = TransfersToolbarItem(itemIdentifier: id)
@@ -817,5 +824,11 @@ extension BrowserWindowController: NSSearchFieldDelegate {
         default:
             return false
         }
+    }
+}
+
+extension BrowserWindowController: NSSharingServicePickerToolbarItemDelegate {
+    func items(for pickerToolbarItem: NSSharingServicePickerToolbarItem) -> [Any] {
+        browser.selectedURLs
     }
 }

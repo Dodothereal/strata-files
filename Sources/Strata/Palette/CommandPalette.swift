@@ -15,6 +15,8 @@ struct PaletteItem {
     let icon: NSImage
     let kind: Kind
     var shortcut: String? = nil
+    /// Other words that find a command ("airdrop" finds Share…).
+    var keywords: [String] = []
     /// Added to the fuzzy score; frequently visited folders get more.
     var boost: Int = 0
     /// For items produced for a specific query (path lookups): their score and highlighted title characters.
@@ -176,6 +178,8 @@ final class CommandPalette: NSObject {
                 if let match = Fuzzy.match(query, item.title) {
                     scored.append((item, match.indices, match.score + item.boost))
                 } else if item.kind == .folder, let match = Fuzzy.match(query, item.subtitle) {
+                    scored.append((item, [], match.score / 2 + item.boost - 10))
+                } else if let match = item.keywords.lazy.compactMap({ Fuzzy.match(query, $0) }).first {
                     scored.append((item, [], match.score / 2 + item.boost - 10))
                 }
             }

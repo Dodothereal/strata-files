@@ -443,9 +443,11 @@ final class BrowserViewController: NSViewController {
     /// Shows `entries` (search results or recent files) in place of the folder, keeping their order until a column
     /// header is clicked. `total` is how many matched before the list was capped.
     func showResults(_ entries: [FileEntry], total: Int) {
+        // Read before switching to the list: in other views the list's own selection is stale and could point at a file
+        // nobody picked.
+        let selection = selectedURLs
         enterResults()
         generation += 1
-        let selection = selectedURLs
         resultsTotal = total
         resultsSummary = nil
         loadError = nil
@@ -862,6 +864,38 @@ final class BrowserViewController: NSViewController {
         ShelfPanel.shared.add(selectedURLs)
     }
 
+    /// Shows the system share picker (AirDrop, Messages, Mail, …) for the selection, pointing at the first selected item.
+    @objc func share(_ sender: Any?) {
+        let urls = selectedURLs
+        guard !urls.isEmpty, let window = view.window else { return }
+        let picker = NSSharingServicePicker(items: urls)
+        // The first selected item that's on screen, not under the toolbar (lists scroll beneath it).
+        let area = view.safeAreaRect
+        let anchor = urls.prefix(200).lazy.compactMap { [self] url -> NSRect? in
+            guard let screenRect = iconScreenRect(for: url) else { return nil }
+            let rect = view.convert(window.convertFromScreen(screenRect), from: nil).intersection(area)
+            return rect.isEmpty ? nil : rect
+        }.first
+        if let anchor {
+            picker.show(relativeTo: anchor, of: view, preferredEdge: .maxY)
+        } else {
+            // Everything selected is scrolled out of view: point at the top middle of the folder instead.
+            picker.show(relativeTo: NSRect(x: area.midX, y: area.maxY - 8, width: 1, height: 1), of: view, preferredEdge: .minY)
+        }
+    }
+
+    /// Where an item's icon is on screen, when it's visible: for Quick Look's zoom and to point the share picker at it.
+    func iconScreenRect(for url: URL) -> NSRect? {
+        if let activeView { return activeView.screenRect(for: url) }
+        guard let node = node(for: url), let window = view.window else { return nil }
+        let row = outlineView.row(forItem: node)
+        guard row >= 0 else { return nil }
+        let cell = outlineView.frameOfCell(atColumn: outlineView.column(withIdentifier: .name), row: row)
+        let iconRect = NSRect(x: cell.minX + 1, y: cell.midY - 9, width: 18, height: 18)
+        guard outlineView.visibleRect.intersects(iconRect) else { return nil }
+        return window.convertToScreen(outlineView.convert(iconRect, to: nil))
+    }
+
     @objc func showInFinder(_ sender: Any?) {
         guard let finder = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.finder") else { return }
         let target = selectedURLs.first?.deletingLastPathComponent() ?? directory
@@ -1110,6 +1144,8 @@ final class BrowserViewController: NSViewController {
             }
         }
         add("Quick Look", #selector(toggleQuickLook(_:)), "eye")
+        // The system's own item: it keeps its picker alive and shows the share sheet next to the menu.
+        menu.addItem(NSSharingServicePicker(items: selected.map(\.url)).standardShareMenuItem)
         menu.addItem(.separator())
         if selected.count == 1 { add("Rename", #selector(renameSelection(_:)), "pencil") }
         add("Duplicate", #selector(duplicate(_:)), "plus.square.on.square")
@@ -1329,7 +1365,7 @@ extension BrowserViewController: NSMenuItemValidation {
         let fileCommands: [Selector] = [
             #selector(openSelection(_:)), #selector(moveToTrash(_:)), #selector(duplicate(_:)), #selector(newFolder(_:)),
             #selector(renameSelection(_:)), #selector(toggleQuickLook(_:)), #selector(pasteAndMove(_:)),
-            #selector(copy(_:)), #selector(cut(_:)), #selector(paste(_:)),
+            #selector(copy(_:)), #selector(cut(_:)), #selector(paste(_:)), #selector(share(_:)),
         ]
         // While a name is being edited, ⌘⌫, ⌘D and ⇧⌘N belong to the text, not the file. While another folder loads,
         // the rows on screen are the previous folder's.
@@ -1341,7 +1377,7 @@ extension BrowserViewController: NSMenuItemValidation {
         let hasSelection = selectionCount > 0
         switch item.action {
         case #selector(openSelection(_:)), #selector(moveToTrash(_:)), #selector(duplicate(_:)),
-             #selector(copy(_:)), #selector(cut(_:)), #selector(toggleQuickLook(_:)):
+             #selector(copy(_:)), #selector(cut(_:)), #selector(toggleQuickLook(_:)), #selector(share(_:)):
             return hasSelection
         case #selector(renameSelection(_:)):
             return selectionCount == 1 && effectiveMode != .treemap
@@ -1387,14 +1423,7 @@ extension BrowserViewController: QLPreviewPanelDataSource, QLPreviewPanelDelegat
 
     func previewPanel(_ panel: QLPreviewPanel!, sourceFrameOnScreenFor item: (any QLPreviewItem)!) -> NSRect {
         guard let url = (item as? NSURL) as URL? else { return .zero }
-        if let activeView { return activeView.screenRect(for: url) ?? .zero }
-        guard let node = node(for: url), let window = view.window else { return .zero }
-        let row = outlineView.row(forItem: node)
-        guard row >= 0 else { return .zero }
-        let cell = outlineView.frameOfCell(atColumn: outlineView.column(withIdentifier: .name), row: row)
-        let iconRect = NSRect(x: cell.minX + 1, y: cell.midY - 9, width: 18, height: 18)
-        guard outlineView.visibleRect.intersects(iconRect) else { return .zero }
-        return window.convertToScreen(outlineView.convert(iconRect, to: nil))
+        return iconScreenRect(for: url) ?? .zero
     }
 
     func previewPanel(_ panel: QLPreviewPanel!, transitionImageFor item: (any QLPreviewItem)!,
