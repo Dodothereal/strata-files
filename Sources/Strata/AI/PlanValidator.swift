@@ -26,8 +26,11 @@ nonisolated enum PlanValidator {
         return plan
     }
 
+    /// `allowChains`: an item may take a name another renamed item gives up (swaps, "1, 2, 3 → 2, 3, 4"); the
+    /// executor moves those through temporary names. `keepExtensions`: a new name without the item's extension gets it
+    /// back (off when renaming extensions on purpose).
     static func validate(_ operations: [ProposedOperation], request: PlanGenerator.Request, source: Plan.Source,
-                         interpretation: String) -> Plan {
+                         interpretation: String, allowChains: Bool = false, keepExtensions: Bool = true) -> Plan {
         let fm = FileManager.default
         let base = request.baseFolder.standardizedFileURL
         let selection = Dictionary(request.items.map { (key($0.url), $0) }, uniquingKeysWith: { first, _ in first })
@@ -39,6 +42,9 @@ nonisolated enum PlanValidator {
         var newFolders: [URL] = []
         var nextID = 0
         var unchanged = 0
+        if allowChains {
+            for case let .rename(url, _) in operations { vacated.insert(key(url)) }
+        }
 
         func exclude(_ kind: PlanStep.Kind, _ source: URL?, _ destination: URL?, _ problem: String) {
             excluded.append(PlanStep(id: nextID, kind: kind, source: source, destination: destination, isEnabled: false, problem: problem))
@@ -79,7 +85,8 @@ nonisolated enum PlanValidator {
                 guard touched.insert(key(item.url)).inserted else { exclude(.rename, url, nil, "Already changed by another step"); continue }
                 var newName = name.trimmingCharacters(in: .whitespacesAndNewlines)
                 var note: String?
-                if !item.isFolder, !item.ext.isEmpty, (newName as NSString).pathExtension.lowercased() != item.ext.lowercased() {
+                if keepExtensions, !item.isFolder, !item.ext.isEmpty,
+                   (newName as NSString).pathExtension.lowercased() != item.ext.lowercased() {
                     newName += "." + item.ext
                     note = "Kept the .\(item.ext) extension"
                 }
@@ -129,14 +136,58 @@ nonisolated enum PlanValidator {
             }
         }
 
-        // A destination inside a selected item that this plan renames, moves or trashes would go missing.
-        let changing = steps.compactMap { $0.kind == .createFolder ? nil : $0.source }
+        // With chains, a name counted as given up must really be: an item whose own change was refused (or that keeps
+        // its name) stays, and nothing may land on it. Refusing one change can strand another (its target now stays
+        // too), so stranding spreads along chains: one pass over a worklist.
+        if allowChains {
+            var stepByDestination: [String: Int] = [:]
+            for (index, step) in steps.enumerated() {
+                if let destination = step.destination { stepByDestination[key(destination)] = index }
+            }
+            let moving = Set(steps.compactMap(\.source).map(key))
+            var staying = operations.compactMap { operation -> String? in
+                if case let .rename(url, _) = operation, !moving.contains(key(url)) { return key(url) }
+                return nil
+            }
+            var stranded = Set<Int>()
+            while let name = staying.popLast() {
+                guard let index = stepByDestination[name], stranded.insert(index).inserted else { continue }
+                if let source = steps[index].source { staying.append(key(source)) }
+            }
+            if !stranded.isEmpty {
+                for index in stranded.sorted() {
+                    let step = steps[index]
+                    excluded.append(PlanStep(id: step.id, kind: step.kind, source: step.source, destination: step.destination,
+                                             isEnabled: false,
+                                             problem: "Would replace “\(step.destination?.lastPathComponent ?? "")”, which keeps its name"))
+                }
+                steps = steps.enumerated().filter { !stranded.contains($0.offset) }.map(\.element)
+            }
+        }
+        // Nothing is changed inside something this plan also renames, moves or trashes: a destination there would go
+        // missing, and an item there would be renamed under a folder that's leaving.
+        let changing = Dictionary(steps.compactMap { step in step.kind == .createFolder ? nil : step.source.map { (key($0), $0) } },
+                                  uniquingKeysWith: { first, _ in first })
+        func changedFolder(holding url: URL, including itself: Bool) -> URL? {
+            var current = itself ? url.standardizedFileURL : url.standardizedFileURL.deletingLastPathComponent()
+            while current.path != "/", !current.path.isEmpty {
+                if let changed = changing[key(current)] { return changed }
+                current = current.deletingLastPathComponent()
+            }
+            return nil
+        }
         var kept: [PlanStep] = []
         for step in steps {
-            if step.kind == .move, let destination = step.destination,
-               let changed = changing.first(where: { isInside(destination.deletingLastPathComponent(), $0) || key(destination.deletingLastPathComponent()) == key($0) }),
-               changed != step.source {
-                excluded.append(PlanStep(id: step.id, kind: step.kind, source: step.source, destination: destination, isEnabled: false,
+            var changed: URL?
+            if step.kind == .move, let destination = step.destination {
+                changed = changedFolder(holding: destination.deletingLastPathComponent(), including: true)
+                if changed == step.source { changed = nil }
+            }
+            if changed == nil, step.kind == .rename || step.kind == .move, let source = step.source {
+                changed = changedFolder(holding: source, including: false)
+            }
+            if let changed {
+                excluded.append(PlanStep(id: step.id, kind: step.kind, source: step.source, destination: step.destination, isEnabled: false,
                                          problem: "“\(changed.lastPathComponent)” is changed by this plan too"))
             } else {
                 kept.append(step)

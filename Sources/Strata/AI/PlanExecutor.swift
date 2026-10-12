@@ -103,13 +103,21 @@ final class PlanTransaction {
                 outcome.failures.append("“\(url.lastPathComponent)” couldn’t be moved to the Trash: \(error.localizedDescription)")
             }
         }
-        for pair in moves {
-            do {
-                try await Self.move(pair)
-                done.append(pair)
-                outcome.results.append(pair.to)
-            } catch {
-                outcome.failures.append("“\(pair.from.lastPathComponent)”: \(error.localizedDescription)")
+        if FileOps.isChain(moves.map { (from: $0.from, to: $0.to) }) {
+            // Swaps and chains move together, through temporary names.
+            let (moved, error) = await FileOps.moveAll(moves.map { (from: $0.from, to: $0.to) })
+            done = moved.map { ($0.from, $0.to) }
+            outcome.results += moved.map(\.to)
+            if let error { outcome.failures.append(error.localizedDescription) }
+        } else {
+            for pair in moves {
+                do {
+                    try await Self.move(pair)
+                    done.append(pair)
+                    outcome.results.append(pair.to)
+                } catch {
+                    outcome.failures.append("“\(pair.from.lastPathComponent)”: \(error.localizedDescription)")
+                }
             }
         }
         outcome.applied = done.count + trashed.count
@@ -118,7 +126,12 @@ final class PlanTransaction {
 
     func revert() async {
         // The reverse of `perform`: moves back first (freeing names), then the Trash.
-        for pair in done.reversed() { try? await Self.move((pair.to, pair.from)) }
+        let back = done.reversed().map { (from: $0.to, to: $0.from) }
+        if FileOps.isChain(back) {
+            _ = await FileOps.moveAll(back)
+        } else {
+            for pair in back { try? await Self.move((pair.from, pair.to)) }
+        }
         for pair in trashed.reversed() { try? await Self.move((pair.to, pair.from)) }
         let fm = FileManager.default
         for folder in created.reversed() {

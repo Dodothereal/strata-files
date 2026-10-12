@@ -139,7 +139,8 @@ extension BrowserWindowController {
                     self?.browser.share(nil)
                 },
                 command("Duplicate", "plus.square.on.square", "⌘D") { [weak self] in self?.browser.duplicate(nil) },
-                command("Rename", "pencil", "↩") { [weak self] in self?.browser.renameSelection(nil) },
+                command(browser.renameTitle, "pencil", browser.selectedURLs.count > 1 ? nil : "↩",
+                        keywords: ["Batch", "Replace", "Number"]) { [weak self] in self?.browser.renameSelection(nil) },
 
                 command("Delete Immediately…", "xmark.bin", "⌥⌘⌫", keywords: ["Remove", "Erase"]) { [weak self] in
                     self?.browser.deleteImmediately(nil)

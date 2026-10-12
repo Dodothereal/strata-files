@@ -33,15 +33,119 @@ enum FileOps {
         guard !pairs.contains(where: { ArchiveCache.contains($0.from) || ArchiveCache.contains($0.to) }) else {
             throw insideArchiveError
         }
-        var done: [Move] = []
-        defer {
-            let entry = record ? OperationLog.shared.recordMove(actionName, done) : nil
-            registerMoveUndo(done, actionName, undo, entry: entry)
+        let (done, error) = await moveAll(pairs)
+        let entry = record ? OperationLog.shared.recordMove(actionName, done) : nil
+        registerMoveUndo(done, actionName, undo, entry: entry)
+        if let error { throw error }
+    }
+
+    /// Moves each pair in order, stopping at the first error, and returns what moved and the error that stopped it.
+    /// Swaps and chains ("a → b" with "b → a", or "1 → 2, 2 → 3") are ordered so each item moves only once the one
+    /// whose place it takes has left; a cycle parks one item under a hidden name that keeps its own. They succeed or
+    /// fail as a whole: on an error everything moved goes back, and nothing is left under a hidden name.
+    static func moveAll(_ pairs: [Move]) async -> (done: [Move], error: Error?) {
+        guard isChain(pairs) else {
+            var done: [Move] = []
+            for pair in pairs {
+                do { try await moveItem(pair.from, pair.to) } catch { return (done, error) }
+                done.append(pair)
+            }
+            return (done, nil)
         }
-        for pair in pairs {
-            try await moveItem(pair.from, pair.to)
-            done.append(pair)
+        var executed: [(step: ChainStep, completes: Int?)] = []
+        for step in chainSteps(pairs) {
+            do {
+                try await moveItem(step.from, step.to)
+                executed.append((step, step.completes))
+            } catch {
+                let pair = pairs[step.pair]
+                let named = NSError(domain: NSCocoaErrorDomain, code: (error as NSError).code, userInfo: [
+                    NSLocalizedDescriptionKey: "“\(pair.from.lastPathComponent)” couldn’t be renamed to “\(pair.to.lastPathComponent)”: "
+                        + error.localizedDescription,
+                    NSUnderlyingErrorKey: error,
+                ])
+                // Back the way it came; whatever can't go back stays where it is, but never hidden.
+                var kept: [Move] = []
+                for item in executed.reversed() {
+                    if (try? await moveItem(item.step.to, item.step.from)) != nil { continue }
+                    if item.step.isParking {
+                        try? await moveItem(item.step.to, available(item.step.from, copyStyle: false))
+                    } else if let completed = item.completes {
+                        kept.insert(pairs[completed], at: 0)
+                    }
+                }
+                return (kept, named)
+            }
         }
+        return (executed.compactMap { $0.completes.map { pairs[$0] } }, nil)
+    }
+
+    /// One rename of a chain: `completes` is the pair it finishes (nil while an item is parked).
+    struct ChainStep {
+        let from: URL
+        let to: URL
+        /// The pair this step belongs to.
+        let pair: Int
+        let completes: Int?
+        var isParking: Bool { completes == nil }
+    }
+
+    /// The order to run `pairs` in: each moves after the one whose place it takes (`blocker`); a cycle is broken by
+    /// parking its first item and finishing it last.
+    nonisolated static func chainSteps(_ pairs: [Move]) -> [ChainStep] {
+        func key(_ url: URL) -> String { url.standardizedFileURL.path.lowercased() }
+        let bySource = Dictionary(pairs.enumerated().map { (key($0.element.from), $0.offset) }, uniquingKeysWith: { first, _ in first })
+        var blocked = [Bool](repeating: false, count: pairs.count)
+        // waiting[j]: the pair that goes where pair j is now.
+        var waiting = [Int?](repeating: nil, count: pairs.count)
+        for (index, pair) in pairs.enumerated() {
+            let target = key(pair.to)
+            if target != key(pair.from), let other = bySource[target], other != index {
+                blocked[index] = true
+                waiting[other] = index
+            }
+        }
+        var steps: [ChainStep] = []
+        var scheduled = [Bool](repeating: false, count: pairs.count)
+        // Chains: start from the item whose new name is free, then the one that takes its old name, and so on.
+        for start in pairs.indices where !blocked[start] {
+            var next: Int? = start
+            while let current = next, !scheduled[current] {
+                scheduled[current] = true
+                steps.append(ChainStep(from: pairs[current].from, to: pairs[current].to, pair: current, completes: current))
+                next = waiting[current]
+            }
+        }
+        // What's left are cycles.
+        for start in pairs.indices where !scheduled[start] {
+            let parked = parkingName(for: pairs[start].from)
+            steps.append(ChainStep(from: pairs[start].from, to: parked, pair: start, completes: nil))
+            scheduled[start] = true
+            var next = waiting[start]
+            while let current = next, !scheduled[current] {
+                scheduled[current] = true
+                steps.append(ChainStep(from: pairs[current].from, to: pairs[current].to, pair: current, completes: current))
+                next = waiting[current]
+            }
+            steps.append(ChainStep(from: parked, to: pairs[start].to, pair: start, completes: start))
+        }
+        return steps
+    }
+
+    /// A hidden name beside `url` that still says what the item was called (".strata-1a2b3c4d-Photo.jpg"), so an
+    /// interrupted swap leaves nothing anonymous.
+    nonisolated static func parkingName(for url: URL) -> URL {
+        let prefix = ".strata-" + UUID().uuidString.prefix(8).lowercased() + "-"
+        var name = url.lastPathComponent
+        while (prefix + name).utf8.count > 255 { name.removeLast() }
+        return url.deletingLastPathComponent().appending(path: prefix + name)
+    }
+
+    /// Whether an item goes where another one is now (a swap or a chain of renames).
+    nonisolated static func isChain(_ pairs: [Move]) -> Bool {
+        func key(_ url: URL) -> String { url.standardizedFileURL.path.lowercased() }
+        let sources = Set(pairs.map { key($0.from) })
+        return pairs.contains { key($0.to) != key($0.from) && sources.contains(key($0.to)) }
     }
 
     static func newFolder(in directory: URL, undo: UndoManager?) throws -> URL {

@@ -492,27 +492,37 @@ nonisolated enum PlanExpander {
         return output
     }
 
-    static func render(_ template: String, item: PlanItem, index: Int, width: Int, source: PlanRecipe.DateSource) -> String {
-        let date = item.date(source) ?? item.bestDate ?? Date()
-        func format(_ pattern: String) -> String {
+    /// Date tokens and their formats. Formatters are made once (formatting from several threads is safe).
+    private static let dateFormatters: [String: DateFormatter] = {
+        let patterns = ["date": "yyyy-MM-dd", "time": "HH.mm.ss", "datetime": "yyyy-MM-dd HH.mm.ss", "year": "yyyy",
+                        "month": "MM", "monthname": "MMMM", "day": "dd"]
+        return patterns.mapValues { pattern in
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.timeZone = .current
             formatter.dateFormat = pattern
-            return formatter.string(from: date)
+            return formatter
         }
-        let values: [String: String] = [
-            "date": format("yyyy-MM-dd"), "time": format("HH.mm.ss"), "datetime": format("yyyy-MM-dd HH.mm.ss"),
-            "year": format("yyyy"), "month": format("MM"), "monthname": format("MMMM"), "day": format("dd"),
-            "name": item.baseName, "n": String(repeating: "0", count: max(0, width - String(index).count)) + String(index),
-            "camera": item.cameraModel ?? "Unknown camera", "kind": item.kind, "parent": item.url.deletingLastPathComponent().lastPathComponent,
-        ]
+    }()
+
+    static func render(_ template: String, item: PlanItem, index: Int, width: Int, source: PlanRecipe.DateSource) -> String {
+        // Only what the template uses is worked out (a big selection renders on every keystroke).
+        func value(_ token: String) -> String {
+            if let formatter = dateFormatters[token] { return formatter.string(from: item.date(source) ?? item.bestDate ?? Date()) }
+            switch token {
+            case "name": return item.baseName
+            case "n": return String(repeating: "0", count: max(0, width - String(index).count)) + String(index)
+            case "camera": return item.cameraModel ?? "Unknown camera"
+            case "kind": return item.kind
+            case "parent": return item.url.deletingLastPathComponent().lastPathComponent
+            default: return ""
+            }
+        }
         var result = ""
         var rest = Substring(template)
         while let open = rest.firstIndex(of: "{"), let close = rest[open...].firstIndex(of: "}") {
             result += rest[..<open]
-            let token = rest[rest.index(after: open)..<close].lowercased()
-            result += values[token] ?? ""
+            result += value(rest[rest.index(after: open)..<close].lowercased())
             rest = rest[rest.index(after: close)...]
         }
         result += rest

@@ -825,8 +825,27 @@ final class BrowserViewController: NSViewController {
     }
 
     @objc func renameSelection(_ sender: Any?) {
+        if selectedEntries.count > 1 { return renameItems() }
         guard selectedEntries.count == 1, let url = selectedURLs.first else { return }
         beginRename(url)
+    }
+
+    /// Rename N Items…: a rule for all of them, previewed live, applied as one undoable step.
+    func renameItems() {
+        let urls = selectedURLs
+        guard urls.count > 1, !isInsideArchive, !isLoadingFolder else { return }
+        let base = targetDirectory ?? directory ?? urls[0].deletingLastPathComponent()
+        let controller = BatchRenameController(urls: urls, baseFolder: base, undo: undoManager)
+        controller.onApplied = { [weak self] results in
+            if !results.isEmpty { self?.selectWhenShown(results) }
+        }
+        presentAsSheet(controller)
+    }
+
+    /// "Rename", or "Rename 3 Items…" for several, like Finder.
+    var renameTitle: String {
+        let count = selectedEntries.count
+        return count > 1 ? "Rename \(Format.count(count, "Item", "Items"))…" : "Rename"
     }
 
     /// View ▸ Sort By: the same orders as the list's column headers, for every view. Tags follow `sortMenuKeys`.
@@ -1238,7 +1257,7 @@ final class BrowserViewController: NSViewController {
             add("Show Archive in Finder", #selector(showArchiveInFinder(_:)), "macwindow")
             return menu
         }
-        if selected.count == 1 { add("Rename", #selector(renameSelection(_:)), "pencil") }
+        add(renameTitle, #selector(renameSelection(_:)), "pencil")
         if inTrash {
             addEmptyTrash()
         } else {
@@ -1531,7 +1550,8 @@ extension BrowserViewController: NSMenuItemValidation {
              #selector(copy(_:)), #selector(cut(_:)), #selector(toggleQuickLook(_:)), #selector(share(_:)):
             return hasSelection
         case #selector(renameSelection(_:)):
-            return selectionCount == 1 && effectiveMode != .treemap
+            item.title = renameTitle
+            return selectionCount >= 1 && effectiveMode != .treemap
         case #selector(paste(_:)), #selector(pasteAndMove(_:)):
             return directory != nil && !isShowingResults && Clipboard.hasFiles && !isShowingTrash
         case #selector(newFolder(_:)):

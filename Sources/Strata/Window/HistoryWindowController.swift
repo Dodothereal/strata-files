@@ -103,8 +103,12 @@ final class HistoryWindowController: NSWindowController {
         switch entry.kind {
         case .move:
             let destination = entry.pairs.first.map { Format.tildePath(URL(fileURLWithPath: $0[1]).deletingLastPathComponent()) } ?? ""
-            if entry.name == "Rename", let to = entry.pairs.first.map({ ($0[1] as NSString).lastPathComponent }) {
-                return "“\(first)” → “\(to)”"
+            // Renames (every item stays in its folder) show the new name, not a destination.
+            let inPlace = !entry.pairs.isEmpty && entry.pairs.allSatisfy {
+                ($0[0] as NSString).deletingLastPathComponent == ($0[1] as NSString).deletingLastPathComponent
+            }
+            if inPlace, let to = entry.pairs.first.map({ ($0[1] as NSString).lastPathComponent }) {
+                return items.count > 1 ? "“\(first)” → “\(to)”\(more), in \(destination)" : "“\(first)” → “\(to)”"
             }
             return "“\(first)”\(more) → \(destination)"
         case .create:
