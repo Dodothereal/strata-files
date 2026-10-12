@@ -104,8 +104,18 @@ kbd, .key {
 }
 
 /* Navigation */
-.nav { position: sticky; top: 0; z-index: 50; transition: background 0.3s, border-color 0.3s, backdrop-filter 0.3s; border-bottom: 1px solid transparent; }
-.nav.is-scrolled { background: rgba(7, 6, 13, 0.72); border-bottom-color: var(--border); backdrop-filter: saturate(160%) blur(18px); -webkit-backdrop-filter: saturate(160%) blur(18px); }
+/* The frosted bar is a permanent layer that only fades in: switching or animating backdrop-filter itself makes
+   browsers rebuild the layer, which flickers while scrolling. */
+.nav { position: sticky; top: 0; z-index: 50; transform: translateZ(0); }
+.nav::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: rgba(7, 6, 13, 0.74);
+  border-bottom: 1px solid var(--border);
+  -webkit-backdrop-filter: saturate(160%) blur(18px);
+  backdrop-filter: saturate(160%) blur(18px);
+  opacity: 0; transition: opacity 0.25s ease; will-change: opacity;
+}
+.nav.is-scrolled::before { opacity: 1; }
 .nav__inner { display: flex; align-items: center; gap: 24px; height: 64px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.02em; }
 .brand img { border-radius: 7px; }

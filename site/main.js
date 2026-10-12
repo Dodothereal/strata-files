@@ -46,10 +46,18 @@
 
   // --- Navigation backdrop once the page scrolls ----------------------------------------------------------------
 
+  // Separate on and off points (so the elastic bounce at the top can't toggle it back and forth), applied at most
+  // once per frame and only when the state actually changes.
   const nav = document.querySelector('[data-nav]');
-  const onScroll = () => nav && nav.classList.toggle('is-scrolled', window.scrollY > 8);
-  window.addEventListener('scroll', onScroll, { passive: true });
-  onScroll();
+  let scrolled = false, queued = false;
+  const update = () => {
+    queued = false;
+    const y = window.scrollY;
+    const next = scrolled ? y > 2 : y > 24;
+    if (next !== scrolled && nav) { scrolled = next; nav.classList.toggle('is-scrolled', scrolled); }
+  };
+  window.addEventListener('scroll', () => { if (!queued) { queued = true; requestAnimationFrame(update); } }, { passive: true });
+  update();
 
   // --- Reveal on scroll -----------------------------------------------------------------------------------------
 
