@@ -141,7 +141,8 @@ their checksums. The website's Download button picks up the newest release on it
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
-The website lives in `site/` (`scripts/site.sh --serve` previews it) and is published by the
+The website lives in `site/` (`scripts/site.sh --serve` previews it; it needs `cwebp` from `brew install webp`) and is
+published by the
 [Website workflow](.github/workflows/pages.yml).
 
 ## License

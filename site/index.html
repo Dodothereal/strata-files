@@ -3,43 +3,165 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Strata Files: the file manager your Mac deserves</title>
-  <meta name="description" content="Strata is a fast, native, keyboard-first file manager for macOS. Find anything in milliseconds, see exactly where your space went, and move files without fear. Free and open source.">
+  <title>Strata Files: the fast Finder alternative for Mac</title>
+  <meta name="description" content="Strata is a free, native file manager for macOS. Find any file in milliseconds, see live folder sizes and a disk usage map, and work in dual pane or from ⌘K.">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
   <link rel="canonical" href="https://stratafiles.app/">
+  <meta name="author" content="Cristian Pufu">
   <meta name="theme-color" content="#07060d">
   <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-title" content="Strata">
 
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://stratafiles.app/">
   <meta property="og:site_name" content="Strata Files">
+  <meta property="og:locale" content="en_US">
   <meta property="og:title" content="Strata: the file manager your Mac deserves">
   <meta property="og:description" content="Find anything in milliseconds, see where your space went, and fly through your files from the keyboard. Native, private, free.">
   <meta property="og:image" content="https://stratafiles.app/assets/og.jpg">
+  <meta property="og:image:type" content="image/jpeg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Strata's window showing a folder with live sizes and a document summary">
+  <meta property="og:image:alt" content="Strata's window showing a folder with live sizes, next to the headline The file manager your Mac deserves">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Strata: the file manager your Mac deserves">
+  <meta name="twitter:description" content="Find anything in milliseconds, see where your space went, and fly through your files from the keyboard. Native, private, free.">
+  <meta name="twitter:image" content="https://stratafiles.app/assets/og.jpg">
+  <meta name="twitter:image:alt" content="Strata's window showing a folder with live sizes, next to the headline The file manager your Mac deserves">
 
-  <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon.png">
+  <link rel="icon" href="favicon.ico" sizes="48x48">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-  <link rel="preload" as="image" href="screenshots/hero.png">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="preconnect" href="https://api.github.com" crossorigin>
+  <link rel="preload" as="image" type="image/webp" href="screenshots/strata-mac-file-manager-list-view.webp"
+        imagesrcset="screenshots/strata-mac-file-manager-list-view-800.webp 800w, screenshots/strata-mac-file-manager-list-view.webp 1400w"
+        imagesizes="(max-width: 1228px) calc(100vw - 48px), 1180px" fetchpriority="high">
   <link rel="stylesheet" href="styles.css">
   <script>document.documentElement.classList.add('js')</script>
   <script src="main.js" defer></script>
 
+  <!-- Keep the FAQ answers here in step with the FAQ section below. -->
   <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "Strata",
-    "alternateName": "Strata Files",
-    "operatingSystem": "macOS 26",
-    "applicationCategory": "UtilitiesApplication",
-    "url": "https://stratafiles.app/",
-    "downloadUrl": "https://github.com/cristipufu/strata/releases/latest",
-    "license": "https://opensource.org/licenses/MIT",
-    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
-  }
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://stratafiles.app/#website",
+      "url": "https://stratafiles.app/",
+      "name": "Strata Files",
+      "description": "Strata is a free, native file manager for macOS. Find any file in milliseconds, see live folder sizes and a disk usage map, and work in dual pane or from ⌘K.",
+      "inLanguage": "en"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://stratafiles.app/#app",
+      "name": "Strata",
+      "alternateName": "Strata Files",
+      "description": "A fast, private, keyboard-first file manager and Finder alternative for macOS: instant search across your files, live folder sizes, a disk usage map, duplicate finder, dual pane, a command palette, a copy queue with undo, git-aware developer features and on-device document summaries.",
+      "url": "https://stratafiles.app/",
+      "image": "https://stratafiles.app/assets/icon-512.png",
+      "screenshot": [
+        "https://stratafiles.app/screenshots/strata-mac-file-manager-list-view.webp",
+        "https://stratafiles.app/screenshots/strata-plain-english-file-search.webp",
+        "https://stratafiles.app/screenshots/strata-command-palette.webp",
+        "https://stratafiles.app/screenshots/strata-disk-usage-map.webp",
+        "https://stratafiles.app/screenshots/strata-dual-pane.webp",
+        "https://stratafiles.app/screenshots/strata-git-status-code-preview.webp"
+      ],
+      "applicationCategory": "UtilitiesApplication",
+      "applicationSubCategory": "File manager",
+      "operatingSystem": "macOS 26 or later",
+      "processorRequirements": "Apple silicon",
+      "isAccessibleForFree": true,
+      "license": "https://opensource.org/licenses/MIT",
+      "downloadUrl": "https://github.com/cristipufu/strata/releases/latest",
+      "sameAs": [
+        "https://github.com/cristipufu/strata"
+      ],
+      "author": {
+        "@type": "Person",
+        "name": "Cristian Pufu",
+        "url": "https://github.com/cristipufu"
+      },
+      "featureList": [
+        "Instant file search with plain-English queries and filters",
+        "Live folder sizes",
+        "Disk usage map, large files and duplicate finder",
+        "Icons, List, Columns and Disk Usage views",
+        "Dual pane",
+        "Command palette (⌘K)",
+        "Copy queue with pause, resume and conflict previews",
+        "Undoable history of file operations",
+        "Git status and project inspector",
+        "Previews for code, Markdown, JSON, CSV, SQLite and archives",
+        "On-device summaries with Apple Intelligence",
+        "Encrypted index and history"
+      ],
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD",
+        "availability": "https://schema.org/InStock"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://stratafiles.app/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What do I need to run Strata?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A Mac with Apple silicon running macOS 26 Tahoe. Apple Intelligence is optional: without it, summaries fall back to a document's key sentences and Ask Strata to its built-in rules."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is Strata a Finder replacement?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Strata is a Finder alternative that works alongside Finder, so you can try it without giving anything up. If you like it, turn on Open “Reveal in Finder” in Strata in Settings, and apps that show files in Finder open Strata instead."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Why does it ask for Full Disk Access?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "So it can search and measure everything without macOS asking you folder by folder. It's optional, and Strata walks you through it on first launch. Without it, Strata still works with the folders you open."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is it safe to download?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Every release is signed with a Developer ID and notarized by Apple, so macOS opens it without warnings. The source is public, and each release lists SHA-256 checksums."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does Strata collect any data?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. There are no accounts, no analytics and no servers. The search index and history stay on your Mac, encrypted."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I update?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Download the latest version from this page or from GitHub Releases and replace the app in your Applications folder. Strata doesn't check for updates on its own, because it doesn't connect to anything."
+          }
+        }
+      ]
+    }
+  ]
+}
   </script>
 </head>
 <body>
@@ -77,25 +199,25 @@
         <div class="contours"></div>
       </div>
       <div class="wrap hero__inner">
-        <a class="pill reveal" href="#summaries">
+        <a class="pill" href="#summaries">
           <span class="pill__badge">New</span>
           Document summaries by Apple Intelligence, right on your Mac
           <span aria-hidden="true" class="pill__arrow">→</span>
         </a>
-        <h1 class="hero__title reveal">The file manager<br><span class="gradient-text">your Mac deserves.</span></h1>
-        <p class="hero__lede reveal">Strata finds anything in milliseconds, shows exactly where your space went, and lets you fly through your files from the keyboard. Native, private, and free.</p>
-        <div class="hero__cta reveal">
+        <h1 class="hero__title">The file manager <br><span class="gradient-text">your Mac deserves.</span></h1>
+        <p class="hero__lede">Strata finds anything in milliseconds, shows exactly where your space went, and lets you fly through your files from the keyboard. Native, private, and free.</p>
+        <div class="hero__cta">
           <a class="btn btn--primary btn--lg" href="https://github.com/cristipufu/strata/releases/latest" data-download>
             <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M10 3v10m0 0-4-4m4 4 4-4M4 16h12"/></svg>
             Download for Mac
           </a>
           <a class="btn btn--ghost btn--lg" href="https://github.com/cristipufu/strata">View the source</a>
         </div>
-        <p class="hero__meta reveal"><span data-version>Free and open source</span> <span class="dot">·</span> macOS 26 Tahoe <span class="dot">·</span> Apple silicon</p>
+        <p class="hero__meta"><span data-version>Free and open source</span> <span class="dot">·</span> macOS 26 Tahoe <span class="dot">·</span> Apple silicon</p>
       </div>
-      <div class="wrap hero__shot reveal">
+      <div class="wrap hero__shot">
         <div class="hero__glow" aria-hidden="true"></div>
-        <img class="shot" src="screenshots/hero.png" width="1400" height="1006"
+        <img class="shot" fetchpriority="high" src="screenshots/strata-mac-file-manager-list-view.webp" srcset="screenshots/strata-mac-file-manager-list-view-800.webp 800w, screenshots/strata-mac-file-manager-list-view.webp 1400w" sizes="(max-width: 1228px) calc(100vw - 48px), 1180px" width="1400" height="1006"
              alt="Strata showing a folder with live sizes, a Markdown preview and an on-device summary in the inspector">
       </div>
     </section>
@@ -113,8 +235,8 @@
       <div class="wrap">
         <header class="section__head reveal">
           <p class="eyebrow">Why Strata</p>
-          <h2>Everything you know from Finder.<br><span class="muted">Everything you wished it did.</span></h2>
-          <p class="lede">Strata keeps the look, the shortcuts, drag and drop, Quick Look and tabs. Then it adds the things Finder has been missing for years.</p>
+          <h2>Everything you know from Finder. <br><span class="muted">Everything you wished it did.</span></h2>
+          <p class="lede">Strata is a Finder alternative that keeps what you know: the look, the shortcuts, drag and drop, Quick Look and tabs. Then it adds the things Finder has been missing for years.</p>
         </header>
 
         <div class="bento">
@@ -192,7 +314,7 @@
           </ul>
         </header>
         <figure class="figure reveal">
-          <img class="shot" src="screenshots/search.png" width="1400" height="1006" loading="lazy"
+          <img class="shot" src="screenshots/strata-plain-english-file-search.webp" srcset="screenshots/strata-plain-english-file-search-800.webp 800w, screenshots/strata-plain-english-file-search.webp 1400w" sizes="(max-width: 1228px) calc(100vw - 48px), 1180px" width="1400" height="1006" loading="lazy" decoding="async"
                alt="A plain-English search for videos bigger than 500 MB, with the results and how Strata read the query">
         </figure>
       </div>
@@ -212,7 +334,7 @@
           </ul>
         </div>
         <figure class="split__media reveal">
-          <img class="shot" src="screenshots/palette.png" width="1400" height="1006" loading="lazy"
+          <img class="shot" src="screenshots/strata-command-palette.webp" srcset="screenshots/strata-command-palette-800.webp 800w, screenshots/strata-command-palette.webp 1400w" sizes="(max-width: 980px) calc(100vw - 48px), 690px" width="1400" height="1006" loading="lazy" decoding="async"
                alt="The command palette listing the contents of a project folder">
         </figure>
       </div>
@@ -224,10 +346,10 @@
         <header class="section__head reveal">
           <p class="eyebrow">Disk usage</p>
           <h2>See where your space went.</h2>
-          <p class="lede">Switch any folder to <b>Disk Usage</b> and see it as a map, sized by what's inside. Then use <b>Large Files</b> and <b>Duplicates</b> in the sidebar to reclaim gigabytes in minutes.</p>
+          <p class="lede">Switch any folder to <b>Disk Usage</b> and see it as a map, sized by what's inside. Then use <b>Large Files</b> and <b>Duplicates</b> in the sidebar to find big and duplicate files and reclaim gigabytes in minutes.</p>
         </header>
         <figure class="figure reveal">
-          <img class="shot" src="screenshots/treemap.png" width="1400" height="1006" loading="lazy"
+          <img class="shot" src="screenshots/strata-disk-usage-map.webp" srcset="screenshots/strata-disk-usage-map-800.webp 800w, screenshots/strata-disk-usage-map.webp 1400w" sizes="(max-width: 1228px) calc(100vw - 48px), 1180px" width="1400" height="1006" loading="lazy" decoding="async"
                alt="The disk usage map of a folder, with Videos taking the largest share">
         </figure>
       </div>
@@ -239,7 +361,7 @@
         <header class="section__head reveal">
           <p class="eyebrow">Views</p>
           <h2>Four views. Two panes.</h2>
-          <p class="lede">Icons, List, Columns and Disk Usage, one keystroke apart, just like Finder. Turn on <b>Dual Pane</b> to work with two folders side by side and copy or move between them with a keystroke.</p>
+          <p class="lede">Icons, List, Columns and Disk Usage, one keystroke apart, just like Finder. Turn on <b>Dual Pane</b> for a classic dual-pane file manager: two folders side by side, with copy and move a keystroke away.</p>
         </header>
         <div class="tabs reveal" data-tabs>
           <div class="tabs__list" role="tablist" aria-label="Views">
@@ -249,13 +371,13 @@
           </div>
           <div class="tabs__panels">
             <figure role="tabpanel" id="panel-icons" aria-labelledby="tab-icons">
-              <img class="shot" src="screenshots/grid.png" width="1400" height="1006" loading="lazy" alt="Icon view with image thumbnails">
+              <img class="shot" src="screenshots/strata-icon-view-thumbnails.webp" srcset="screenshots/strata-icon-view-thumbnails-800.webp 800w, screenshots/strata-icon-view-thumbnails.webp 1400w" sizes="(max-width: 1228px) calc(100vw - 48px), 1180px" width="1400" height="1006" loading="lazy" decoding="async" alt="Icon view with image thumbnails">
             </figure>
             <figure role="tabpanel" id="panel-list" aria-labelledby="tab-list" hidden>
-              <img class="shot" src="screenshots/hero.png" width="1400" height="1006" loading="lazy" alt="List view with folder sizes">
+              <img class="shot" src="screenshots/strata-mac-file-manager-list-view.webp" srcset="screenshots/strata-mac-file-manager-list-view-800.webp 800w, screenshots/strata-mac-file-manager-list-view.webp 1400w" sizes="(max-width: 1228px) calc(100vw - 48px), 1180px" width="1400" height="1006" loading="lazy" decoding="async" alt="List view with folder sizes">
             </figure>
             <figure role="tabpanel" id="panel-dual" aria-labelledby="tab-dual" hidden>
-              <img class="shot" src="screenshots/dual.png" width="1400" height="1006" loading="lazy" alt="Dual pane with a project and a folder of images">
+              <img class="shot" src="screenshots/strata-dual-pane.webp" srcset="screenshots/strata-dual-pane-800.webp 800w, screenshots/strata-dual-pane.webp 1400w" sizes="(max-width: 1228px) calc(100vw - 48px), 1180px" width="1400" height="1006" loading="lazy" decoding="async" alt="Dual pane with a project and a folder of images">
             </figure>
           </div>
         </div>
@@ -277,11 +399,11 @@
           </div>
           <div class="tabs__panels">
             <figure role="tabpanel" id="panel-git" aria-labelledby="tab-git">
-              <img class="shot" src="screenshots/devmode.png" width="1400" height="1006" loading="lazy" alt="Git badges on files, the branch in the path bar and a syntax-highlighted code preview">
+              <img class="shot" src="screenshots/strata-git-status-code-preview.webp" srcset="screenshots/strata-git-status-code-preview-800.webp 800w, screenshots/strata-git-status-code-preview.webp 1400w" sizes="(max-width: 1228px) calc(100vw - 48px), 1180px" width="1400" height="1006" loading="lazy" decoding="async" alt="Git badges on files, the branch in the path bar and a syntax-highlighted code preview">
               <figcaption>Git status on every file, and previews for code, Markdown, JSON, CSV, SQLite and archives.</figcaption>
             </figure>
             <figure role="tabpanel" id="panel-project" aria-labelledby="tab-project" hidden>
-              <img class="shot" src="screenshots/project.png" width="1400" height="1006" loading="lazy" alt="The project inspector with the branch, changes, build artifacts and scripts">
+              <img class="shot" src="screenshots/strata-project-inspector.webp" srcset="screenshots/strata-project-inspector-800.webp 800w, screenshots/strata-project-inspector.webp 1400w" sizes="(max-width: 1228px) calc(100vw - 48px), 1180px" width="1400" height="1006" loading="lazy" decoding="async" alt="The project inspector with the branch, changes, build artifacts and scripts">
               <figcaption>The project inspector: branch, changes, build artifacts to clean and scripts to run.</figcaption>
             </figure>
           </div>
@@ -363,7 +485,7 @@
           </div>
         </div>
         <figure class="split__media split__media--narrow reveal">
-          <img class="shot" src="screenshots/shortcuts.png" width="804" height="900" loading="lazy" alt="The keyboard shortcuts window">
+          <img class="shot" src="screenshots/strata-keyboard-shortcuts.webp" width="804" height="900" loading="lazy" decoding="async" alt="The keyboard shortcuts window">
         </figure>
       </div>
     </section>
@@ -402,7 +524,7 @@
         <div class="offer reveal">
           <div class="offer__text">
             <p class="eyebrow">Pricing</p>
-            <h2>Free. Open source.<br><span class="gradient-text">Made for the Mac.</span></h2>
+            <h2>Free. Open source. <br><span class="gradient-text">Made for the Mac.</span></h2>
             <p class="lede">Strata is MIT licensed. Download it, use it every day, read every line of it, and help shape what comes next.</p>
           </div>
           <div class="offer__card">
@@ -435,8 +557,8 @@
             <p>A Mac with Apple silicon running macOS 26 Tahoe. Apple Intelligence is optional: without it, summaries fall back to a document's key sentences and Ask Strata to its built-in rules.</p>
           </details>
           <details class="reveal">
-            <summary>Does it replace Finder?</summary>
-            <p>It works alongside Finder, so you can try it without giving anything up. If you like it, turn on <b>Open “Reveal in Finder” in Strata</b> in Settings, and apps that show files in Finder open Strata instead.</p>
+            <summary>Is Strata a Finder replacement?</summary>
+            <p>Strata is a Finder alternative that works alongside Finder, so you can try it without giving anything up. If you like it, turn on <b>Open “Reveal in Finder” in Strata</b> in Settings, and apps that show files in Finder open Strata instead.</p>
           </details>
           <details class="reveal">
             <summary>Why does it ask for Full Disk Access?</summary>
@@ -463,7 +585,7 @@
       <div class="cta__bg" aria-hidden="true"><div class="contours"></div></div>
       <div class="wrap cta__inner reveal">
         <img class="cta__icon" src="assets/icon-512.png" width="128" height="128" alt="">
-        <h2>Give your files<br><span class="gradient-text">a better home.</span></h2>
+        <h2>Give your files <br><span class="gradient-text">a better home.</span></h2>
         <div class="hero__cta">
           <a class="btn btn--primary btn--lg" href="https://github.com/cristipufu/strata/releases/latest" data-download>
             <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M10 3v10m0 0-4-4m4 4 4-4M4 16h12"/></svg>
@@ -484,6 +606,7 @@
         <a href="https://github.com/cristipufu/strata/issues">Report an issue</a>
         <a href="https://github.com/cristipufu/strata/blob/main/LICENSE">MIT License</a>
       </nav>
+      <p class="footer__about">Strata Files is a fast, private file manager and Finder alternative for macOS, free and open source.</p>
       <p class="footer__fine">© 2026 Cristian Pufu. Strata is not affiliated with Apple Inc. Mac, macOS, Finder and Apple Intelligence are trademarks of Apple Inc.</p>
     </div>
   </footer>
