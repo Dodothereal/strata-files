@@ -310,8 +310,9 @@ nonisolated enum Archiver {
             switch info.st_mode & S_IFMT {
             case S_IFLNK:
                 let parent = relative.split(separator: "/").dropLast().map(String.init)
+                var budget = 4096
                 guard let target = try? fm.destinationOfSymbolicLink(atPath: path),
-                      resolve(target, from: parent, in: rootPath, hops: 0) != nil else {
+                      resolve(target, from: parent, in: rootPath, hops: 0, budget: &budget) != nil else {
                     throw Failure(message: "This archive contains a link that points outside it (“\(relative)”), so it wasn’t extracted.")
                 }
             case S_IFDIR:
@@ -329,11 +330,14 @@ nonisolated enum Archiver {
     }
 
     /// Where a link's `target` leads, as path components inside `root`, following links on the way; nil when it would
-    /// leave `root` (an absolute target, a ".." past the top) or loops. `parent`: the link's folder inside `root`.
-    private static func resolve(_ target: String, from parent: [String], in root: String, hops: Int) -> [String]? {
+    /// leave `root` (an absolute target, a ".." past the top), loops, can't be checked, or takes more than `budget`
+    /// steps in all (links made of links can't multiply the work). `parent`: the link's folder inside `root`.
+    private static func resolve(_ target: String, from parent: [String], in root: String, hops: Int, budget: inout Int) -> [String]? {
         guard hops < 32, !target.hasPrefix("/") else { return nil }
         var stack = parent
         for part in target.split(separator: "/") {
+            budget -= 1
+            guard budget > 0 else { return nil }
             if part == "." { continue }
             if part == ".." {
                 guard !stack.isEmpty else { return nil }
@@ -341,12 +345,18 @@ nonisolated enum Archiver {
                 continue
             }
             stack.append(String(part))
-            // A link on the way leads somewhere else: follow it from its own folder.
+            // A link on the way leads somewhere else: follow it from its own folder. A missing part is just a name (the
+            // link dangles inside); anything that can't be looked at refuses the link.
             var info = stat()
             let path = root + "/" + stack.joined(separator: "/")
-            if lstat(path, &info) == 0, info.st_mode & S_IFMT == S_IFLNK {
+            if lstat(path, &info) != 0 {
+                guard errno == ENOENT else { return nil }
+                continue
+            }
+            if info.st_mode & S_IFMT == S_IFLNK {
                 guard let next = try? FileManager.default.destinationOfSymbolicLink(atPath: path),
-                      let resolved = resolve(next, from: Array(stack.dropLast()), in: root, hops: hops + 1) else { return nil }
+                      let resolved = resolve(next, from: Array(stack.dropLast()), in: root, hops: hops + 1, budget: &budget)
+                else { return nil }
                 stack = resolved
             }
         }
