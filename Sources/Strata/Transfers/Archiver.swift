@@ -83,6 +83,7 @@ nonisolated enum Archiver {
         let fm = FileManager.default
         let folder = first.deletingLastPathComponent()
         try requireWritable(folder)
+        try requireOutsideCopies(folder)
         let name = items.count == 1 ? first.lastPathComponent + ".zip" : "Archive.zip"
         let work = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: folder, create: true)
         defer { removeTree(work) }
@@ -182,6 +183,7 @@ nonisolated enum Archiver {
                         control: Control) throws -> URL {
         let fm = FileManager.default
         try requireWritable(folder)
+        try requireOutsideCopies(folder)
         let work = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: folder, create: true)
         defer { removeTree(work) }
         let root = work.appending(path: "contents", directoryHint: .isDirectory)
@@ -221,11 +223,15 @@ nonisolated enum Archiver {
     static func baseName(_ archive: URL) -> String {
         let name = archive.lastPathComponent
         let lower = name.lowercased()
+        var base = (name as NSString).deletingPathExtension
         for suffix in [".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst", ".tar.lz", ".tar.lzma", ".tar.z"] where lower.hasSuffix(suffix) {
-            return String(name.dropLast(suffix.count))
+            base = String(name.dropLast(suffix.count))
         }
-        let base = (name as NSString).deletingPathExtension
-        return base.isEmpty ? name : base
+        // ".zip" and "..zip" have no extension to NSString (they're hidden names), but it's still the archive's.
+        if base == name, let dot = name.lastIndex(of: ".") { base = String(name[..<dot]) }
+        // Never a name that isn't one: "", ".", ".." (".tar.gz", "...tar.gz").
+        let trimmed = base.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return trimmed.isEmpty ? "Archive" : base
     }
 
     private static func unpack(_ archive: URL, kind: ArchiveKind, inspection: Inspection, into root: URL,
@@ -247,8 +253,8 @@ nonisolated enum Archiver {
                         counts: { $0.hasPrefix("copying file") }, watching: disk)
             } else {
                 // A passphrase is given so bsdtar never waits for one (there's no terminal to type it into); a protected
-                // archive then fails at once.
-                try run("/usr/bin/tar", ["-x", "-v", "--passphrase", "-", "-f", archive.path, "-C", root.path],
+                // archive then fails at once. Its file flags aren't restored: a locked file couldn't be cleaned up.
+                try run("/usr/bin/tar", ["-x", "-v", "--no-fflags", "--passphrase", "-", "-f", archive.path, "-C", root.path],
                         control: control, counts: { $0.hasPrefix("x ") }, watching: disk)
                 // bsdtar leaves a zip's sequestered attributes as plain files.
                 if kind == .zip { removeTree(root.appending(path: "__MACOSX")) }
@@ -448,6 +454,13 @@ nonisolated enum Archiver {
         return url
     }
 
+    /// Nothing is made inside an archive opened as a folder (a temporary copy).
+    private static func requireOutsideCopies(_ folder: URL) throws {
+        guard !ArchiveCache.contains(folder) else {
+            throw Failure(message: "Nothing can be made inside an archive opened as a folder. Copy what you need out first.")
+        }
+    }
+
     private static func requireWritable(_ folder: URL) throws {
         guard access(folder.path, W_OK) == 0 else {
             throw Failure(message: "“\(FileManager.default.displayName(atPath: folder.path))” can’t be changed, so nothing can be made there.")
@@ -471,6 +484,16 @@ nonisolated enum Archiver {
     private static func removeEntry(in parent: Int32, _ name: String) {
         var info = stat()
         guard fstatat(parent, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else { return }
+        // A locked (or append-only) item can't be changed or deleted until it's unlocked. Opened without following a
+        // link and without waiting (a FIFO).
+        let locks = UInt32(UF_IMMUTABLE | UF_APPEND)
+        if info.st_flags & locks != 0 {
+            let fd = openat(parent, name, O_RDONLY | O_NONBLOCK | O_SYMLINK | O_CLOEXEC)
+            if fd >= 0 {
+                fchflags(fd, info.st_flags & ~locks)
+                close(fd)
+            }
+        }
         // Owner rights first: a folder must be readable and changeable to empty it; any entry may carry an access list
         // that denies deleting it.
         if info.st_mode & S_IFMT != S_IFLNK { fchmodat(parent, name, (info.st_mode & 0o7777) | S_IRWXU, 0) }

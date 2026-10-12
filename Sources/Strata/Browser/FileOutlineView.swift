@@ -14,6 +14,10 @@ final class FileOutlineView: NSOutlineView {
     /// A drag left the list or ended.
     var onDragEnd: (() -> Void)?
 
+    override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session)
+    }
+
     override func draggingExited(_ sender: NSDraggingInfo?) {
         super.draggingExited(sender)
         onDragEnd?()

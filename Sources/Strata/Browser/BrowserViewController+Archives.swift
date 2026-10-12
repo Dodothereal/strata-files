@@ -27,13 +27,13 @@ extension BrowserViewController {
     /// Zips the selection next to it: `Name.zip` for one item, `Archive.zip` for several. Selected once it's made.
     @objc func compress(_ sender: Any?) {
         let urls = selectedURLs
-        guard !urls.isEmpty, !isShowingTrash else { return }
+        guard !urls.isEmpty, !isShowingTrash, !isInsideArchive else { return }
         run([ArchiveJob(.compress(urls), undo: undoManager)])
     }
 
     /// Extracts each selected archive next to it, like Archive Utility.
     @objc func extract(_ sender: Any?) {
-        guard !isShowingTrash else { return }
+        guard !isShowingTrash, !isInsideArchive else { return }
         run(selectedArchives.map { ArchiveJob(.extract($0, into: $0.deletingLastPathComponent()), undo: undoManager) })
     }
 

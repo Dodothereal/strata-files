@@ -742,6 +742,10 @@ final class ColumnTableView: NSTableView {
         pane?.springLoader.cancel()
     }
 
+    override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session)
+    }
+
     override func draggingEnded(_ sender: NSDraggingInfo) {
         super.draggingEnded(sender)
         pane?.springLoader.cancel()

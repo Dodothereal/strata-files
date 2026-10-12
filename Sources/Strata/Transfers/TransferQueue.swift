@@ -46,6 +46,9 @@ final class TransferQueue {
     func enqueue(moves: [TransferMove], destination: URL? = nil, mode: TransferMode,
                  options: TransferEngine.Options = .userDefault, undo: UndoManager?, conflicts: ConflictResolver,
                  logHistory: Bool = true, actionName: String? = nil, containers: [URL] = []) -> TransferJob {
+        // An archive opened as a folder is a temporary copy: nothing goes into it, and what leaves it is copied.
+        let moves = moves.filter { !ArchiveCache.contains($0.to) }
+        let mode = mode == .move && moves.contains(where: { ArchiveCache.contains($0.from) }) ? .copy : mode
         let folder = destination ?? moves.first?.to.deletingLastPathComponent() ?? URL(fileURLWithPath: "/")
         let job = TransferJob(mode: mode, moves: moves, destination: folder, options: options, undo: undo,
                               conflicts: conflicts, queue: self)
@@ -76,8 +79,10 @@ final class TransferQueue {
 
     private func startNextArchiveJob() {
         let archiveJobs = jobs.compactMap { $0 as? ArchiveJob }
-        guard !archiveJobs.contains(where: { $0.state == .running || $0.state == .scanning }),
-              let next = archiveJobs.first(where: { $0.state == .queued }) else { return }
+        // Opening an archive to browse is something you're waiting on: it doesn't queue behind a long Extract.
+        for job in archiveJobs where job.isBrowse && job.state == .queued { job.start() }
+        guard !archiveJobs.contains(where: { !$0.isBrowse && ($0.state == .running || $0.state == .scanning) }),
+              let next = archiveJobs.first(where: { !$0.isBrowse && $0.state == .queued }) else { return }
         next.start()
         startTicking()
     }

@@ -50,7 +50,7 @@ extension BrowserWindowController {
     }
 
     func presentAskStrata(instruction: String?) {
-        guard let window, window.attachedSheet == nil else { return }
+        guard let window, window.attachedSheet == nil, !browser.isInsideArchive else { return }
         let urls = browser.selectedURLs.isEmpty ? browser.topLevelEntries.map(\.url) : browser.selectedURLs
         guard !urls.isEmpty else { return }
         let folder = location

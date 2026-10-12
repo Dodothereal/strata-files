@@ -68,7 +68,8 @@ extension BrowserViewController {
         var refused: [URL] = []
         let candidates = outermost(urls).filter { url in
             let isVolume = (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
-            let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0
+            // An archive opened as a folder isn't changed either.
+            let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ArchiveCache.contains(url)
             if isVolume || !changeable { refused.append(url) }
             return !isVolume && changeable
         }

@@ -15,6 +15,11 @@ enum PlanExecutor {
     }
 
     static func apply(_ plan: Plan, actionName: String, undo: UndoManager?) async -> Outcome {
+        // Nothing inside an archive opened as a folder changes (a temporary copy).
+        let touched = plan.steps.flatMap { [$0.source, $0.destination].compactMap { $0 } }
+        guard !touched.contains(where: ArchiveCache.contains) else {
+            return Outcome(failures: [FileOps.insideArchiveError.localizedDescription])
+        }
         let transaction = PlanTransaction(plan: plan)
         let outcome = await transaction.perform()
         // One History entry for the whole plan, named like its undo action.

@@ -92,9 +92,13 @@ enum Places {
         return places
     }
 
-    /// A folder's name as Finder shows it ("Trash" for `~/.Trash`).
+    /// A folder's name as Finder shows it ("Trash" for `~/.Trash`; an archive opened as a folder goes by its file name).
     static func displayName(_ url: URL) -> String {
-        Trash.isTrash(url) ? "Trash" : FileManager.default.displayName(atPath: url.path)
+        if Trash.isTrash(url) { return "Trash" }
+        if let (archive, top) = ArchiveCache.archive(containing: url), top.standardizedFileURL == url.standardizedFileURL {
+            return archive.lastPathComponent
+        }
+        return FileManager.default.displayName(atPath: url.path)
     }
 
     static func volumes() -> [Place] {

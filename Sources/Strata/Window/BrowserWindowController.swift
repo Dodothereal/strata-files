@@ -212,8 +212,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             p.location = url
             p.folderEntry = FileEntry(url: url)
             p.browser.load(url, select: select)
-            if countVisit { Frecency.shared.record(url) }
-            Prefs.lastLocation = url
+            // An archive's copy is temporary: it doesn't become a frequent place or where the next window opens.
+            if !ArchiveCache.contains(url) {
+                if countVisit { Frecency.shared.record(url) }
+                Prefs.lastLocation = url
+            }
         case .search, .recents:
             runSearch(in: p)
         case .duplicates:
@@ -314,6 +317,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             // In column view "here" is the focused column's folder, not the first column's.
             let current = (browser.mode == .columns ? pane.columnLocation : nil) ?? location
             guard current.path != "/" else { return }
+            // Up from an archive opened as a folder: the folder the archive is in, with the archive selected.
+            if let (archive, top) = ArchiveCache.archive(containing: current), top.standardizedFileURL == current.standardizedFileURL {
+                return navigate(to: archive.deletingLastPathComponent(), select: archive)
+            }
             navigate(to: current.deletingLastPathComponent(), select: current)
         } else {
             navigate(to: location)
@@ -678,6 +685,41 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
         guard let owner = panes.first(where: { $0.browser === browser }) else { return }
         activate(owner)
         navigate(to: url)
+    }
+
+    func browser(_ browser: BrowserViewController, showArchiveCopy folder: URL) {
+        // Not if you've since moved to the other pane or another window: the copy stays cached for next time.
+        guard browser === pane.browser else { return }
+        navigate(to: folder)
+    }
+
+    func browser(_ browser: BrowserViewController, openingArchive archive: URL?, stop: (() -> Void)?) {
+        guard browser === pane.browser else { return }
+        guard let archive else {
+            if case .folder(let url) = destination { updateNotice(for: url) } else { split.noticeBar.hide() }
+            return
+        }
+        split.noticeBar.show(symbol: "archivebox", text: "Opening “\(archive.lastPathComponent)”…",
+                             button: stop == nil ? nil : "Stop", action: stop)
+    }
+
+    func browser(_ browser: BrowserViewController, reveal url: URL) {
+        guard let owner = panes.first(where: { $0.browser === browser }) else { return }
+        activate(owner)
+        navigate(to: url.deletingLastPathComponent(), select: url)
+    }
+
+    /// Archive copies shown in any window's panes (their top folders), which pruning must leave alone.
+    static func archiveCopiesShown() -> Set<String> {
+        var shown: Set<String> = []
+        for case let controller as BrowserWindowController in NSApp.windows.compactMap(\.windowController) {
+            for pane in controller.panes {
+                if let folder = pane.browser.directory, let (_, top) = ArchiveCache.archive(containing: folder) {
+                    shown.insert(top.standardizedFileURL.path)
+                }
+            }
+        }
+        return shown
     }
 
     /// One Back step for a whole spring-loaded dive, and the folders passed through don't count as visits.

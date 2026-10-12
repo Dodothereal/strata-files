@@ -165,7 +165,7 @@ private final class ShelfWell: NSView, NSDraggingSource {
     }
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        context == .outsideApplication ? [.copy, .move, .generic] : [.copy, .move, .generic]
+        FileDrop.sourceMask([.copy, .move, .generic], session)
     }
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {

@@ -20,6 +20,7 @@ enum Prefs {
         static let verifyCopies = "verifyCopies"
         static let favoritePaths = "favoritePaths"
         static let reopenWindows = "reopenWindows"
+        static let openArchivesAsFolders = "openArchivesAsFolders"
     }
 
     static func register() {
@@ -71,6 +72,12 @@ enum Prefs {
     static var reopenWindows: Bool {
         get { defaults.object(forKey: Key.reopenWindows) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.reopenWindows) }
+    }
+
+    /// Opening a zip (or another archive) shows what's inside, like a folder, instead of unpacking it.
+    static var openArchivesAsFolders: Bool {
+        get { defaults.object(forKey: Key.openArchivesAsFolders) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.openArchivesAsFolders) }
     }
 
     /// Read every copied file back and compare it with the original (slower; catches failing disks and cables).

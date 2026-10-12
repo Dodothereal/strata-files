@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         StrataAI.startIndexing()
         // Loads history now, so a plain copy left by an earlier build is removed right away.
         _ = OperationLog.shared
+        // Archives opened as folders and not looked at for a day.
+        DispatchQueue.global(qos: .utility).async { ArchiveCache.prune() }
         if windowControllers.isEmpty, !restoreSession() { openWindow(at: startLocation) }
         if !Privacy.hasFullDiskAccess, !UserDefaults.standard.bool(forKey: "welcomeShown"),
            let window = windowControllers.first?.window {

@@ -9,6 +9,11 @@ protocol BrowserViewControllerDelegate: AnyObject {
     func browser(_ browser: BrowserViewController, columnLocationChanged url: URL)
     /// A drag rested on `url` long enough to spring it open; `drag` is the drag's sequence number.
     func browser(_ browser: BrowserViewController, springLoadTo url: URL, drag: Int)
+    /// An archive opened as a folder is ready: show its copy (if this pane is still the one you're using).
+    func browser(_ browser: BrowserViewController, showArchiveCopy folder: URL)
+    /// An archive is being unpacked to browse (nil when done); `stop` cancels it.
+    func browser(_ browser: BrowserViewController, openingArchive archive: URL?, stop: (() -> Void)?)
+    func browser(_ browser: BrowserViewController, reveal url: URL)
 }
 
 /// One row in the list. Children load the first time a folder is expanded.
@@ -737,6 +742,8 @@ final class BrowserViewController: NSViewController {
 
     private func open(_ entries: [FileEntry]) {
         guard !entries.isEmpty else { return }
+        // One archive opens like a folder (Windows-style), unless that's turned off in Settings.
+        if entries.count == 1, let entry = entries.first, opensAsFolder(entry) { return browseArchive(entry.url) }
         for entry in entries where !entry.isFolder {
             NSWorkspace.shared.open(entry.url)
         }
@@ -752,7 +759,7 @@ final class BrowserViewController: NSViewController {
 
     @objc func moveToTrash(_ sender: Any?) {
         let urls = selectedURLs
-        guard !urls.isEmpty else { return }
+        guard !urls.isEmpty, !isInsideArchive else { return }
         // In the Trash, ⌘⌫ puts things back (Finder does the same). Trashing what's already in a Trash again would lose
         // where it came from.
         if urls.allSatisfy(Trash.contains) { return putBack(sender) }
@@ -777,8 +784,8 @@ final class BrowserViewController: NSViewController {
 
     @objc func duplicate(_ sender: Any?) {
         let urls = selectedURLs
-        // The menus are off in the Trash; this also covers ⌘K.
-        guard !urls.isEmpty, !isShowingTrash else { return }
+        // The menus are off in the Trash and in archives opened as folders; this also covers ⌘K.
+        guard !urls.isEmpty, !isShowingTrash, !isInsideArchive else { return }
         // Copying onto itself with "keep both" gives Finder's "name copy" naming, with progress for big items.
         let job = TransferQueue.shared.enqueue(moves: urls.map { TransferMove(from: $0, to: $0) }, mode: .copy,
                                                undo: undoManager, conflicts: .keepBoth)
@@ -796,7 +803,7 @@ final class BrowserViewController: NSViewController {
     }
 
     @objc func newFolder(_ sender: Any?) {
-        guard let directory = targetDirectory, !isShowingTrash else { return }
+        guard let directory = targetDirectory, !isShowingTrash, !isInsideArchive else { return }
         perform {
             let url = try FileOps.newFolder(in: directory, undo: self.undoManager)
             if self.mode == .columns, directory != self.directory {
@@ -837,10 +844,12 @@ final class BrowserViewController: NSViewController {
     }
 
     @objc func paste(_ sender: Any?) {
+        guard !isInsideArchive else { return }
         pasteItems(forceMove: false)
     }
 
     @objc func pasteAndMove(_ sender: Any?) {
+        guard !isInsideArchive else { return }
         pasteItems(forceMove: true)
     }
 
@@ -862,7 +871,8 @@ final class BrowserViewController: NSViewController {
     /// Adds the selected folders (or, with nothing selected, this folder) to the sidebar's favorites.
     @objc func addToSidebar(_ sender: Any?) {
         let folders = selectedEntries.filter(\.isFolder).map(\.url)
-        Places.addFavorites(folders.isEmpty ? [directory].compactMap { $0 } : folders)
+        // A temporary copy of an archive's contents doesn't belong in the sidebar.
+        Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !ArchiveCache.contains($0) })
     }
 
     @objc func addToShelf(_ sender: Any?) {
@@ -902,6 +912,8 @@ final class BrowserViewController: NSViewController {
     }
 
     @objc func showInFinder(_ sender: Any?) {
+        // Inside an archive opened as a folder, Finder shows the archive (not Strata's copy in its caches).
+        if isInsideArchive { return showArchiveInFinder(sender) }
         guard let finder = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.finder") else { return }
         let target = selectedURLs.first?.deletingLastPathComponent() ?? directory
         guard let target else { return }
@@ -1047,6 +1059,8 @@ final class BrowserViewController: NSViewController {
     }
 
     private func beginRename(_ url: URL) {
+        // An archive opened as a folder isn't changed.
+        guard !ArchiveCache.contains(url) else { return }
         if let activeView {
             activeView.beginRename(rowURL(url))
             return
@@ -1115,6 +1129,14 @@ final class BrowserViewController: NSViewController {
             menu.addItem(item)
         }
         if selected.isEmpty {
+            // Inside an archive opened as a folder nothing is added; Finder is shown the archive itself.
+            if isInsideArchive {
+                add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
+                add("Show Archive in Finder", #selector(showArchiveInFinder(_:)), "macwindow")
+                menu.addItem(.separator())
+                add(Prefs.showHidden ? "Hide Hidden Files" : "Show Hidden Files", #selector(toggleHiddenFiles(_:)), "eye")
+                return menu
+            }
             add("New Folder", #selector(newFolder(_:)), "folder.badge.plus")
             if Clipboard.hasFiles { add("Paste", #selector(paste(_:)), "doc.on.clipboard") }
             menu.addItem(.separator())
@@ -1143,6 +1165,11 @@ final class BrowserViewController: NSViewController {
             menu.addItem(.separator())
         }
         add("Open", #selector(openSelection(_:)), "arrow.up.forward.app")
+        // With archives opening normally (Settings), browsing one is still a click away.
+        if selected.count == 1, let entry = selected.first, !entry.isFolder, !opensAsFolder(entry),
+           ArchiveKind(fileName: entry.name) != nil {
+            add("Open as Folder", #selector(openArchiveAsFolder(_:)), "archivebox")
+        }
         if let first = selected.first, !first.isFolder {
             let apps = NSWorkspace.shared.urlsForApplications(toOpen: first.url)
             if !apps.isEmpty {
@@ -1169,6 +1196,16 @@ final class BrowserViewController: NSViewController {
         // The system's own item: it keeps its picker alive and shows the share sheet next to the menu.
         menu.addItem(NSSharingServicePicker(items: selected.map(\.url)).standardShareMenuItem)
         menu.addItem(.separator())
+        // Inside an archive opened as a folder nothing changes: copying out is what's offered.
+        let inArchive = isInsideArchive
+        if inArchive {
+            add("Copy", #selector(copy(_:)), "doc.on.doc")
+            add("Add to Shelf", #selector(addToShelf(_:)), "tray.and.arrow.down")
+            menu.addItem(.separator())
+            add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
+            add("Show Archive in Finder", #selector(showArchiveInFinder(_:)), "macwindow")
+            return menu
+        }
         if selected.count == 1 { add("Rename", #selector(renameSelection(_:)), "pencil") }
         if inTrash {
             addEmptyTrash()
@@ -1314,20 +1351,16 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         isDragOver = true
         springLoader.hover(springTarget(item, index, urls), drag: info.draggingSequenceNumber)
         guard !urls.isEmpty, let target = retargetDrop(outlineView, item) else { return [] }
-        let targetPath = target.standardizedFileURL.path
-        if urls.contains(where: { targetPath == $0.path || targetPath.hasPrefix($0.path + "/") }) { return [] }
-        let operation = dragOperation(urls, target, info)
-        if operation == .move, urls.allSatisfy({ $0.deletingLastPathComponent().standardizedFileURL.path == targetPath }) {
-            return []
-        }
-        return operation
+        // The rules every view shares: never into itself, no moves that change nothing, nothing into an archive opened
+        // as a folder, copies out of one.
+        return FileDrop.operation(urls, into: target, info: info)
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
         springLoader.cancel()
         isDragOver = false
         guard let urls = draggedURLs(info), let target = (item as? FileNode)?.url ?? directory else { return false }
-        let operation = dragOperation(urls, target, info)
+        let operation = FileDrop.operation(urls, into: target, info: info)
         guard !operation.isEmpty else { return false }
         transfer(urls, into: target, move: operation == .move)
         return true
@@ -1366,21 +1399,6 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     private func draggedURLs(_ info: NSDraggingInfo) -> [URL]? {
         info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
-    }
-
-    /// Finder semantics: move within a volume, copy across volumes, Option forces a copy.
-    private func dragOperation(_ urls: [URL], _ target: URL, _ info: NSDraggingInfo) -> NSDragOperation {
-        let mask = info.draggingSourceOperationMask
-        let wantsCopy = NSEvent.modifierFlags.contains(.option) || !Self.sameVolume(urls[0], target)
-        if wantsCopy || !mask.contains(.move) { return mask.contains(.copy) ? .copy : mask.contains(.generic) ? .copy : [] }
-        return .move
-    }
-
-    private static func sameVolume(_ a: URL, _ b: URL) -> Bool {
-        let va = try? a.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier
-        let vb = try? b.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier
-        guard let va, let vb else { return false }
-        return va.isEqual(vb)
     }
 }
 
@@ -1429,6 +1447,14 @@ extension BrowserViewController: NSMenuItemValidation {
         }
         let selectionCount = selectedEntries.count
         let hasSelection = selectionCount > 0
+        // An archive opened as a folder is a copy that isn't saved back: nothing in it is changed from Strata.
+        let changes: [Selector] = [
+            #selector(newFolder(_:)), #selector(paste(_:)), #selector(pasteAndMove(_:)), #selector(renameSelection(_:)),
+            #selector(moveToTrash(_:)), #selector(deleteImmediately(_:)), #selector(duplicate(_:)), #selector(cut(_:)),
+            #selector(compress(_:)), #selector(extract(_:)), #selector(putBack(_:)),
+            #selector(addToSidebar(_:)),
+        ]
+        if let action = item.action, changes.contains(action), isInsideArchive { return false }
         switch item.action {
         case #selector(moveToTrash(_:)):
             // Finder's File menu says Put Back for things in the Trash, and won't trash what's inside a trashed folder.

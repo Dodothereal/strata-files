@@ -54,6 +54,10 @@ final class ArchiveJob {
         return min(1, Double(entriesDone) / Double(totalEntries))
     }
 
+    var isBrowse: Bool {
+        if case .browse = operation { true } else { false }
+    }
+
     /// Waiting for another archive job to finish (they run one at a time).
     var isWaiting: Bool { state == .queued }
 

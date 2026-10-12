@@ -8,8 +8,16 @@ extension BrowserWindowController {
 }
 
 extension BrowserWindowController {
-    /// Under the toolbar while a Trash is shown: other disks keep their own Trash, so say when they hold something too.
+    /// Under the toolbar: inside an archive opened as a folder, say so; while a Trash is shown, say when other disks'
+    /// Trashes hold something too (each disk keeps its own).
     func updateNotice(for url: URL) {
+        if let (archive, _) = ArchiveCache.archive(containing: url) {
+            return split.noticeBar.show(symbol: "archivebox",
+                                        text: "Inside “\(archive.lastPathComponent)”, a read-only copy. Copy things out to keep them.",
+                                        button: "Extract All") { [weak self] in
+                self?.browser.extractArchive(archive)
+            }
+        }
         guard Trash.isTrash(url) else { return split.noticeBar.hide() }
         split.noticeBar.hide()
         Task { [weak self] in

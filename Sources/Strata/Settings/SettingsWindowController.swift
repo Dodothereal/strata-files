@@ -67,6 +67,9 @@ private struct GeneralSettings: View {
                            get: { Prefs.foldersFirst }, set: { Prefs.foldersFirst = $0 })
                 PrefToggle(title: "Reopen windows from last time", caption: "Windows, tabs and panes come back when Strata starts.",
                            get: { Prefs.reopenWindows }, set: { Prefs.reopenWindows = $0 })
+                PrefToggle(title: "Open archives like folders",
+                           caption: "Opening a zip (or tar, 7z, rar…) shows what's inside; copy things out from there. Extract unpacks it.",
+                           get: { Prefs.openArchivesAsFolders }, set: { Prefs.openArchivesAsFolders = $0 })
                 Picker("Return key", selection: Binding(get: { returnOpens }, set: { returnOpens = $0; Prefs.returnOpens = $0 })) {
                     Text("Renames the selection (like Finder)").tag(false)
                     Text("Opens the selection").tag(true)

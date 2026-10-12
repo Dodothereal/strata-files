@@ -132,7 +132,20 @@ final class PathBar: NSView, NSTextFieldDelegate {
         onNavigate?(destination, nil)
     }
 
-    private static func components(of url: URL) -> [(title: String, url: URL, symbol: String?)] {
+    private static func components(of url: URL, depth: Int = 0) -> [(title: String, url: URL, symbol: String?)] {
+        // Inside an archive opened as a folder: the archive's own location, the archive, then the folders inside it
+        // (an archive opened from inside another one nests, a few levels at most).
+        if depth < 8, let (archive, top) = ArchiveCache.archive(containing: url) {
+            var parts = components(of: archive.deletingLastPathComponent(), depth: depth + 1)
+            parts.append((archive.lastPathComponent, top, "archivebox"))
+            var current = top
+            let inner = url.standardizedFileURL.path.dropFirst(top.standardizedFileURL.path.count).split(separator: "/")
+            for component in inner {
+                current = current.appending(path: String(component))
+                parts.append((String(component), current, nil))
+            }
+            return parts
+        }
         let path = url.standardizedFileURL.path
         let home = Places.home.standardizedFileURL.path
         var parts: [(title: String, url: URL, symbol: String?)] = []
