@@ -7,7 +7,7 @@ final class TransfersViewController: NSViewController {
     private static let maxListHeight: CGFloat = 440
 
     /// Called by a row's reveal button. Defaults to revealing in Finder; the browser window should navigate itself.
-    var onReveal: ((TransferJob) -> Void)?
+    var onReveal: ((any QueueJob) -> Void)?
 
     private let queue: TransferQueue
     private let listStack = NSStackView()
@@ -141,14 +141,14 @@ final class TransfersViewController: NSViewController {
         preferredContentSize = view.fittingSize
     }
 
-    private func makeRow(_ job: TransferJob) -> TransferRowView {
+    private func makeRow(_ job: any QueueJob) -> TransferRowView {
         let row = TransferRowView(job: job)
         row.onReveal = { [weak self] job in self?.reveal(job) }
         rows[ObjectIdentifier(job)] = row
         return row
     }
 
-    private func reveal(_ job: TransferJob) {
+    private func reveal(_ job: any QueueJob) {
         if let onReveal { return onReveal(job) }
         let existing = job.createdItems.filter { TransferEngine.exists($0) }
         if existing.isEmpty {
@@ -161,8 +161,8 @@ final class TransfersViewController: NSViewController {
 
 /// One job: icon, title, progress bar, status line, and its buttons.
 final class TransferRowView: NSView {
-    let job: TransferJob
-    var onReveal: ((TransferJob) -> Void)?
+    let job: any QueueJob
+    var onReveal: ((any QueueJob) -> Void)?
     var showsSeparator = true {
         didSet { if showsSeparator != oldValue { needsDisplay = true } }
     }
@@ -176,7 +176,7 @@ final class TransferRowView: NSView {
     private lazy var retryButton = makeButton("arrow.clockwise.circle.fill", "Retry Failed", #selector(retry(_:)))
     private lazy var revealButton = makeButton("magnifyingglass.circle.fill", "Show in Folder", #selector(reveal(_:)))
 
-    init(job: TransferJob) {
+    init(job: any QueueJob) {
         self.job = job
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
@@ -289,7 +289,7 @@ final class TransferRowView: NSView {
 
         icon.symbolName = job.symbolName
         icon.tint = switch state {
-        case .finished: job.failures.isEmpty ? .systemGreen : .systemOrange
+        case .finished: job.failureCount == 0 ? .systemGreen : .systemOrange
         case .failed: .systemRed
         case .cancelled: .secondaryLabelColor
         case .paused, .queued: .secondaryLabelColor
@@ -324,8 +324,8 @@ final class TransferRowView: NSView {
         switch job.state {
         case .failed:
             result.addAttribute(.foregroundColor, value: NSColor.systemRed, range: NSRange(location: 0, length: result.length))
-        case .finished where !job.failures.isEmpty:
-            let failed = "\(job.failures.count.formatted()) failed"
+        case .finished where job.failureCount > 0:
+            let failed = "\(job.failureCount.formatted()) failed"
             let range = (text as NSString).range(of: failed)
             if range.location != NSNotFound { result.addAttribute(.foregroundColor, value: NSColor.systemRed, range: range) }
         default:

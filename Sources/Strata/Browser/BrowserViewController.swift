@@ -1173,6 +1173,8 @@ final class BrowserViewController: NSViewController {
         if inTrash {
             addEmptyTrash()
         } else {
+            add(compressTitle, #selector(compress(_:)), "doc.zipper")
+            if !selectedArchives.isEmpty { add(extractTitle, #selector(extract(_:)), "archivebox") }
             add("Duplicate", #selector(duplicate(_:)), "plus.square.on.square")
             if !reachesIntoTrash { add("Move to Trash", #selector(moveToTrash(_:)), "trash") }
         }
@@ -1417,7 +1419,7 @@ extension BrowserViewController: NSMenuItemValidation {
             #selector(openSelection(_:)), #selector(moveToTrash(_:)), #selector(duplicate(_:)), #selector(newFolder(_:)),
             #selector(renameSelection(_:)), #selector(toggleQuickLook(_:)), #selector(pasteAndMove(_:)),
             #selector(copy(_:)), #selector(cut(_:)), #selector(paste(_:)), #selector(share(_:)),
-            #selector(putBack(_:)), #selector(deleteImmediately(_:)),
+            #selector(putBack(_:)), #selector(deleteImmediately(_:)), #selector(compress(_:)), #selector(extract(_:)),
         ]
         // While a name is being edited, ⌘⌫, ⌘D and ⇧⌘N belong to the text, not the file. While another folder loads,
         // the rows on screen are the previous folder's.
@@ -1437,6 +1439,13 @@ extension BrowserViewController: NSMenuItemValidation {
             return hasSelection && selectedEntries.allSatisfy { Trash.contains($0.url) }
         case #selector(duplicate(_:)):
             return hasSelection && !isShowingTrash
+        case #selector(compress(_:)):
+            // Finder names what it compresses: "Compress “Photos”", "Compress 3 Items".
+            item.title = hasSelection ? compressTitle : "Compress"
+            return hasSelection && !isShowingTrash && effectiveMode != .treemap && canWriteBesideSelection
+        case #selector(extract(_:)):
+            item.title = extractTitle
+            return !selectedArchives.isEmpty && !isShowingTrash && canWriteBesideSelection
         case #selector(openSelection(_:)), #selector(deleteImmediately(_:)),
              #selector(copy(_:)), #selector(cut(_:)), #selector(toggleQuickLook(_:)), #selector(share(_:)):
             return hasSelection

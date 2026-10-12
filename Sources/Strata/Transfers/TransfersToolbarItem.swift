@@ -8,7 +8,7 @@ extension NSToolbarItem.Identifier {
 /// list is empty, so it only appears once something has been copied or moved.
 final class TransfersToolbarItem: NSToolbarItem, NSPopoverDelegate {
     /// Forwarded to the popover's reveal buttons (navigate the window to the destination and select the items).
-    var onReveal: ((TransferJob) -> Void)? {
+    var onReveal: ((any QueueJob) -> Void)? {
         didSet { controller.onReveal = onReveal }
     }
 
@@ -47,7 +47,7 @@ final class TransfersToolbarItem: NSToolbarItem, NSPopoverDelegate {
         }
         let active = queue.jobs.filter { $0.state.isActive }
         if let job = active.first {
-            toolTip = active.count == 1 ? "\(job.title)\n\(job.statusText)" : "\(active.count) transfers in progress"
+            toolTip = active.count == 1 ? "\(job.title)\n\(job.statusText)" : "\(active.count) jobs in progress"
         } else {
             toolTip = queue.hasFailures ? "Transfers — some items failed" : "Transfers"
         }

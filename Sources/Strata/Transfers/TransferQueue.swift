@@ -1,7 +1,7 @@
 import AppKit
 
-/// Every copy and move in the app. Jobs start measuring and asking about conflicts right away, then copy one at a
-/// time per destination disk (same-volume moves are renames and never wait).
+/// Every copy and move in the app, and compressing and extracting. Transfer jobs start measuring and asking about
+/// conflicts right away, then copy one at a time per destination disk (same-volume moves are renames and never wait).
 final class TransferQueue {
     static let shared = TransferQueue()
 
@@ -10,7 +10,7 @@ final class TransferQueue {
     /// Posted (object: the job) each time a job finishes a pass: done, failed, cancelled, or after a retry.
     static let jobDidFinishNotification = Notification.Name("StrataTransferJobDidFinish")
 
-    private(set) var jobs: [TransferJob] = []
+    private(set) var jobs: [any QueueJob] = []
     /// Called alongside `didChangeNotification`, for a single owner that prefers a closure.
     var onChange: (() -> Void)?
 
@@ -59,6 +59,29 @@ final class TransferQueue {
         return job
     }
 
+    /// Runs a Compress or Extract in the list, with the copies. Archive jobs run one at a time (several tools on one disk
+    /// only slow each other down, and their free-space checks would race); the rest wait in the list.
+    func add(_ job: ArchiveJob) {
+        jobs.append(job)
+        job.onChange = { [weak self] _ in self?.notify() }
+        job.onFinish = { [weak self, previous = job.onFinish] job in
+            previous?(job)
+            self?.startNextArchiveJob()
+            self?.notifyNow()
+        }
+        startNextArchiveJob()
+        notify()
+        startTicking()
+    }
+
+    private func startNextArchiveJob() {
+        let archiveJobs = jobs.compactMap { $0 as? ArchiveJob }
+        guard !archiveJobs.contains(where: { $0.state == .running || $0.state == .scanning }),
+              let next = archiveJobs.first(where: { $0.state == .queued }) else { return }
+        next.start()
+        startTicking()
+    }
+
     /// Overall progress of every unfinished job, weighted by size, or nil when nothing is running.
     var overallProgress: Double? {
         let active = jobs.filter { $0.state.isActive }
@@ -70,7 +93,7 @@ final class TransferQueue {
 
     var hasActiveJobs: Bool { jobs.contains { $0.state.isActive } }
 
-    var hasFailures: Bool { jobs.contains { $0.canRetry } }
+    var hasFailures: Bool { jobs.contains { $0.canRetry || $0.state == .failed } }
 
     var hasFinishedJobs: Bool { jobs.contains { !$0.state.isActive } }
 
@@ -80,7 +103,7 @@ final class TransferQueue {
         notify()
     }
 
-    func remove(_ job: TransferJob) {
+    func remove(_ job: any QueueJob) {
         guard !job.state.isActive else { return }
         jobs.removeAll { $0 === job }
         notify()
@@ -92,8 +115,9 @@ final class TransferQueue {
         let active = jobs.filter { $0.state.isActive }
         guard !active.isEmpty else { return .terminateNow }
         let alert = NSAlert()
-        alert.messageText = active.count == 1 ? "A transfer is still in progress" : "\(active.count) transfers are still in progress"
-        alert.informativeText = "Quitting stops them. Items already copied stay; the item being copied right now is removed."
+        alert.messageText = active.count == 1 ? "A copy or archive is still in progress" : "\(active.count) jobs are still in progress"
+        alert.informativeText = "Quitting stops them. Items already copied stay; the item being copied (or a half-made "
+            + "archive) is removed."
         alert.addButton(withTitle: "Stop and Quit")
         alert.addButton(withTitle: "Cancel")
         // Return keeps the transfers going; stopping them takes a deliberate click.

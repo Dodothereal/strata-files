@@ -145,6 +145,16 @@ extension BrowserWindowController {
                 },
             ], at: 0)
         }
+        if !browser.selectedURLs.isEmpty, !browser.isShowingTrash, browser.effectiveMode != .treemap, browser.canWriteBesideSelection {
+            commands.insert(command(browser.compressTitle, "doc.zipper", nil, keywords: ["Zip", "Archive"]) { [weak self] in
+                self?.browser.compress(nil)
+            }, at: 0)
+        }
+        if !browser.selectedArchives.isEmpty, !browser.isShowingTrash, browser.canWriteBesideSelection {
+            commands.insert(command(browser.extractTitle, "archivebox", nil, keywords: ["Unzip", "Expand", "Decompress"]) { [weak self] in
+                self?.browser.extract(nil)
+            }, at: 0)
+        }
         // In the Trash: Put Back. Never offered for something inside a trashed folder.
         let selected = browser.selectedURLs
         if !selected.isEmpty, selected.allSatisfy(Trash.contains) {

@@ -185,6 +185,9 @@ private final class HistoryCell: NSTableCellView {
         case "Rename": symbol = "pencil"
         case "Copy", "Duplicate": symbol = "plus.square.on.square"
         case "New Folder": symbol = "folder.badge.plus"
+        case "Compress": symbol = "doc.zipper"
+        case "Extract": symbol = "archivebox"
+        case "Put Back": symbol = "tray.and.arrow.up"
         default: symbol = entry.name.hasPrefix("Undo") ? "arrow.uturn.backward" : "arrow.right.square"
         }
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)

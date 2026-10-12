@@ -31,6 +31,8 @@ enum MainMenu {
             .separator(),
             item("Quick Look", #selector(BrowserViewController.toggleQuickLook(_:)), "y"),
             item("Rename", #selector(BrowserViewController.renameSelection(_:))),
+            item("Compress", #selector(BrowserViewController.compress(_:))),
+            item("Extract", #selector(BrowserViewController.extract(_:))),
             item("Duplicate", #selector(BrowserViewController.duplicate(_:)), "d"),
             item("Copy to Other Pane", #selector(BrowserWindowController.copyToOtherPane(_:)), function(NSF5FunctionKey), []),
             item("Move to Other Pane", #selector(BrowserWindowController.moveToOtherPane(_:)), function(NSF6FunctionKey), []),
