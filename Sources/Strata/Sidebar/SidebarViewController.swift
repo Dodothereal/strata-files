@@ -29,6 +29,8 @@ final class SidebarItem {
     let target: SidebarTarget
     var symbol: String
     var isEjectable = false
+    /// A Finder tag's color for its dot (Tags section).
+    var tint: NSColor?
 
     init(_ place: Place) {
         title = place.title
@@ -109,6 +111,8 @@ final class SidebarViewController: NSViewController {
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .savedSearchesChanged, object: nil)
+        // A tag used for the first time joins the Tags section.
+        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .tagsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .favoritesChanged, object: nil)
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(trashMayHaveChanged), name: name, object: nil)
@@ -133,6 +137,14 @@ final class SidebarViewController: NSViewController {
         ]))
         sections.append(SidebarSection(title: "Locations", items: Places.volumes().map(SidebarItem.init)
             + [SidebarItem(title: "Trash", target: .folder(Trash.home), symbol: Self.trashSymbol)]))
+        // Finder's Tags: the colored ones, then others you've used here. Each shows everything with that tag (Spotlight).
+        let tags = TagStore.shared.suggestions.prefix(12).map { tag in
+            let item = SidebarItem(title: tag.name, target: .search(SavedSearch(name: tag.name, query: SpotlightQuery.term(forTag: tag.name), scopePath: nil)),
+                                   symbol: tag.displayColor == nil ? "circle" : "circle.fill")
+            item.tint = tag.displayColor ?? .secondaryLabelColor
+            return item
+        }
+        if !tags.isEmpty { sections.append(SidebarSection(title: "Tags", items: Array(tags))) }
         outline.reloadData()
         outline.expandItem(nil, expandChildren: true)
         if let current { highlight(current) }
@@ -227,7 +239,7 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             cell.identifier = id
             return cell
         }()
-        cell.configure(title: item.title, symbol: item.symbol)
+        cell.configure(title: item.title, symbol: item.symbol, tint: item.tint)
         return cell
     }
 
@@ -368,9 +380,14 @@ final class SidebarCellView: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(title: String, symbol: String) {
+    private var tint: NSColor?
+
+    func configure(title: String, symbol: String, tint: NSColor? = nil) {
         label.stringValue = title
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        self.tint = tint
+        // Tag dots are smaller than the other icons, like Finder's.
+        icon.symbolConfiguration = .init(pointSize: tint == nil ? 14 : 10, weight: tint == nil ? .regular : .semibold)
         applyColors()
     }
 
@@ -380,7 +397,7 @@ final class SidebarCellView: NSTableCellView {
 
     private func applyColors() {
         label.textColor = Self.ink
-        icon.contentTintColor = Self.iconInk
+        icon.contentTintColor = tint ?? Self.iconInk
     }
 }
 
@@ -389,6 +406,17 @@ extension SidebarViewController: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         guard let item = outline.item(atRow: outline.clickedRow) as? SidebarItem else { return }
+        // Tags you added can leave the sidebar; the seven colored ones stay, like Finder's.
+        if item.tint != nil {
+            let isStandard = FinderTag.standard.contains { $0.name.caseInsensitiveCompare(item.title) == .orderedSame }
+            if !isStandard {
+                let remove = NSMenuItem(title: "Remove “\(item.title)” from Sidebar", action: #selector(forgetTag(_:)), keyEquivalent: "")
+                remove.target = self
+                remove.representedObject = item.title
+                menu.addItem(remove)
+            }
+            return
+        }
         if case .search(let search) = item.target {
             let remove = NSMenuItem(title: "Remove “\(search.name)”", action: #selector(removeSearch(_:)), keyEquivalent: "")
             remove.target = self
@@ -449,6 +477,11 @@ extension SidebarViewController: NSMenuDelegate {
                 if let window { NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil) }
             }
         }
+    }
+
+    @objc private func forgetTag(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        TagStore.shared.forget(name)
     }
 
     @objc private func openInNewTab(_ sender: NSMenuItem) {

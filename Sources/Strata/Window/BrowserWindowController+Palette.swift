@@ -134,6 +134,7 @@ extension BrowserWindowController {
             commands.insert(contentsOf: [
                 command("Quick Look", "eye", "Space") { [weak self] in self?.browser.toggleQuickLook(nil) },
                 command("Add to Shelf", "tray.and.arrow.down", nil) { [weak self] in self?.browser.addToShelf(nil) },
+                command("Tags…", "tag", nil, keywords: ["Label", "Color"]) { [weak self] in self?.browser.editTags(nil) },
                 command("Share…", "square.and.arrow.up", nil, keywords: ["AirDrop", "Send", "Mail", "Messages"]) { [weak self] in
                     self?.browser.share(nil)
                 },

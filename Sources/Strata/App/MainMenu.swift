@@ -31,6 +31,7 @@ enum MainMenu {
             .separator(),
             item("Quick Look", #selector(BrowserViewController.toggleQuickLook(_:)), "y"),
             item("Rename", #selector(BrowserViewController.renameSelection(_:))),
+            item("Tags…", #selector(BrowserViewController.editTags(_:))),
             item("Compress", #selector(BrowserViewController.compress(_:))),
             item("Extract", #selector(BrowserViewController.extract(_:))),
             item("Duplicate", #selector(BrowserViewController.duplicate(_:)), "d"),

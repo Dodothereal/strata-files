@@ -544,6 +544,8 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
             self.spinner.stopAnimation(nil)
             switch result {
             case .success(let entries):
+                TagStore.shared.invalidate(self.folder)
+                TagStore.shared.load(entries, in: self.folder)
                 self.message.isHidden = true
                 self.setEntries(self.order.map { entries.sorted(by: $0) } ?? entries, matches: [:])
             case .failure(let error):
@@ -639,7 +641,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         let git = GitStatusStore.shared
         cell.configure(entry, matches: matches[entry.url.fileViewKey] ?? [],
                        dimmed: entry.isHidden || Clipboard.isCut(entry.url) || git.isIgnored(entry.url),
-                       git: git.badge(for: entry.url, isDirectory: entry.isDirectory))
+                       git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url))
         return cell
     }
 
@@ -804,9 +806,10 @@ final class ColumnCellView: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(_ entry: FileEntry, matches: [Int], dimmed: Bool, git: GitBadge? = nil) {
+    func configure(_ entry: FileEntry, matches: [Int], dimmed: Bool, git: GitBadge? = nil, tags: [FinderTag] = []) {
         isFolder = entry.isFolder
-        nameCell.configure(name: entry.name, icon: IconCache.shared.icon(for: entry), matches: matches, dimmed: dimmed, git: git)
+        nameCell.configure(name: entry.name, icon: IconCache.shared.icon(for: entry), matches: matches, dimmed: dimmed, git: git,
+                           tags: tags)
         applyTruncation()
         chevron.isHidden = !entry.isFolder
         setAccessibilityLabel(entry.isFolder ? "\(entry.name), folder" : entry.name)

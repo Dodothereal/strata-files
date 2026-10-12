@@ -198,6 +198,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         p.columnLocation = nil
         if target != .duplicates { p.duplicateSearch?.set() }
         // Leaving a folder search stops its scan; a finished one stays a minute, so Back shows the results at once.
+        // A search left behind stops (a Spotlight query would otherwise run on to its time limit).
+        if case .search = target {} else {
+            p.searchTask?.cancel()
+            p.searchTask = nil
+        }
         if case .search(_, let scope?) = target, p.folderSearch?.canServe(scope) == true {} else if p.folderSearch?.isFinished == false {
             p.folderSearch?.cancel()
             p.folderSearch = nil
@@ -394,7 +399,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             if case .search = destination { leaveSearch() }
             return
         }
-        guard FileIndex.shared.isReady else {
+        // Spotlight answers tag searches, so they don't wait for the first index.
+        guard FileIndex.shared.isReady || SpotlightQuery.parse(query) != nil else {
             // The index is still being built for the first time: filter this folder meanwhile.
             browser.setFilter(query)
             return
@@ -438,9 +444,16 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         p.searchGeneration += 1
         let generation = p.searchGeneration
         let target = p.destination
-        Task {
+        // Only the latest search runs on: an earlier one (a Spotlight query a keystroke ago) is stopped.
+        p.searchTask?.cancel()
+        p.searchTask = Task {
             switch target {
             case .search(let text, let scope):
+                // Finder tags aren't in the index: Spotlight answers those.
+                if let query = SpotlightQuery.parse(text) {
+                    await searchSpotlight(query, in: scope, pane: p, generation: generation, target: target)
+                    return
+                }
                 if let scope, !FileIndex.shared.covers(scope) {
                     if !FileIndex.shared.isReady, FileIndex.shared.overlapsIndexedFolders(scope) {
                         // Reading your home folder now would duplicate the first index (and ask for the folders macOS
@@ -509,6 +522,27 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private func showSummary(_ summary: String, for p: Pane) {
         p.searchSummary = summary
         if p === pane { split.scopeBar.setSummary(summary) }
+    }
+
+    /// A search only Spotlight can answer (tags): in `scope`, or on the whole Mac.
+    private func searchSpotlight(_ query: SpotlightQuery, in scope: URL?, pane p: Pane, generation: Int, target: Destination) async {
+        p.folderSearch?.cancel()
+        p.folderSearch = nil
+        let result = await SpotlightSearch.run(query.predicate, scope: scope)
+        let entries = await Self.entries(result.urls)
+        guard generation == p.searchGeneration, p.destination == target else { return }
+        p.browser.showResults(entries, total: result.total)
+        let place = scope.map { "in “\(Places.displayName($0))”" } ?? "on this Mac"
+        var summary = result.total == 0 ? "No results \(place)" : "\(Format.count(result.total, "result", "results")) \(place)"
+        summary += " · \(query.summary)"
+        if result.total > result.urls.count { summary += " · first \(result.urls.count.formatted()) shown" }
+        if result.timedOut { summary += " · Spotlight took too long; results may be incomplete" }
+        showSummary(summary, for: p)
+    }
+
+    @concurrent
+    private static func entries(_ urls: [URL]) async -> [FileEntry] {
+        urls.compactMap(FileEntry.init(url:))
     }
 
     /// Searches a folder the index doesn't cover by reading it (`FolderSearch`): matches fill in while it reads, the
@@ -626,8 +660,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     func windowDidBecomeKey(_ notification: Notification) {
         split.sidebar.reload()
-        // Catch commits, checkouts and edits made in other apps while we were in the background.
+        // Catch commits, checkouts and edits made in other apps while we were in the background (tags in Finder too).
         GitStatusStore.shared.invalidate(containing: location)
+        panes.forEach { $0.browser.rereadTags() }
     }
 
     @objc private func gitStatusChanged(_ notification: Notification) {

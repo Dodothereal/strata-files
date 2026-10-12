@@ -11,6 +11,8 @@ final class InspectorViewController: NSViewController {
     private let titleLabel = NSTextField(wrappingLabelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
     private let grid = NSGridView()
+    /// The shown items' Finder tags, editable.
+    private let tagField = TagField()
     private var shownURLs: [URL] = []
     private var previewWork: DispatchWorkItem?
     private let projectView = ProjectInspectorView()
@@ -64,14 +66,17 @@ final class InspectorViewController: NSViewController {
 
         projectView.isHidden = true
         projectView.onDidClean = { [weak self] _ in self?.reloadProject() }
-        let stack = NSStackView(views: [previewBox, titleLabel, subtitleLabel, separator, grid, summary, projectView])
+        tagField.isHidden = true
+        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged(_:)), name: .tagsChanged, object: nil)
+        let stack = NSStackView(views: [previewBox, titleLabel, subtitleLabel, separator, grid, tagField, summary, projectView])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 6
         stack.setCustomSpacing(14, after: previewBox)
         stack.setCustomSpacing(14, after: subtitleLabel)
         stack.setCustomSpacing(14, after: separator)
-        stack.setCustomSpacing(18, after: grid)
+        stack.setCustomSpacing(12, after: grid)
+        stack.setCustomSpacing(18, after: tagField)
         stack.setCustomSpacing(22, after: summary)
         stack.edgeInsets = NSEdgeInsets(top: 16, left: 18, bottom: 18, right: 18)
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -109,12 +114,19 @@ final class InspectorViewController: NSViewController {
             subtitleLabel.widthAnchor.constraint(lessThanOrEqualTo: previewBox.widthAnchor),
             separator.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
             grid.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
+            tagField.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
             projectView.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
             summary.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
         ])
         previewHeight = previewBox.heightAnchor.constraint(equalToConstant: 230)
         previewHeight?.isActive = true
         view = scroll
+    }
+
+    @objc private func tagsChanged(_ notification: Notification) {
+        guard tagField.currentEditor() == nil,
+              let changed = notification.object as? [URL], changed.contains(where: shownURLs.contains) else { return }
+        tagField.reload()
     }
 
     /// Shows `entries`, or `folder` when the selection is empty. Calling again with the same items only refreshes metadata.
@@ -133,6 +145,15 @@ final class InspectorViewController: NSViewController {
         let urls = items.map(\.url)
         let sameItems = urls == shownURLs
         shownURLs = urls
+        // Volumes, links and archives opened as folders don't take tags. A refresh while you type leaves your typing alone.
+        tagField.isHidden = items.isEmpty || items.contains { $0.isVolume || !TagStore.canTag($0.url) }
+        tagField.undo = view.window?.undoManager
+        tagField.errorWindow = view.window
+        if !sameItems {
+            tagField.urls = urls
+        } else if tagField.currentEditor() == nil {
+            tagField.reload()
+        }
 
         guard let first = items.first else {
             titleLabel.stringValue = ""

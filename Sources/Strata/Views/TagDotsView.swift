@@ -1,0 +1,76 @@
+import AppKit
+
+/// Finder's tag dots: up to three overlapping circles after a name, the most recent tag on top. A tag without a color
+/// is a hollow gray ring.
+final class TagDotsView: NSView {
+    var tags: [FinderTag] = [] {
+        didSet {
+            guard tags != oldValue else { return }
+            invalidateIntrinsicContentSize()
+            needsDisplay = true
+            setAccessibilityLabel(tags.isEmpty ? nil : "Tags: " + tags.map(\.name).joined(separator: ", "))
+            setAccessibilityElement(!tags.isEmpty)
+        }
+    }
+
+    /// Selected rows draw the separating rings in the selection's text color.
+    var backgroundStyle: NSView.BackgroundStyle = .normal {
+        didSet { if backgroundStyle != oldValue { needsDisplay = true } }
+    }
+
+    var diameter: CGFloat = 9 {
+        didSet { invalidateIntrinsicContentSize(); needsDisplay = true }
+    }
+
+    /// The width dots for `tags` take (0 without tags).
+    static func width(for tags: [FinderTag], diameter: CGFloat) -> CGFloat {
+        let count = min(tags.count, 3)
+        return count == 0 ? 0 : diameter + 2 + CGFloat(count - 1) * diameter * 0.55
+    }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+        setAccessibilityElement(false)
+        setAccessibilityRole(.image)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: Self.width(for: tags, diameter: diameter), height: diameter + 2)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        Self.draw(tags, at: NSPoint(x: 0, y: (bounds.height - diameter) / 2), diameter: diameter, alpha: 1)
+    }
+
+    /// Draws the dots from `origin` (their bottom-left in unflipped views, top-left in flipped ones). Each dot cuts a
+    /// thin gap out of the ones beneath it, so they read apart on any background (selected or not, light or dark).
+    static func draw(_ tags: [FinderTag], at origin: NSPoint, diameter: CGFloat, alpha: CGFloat) {
+        guard !tags.isEmpty, let context = NSGraphicsContext.current?.cgContext else { return }
+        context.saveGState()
+        context.setAlpha(alpha)
+        context.beginTransparencyLayer(auxiliaryInfo: nil)
+        for (index, tag) in tags.suffix(3).enumerated() {
+            let rect = NSRect(x: origin.x + 1 + CGFloat(index) * diameter * 0.55, y: origin.y, width: diameter, height: diameter)
+            context.setBlendMode(.destinationOut)
+            NSColor.black.setFill()
+            NSBezierPath(ovalIn: rect.insetBy(dx: -1, dy: -1)).fill()
+            context.setBlendMode(.normal)
+            if let color = tag.displayColor {
+                color.setFill()
+                NSBezierPath(ovalIn: rect).fill()
+            } else {
+                // A tag without a color: a hollow ring.
+                NSColor.secondaryLabelColor.setStroke()
+                let outline = NSBezierPath(ovalIn: rect.insetBy(dx: 0.75, dy: 0.75))
+                outline.lineWidth = 1.5
+                outline.stroke()
+            }
+        }
+        context.endTransparencyLayer()
+        context.restoreGState()
+    }
+}

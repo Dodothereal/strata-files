@@ -181,6 +181,8 @@ final class BrowserViewController: NSViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsLoaded, object: nil)
     }
 
     private func configureOutline() {
@@ -255,6 +257,8 @@ final class BrowserViewController: NSViewController {
     // MARK: - Loading
 
     func load(_ url: URL, select: URL? = nil) {
+        // Tags may have changed elsewhere (Finder) since they were last read here.
+        TagStore.shared.invalidate(url)
         let isNewDirectory = url != directory || isShowingResults
         if isShowingResults { leaveResults() }
         directory = url
@@ -292,6 +296,7 @@ final class BrowserViewController: NSViewController {
     /// Re-reads the current folder, keeping selection, expanded folders and scroll position.
     @objc func refresh() {
         guard directory != nil, !isShowingResults else { return }
+        TagStore.shared.invalidate(directory)
         // FSEvents normally keeps git status current; without it, entries changing is our cue.
         if let observation = gitObservation, !observation.isWatching {
             GitStatusStore.shared.invalidate(root: observation.repository.root)
@@ -309,6 +314,7 @@ final class BrowserViewController: NSViewController {
             do {
                 let entries = try await DirectoryLoader.load(url, showHidden: showHidden)
                 guard gen == generation else { return }
+                TagStore.shared.load(entries, in: url)
                 loadError = nil
                 isLoadingFolder = false
                 Privacy.markAccessible(url)
@@ -373,6 +379,7 @@ final class BrowserViewController: NSViewController {
         let showHidden = Prefs.showHidden
         Task {
             let entries = (try? await DirectoryLoader.load(url, showHidden: showHidden)) ?? []
+            TagStore.shared.load(entries, in: url)
             node.isLoadingChildren = false
             guard gen == generation else { return }
             let old = Dictionary((node.children ?? []).map { ($0.url, $0) }, uniquingKeysWith: { a, _ in a })
@@ -882,21 +889,32 @@ final class BrowserViewController: NSViewController {
     /// Shows the system share picker (AirDrop, Messages, Mail, …) for the selection, pointing at the first selected item.
     @objc func share(_ sender: Any?) {
         let urls = selectedURLs
-        guard !urls.isEmpty, let window = view.window else { return }
-        let picker = NSSharingServicePicker(items: urls)
-        // The first selected item that's on screen, not under the toolbar (lists scroll beneath it).
+        guard !urls.isEmpty else { return }
+        let (rect, edge) = selectionAnchor()
+        NSSharingServicePicker(items: urls).show(relativeTo: rect, of: view, preferredEdge: edge)
+    }
+
+    /// The selection's tags in a popover with suggestions (Finder's Tags…).
+    @objc func editTags(_ sender: Any?) {
+        let urls = selectedURLs
+        guard !urls.isEmpty, urls.allSatisfy(TagStore.canTag) else { return }
+        let (rect, _) = selectionAnchor()
+        TagEditorController(urls: urls, undo: undoManager).show(relativeTo: rect, of: view)
+    }
+
+    /// Where to point a popover about the selection: the first selected item on screen (not under the toolbar), or
+    /// the top middle of the folder when none is. The edge says which way the popover should open.
+    func selectionAnchor() -> (rect: NSRect, edge: NSRectEdge) {
         let area = view.safeAreaRect
-        let anchor = urls.prefix(200).lazy.compactMap { [self] url -> NSRect? in
-            guard let screenRect = iconScreenRect(for: url) else { return nil }
-            let rect = view.convert(window.convertFromScreen(screenRect), from: nil).intersection(area)
-            return rect.isEmpty ? nil : rect
-        }.first
-        if let anchor {
-            picker.show(relativeTo: anchor, of: view, preferredEdge: .maxY)
-        } else {
-            // Everything selected is scrolled out of view: point at the top middle of the folder instead.
-            picker.show(relativeTo: NSRect(x: area.midX, y: area.maxY - 8, width: 1, height: 1), of: view, preferredEdge: .minY)
+        if let window = view.window {
+            let anchor = selectedURLs.prefix(200).lazy.compactMap { [self] url -> NSRect? in
+                guard let screenRect = iconScreenRect(for: url) else { return nil }
+                let rect = view.convert(window.convertFromScreen(screenRect), from: nil).intersection(area)
+                return rect.isEmpty ? nil : rect
+            }.first
+            if let anchor { return (anchor, .maxY) }
         }
+        return (NSRect(x: area.midX, y: area.maxY - 8, width: 1, height: 1), .minY)
     }
 
     /// Where an item's icon is on screen, when it's visible: for Quick Look's zoom and to point the share picker at it.
@@ -966,6 +984,20 @@ final class BrowserViewController: NSViewController {
               directory.path == root.path || directory.path.hasPrefix(root.path + "/") else { return }
         clipboardChanged()
         gridController?.refreshVisibleItems()
+        columnController?.refreshVisibleRows()
+    }
+
+    /// Reads the shown folder's tags again (Finder may have changed them while Strata was in the background).
+    func rereadTags() {
+        guard let directory, !isShowingResults else { return }
+        TagStore.shared.invalidate(directory)
+        TagStore.shared.load(nodes.map(\.entry), in: directory)
+    }
+
+    /// Tags changed (here or in another window) or were read: redraw what's shown.
+    @objc private func tagsChanged() {
+        clipboardChanged()
+        gridController?.refreshVisibleItems(reconfigure: true)
         columnController?.refreshVisibleRows()
     }
 
@@ -1220,6 +1252,27 @@ final class BrowserViewController: NSViewController {
         add("Cut", #selector(cut(_:)), "scissors")
         add("Copy Path", #selector(copyPath(_:)), "link")
         add("Add to Shelf", #selector(addToShelf(_:)), "tray.and.arrow.down")
+        // Finder's tags: the seven colors to click, and Tags… for any tag.
+        if !inTrash, selected.allSatisfy({ !$0.isVolume && TagStore.canTag($0.url) }) {
+            menu.addItem(.separator())
+            let urls = selected.map(\.url)
+            var applied: [String: Bool] = [:]
+            // Checkmarks for what every item has (not worked out for huge selections: each item would be read).
+            if urls.count <= 300 {
+                for tag in FinderTag.standard {
+                    applied[tag.name.lowercased()] = urls.allSatisfy { url in
+                        TagStore.shared.tags(for: url).contains { $0.name.caseInsensitiveCompare(tag.name) == .orderedSame }
+                    }
+                }
+            }
+            let row = NSMenuItem()
+            row.view = TagMenuView(applied: applied) { [weak self] tag in
+                guard let self else { return }
+                do { try TagStore.shared.toggle(tag, on: urls, undo: undoManager) } catch { presentFileError(error) }
+            }
+            menu.addItem(row)
+            add("Tags…", #selector(editTags(_:)), "tag")
+        }
         if selectedEntries.contains(where: \.isFolder) { add("Add to Sidebar", #selector(addToSidebar(_:)), "sidebar.left") }
         menu.addItem(.separator())
         add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
@@ -1279,7 +1332,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
                 return cell
             }()
             cell.configure(name: entry.name, icon: IconCache.shared.icon(for: entry), matches: node.matchIndices, dimmed: dimmed,
-                           git: git.badge(for: entry.url, isDirectory: entry.isDirectory))
+                           git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url))
             return cell
         }
         let cell = outlineView.makeView(withIdentifier: .textCell, owner: nil) as? TextCellView ?? {
@@ -1452,7 +1505,7 @@ extension BrowserViewController: NSMenuItemValidation {
             #selector(newFolder(_:)), #selector(paste(_:)), #selector(pasteAndMove(_:)), #selector(renameSelection(_:)),
             #selector(moveToTrash(_:)), #selector(deleteImmediately(_:)), #selector(duplicate(_:)), #selector(cut(_:)),
             #selector(compress(_:)), #selector(extract(_:)), #selector(putBack(_:)),
-            #selector(addToSidebar(_:)),
+            #selector(editTags(_:)), #selector(addToSidebar(_:)),
         ]
         if let action = item.action, changes.contains(action), isInsideArchive { return false }
         switch item.action {
@@ -1465,6 +1518,8 @@ extension BrowserViewController: NSMenuItemValidation {
             return hasSelection && selectedEntries.allSatisfy { Trash.contains($0.url) }
         case #selector(duplicate(_:)):
             return hasSelection && !isShowingTrash
+        case #selector(editTags(_:)):
+            return hasSelection && selectedEntries.allSatisfy { !$0.isVolume && TagStore.canTag($0.url) }
         case #selector(compress(_:)):
             // Finder names what it compresses: "Compress “Photos”", "Compress 3 Items".
             item.title = hasSelection ? compressTitle : "Compress"

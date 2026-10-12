@@ -20,6 +20,8 @@ final class GridItemView: NSView {
     private var name = ""
     private var matches: [Int] = []
     private var detail: String?
+    /// Finder tags, as dots before the name.
+    private var tags: [FinderTag] = []
     private(set) var state = GridItemState()
     var isRenaming = false { didSet { needsDisplay = true } }
 
@@ -62,14 +64,41 @@ final class GridItemView: NSView {
             needsLayout = true
         }
         if changed { linesKey = "" }
-        setAccessibilityLabel([name, detail].compactMap { $0 }.joined(separator: ", "))
+        setAccessibilityLabel(accessibilityText)
         needsDisplay = true
+    }
+
+    func setTags(_ tags: [FinderTag]) {
+        guard tags != self.tags else { return }
+        self.tags = tags
+        linesKey = ""
+        setAccessibilityLabel(accessibilityText)
+        needsDisplay = true
+    }
+
+    /// Room before the first line for tag dots (clear of the name's selection capsule, which reaches past the text).
+    private var dotsLead: CGFloat {
+        tags.isEmpty ? 0 : TagDotsView.width(for: tags, diameter: Self.dotDiameter) + 3 + Self.capsulePad
+    }
+
+    private static let capsulePad: CGFloat = 5
+
+    /// Name, tags and detail, for VoiceOver.
+    private var accessibilityText: String {
+        [name, tags.isEmpty ? nil : "tags " + tags.map(\.name).joined(separator: ", "), detail].compactMap { $0 }.joined(separator: ", ")
+    }
+
+    private static let dotDiameter: CGFloat = 8
+
+    /// Where a line of the name starts: the first one leaves room for the tag dots, and the pair stays centered.
+    private func lineX(_ index: Int, width: CGFloat) -> CGFloat {
+        index == 0 ? ((bounds.width - width - dotsLead) / 2).rounded(.down) + dotsLead : ((bounds.width - width) / 2).rounded(.down)
     }
 
     func setDetail(_ detail: String?) {
         guard detail != self.detail else { return }
         self.detail = detail
-        setAccessibilityLabel([name, detail].compactMap { $0 }.joined(separator: ", "))
+        setAccessibilityLabel(accessibilityText)
         needsDisplay = true
     }
 
@@ -112,10 +141,14 @@ final class GridItemView: NSView {
     /// The area the name occupies (for the rename field and drag images).
     var nameRect: NSRect {
         ensureLines()
-        let width = (lineWidths.max() ?? 0)
+        // Spans every line as drawn (the first one sits right of the tag dots, which are included).
+        let lefts = lineWidths.enumerated().map { lineX($0.offset, width: $0.element) }
+        let rights = lineWidths.enumerated().map { lineX($0.offset, width: $0.element) + $0.element }
+        let minX = (lefts.min() ?? bounds.midX) - (tags.isEmpty ? 0 : dotsLead)
+        let maxX = rights.max() ?? bounds.midX
         let height = CGFloat(max(lines.count, 1)) * metrics.lineHeight
-        return NSRect(x: ((bounds.width - width) / 2).rounded(), y: iconBoxRect.maxY + metrics.nameGap,
-                      width: width, height: height)
+        return NSRect(x: minX.rounded(.down), y: iconBoxRect.maxY + metrics.nameGap, width: (maxX - minX).rounded(.up),
+                      height: height)
     }
 
     var nameAreaRect: NSRect {
@@ -165,13 +198,13 @@ final class GridItemView: NSView {
     /// Splits the name into at most two lines: the first breaks at a word (or character) boundary, the second
     /// holds the rest and truncates in the middle so extensions stay visible, like Finder.
     private func ensureLines() {
-        let key = "\(name)|\(labelWidth)|\(matches)|\(state.selected)|\(state.emphasized)|\(state.dimmed)"
+        let key = "\(name)|\(labelWidth)|\(matches)|\(state.selected)|\(state.emphasized)|\(state.dimmed)|\(dotsLead)"
         guard key != linesKey else { return }
         linesKey = key
         let color = textColor
         let highlight: NSColor = state.selected && state.emphasized ? color : .controlAccentColor
         let full = FileViewStyle.highlightedName(name, matches: matches, color: color, highlight: highlight)
-        let width = labelWidth
+        let width = labelWidth - dotsLead
         let typesetter = CTTypesetterCreateWithAttributedString(full)
         let length = full.length
         var breakIndex = CTTypesetterSuggestLineBreak(typesetter, 0, Double(width))
@@ -198,7 +231,7 @@ final class GridItemView: NSView {
         truncating.lineBreakMode = .byTruncatingMiddle
         second.addAttribute(.paragraphStyle, value: truncating, range: NSRange(location: 0, length: second.length))
         lines = [first, second]
-        lineWidths = [min(ceil(first.size().width), width), min(ceil(second.size().width), width)]
+        lineWidths = [min(ceil(first.size().width), width), min(ceil(second.size().width), labelWidth)]
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -223,8 +256,14 @@ final class GridItemView: NSView {
             (state.emphasized ? NSColor.selectedContentBackgroundColor : NSColor.unemphasizedSelectedContentBackgroundColor).setFill()
             capsule.fill()
         }
-        for (line, width) in zip(lines, lineWidths) {
-            let rect = NSRect(x: ((bounds.width - width) / 2).rounded(.down), y: y, width: width + 1, height: metrics.lineHeight)
+        if !tags.isEmpty, let first = lineWidths.first {
+            let x = lineX(0, width: first) - dotsLead
+            // Outside the name's capsule, so the rings match the grid's background.
+            TagDotsView.draw(tags, at: NSPoint(x: x, y: y + (metrics.lineHeight - Self.dotDiameter) / 2),
+                             diameter: Self.dotDiameter, alpha: state.dimmed ? 0.45 : 1)
+        }
+        for (index, (line, width)) in zip(lines, lineWidths).enumerated() {
+            let rect = NSRect(x: lineX(index, width: width), y: y, width: width + 1, height: metrics.lineHeight)
             line.draw(with: rect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
             y += metrics.lineHeight
         }
@@ -244,11 +283,11 @@ final class GridItemView: NSView {
     /// One rounded shape hugging each line, merged so a long first line over a short second reads as one label.
     private func capsulePath(top: CGFloat) -> NSBezierPath {
         let path = NSBezierPath()
-        let padX: CGFloat = 5, padY: CGFloat = 0.5
+        let padX = Self.capsulePad, padY: CGFloat = 0.5
         var y = top
         var rects: [NSRect] = []
-        for width in lineWidths {
-            rects.append(NSRect(x: ((bounds.width - width) / 2).rounded(.down) - padX, y: y - padY,
+        for (index, width) in lineWidths.enumerated() {
+            rects.append(NSRect(x: lineX(index, width: width) - padX, y: y - padY,
                                 width: width + padX * 2 + 1, height: metrics.lineHeight + padY * 2))
             y += metrics.lineHeight
         }
@@ -330,8 +369,9 @@ final class GridItem: NSCollectionViewItem {
     }
 
     func configure(_ entry: FileEntry, matches: [Int], metrics: GridMetrics, showsInfo: Bool, dimmed: Bool, scale: CGFloat,
-                   git: GitBadge? = nil) {
+                   git: GitBadge? = nil, tags: [FinderTag] = []) {
         itemView.gitBadge.badge = git
+        itemView.setTags(tags)
         let sameFile = self.entry == entry
         self.entry = entry
         self.dimmed = dimmed

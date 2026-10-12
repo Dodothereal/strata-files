@@ -5,6 +5,7 @@ final class NameCellView: NSTableCellView {
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
     private let gitBadge = GitStatusBadge()
+    private let tagDots = TagDotsView()
     private var name = ""
     private var matches: [Int] = []
     private var dimmed = false
@@ -18,8 +19,12 @@ final class NameCellView: NSTableCellView {
         label.lineBreakMode = .byTruncatingMiddle
         label.maximumNumberOfLines = 1
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        // The name hugs its text so tag dots follow it, like Finder.
+        label.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        tagDots.translatesAutoresizingMaskIntoConstraints = false
         addSubview(icon)
         addSubview(label)
+        addSubview(tagDots)
         addSubview(gitBadge)
         imageView = icon
         textField = label
@@ -29,7 +34,9 @@ final class NameCellView: NSTableCellView {
             icon.widthAnchor.constraint(equalToConstant: 18),
             icon.heightAnchor.constraint(equalToConstant: 18),
             label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 7),
-            label.trailingAnchor.constraint(equalTo: gitBadge.leadingAnchor),
+            tagDots.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 4),
+            tagDots.trailingAnchor.constraint(lessThanOrEqualTo: gitBadge.leadingAnchor, constant: -2),
+            tagDots.centerYAnchor.constraint(equalTo: centerYAnchor),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
             gitBadge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
             gitBadge.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -38,11 +45,14 @@ final class NameCellView: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(name: String, icon image: NSImage, matches: [Int], dimmed: Bool, git: GitBadge? = nil) {
+    func configure(name: String, icon image: NSImage, matches: [Int], dimmed: Bool, git: GitBadge? = nil,
+                   tags: [FinderTag] = []) {
         self.name = name
         self.matches = matches
         self.dimmed = dimmed
         gitBadge.badge = git
+        tagDots.tags = tags
+        tagDots.alphaValue = dimmed ? 0.45 : 1
         icon.image = image
         icon.alphaValue = dimmed ? 0.45 : 1
         render()
@@ -51,6 +61,7 @@ final class NameCellView: NSTableCellView {
     override var backgroundStyle: NSView.BackgroundStyle {
         didSet {
             gitBadge.backgroundStyle = backgroundStyle
+            tagDots.backgroundStyle = backgroundStyle
             render()
         }
     }

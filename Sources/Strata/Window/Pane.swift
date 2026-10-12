@@ -22,6 +22,8 @@ final class Pane {
     /// In column view, the folder of the focused column (deeper than `location`).
     var columnLocation: URL?
     var searchGeneration = 0
+    /// The search running in this pane, stopped when another starts or the pane goes elsewhere.
+    var searchTask: Task<Void, Never>?
     var duplicateSearch: CancelFlag?
     /// The scan behind a search in a folder the index doesn't cover, kept while you keep searching that folder.
     var folderSearch: FolderSearch?

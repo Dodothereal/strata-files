@@ -206,12 +206,14 @@ final class GridViewController: NSViewController, FileCollectionController {
         let git = GitStatusStore.shared
         let dimmed = entry.isHidden || Clipboard.isCut(entry.url) || git.isIgnored(entry.url)
         let badge = git.badge(for: entry.url, isDirectory: entry.isDirectory)
+        let tags = TagStore.shared.tags(for: entry.url)
         if refreshImage {
             item.configure(entry, matches: matches[entry.url.fileViewKey] ?? [], metrics: layout.metrics, showsInfo: showsItemInfo,
-                           dimmed: dimmed, scale: view.window?.backingScaleFactor ?? 2, git: badge)
+                           dimmed: dimmed, scale: view.window?.backingScaleFactor ?? 2, git: badge, tags: tags)
         } else {
             item.dimmed = dimmed
             item.itemView.gitBadge.badge = badge
+            item.itemView.setTags(tags)
             item.itemView.configure(name: entry.name, matches: matches[entry.url.fileViewKey] ?? [],
                                     detail: showsItemInfo ? ItemInfoLoader.shared.immediate(entry, showHidden: Prefs.showHidden) : nil,
                                     metrics: layout.metrics)
