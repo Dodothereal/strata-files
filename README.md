@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/hero.png" alt="Strata showing a folder with live sizes and a Markdown preview in the inspector" width="900">
+  <img src="docs/screenshots/hero.png" alt="Strata showing a folder with live sizes, and a Markdown preview with an on-device summary in the inspector" width="900">
 </p>
 
 ---
@@ -62,7 +62,7 @@ two folders side by side and copy or move between them with a keystroke.
 <table>
   <tr>
     <td><img src="docs/screenshots/grid.png" alt="Icon view with image thumbnails"></td>
-    <td><img src="docs/screenshots/dual.png" alt="Dual pane with a project and a photo folder"></td>
+    <td><img src="docs/screenshots/dual.png" alt="Dual pane with a project and a folder of images"></td>
   </tr>
 </table>
 
