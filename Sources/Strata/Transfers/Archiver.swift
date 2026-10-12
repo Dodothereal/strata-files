@@ -183,10 +183,10 @@ nonisolated enum Archiver {
             guard !isSymlink(only) else {
                 throw Failure(message: "“\(archive.lastPathComponent)” holds only a link, so it wasn’t extracted.")
             }
-            try check(only, control: control)
+            try check(only, control: control, quarantine: quarantine(of: archive))
             return try place(only, in: folder, as: only.lastPathComponent)
         }
-        try check(root, control: control)
+        try check(root, control: control, quarantine: quarantine(of: archive))
         return try place(root, in: folder, as: baseName(archive))
     }
 
@@ -199,7 +199,7 @@ nonisolated enum Archiver {
         defer { removeTree(work) }
         let root = work.appending(path: "contents", directoryHint: .isDirectory)
         try unpack(archive, kind: kind, inspection: inspection, into: root, control: control)
-        try check(root, control: control)
+        try check(root, control: control, quarantine: quarantine(of: archive))
         try fm.moveItem(at: root, to: destination)
     }
 
@@ -254,13 +254,17 @@ nonisolated enum Archiver {
     /// sockets) are dropped and setuid/setgid bits cleared. Folders are made readable as they're walked, so none can
     /// hide anything; whatever can't be checked (an unreadable entry, a path too long) stops the extraction. Paths are
     /// compared in their real form (`realpath`), never through Foundation's shortened spellings of /private/….
-    static func check(_ boundary: URL, control: Control? = nil) throws {
+    ///
+    /// `quarantine`: the archive's own quarantine mark (it was downloaded). Every extracted item gets it if the tool
+    /// didn't pass it on, so Gatekeeper still checks an app that came inside the archive.
+    static func check(_ boundary: URL, control: Control? = nil, quarantine: Data? = nil) throws {
         let fm = FileManager.default
         guard let rootPath = realPath(boundary.path) else { throw Failure(message: "The extracted files couldn’t be checked.") }
         func inside(_ path: String) -> Bool { path == rootPath || path.hasPrefix(rootPath + "/") }
         var info = stat()
         guard lstat(rootPath, &info) == 0 else { throw Failure(message: "The extracted files couldn’t be checked.") }
         if info.st_mode & S_IFMT == S_IFDIR { chmod(rootPath, (info.st_mode & 0o7777) | S_IRWXU) }
+        if let quarantine { markQuarantined(rootPath, quarantine) }
         var walkError: Error?
         let base = URL(fileURLWithPath: rootPath, isDirectory: true)
         guard let walker = fm.enumerator(at: base, includingPropertiesForKeys: nil, options: [.producesRelativePathURLs],
@@ -277,6 +281,7 @@ nonisolated enum Archiver {
             guard lstat(path, &info) == 0 else {
                 throw Failure(message: "“\(relative)” in the archive couldn’t be checked, so nothing was extracted.")
             }
+            if let quarantine { markQuarantined(path, quarantine) }
             switch info.st_mode & S_IFMT {
             case S_IFLNK:
                 let target = try fm.destinationOfSymbolicLink(atPath: path)
@@ -298,6 +303,23 @@ nonisolated enum Archiver {
         if let walkError {
             throw Failure(message: "The extracted files couldn’t all be checked (\(walkError.localizedDescription)), so nothing was extracted.")
         }
+    }
+
+    private static let quarantineAttribute = "com.apple.quarantine"
+
+    /// The archive's quarantine mark, if it has one.
+    private static func quarantine(of archive: URL) -> Data? {
+        let size = getxattr(archive.path, quarantineAttribute, nil, 0, 0, 0)
+        guard size > 0, size < 4096 else { return nil }
+        var data = Data(count: size)
+        let read = data.withUnsafeMutableBytes { getxattr(archive.path, quarantineAttribute, $0.baseAddress, size, 0, 0) }
+        return read > 0 ? data.prefix(read) : nil
+    }
+
+    /// Gives `path` the quarantine mark unless it already has one (never through a link).
+    private static func markQuarantined(_ path: String, _ value: Data) {
+        guard getxattr(path, quarantineAttribute, nil, 0, 0, XATTR_NOFOLLOW) < 0 else { return }
+        _ = value.withUnsafeBytes { setxattr(path, quarantineAttribute, $0.baseAddress, value.count, 0, XATTR_NOFOLLOW) }
     }
 
     /// `path` as the system resolves it (links followed, real case, /private kept); for a path that doesn't exist, its
