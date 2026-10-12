@@ -255,8 +255,9 @@ nonisolated enum Archiver {
     /// hide anything; whatever can't be checked (an unreadable entry, a path too long) stops the extraction. Paths are
     /// compared in their real form (`realpath`), never through Foundation's shortened spellings of /private/….
     ///
-    /// `quarantine`: the archive's own quarantine mark (it was downloaded). Every extracted item gets it if the tool
-    /// didn't pass it on, so Gatekeeper still checks an app that came inside the archive.
+    /// `quarantine`: the archive's own quarantine mark (it was downloaded). Every extracted item gets exactly that mark,
+    /// replacing any the archive itself carried (a crafted one could claim an app was already approved), so Gatekeeper
+    /// checks whatever came inside. If an item can't be marked, nothing is extracted.
     static func check(_ boundary: URL, control: Control? = nil, quarantine: Data? = nil) throws {
         let fm = FileManager.default
         guard let rootPath = realPath(boundary.path) else { throw Failure(message: "The extracted files couldn’t be checked.") }
@@ -264,7 +265,7 @@ nonisolated enum Archiver {
         var info = stat()
         guard lstat(rootPath, &info) == 0 else { throw Failure(message: "The extracted files couldn’t be checked.") }
         if info.st_mode & S_IFMT == S_IFDIR { chmod(rootPath, (info.st_mode & 0o7777) | S_IRWXU) }
-        if let quarantine { markQuarantined(rootPath, quarantine) }
+        if let quarantine { try markQuarantined(rootPath, quarantine) }
         var walkError: Error?
         let base = URL(fileURLWithPath: rootPath, isDirectory: true)
         guard let walker = fm.enumerator(at: base, includingPropertiesForKeys: nil, options: [.producesRelativePathURLs],
@@ -281,7 +282,7 @@ nonisolated enum Archiver {
             guard lstat(path, &info) == 0 else {
                 throw Failure(message: "“\(relative)” in the archive couldn’t be checked, so nothing was extracted.")
             }
-            if let quarantine { markQuarantined(path, quarantine) }
+            if let quarantine { try markQuarantined(path, quarantine) }
             switch info.st_mode & S_IFMT {
             case S_IFLNK:
                 let target = try fm.destinationOfSymbolicLink(atPath: path)
@@ -316,10 +317,12 @@ nonisolated enum Archiver {
         return read > 0 ? data.prefix(read) : nil
     }
 
-    /// Gives `path` the quarantine mark unless it already has one (never through a link).
-    private static func markQuarantined(_ path: String, _ value: Data) {
-        guard getxattr(path, quarantineAttribute, nil, 0, 0, XATTR_NOFOLLOW) < 0 else { return }
-        _ = value.withUnsafeBytes { setxattr(path, quarantineAttribute, $0.baseAddress, value.count, 0, XATTR_NOFOLLOW) }
+    /// Gives `path` the archive's quarantine mark, replacing any it has (never through a link). Fails closed, except on
+    /// disks that can't keep extended attributes at all.
+    private static func markQuarantined(_ path: String, _ value: Data) throws {
+        let result = value.withUnsafeBytes { setxattr(path, quarantineAttribute, $0.baseAddress, value.count, 0, XATTR_NOFOLLOW) }
+        guard result != 0, errno != ENOTSUP else { return }
+        throw Failure(message: "“\((path as NSString).lastPathComponent)” couldn’t be marked as downloaded, so nothing was extracted.")
     }
 
     /// `path` as the system resolves it (links followed, real case, /private kept); for a path that doesn't exist, its
