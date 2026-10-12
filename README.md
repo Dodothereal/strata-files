@@ -110,7 +110,7 @@ downloaded repository could use to do that.
 
 ## Get Strata
 
-Download the latest version from [GitHub Releases](https://github.com/cristipufu/strata/releases/latest), open the disk
+Download the latest version from [GitHub Releases](https://github.com/cristipufu/strata-files/releases/latest), open the disk
 image and drag Strata to Applications. It needs an Apple silicon Mac running **macOS 26**. Releases are signed and
 notarized by Apple, so Strata opens like any other app. Strata is in early development and doesn't update itself yet:
 check back for new versions.
@@ -118,8 +118,8 @@ check back for new versions.
 Or build it yourself with the Swift toolchain (Xcode or the Command Line Tools):
 
 ```sh
-git clone https://github.com/cristipufu/strata.git
-cd strata
+git clone https://github.com/cristipufu/strata-files.git
+cd strata-files
 scripts/build.sh release --open
 ```
 
@@ -143,5 +143,5 @@ Strata is open source under the [MIT License](LICENSE).
 ---
 
 <p align="center">
-  Found a bug or have an idea? <a href="https://github.com/cristipufu/strata/issues">Open an issue</a>.
+  Found a bug or have an idea? <a href="https://github.com/cristipufu/strata-files/issues">Open an issue</a>.
 </p>

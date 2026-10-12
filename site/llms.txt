@@ -3,18 +3,18 @@
 > Strata is a free, open-source (MIT) file manager for macOS, built natively in Swift and AppKit. It indexes your home folder for instant search (by name, with filters, or in plain English), shows live folder sizes and a disk-usage map, and adds a command palette, dual pane, a copy queue with conflict previews, undoable history, git-aware developer features and on-device document summaries. Everything runs on the Mac: no accounts, no tracking, no servers.
 
 - Website: https://stratafiles.app
-- Download: https://github.com/cristipufu/strata/releases/latest (Strata.dmg, signed with a Developer ID and notarized by Apple)
+- Download: https://github.com/cristipufu/strata-files/releases/latest (Strata.dmg, signed with a Developer ID and notarized by Apple)
 - Requirements: macOS 26 Tahoe on a Mac with Apple silicon. Apple Intelligence is optional.
 - Price: free. License: MIT.
 
 ## Docs
 
 - [Full product description](https://stratafiles.app/llms-full.txt): every feature, the search syntax, shortcuts, privacy and FAQ
-- [README](https://github.com/cristipufu/strata/blob/main/README.md): overview, screenshots and building from source
-- [Releases](https://github.com/cristipufu/strata/releases): downloads and release notes
-- [License](https://github.com/cristipufu/strata/blob/main/LICENSE): MIT
+- [README](https://github.com/cristipufu/strata-files/blob/main/README.md): overview, screenshots and building from source
+- [Releases](https://github.com/cristipufu/strata-files/releases): downloads and release notes
+- [License](https://github.com/cristipufu/strata-files/blob/main/LICENSE): MIT
 
 ## Optional
 
-- [Source code](https://github.com/cristipufu/strata): Swift Package, Swift 6 and AppKit
-- [Report an issue](https://github.com/cristipufu/strata/issues)
+- [Source code](https://github.com/cristipufu/strata-files): Swift Package, Swift 6 and AppKit
+- [Report an issue](https://github.com/cristipufu/strata-files/issues)

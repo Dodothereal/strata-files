@@ -3,8 +3,8 @@
 > Strata is a free, open-source (MIT) file manager for macOS, built natively in Swift and AppKit. It keeps what people know from Finder (the look, the shortcuts, drag and drop, Quick Look, tabs) and adds instant search, live folder sizes, a disk-usage map, a command palette, dual pane, a copy queue, undoable history, developer features and on-device summaries. Everything runs on the Mac.
 
 - Website: https://stratafiles.app
-- Download: https://github.com/cristipufu/strata/releases/latest (Strata.dmg or Strata.zip, signed with a Developer ID and notarized by Apple; SHA256SUMS.txt lists checksums)
-- Source: https://github.com/cristipufu/strata
+- Download: https://github.com/cristipufu/strata-files/releases/latest (Strata.dmg or Strata.zip, signed with a Developer ID and notarized by Apple; SHA256SUMS.txt lists checksums)
+- Source: https://github.com/cristipufu/strata-files
 - Requirements: macOS 26 Tahoe on a Mac with Apple silicon. Apple Intelligence is optional; without it, summaries use a document's key sentences and Ask Strata uses built-in rules.
 - Price: free. License: MIT.
 - Status: early development. Strata doesn't check for updates on its own; new versions are published on GitHub Releases.
@@ -86,4 +86,4 @@ Filters can be combined with words:
 - Is it safe to download? Releases are signed with a Developer ID and notarized by Apple, and each release lists SHA-256 checksums.
 - Does it collect data? No.
 - How do I update? Download the latest release and replace the app in Applications.
-- Can I build it myself? Yes: `git clone https://github.com/cristipufu/strata.git && cd strata && scripts/build.sh release --open` (needs the Swift toolchain).
+- Can I build it myself? Yes: `git clone https://github.com/cristipufu/strata-files.git && cd strata-files && scripts/build.sh release --open` (needs the Swift toolchain).

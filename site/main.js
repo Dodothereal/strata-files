@@ -1,7 +1,7 @@
 // Strata Files: stratafiles.app. No trackers, no third parties: the only requests go to GitHub's public API, for the
 // latest release (so Download points straight at the disk image) and the star count.
 (() => {
-  const REPO = 'cristipufu/strata';
+  const REPO = 'cristipufu/strata-files';
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // --- Latest release and stars, cached for the session ---------------------------------------------------------
