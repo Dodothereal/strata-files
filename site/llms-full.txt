@@ -6,7 +6,7 @@
 - Download: https://github.com/cristipufu/strata/releases/latest (Strata.dmg or Strata.zip, signed with a Developer ID and notarized by Apple; SHA256SUMS.txt lists checksums)
 - Source: https://github.com/cristipufu/strata
 - Requirements: macOS 26 Tahoe on a Mac with Apple silicon. Apple Intelligence is optional; without it, summaries use a document's key sentences and Ask Strata uses built-in rules.
-- Price: free. License: MIT. Made by Cristian Pufu.
+- Price: free. License: MIT.
 - Status: early development. Strata doesn't check for updates on its own; new versions are published on GitHub Releases.
 
 ## Search
