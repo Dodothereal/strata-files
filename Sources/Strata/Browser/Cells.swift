@@ -77,13 +77,15 @@ final class NameCellView: NSTableCellView {
         let selected = backgroundStyle == .emphasized
         var color: NSColor = selected ? .alternateSelectedControlTextColor : .labelColor
         if dimmed { color = color.withAlphaComponent(0.5) }
-        let font = NSFont.systemFont(ofSize: 13)
+        let font = FileViewStyle.nameFont
+        // The field's own font too: renaming edits at the size the name is shown.
+        label.font = font
         // Attributed strings ignore the field's line break mode; without this, long names wrap onto clipped lines.
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byTruncatingMiddle
         let text = NSMutableAttributedString(string: name, attributes: [.font: font, .foregroundColor: color, .paragraphStyle: paragraph])
         if !matches.isEmpty {
-            let bold = NSFont.systemFont(ofSize: 13, weight: .bold)
+            let bold = FileViewStyle.nameBoldFont
             let highlight: NSColor = selected ? color : .controlAccentColor
             let characters = Array(name)
             var utf16Offset = 0

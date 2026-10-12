@@ -7,6 +7,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         Prefs.register()
         registerRevealHandler()
+        FileViewStyle.applyTheme()
+        NotificationCenter.default.addObserver(forName: .appearanceChanged, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { FileViewStyle.applyTheme() }
+        }
         NSApp.mainMenu = MainMenu.build()
         // Your own shortcuts (Settings ▸ Shortcuts) over the built-in ones.
         if let menu = NSApp.mainMenu { ShortcutStore.shared.install(menu) }

@@ -251,9 +251,38 @@ enum FileKindGroup: Int, CaseIterable, Sendable {
 // MARK: - Shared drawing helpers
 
 enum FileViewStyle {
-    static let nameFont = NSFont.systemFont(ofSize: 13)
-    static let nameBoldFont = NSFont.systemFont(ofSize: 13, weight: .bold)
+    /// File names, at the size chosen in Settings ▸ Appearance.
+    static var nameFont: NSFont { fonts.regular }
+    static var nameBoldFont: NSFont { fonts.bold }
     static let detailFont = NSFont.systemFont(ofSize: 11)
+
+    private static var cachedFonts: (size: Double, regular: NSFont, bold: NSFont)?
+    private static var fonts: (regular: NSFont, bold: NSFont) {
+        let size = Prefs.nameTextSize
+        if let cached = cachedFonts, cached.size == size { return (cached.regular, cached.bold) }
+        let made = (NSFont.systemFont(ofSize: size), NSFont.systemFont(ofSize: size, weight: .bold))
+        cachedFonts = (size, made.0, made.1)
+        return made
+    }
+
+    /// List rows: compact, regular or spacious, and taller for bigger names.
+    static var listRowHeight: CGFloat {
+        [22, 26, 32][min(max(Prefs.density, 0), 2)] + CGFloat(Prefs.nameTextSize - 13).rounded(.up)
+    }
+
+    /// Column rows, a little tighter than the list's.
+    static var columnRowHeight: CGFloat {
+        [20, 24, 30][min(max(Prefs.density, 0), 2)] + CGFloat(Prefs.nameTextSize - 13).rounded(.up)
+    }
+
+    /// Light, dark, or the system's (Settings ▸ Appearance).
+    static func applyTheme() {
+        switch Prefs.theme {
+        case 1: NSApp.appearance = NSAppearance(named: .aqua)
+        case 2: NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: NSApp.appearance = nil
+        }
+    }
 
     /// `name` with the fuzzy-match characters at `matches` (Character offsets) bold and accent-colored, like the list.
     static func highlightedName(_ name: String, matches: [Int], font: NSFont = nameFont, boldFont: NSFont = nameBoldFont,

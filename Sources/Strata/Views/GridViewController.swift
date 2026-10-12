@@ -190,6 +190,14 @@ final class GridViewController: NSViewController, FileCollectionController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
     }
 
+    /// The name's text size changed (Settings ▸ Appearance): the cells' geometry follows.
+    func restyle() {
+        let size = layout.metrics.iconSize
+        layout.metrics = GridMetrics(iconSize: size)
+        layout.invalidateLayout()
+        refreshVisibleItems(reconfigure: true)
+    }
+
     private func refreshThumbnails() {
         let scale = view.window?.backingScaleFactor ?? 2
         for case let item as GridItem in collectionView.visibleItems() {

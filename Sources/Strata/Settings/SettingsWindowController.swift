@@ -22,6 +22,7 @@ final class SettingsWindowController: NSWindowController {
         tabs.addTabViewItem(pane("General", "gearshape", GeneralSettings()))
         tabs.addTabViewItem(pane("Search & Index", "magnifyingglass", IndexSettings()))
         tabs.addTabViewItem(pane("Terminal", "terminal", TerminalSettings()))
+        tabs.addTabViewItem(pane("Appearance", "paintbrush", AppearanceSettings()))
         tabs.addTabViewItem(pane("Shortcuts", "keyboard", ShortcutSettings()))
         let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]

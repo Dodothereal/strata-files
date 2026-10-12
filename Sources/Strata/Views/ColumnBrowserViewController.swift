@@ -351,6 +351,14 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         for pane in panes { pane.refreshVisibleRows() }
     }
 
+    /// Row height and text size changed (Settings ▸ Appearance).
+    func restyle() {
+        for pane in panes {
+            pane.tableView.rowHeight = FileViewStyle.columnRowHeight
+            pane.tableView.reloadData()
+        }
+    }
+
     // MARK: - Rename
 
     @discardableResult
@@ -362,7 +370,10 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         renameField?.removeFromSuperview()
         let field = InlineRenameField(name: entry.name, isFolder: entry.isFolder, centered: false)
         let labelFrame = cell.nameCell.convert(cell.nameCell.textField?.frame ?? cell.bounds, to: pane.tableView)
-        field.frame = NSRect(x: labelFrame.minX - 3, y: labelFrame.midY - 10, width: max(pane.tableView.bounds.width - labelFrame.minX - 8, 80), height: 20)
+        // Tall enough for the name's text size (a bezeled field needs a little more than the line).
+        let height = ceil(FileViewStyle.nameFont.ascender - FileViewStyle.nameFont.descender + FileViewStyle.nameFont.leading) + 8
+        field.frame = NSRect(x: labelFrame.minX - 3, y: labelFrame.midY - height / 2,
+                             width: max(pane.tableView.bounds.width - labelFrame.minX - 8, 80), height: height)
         cell.nameCell.textField?.isHidden = true
         field.onCommit = { [weak self] name in
             guard let self, name != entry.name else { return }
@@ -440,7 +451,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         tableView.addTableColumn(column)
         tableView.headerView = nil
         tableView.style = .inset
-        tableView.rowHeight = 24
+        tableView.rowHeight = FileViewStyle.columnRowHeight
         tableView.intercellSpacing = NSSize(width: 0, height: 0)
         tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         tableView.allowsMultipleSelection = true

@@ -179,6 +179,7 @@ final class BrowserViewController: NSViewController {
         sizer.onUpdate = { [weak self] url in self?.folderSizeArrived(url) }
         installActiveView()
         NotificationCenter.default.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
@@ -191,7 +192,7 @@ final class BrowserViewController: NSViewController {
     private func configureOutline() {
         let ov = outlineView
         ov.style = .inset
-        ov.rowHeight = 26
+        ov.rowHeight = FileViewStyle.listRowHeight
         ov.intercellSpacing = NSSize(width: 10, height: 0)
         ov.allowsMultipleSelection = true
         ov.allowsEmptySelection = true
@@ -987,6 +988,15 @@ final class BrowserViewController: NSViewController {
     @objc private func prefsChanged() {
         sort(&nodes)
         refresh()
+    }
+
+    /// Density or text size changed: every view takes the new row height and font (nothing is read again).
+    @objc private func appearanceChanged() {
+        outlineView.rowHeight = FileViewStyle.listRowHeight
+        outlineView.reloadData()
+        columnController?.restyle()
+        if let gridController { gridController.restyle() }
+        galleryController?.refreshVisibleItems()
     }
 
     /// Index totals moved: refresh visible sizes (and the order, when sorting by size).

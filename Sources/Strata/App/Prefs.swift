@@ -2,6 +2,8 @@ import AppKit
 
 extension Notification.Name {
     static let prefsChanged = Notification.Name("StrataPrefsChanged")
+    /// Theme, density or text size changed (Settings ▸ Appearance): views restyle, nothing reloads.
+    static let appearanceChanged = Notification.Name("StrataAppearanceChanged")
     static let favoritesChanged = Notification.Name("StrataFavoritesChanged")
 }
 
@@ -21,6 +23,9 @@ enum Prefs {
         static let favoritePaths = "favoritePaths"
         static let reopenWindows = "reopenWindows"
         static let openArchivesAsFolders = "openArchivesAsFolders"
+        static let theme = "theme"
+        static let density = "density"
+        static let nameTextSize = "nameTextSize"
     }
 
     static func register() {
@@ -78,6 +83,24 @@ enum Prefs {
     static var openArchivesAsFolders: Bool {
         get { defaults.object(forKey: Key.openArchivesAsFolders) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.openArchivesAsFolders) }
+    }
+
+    /// 0 follows the system, 1 is always light, 2 always dark.
+    static var theme: Int {
+        get { defaults.integer(forKey: Key.theme) }
+        set { defaults.set(newValue, forKey: Key.theme); NotificationCenter.default.post(name: .appearanceChanged, object: nil) }
+    }
+
+    /// Row spacing in the list and columns: 0 compact, 1 regular, 2 spacious.
+    static var density: Int {
+        get { defaults.object(forKey: Key.density) as? Int ?? 1 }
+        set { defaults.set(newValue, forKey: Key.density); NotificationCenter.default.post(name: .appearanceChanged, object: nil) }
+    }
+
+    /// File names' text size in points (11–16).
+    static var nameTextSize: Double {
+        get { min(max(defaults.object(forKey: Key.nameTextSize) as? Double ?? 13, 11), 16) }
+        set { defaults.set(newValue, forKey: Key.nameTextSize); NotificationCenter.default.post(name: .appearanceChanged, object: nil) }
     }
 
     /// Read every copied file back and compare it with the original (slower; catches failing disks and cables).

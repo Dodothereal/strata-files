@@ -185,9 +185,22 @@ private final class PaneHeaderView: NSVisualEffectView {
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         label.textColor = active ? .labelColor : .secondaryLabelColor
         icon.contentTintColor = active ? .controlAccentColor : .tertiaryLabelColor
+        isActive = active
+        updateUnderline()
+    }
+
+    private var isActive = false
+
+    private func updateUnderline() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            underline.layer?.backgroundColor = active ? NSColor.controlAccentColor.cgColor : NSColor.separatorColor.cgColor
+            underline.layer?.backgroundColor = isActive ? NSColor.controlAccentColor.cgColor : NSColor.separatorColor.cgColor
         }
+    }
+
+    /// Light or dark changed: the line's color is worked out again (a layer keeps the old one).
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateUnderline()
     }
 
     override func mouseDown(with event: NSEvent) {
