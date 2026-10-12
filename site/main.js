@@ -1,5 +1,6 @@
-// Strata Files: stratafiles.app. No trackers, no third parties: the only requests go to GitHub's public API, for the
-// latest release (so Download points straight at the disk image) and the star count.
+// Strata Files: stratafiles.app. Besides Plausible's cookieless page counts (loaded in index.html and 404.html), the
+// only requests go to GitHub's public API, for the latest release (so Download points straight at the disk image) and
+// the star count.
 (() => {
   const REPO = 'cristipufu/strata-files';
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
