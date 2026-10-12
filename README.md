@@ -2,7 +2,7 @@
   <img src="docs/icon.png" width="128" height="128" alt="Strata icon">
 </p>
 
-<h1 align="center">Strata</h1>
+<h1 align="center">Strata Files</h1>
 
 <p align="center">
   <b>The file manager your Mac deserves.</b><br>
