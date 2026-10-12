@@ -231,7 +231,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             split.scopeBar.isHidden = true
         case .search(let text, let scope):
             setSearchField(text)
-            pathBar.showTitle("Search", symbol: "magnifyingglass")
+            // The query itself, so a search shows what was asked (Large Files by name).
+            pathBar.showTitle(text == Self.largeFilesQuery ? "Large Files" : "“\(text)”", symbol: "magnifyingglass")
             if text == Self.largeFilesQuery && scope == nil {
                 split.sidebar.highlight(.largeFiles)
             } else {

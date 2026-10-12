@@ -52,6 +52,17 @@ final class BrowserViewController: NSViewController {
     var onTab: (() -> Bool)?
     /// A different folder is being read; the rows still showing belong to the previous one, so file commands wait.
     private(set) var isLoadingFolder = false
+    /// Name gets whatever the other visible columns leave (it's the column that absorbs width changes).
+    private func fitNameColumn() {
+        guard let name = outlineView.tableColumn(withIdentifier: .name) else { return }
+        let others = outlineView.tableColumns.filter { $0 !== name && !$0.isHidden }
+        let spacing = outlineView.intercellSpacing.width * CGFloat(others.count + 1)
+        let available = scrollView.contentView.bounds.width - others.reduce(0) { $0 + $1.width } - spacing
+        name.width = max(name.minWidth, available)
+    }
+
+    /// Date and Kind widths from before showing results (they make room for "Where").
+    private var columnWidthsBeforeResults: [(NSUserInterfaceItemIdentifier, CGFloat)] = []
     /// Folder sizes for the sort in progress, by standardized path.
     private var sizeMemo: [String: Int64]?
     private(set) var filter = ""
@@ -220,6 +231,8 @@ final class BrowserViewController: NSViewController {
                 showLoading()
             }
         }
+        // Revealing an item in the folder already showing selects it too.
+        if !isNewDirectory, let select { pendingSelection = [select] }
         reload(scrollToTop: isNewDirectory && select == nil)
     }
 
@@ -466,7 +479,12 @@ final class BrowserViewController: NSViewController {
             installActiveView()
             folderSortDescriptors = outlineView.sortDescriptors
             outlineView.sortDescriptors = []
+            // Make room for "Where" from Date and Kind, not from Name (the only column that gives up width on its own).
+            columnWidthsBeforeResults = [.modified, .kind].compactMap { id in outlineView.tableColumn(withIdentifier: id).map { (id, $0.width) } }
+            outlineView.tableColumn(withIdentifier: .modified)?.width = 130
+            outlineView.tableColumn(withIdentifier: .kind)?.width = 120
             outlineView.tableColumn(withIdentifier: .location)?.isHidden = false
+            fitNameColumn()
             filter = ""
             filterPill.update(query: "", matches: 0)
         }
@@ -476,6 +494,9 @@ final class BrowserViewController: NSViewController {
         isShowingResults = false
         installActiveView()
         outlineView.tableColumn(withIdentifier: .location)?.isHidden = true
+        for (id, width) in columnWidthsBeforeResults { outlineView.tableColumn(withIdentifier: id)?.width = width }
+        columnWidthsBeforeResults = []
+        fitNameColumn()
         outlineView.sortDescriptors = folderSortDescriptors.isEmpty
             ? [NSSortDescriptor(key: SortKey.name.rawValue, ascending: true)] : folderSortDescriptors
     }

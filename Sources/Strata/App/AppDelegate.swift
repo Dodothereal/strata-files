@@ -73,7 +73,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             controller.search(query, in: value("in").map { URL(fileURLWithPath: $0) })
         case "open":
             guard let path = value("path") else { return }
-            controller.navigate(to: URL(fileURLWithPath: path))
+            // A folder opens; a file (or package) is shown selected in its folder.
+            let target = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+            var isDirectory: ObjCBool = false
+            let exists = FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory)
+            if exists, !isDirectory.boolValue || NSWorkspace.shared.isFilePackage(atPath: target.path) {
+                controller.navigate(to: target.deletingLastPathComponent(), select: target)
+            } else {
+                controller.navigate(to: target)
+            }
         case "recents":
             controller.goRecents(nil)
         case "duplicates":

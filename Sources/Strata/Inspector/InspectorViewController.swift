@@ -125,7 +125,9 @@ final class InspectorViewController: NSViewController {
         // Summaries for single documents; the card hides itself when there's no readable text.
         // Source code has its own preview; summaries are for prose (PDFs, Markdown, Word, text…).
         let isCode = items.first?.contentType.map { $0.conforms(to: .sourceCode) || $0.conforms(to: .json) || $0.conforms(to: .propertyList) } ?? false
-        let document = items.count == 1 && !items[0].isDirectory && !isCode ? items[0].url : nil
+        // Only for files with text to read (a video gets no empty Summary card).
+        let document = items.count == 1 && !items[0].isDirectory && !isCode && Summarizer.canSummarize(items[0].url)
+            ? items[0].url : nil
         if summary.url != document { summary.url = document }
         summary.isHidden = document == nil
         let urls = items.map(\.url)
@@ -307,9 +309,12 @@ final class InspectorViewController: NSViewController {
             label.font = .systemFont(ofSize: 11)
             label.textColor = .secondaryLabelColor
             label.alignment = .right
-            let field = NSTextField(labelWithString: value)
+            // Values wrap onto a second line rather than lose their middle ("671.1 MB (671,088,640 bytes)", long paths).
+            let field = NSTextField(wrappingLabelWithString: value)
             field.font = .systemFont(ofSize: 12)
-            field.lineBreakMode = .byTruncatingMiddle
+            field.maximumNumberOfLines = 2
+            field.lineBreakMode = .byWordWrapping
+            field.preferredMaxLayoutWidth = 168
             field.isSelectable = true
             field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             grid.addRow(with: [label, field])
