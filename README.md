@@ -36,7 +36,9 @@ tabs. Then it adds what you've been missing:
 
 Type a name, use precise filters, or just say what you mean: *"videos bigger than 500 MB"*,
 *"pdfs from last month"*. Strata understands plain English, shows you how it read your search, and answers
-before you finish typing. Save any search to the sidebar and it stays live as files change.
+before you finish typing. Go further with `regex:` and **Match Case**, or ask Spotlight about what's in the files:
+`camera:iphone`, `width:>1920`, `duration:>10m`, *"photos taken with iPhone"*. Save any search to the sidebar and it
+stays live as files change.
 
 <p align="center"><img src="docs/screenshots/search.png" alt="A plain-English search showing large videos" width="820"></p>
 
@@ -84,6 +86,14 @@ Markdown, JSON, CSV, SQLite databases and archives preview right in the inspecto
 
 | | |
 |---|---|
+| **Trash** | In the sidebar, like Finder: Put Back (also what Finder trashed), Delete Immediately and Empty Trash, with other disks' Trashes counted. |
+| **Archives** | Compress and extract zip, tar, 7z, rar and more, safely: nothing escapes its folder and downloads stay quarantined. Or double-click a zip to browse it like a folder and copy things out. |
+| **Tags** | Finder's tags everywhere: colored dots, the color row in the context menu, a tag field in the inspector, a Tags section in the sidebar and `tag:` in search. |
+| **Batch rename** | Replace text (or a regular expression), add text, number with a format or change case, previewed live, undone in one step. |
+| **Get Info** | Edit comments, the app a file opens with, Locked and permissions right in the inspector. |
+| **Network and cloud** | Connect to SMB, AFP, NFS and WebDAV servers (⌥⌘K), and see what's only in iCloud Drive or another cloud folder, with Download Now and Remove Download. |
+| **Compare and sync** | Compare the two panes' folders and sync them both ways, one way, or as a mirror, verified and undoable. |
+| **Your shortcuts, your look** | Change any menu shortcut in Settings, and pick light or dark, row density and the size of file names. |
 | **Copy queue** | Big copies run in the background with progress you can pause, resume or cancel. Conflicts are asked up front, with a side-by-side comparison and a diff for text files, and folders can be merged. Turn on **Verify copies** in Settings to check that every byte arrived. Moves between disks keep the original if it changed while copying. |
 | **History** | Renames, moves, copies and deletions are recorded. Undo them later, even days later and after a restart, as long as the items are still where they were left. |
 | **Recents** | Files you changed in the last 7 days, across your home folder, in one place. |
@@ -106,14 +116,21 @@ Click **Keyboard Shortcuts** at the bottom of the sidebar, or press ⌘/.
 Strata runs entirely on your Mac. The search index, summaries and AI features are local: no accounts, no tracking,
 no cloud. Its file index, content index and history are encrypted on disk with a key in your keychain. And a
 folder you browse can't run its own code just because you looked at it: Strata switches off the git features a
-downloaded repository could use to do that.
+downloaded repository could use to do that. The only thing it asks the internet is whether there's a new version,
+and only if you allow it.
+
+## Translations
+
+Strata comes in 21 languages and follows your Mac's (or pick one in Settings ▸ General). Each language is one plain
+JSON file in [Localization](Localization): improving a translation or adding a language is a pull request, no Xcode
+needed. [Localization/README.md](Localization/README.md) has the four steps.
 
 ## Get Strata
 
 Download the latest version from [GitHub Releases](https://github.com/cristipufu/strata-files/releases/latest), open the disk
 image and drag Strata to Applications. It needs an Apple silicon Mac running **macOS 26**. Releases are signed and
-notarized by Apple, so Strata opens like any other app. Strata is in early development and doesn't update itself yet:
-check back for new versions.
+notarized by Apple, so Strata opens like any other app. It updates itself: **Strata ▸ Check for Updates…**, or
+automatically if you allow it (updates are signed and checked before they're installed).
 
 Or build it yourself with the Swift toolchain (Xcode or the Command Line Tools):
 
@@ -129,8 +146,9 @@ and measure everything without asking folder by folder. Strata walks you through
 ## Releasing
 
 Push a version tag and the [Release workflow](.github/workflows/release.yml) builds Strata on a Mac, signs it with the
-Developer ID certificate, has Apple notarize it, and publishes a GitHub Release with `Strata.dmg`, `Strata.zip` and
-their checksums.
+Developer ID certificate, has Apple notarize it, and publishes a GitHub Release with `Strata.dmg`, `Strata.zip`, their
+checksums and `appcast.xml`, the signed update feed installed copies check. The release notes come from
+`docs/release-notes/<version>.md` when there is one.
 
 ```sh
 git tag v0.2.0 && git push origin v0.2.0
