@@ -1128,6 +1128,7 @@
     "Save Search": "Enregistrer la recherche",
     "Save Workspace": "Enregistrer l’espace de travail",
     "Save Workspace…": "Enregistrer l’espace de travail…",
+    "Saved": "Enregistré",
     "Saves %lld tabs and their panes, to reopen together from Window ▸ Workspaces.": {
       "one": "Enregistre %lld onglet et ses panneaux, pour les rouvrir ensemble depuis Fenêtre ▸ Espaces de travail.",
       "other": "Enregistre %lld onglets et leurs panneaux, pour les rouvrir ensemble depuis Fenêtre ▸ Espaces de travail."

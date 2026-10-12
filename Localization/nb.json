@@ -1128,6 +1128,7 @@
     "Save Search": "Arkiver søk",
     "Save Workspace": "Arkiver arbeidsområde",
     "Save Workspace…": "Arkiver arbeidsområde…",
+    "Saved": "Lagret",
     "Saves %lld tabs and their panes, to reopen together from Window ▸ Workspaces.": {
       "one": "Arkiverer %lld fane og panelene dens, slik at de kan åpnes igjen sammen fra Vindu ▸ Arbeidsområder.",
       "other": "Arkiverer %lld faner og panelene deres, slik at de kan åpnes igjen sammen fra Vindu ▸ Arbeidsområder."

@@ -1128,6 +1128,7 @@
     "Save Search": "Gem søgning",
     "Save Workspace": "Gem arbejdsområde",
     "Save Workspace…": "Gem arbejdsområde…",
+    "Saved": "Gemt",
     "Saves %lld tabs and their panes, to reopen together from Window ▸ Workspaces.": {
       "one": "Gemmer %lld fane og dens paneler, så de kan genåbnes samlet fra Vindue ▸ Arbejdsområder.",
       "other": "Gemmer %lld faner og deres paneler, så de kan genåbnes samlet fra Vindue ▸ Arbejdsområder."

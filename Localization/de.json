@@ -1128,6 +1128,7 @@
     "Save Search": "Suche sichern",
     "Save Workspace": "Arbeitsbereich sichern",
     "Save Workspace…": "Arbeitsbereich sichern …",
+    "Saved": "Gesichert",
     "Saves %lld tabs and their panes, to reopen together from Window ▸ Workspaces.": {
       "one": "Sichert %lld Tab und seine Bereiche, um sie gemeinsam über „Fenster“ ▸ „Arbeitsbereiche“ wieder zu öffnen.",
       "other": "Sichert %lld Tabs und ihre Bereiche, um sie gemeinsam über „Fenster“ ▸ „Arbeitsbereiche“ wieder zu öffnen."

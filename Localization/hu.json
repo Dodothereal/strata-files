@@ -1128,6 +1128,7 @@
     "Save Search": "Keresés mentése",
     "Save Workspace": "Munkaterület mentése",
     "Save Workspace…": "Munkaterület mentése…",
+    "Saved": "Mentve",
     "Saves %lld tabs and their panes, to reopen together from Window ▸ Workspaces.": {
       "one": "%lld lapot ment el a paneljeivel együtt, hogy később együtt nyithassa meg újra az Ablak ▸ Munkaterületek menüből.",
       "other": "%lld lapot ment el a paneljeivel együtt, hogy később együtt nyithassa meg újra az Ablak ▸ Munkaterületek menüből."

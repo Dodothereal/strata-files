@@ -1128,6 +1128,7 @@
     "Save Search": "Guardar pesquisa",
     "Save Workspace": "Guardar espaço de trabalho",
     "Save Workspace…": "Guardar espaço de trabalho…",
+    "Saved": "Guardado",
     "Saves %lld tabs and their panes, to reopen together from Window ▸ Workspaces.": {
       "one": "Guarda %lld separador e os respetivos painéis, para o reabrir em Janela ▸ Espaços de trabalho.",
       "other": "Guarda %lld separadores e os respetivos painéis, para os reabrir juntos em Janela ▸ Espaços de trabalho."

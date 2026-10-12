@@ -6,6 +6,10 @@ import AppKit
 final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
     private(set) var url: URL?
     private var isFolder = false
+    /// The comment as it was when typing began (Escape goes back to it), and the pending save while typing.
+    private var commentBeforeEditing = ""
+    private var pendingCommentSave: Task<Void, Never>?
+    private var savedNoteHide: Task<Void, Never>?
 
     /// The cards' contents.
     let commentsContent = NSStackView()
@@ -113,6 +117,7 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
         let same = url == entry.url
         // Moving on while a comment is being typed keeps it (for the item it was typed for).
         if !same, let previous = url, comments.currentEditor() != nil {
+            pendingCommentSave?.cancel()
             saveComment(comments.stringValue, at: previous.path)
             window?.makeFirstResponder(nil)
         }
@@ -213,11 +218,48 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
     }
 
     // MARK: - Comments
+    //
+    // A comment saves as you type (a moment after you stop) and when you leave the field; Return finishes (the field
+    // lets go, so you can see it's done), Option-Return starts a new line, Escape puts back what was there. "Saved"
+    // shows briefly after each save.
+
+    func controlTextDidBeginEditing(_ notification: Notification) {
+        guard let url else { return }
+        commentBeforeEditing = FileInfoEditing.comment(at: url.path)
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+        guard let path = url?.path else { return }
+        pendingCommentSave?.cancel()
+        pendingCommentSave = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled, let self else { return }
+            self.saveComment(self.comments.stringValue, at: path)
+        }
+    }
 
     func controlTextDidEndEditing(_ notification: Notification) {
+        pendingCommentSave?.cancel()
         guard let url else { return }
         saveComment(comments.stringValue, at: url.path)
         comments.stringValue = FileInfoEditing.comment(at: url.path)
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard control === comments else { return false }
+        switch commandSelector {
+        case #selector(NSResponder.insertNewline(_:)):
+            window?.makeFirstResponder(nil)
+            return true
+        case #selector(NSResponder.cancelOperation(_:)):
+            pendingCommentSave?.cancel()
+            comments.stringValue = commentBeforeEditing
+            if let url { saveComment(commentBeforeEditing, at: url.path) }
+            window?.makeFirstResponder(nil)
+            return true
+        default:
+            return false
+        }
     }
 
     private func saveComment(_ text: String, at path: String) {
@@ -225,8 +267,22 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
         do {
             try FileInfoEditing.setComment(text, at: path)
             finish(nil, in: commentsMessage)
+            // Only for the item on show (a save for the one just left says nothing here).
+            if path == url?.path { showSaved() }
         } catch {
             finish(error, in: commentsMessage)
+        }
+    }
+
+    private func showSaved() {
+        commentsMessage.textColor = .secondaryLabelColor
+        commentsMessage.stringValue = String(localized: "Saved", comment: "Inspector, under Comments: the comment was saved")
+        commentsMessage.isHidden = false
+        savedNoteHide?.cancel()
+        savedNoteHide = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled, let self, self.commentsMessage.textColor == .secondaryLabelColor else { return }
+            self.commentsMessage.isHidden = true
         }
     }
 
@@ -307,6 +363,7 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
     /// Clears or shows the last change's problem, in the card it happened in.
     private func finish(_ error: Error?, in label: NSTextField?) {
         guard let label else { return }
+        label.textColor = .systemRed
         label.stringValue = error.map { String(localized: "Couldn’t change that: \($0.localizedDescription)", comment: "Inspector: a change was refused, then why") } ?? ""
         label.isHidden = error == nil
         if error != nil, label === openWithMessage, let url, let app = NSWorkspace.shared.urlForApplication(toOpen: url),

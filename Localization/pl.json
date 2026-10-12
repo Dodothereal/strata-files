@@ -1330,6 +1330,7 @@
     "Save Search": "Zachowaj wyszukiwanie",
     "Save Workspace": "Zachowaj obszar roboczy",
     "Save Workspace…": "Zachowaj obszar roboczy…",
+    "Saved": "Zapisano",
     "Saves %lld tabs and their panes, to reopen together from Window ▸ Workspaces.": {
       "one": "Zachowuje %lld kartę i jej panele, aby można było otworzyć je razem z menu Okno ▸ Obszary robocze.",
       "few": "Zachowuje %lld karty i ich panele, aby można było otworzyć je razem z menu Okno ▸ Obszary robocze.",

@@ -1027,6 +1027,7 @@
     "Save Search": "検索条件を保存",
     "Save Workspace": "ワークスペースを保存",
     "Save Workspace…": "ワークスペースを保存…",
+    "Saved": "保存済み",
     "Saves %lld tabs and their panes, to reopen together from Window ▸ Workspaces.": {
       "other": "%lld個のタブとそのペインを保存し、「ウインドウ」▸「ワークスペース」からまとめて再度開けるようにします。"
     },

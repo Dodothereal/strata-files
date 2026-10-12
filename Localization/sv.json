@@ -1128,6 +1128,7 @@
     "Save Search": "Spara sökning",
     "Save Workspace": "Spara arbetsyta",
     "Save Workspace…": "Spara arbetsyta…",
+    "Saved": "Sparat",
     "Saves %lld tabs and their panes, to reopen together from Window ▸ Workspaces.": {
       "one": "Sparar %lld flik och dess paneler, så att de kan öppnas igen tillsammans från Fönster ▸ Arbetsytor.",
       "other": "Sparar %lld flikar och deras paneler, så att de kan öppnas igen tillsammans från Fönster ▸ Arbetsytor."

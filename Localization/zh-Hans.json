@@ -1027,6 +1027,7 @@
     "Save Search": "保存搜索",
     "Save Workspace": "保存工作区",
     "Save Workspace…": "保存工作区…",
+    "Saved": "已存储",
     "Saves %lld tabs and their panes, to reopen together from Window ▸ Workspaces.": {
       "other": "保存%lld个标签页及其窗格，以便从“窗口”▸“工作区”中一起重新打开。"
     },

@@ -1229,6 +1229,7 @@
     "Save Search": "Uložit hledání",
     "Save Workspace": "Uložit pracovní prostor",
     "Save Workspace…": "Uložit pracovní prostor…",
+    "Saved": "Uloženo",
     "Saves %lld tabs and their panes, to reopen together from Window ▸ Workspaces.": {
       "one": "Uloží %lld panel a jeho podokna, abyste je mohli znovu otevřít společně z nabídky Okno ▸ Pracovní prostory.",
       "few": "Uloží %lld panely a jejich podokna, abyste je mohli znovu otevřít společně z nabídky Okno ▸ Pracovní prostory.",

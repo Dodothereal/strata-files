@@ -1128,6 +1128,7 @@
     "Save Search": "Aramayı Kaydet",
     "Save Workspace": "Çalışma Alanını Kaydet",
     "Save Workspace…": "Çalışma Alanını Kaydet…",
+    "Saved": "Kaydedildi",
     "Saves %lld tabs and their panes, to reopen together from Window ▸ Workspaces.": {
       "one": "%lld sekmeyi ve bölmelerini, Pencere ▸ Çalışma Alanları’ndan birlikte yeniden açmak üzere kaydeder.",
       "other": "%lld sekmeyi ve bölmelerini, Pencere ▸ Çalışma Alanları’ndan birlikte yeniden açmak üzere kaydeder."

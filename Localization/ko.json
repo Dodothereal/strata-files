@@ -1027,6 +1027,7 @@
     "Save Search": "검색 저장",
     "Save Workspace": "작업 공간 저장",
     "Save Workspace…": "작업 공간 저장…",
+    "Saved": "저장됨",
     "Saves %lld tabs and their panes, to reopen together from Window ▸ Workspaces.": {
       "other": "탭 %lld개와 해당 패널을 저장하여 윈도우 ▸ 작업 공간에서 함께 다시 열 수 있습니다."
     },

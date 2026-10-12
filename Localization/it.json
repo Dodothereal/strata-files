@@ -1128,6 +1128,7 @@
     "Save Search": "Salva ricerca",
     "Save Workspace": "Salva spazio di lavoro",
     "Save Workspace…": "Salva spazio di lavoro…",
+    "Saved": "Salvato",
     "Saves %lld tabs and their panes, to reopen together from Window ▸ Workspaces.": {
       "one": "Salva %lld pannello e i suoi riquadri, da riaprire insieme da Finestra ▸ Spazi di lavoro.",
       "other": "Salva %lld pannelli e i relativi riquadri, da riaprire insieme da Finestra ▸ Spazi di lavoro."
