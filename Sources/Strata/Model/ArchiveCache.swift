@@ -66,6 +66,14 @@ nonisolated enum ArchiveCache {
         return (archive, top)
     }
 
+    /// Where an item inside an archive's copy appears to be, spelled through the archive (".../Trip.zip/Trip/Day 1"):
+    /// the copy's top folder is the archive itself. Nil outside copies.
+    static func apparentURL(_ url: URL) -> URL? {
+        guard let (archive, top) = archive(containing: url) else { return nil }
+        let inner = url.standardizedFileURL.path.dropFirst(top.standardizedFileURL.path.count).split(separator: "/")
+        return inner.reduce(archive) { $0.appending(path: String($1)) }
+    }
+
     /// Marks a copy as just used, so pruning keeps it.
     static func touch(_ folder: URL) {
         try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: folder.deletingLastPathComponent().path)

@@ -167,7 +167,9 @@ final class InspectorViewController: NSViewController {
 
         if items.count == 1 {
             let entry = first
-            titleLabel.stringValue = entry.name
+            // Inside an archive opened as a folder, things are described where they appear: in the archive.
+            let apparent = ArchiveCache.apparentURL(entry.url)
+            titleLabel.stringValue = apparent?.lastPathComponent ?? entry.name
             let size = entry.isDirectory ? folderSize(entry.url).map { Format.bytes($0.bytes) } : entry.size.map(Format.bytes)
             subtitleLabel.stringValue = [entry.kind, size].compactMap { $0 }.joined(separator: " · ")
             var rows: [(String, String)] = []
@@ -189,7 +191,7 @@ final class InspectorViewController: NSViewController {
             rows.append(("Created", Format.longDate(entry.created)))
             rows.append(("Modified", Format.longDate(entry.modified)))
             if let added = entry.added { rows.append(("Added", Format.longDate(added))) }
-            rows.append(("Where", Format.tildePath(entry.url.deletingLastPathComponent())))
+            rows.append(("Where", Format.tildePath((apparent ?? entry.url).deletingLastPathComponent())))
             setRows(rows)
             if !sameItems { schedulePreview(entry) }
         } else {
