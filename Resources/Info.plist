@@ -64,5 +64,13 @@
 	<string>Strata shows the files on external drives.</string>
 	<key>NSNetworkVolumesUsageDescription</key>
 	<string>Strata shows the files on network volumes.</string>
+	<key>SUFeedURL</key>
+	<string>https://github.com/cristipufu/strata-files/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>vFHZvPv37uOxCFjKgYKFskqqJEAeKj5Gk7RiSMP5EPY=</string>
+	<key>SURequireSignedFeed</key>
+	<true/>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
 </dict>
 </plist>

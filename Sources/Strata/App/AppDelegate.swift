@@ -18,7 +18,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var welcome: WelcomeSheetController?
 
+    /// Strata ▸ Check for Updates….
+    @objc func checkForUpdates(_ sender: Any?) {
+        Updates.shared.checkNow(sender)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Starts Sparkle (in a release build): background checks if allowed, and Check for Updates….
+        _ = Updates.shared
         FileIndex.shared.start()
         StrataAI.startIndexing()
         // Loads history now, so a plain copy left by an earlier build is removed right away.
@@ -177,6 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(toggleShelf(_:)) { item.state = ShelfPanel.shared.isVisible ? .on : .off }
+        if item.action == #selector(checkForUpdates(_:)) { return Updates.shared.canCheck }
         return true
     }
 

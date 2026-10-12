@@ -81,6 +81,7 @@ private struct GeneralSettings: View {
                     Text("Your home folder").tag(true)
                 }
             }
+            UpdatesSection()
             Section("Copying") {
                 PrefToggle(title: "Verify copies",
                            caption: "Reads every copied file back and compares it with the original. Slower, but catches failing disks and cables.",

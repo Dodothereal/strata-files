@@ -16,6 +16,8 @@ name: Release
 #   MACOS_API_KEY_ID      that key's ID
 #   MACOS_API_ISSUER_ID   its issuer ID
 #   MACOS_TEAM_ID         the Apple Developer team ID
+#   SPARKLE_ED_PRIVATE_KEY  the EdDSA key that signs updates (scripts: Sparkle's generate_keys -x); its public half
+#                           is SUPublicEDKey in Resources/Info.plist. Without it a tag builds no appcast.xml.
 # Without them a manual run still builds (ad-hoc signed, for testing only) and a tag fails: Gatekeeper refuses an
 # unsigned app on any other Mac, so it must never become a release.
 on:
@@ -41,6 +43,10 @@ env:
   XCODE_VERSION: "26.6"
   # Secrets can't be read in an `if:`, so their presence is evaluated once here and tested as a string.
   HAS_APPLE_SIGNING: ${{ secrets.MACOS_CERT_P12 != '' }}
+  HAS_UPDATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY != '' }}
+  # Sparkle's command-line tools (sign_update), pinned and checked.
+  SPARKLE_VERSION: "2.10.0"
+  SPARKLE_SHA256: "c2bf58aa8387266ac179357b1415d6f2635f044da8be41042af32425dae6da0c"
 
 jobs:
   build:
@@ -198,6 +204,53 @@ jobs:
           (cd dist && shasum -a 256 Strata.dmg Strata.zip > SHA256SUMS.txt && cat SHA256SUMS.txt)
           ls -lh dist
 
+      - name: Sign the update and write the appcast
+        if: github.ref_type == 'tag' && env.HAS_APPLE_SIGNING == 'true'
+        env:
+          UPDATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [ "$HAS_UPDATE_KEY" = true ] || { echo "::error::SPARKLE_ED_PRIVATE_KEY is not set: installed copies couldn't verify this update."; exit 1; }
+          tools="$RUNNER_TEMP/sparkle"
+          mkdir -p "$tools"
+          curl -fsSL -o "$tools/sparkle.tar.xz" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-$SPARKLE_VERSION.tar.xz"
+          echo "$SPARKLE_SHA256  $tools/sparkle.tar.xz" | shasum -a 256 -c -
+          tar -xf "$tools/sparkle.tar.xz" -C "$tools" ./bin/sign_update
+          key="$RUNNER_TEMP/update.key"
+          printf '%s' "$UPDATE_KEY" > "$key"
+          trap 'rm -f "$key"' EXIT
+          # The zip: its signature and length go into the appcast.
+          attributes=$("$tools/bin/sign_update" --ed-key-file "$key" dist/Strata.zip)
+          [[ "$attributes" =~ ^sparkle:edSignature=\"[A-Za-z0-9+/=]+\"\ length=\"[0-9]+\"$ ]] || { echo "::error::unexpected sign_update output"; exit 1; }
+          build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' build/Strata.app/Contents/Info.plist)
+          minimum=$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' build/Strata.app/Contents/Info.plist)
+          date=$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')
+          cat > dist/appcast.xml <<XML
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+            <channel>
+              <title>Strata</title>
+              <item>
+                <title>Strata $VERSION</title>
+                <pubDate>$date</pubDate>
+                <sparkle:version>$build</sparkle:version>
+                <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+                <sparkle:minimumSystemVersion>$minimum</sparkle:minimumSystemVersion>
+                <sparkle:releaseNotesLink>https://github.com/$REPOSITORY/releases/tag/$TAG</sparkle:releaseNotesLink>
+                <enclosure url="https://github.com/$REPOSITORY/releases/download/$TAG/Strata.zip" $attributes type="application/octet-stream"/>
+              </item>
+            </channel>
+          </rss>
+          XML
+          # The feed itself is signed too (Info.plist requires it), so nobody can point installed copies elsewhere.
+          "$tools/bin/sign_update" --ed-key-file "$key" --disable-signing-warning dist/appcast.xml
+          xmllint --noout dist/appcast.xml
+          cat dist/appcast.xml
+
       - name: Upload
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -220,6 +273,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout the release notes
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: docs/release-notes
+
       - name: Download the build
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -235,6 +294,10 @@ jobs:
         run: |
           set -euo pipefail
           flags=()
+          # A pre-release is never "latest", so its appcast never reaches installed copies.
           if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
-          gh release create "$TAG" dist/Strata.dmg dist/Strata.zip dist/SHA256SUMS.txt \
-            --repo "$GITHUB_REPOSITORY" --title "Strata $VERSION" --generate-notes --verify-tag "${flags[@]}"
+          notes="docs/release-notes/$VERSION.md"
+          if [ -f "$notes" ]; then flags+=(--notes-file "$notes"); else flags+=(--generate-notes); fi
+          assets=(dist/Strata.dmg dist/Strata.zip dist/SHA256SUMS.txt)
+          if [ -f dist/appcast.xml ]; then assets+=(dist/appcast.xml); fi
+          gh release create "$TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --title "Strata $VERSION" --verify-tag "${flags[@]}"

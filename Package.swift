@@ -4,9 +4,14 @@ import PackageDescription
 let package = Package(
     name: "Strata",
     platforms: [.macOS(.v26)],
+    dependencies: [
+        // Updates (Check for Updates…, automatic checks), pinned to a release and verified by its checksum.
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
+    ],
     targets: [
         .executableTarget(
             name: "Strata",
+            dependencies: [.product(name: "Sparkle", package: "Sparkle")],
             path: "Sources/Strata",
             swiftSettings: [
                 .defaultIsolation(MainActor.self),

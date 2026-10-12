@@ -5,6 +5,7 @@ enum MainMenu {
         let main = NSMenu()
         main.addItem(submenu("Strata", [
             item("About Strata", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+            item("Check for Updates…", #selector(AppDelegate.checkForUpdates(_:))),
             .separator(),
             item("Settings…", #selector(AppDelegate.showSettings(_:)), ","),
             .separator(),

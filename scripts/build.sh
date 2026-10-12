@@ -32,6 +32,15 @@ app=build/Strata.app
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Helpers"
 cp "$bins/Strata" "$app/Contents/MacOS/Strata"
+# Sparkle (updates) travels in Frameworks; the binary looks for it there.
+sparkle=$(find .build/artifacts -path "*Sparkle.xcframework/macos-*/Sparkle.framework" -maxdepth 6 -type d 2>/dev/null | head -1)
+if [[ -n "$sparkle" ]]; then
+  mkdir -p "$app/Contents/Frameworks"
+  ditto "$sparkle" "$app/Contents/Frameworks/Sparkle.framework"
+  # The XPC services are for sandboxed apps; Strata isn't one.
+  rm -rf "$app/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" "$app/Contents/Frameworks/Sparkle.framework/XPCServices"
+  install_name_tool -add_rpath "@executable_path/../Frameworks" "$app/Contents/MacOS/Strata" 2>/dev/null || true
+fi
 # The command-line tool lives in Helpers: "strata" would clash with "Strata" in MacOS on a case-insensitive disk.
 cp "$bins/StrataCLI" "$app/Contents/Helpers/strata"
 cp Resources/Info.plist "$app/Contents/Info.plist"
@@ -43,6 +52,20 @@ if [[ -n "${STRATA_BUILD_NUMBER:-}" ]]; then
 fi
 if [[ -f Resources/AppIcon.icns ]]; then cp Resources/AppIcon.icns "$app/Contents/Resources/"; fi
 
+# Translations: every Localization/<code>.json becomes <code>.lproj (untranslated strings fall back to English), and
+# the bundle lists the languages it has. Adding a language file is all it takes.
+if [[ -f Localization/en.json ]]; then
+  codes=$(python3 scripts/localize.py build "$app/Contents/Resources")
+  plist="$app/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Delete :CFBundleLocalizations" "$plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :CFBundleLocalizations array" "$plist"
+  for code in ${codes//,/ }; do
+    /usr/libexec/PlistBuddy -c "Add :CFBundleLocalizations: string $code" "$plist"
+  done
+  /usr/libexec/PlistBuddy -c "Delete :CFBundleDevelopmentRegion" "$plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :CFBundleDevelopmentRegion string en" "$plist"
+fi
+
 identity="${STRATA_SIGNING_IDENTITY:-}"
 if [[ -z "$identity" ]]; then
   identity=$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)
@@ -50,7 +73,13 @@ fi
 sign=(--force --options runtime --sign "${identity:--}")
 if [[ -n "${STRATA_KEYCHAIN:-}" ]]; then sign+=(--keychain "$STRATA_KEYCHAIN"); fi
 if [[ "${STRATA_TIMESTAMP:-}" == 1 && -n "$identity" ]]; then sign+=(--timestamp); fi
-# Inside out: the helper first, then the bundle that seals it.
+# Inside out: Sparkle's helpers, then the framework, the command-line helper, and the bundle that seals them all.
+framework="$app/Contents/Frameworks/Sparkle.framework"
+if [[ -d "$framework" ]]; then
+  codesign "${sign[@]}" "$framework/Versions/B/Autoupdate" >/dev/null
+  codesign "${sign[@]}" "$framework/Versions/B/Updater.app" >/dev/null
+  codesign "${sign[@]}" "$framework" >/dev/null
+fi
 codesign "${sign[@]}" "$app/Contents/Helpers/strata" >/dev/null
 codesign "${sign[@]}" "$app" >/dev/null
 if [[ -n "$identity" ]]; then signer="Developer ID"; else signer="ad-hoc"; fi
