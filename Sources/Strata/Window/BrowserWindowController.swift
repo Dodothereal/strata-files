@@ -750,6 +750,8 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             item.label = "Share"
             item.toolTip = "Share the selection: AirDrop, Messages, Mail and more"
             item.delegate = self
+            // The first to go into the overflow menu when the window is narrow, before Dual Pane and Search.
+            item.visibilityPriority = .low
             return item
         case .transfers:
             let item = TransfersToolbarItem(itemIdentifier: id)
