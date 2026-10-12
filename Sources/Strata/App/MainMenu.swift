@@ -72,6 +72,7 @@ enum MainMenu {
             .separator(),
             item("Dual Pane", #selector(BrowserWindowController.toggleDualPane(_:)), "\\"),
             item("Focus Other Pane", #selector(BrowserWindowController.focusOtherPane(_:)), "\\", [.command, .option]),
+            item("Compare with Other Pane…", #selector(BrowserWindowController.compareWithOtherPane(_:))),
             .separator(),
             item("Toggle Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control]),
             item("Toggle Inspector", #selector(NSSplitViewController.toggleInspector(_:)), "i"),

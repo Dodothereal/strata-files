@@ -1,0 +1,315 @@
+import Foundation
+
+/// Compare with Other Pane: what differs between two folder trees, by relative path. Only the topmost item missing on
+/// one side is listed (a missing folder, not everything in it); files compare by modification date (2 s apart counts
+/// as the same, like FAT disks) and size, and optionally by content.
+nonisolated enum FolderCompare {
+    struct Item: Sendable, Equatable {
+        let isDirectory: Bool
+        let isLink: Bool
+        let size: Int64
+        let modified: Date
+        /// Its spelling on its own side (it can differ in case from the other side's on a case-insensitive disk).
+        var path: String = ""
+    }
+
+    enum Kind: Sendable, Equatable {
+        case onlyLeft, onlyRight
+        case leftNewer, rightNewer
+        /// Same date, different size or content: which one is right can't be told.
+        case changed
+        /// A file on one side, a folder (or a link) on the other.
+        case kindsDiffer
+        /// Couldn't be read (permissions), or names only case tells apart on one side while the other can't: left alone.
+        case unknown
+
+        var title: String {
+            switch self {
+            case .onlyLeft: "Only on the left"
+            case .onlyRight: "Only on the right"
+            case .leftNewer: "Newer on the left"
+            case .rightNewer: "Newer on the right"
+            case .changed: "Different, same date"
+            case .kindsDiffer: "File vs. folder"
+            case .unknown: "Can’t be compared"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .onlyLeft: "arrow.left.square"
+            case .onlyRight: "arrow.right.square"
+            case .leftNewer: "clock.arrow.circlepath"
+            case .rightNewer: "clock.arrow.circlepath"
+            case .changed: "exclamationmark.triangle"
+            case .kindsDiffer: "questionmark.square"
+            case .unknown: "lock.square"
+            }
+        }
+    }
+
+    struct Difference: Sendable, Identifiable, Equatable {
+        /// The relative path ("Photos/2024/a.jpg"), as spelled on the left when it's there.
+        let id: String
+        let kind: Kind
+        let left: Item?
+        let right: Item?
+        /// Why it can't be compared (`.unknown`).
+        var note: String?
+
+        /// Where it is (or goes) on each side: an item that exists keeps its own spelling.
+        var leftPath: String { left?.path ?? right?.path ?? id }
+        var rightPath: String { right?.path ?? left?.path ?? id }
+    }
+
+    struct Result: Sendable {
+        var differences: [Difference] = []
+        var identical = 0
+        var scanned = 0
+        /// Stopped at `itemLimit` on a side: the list is incomplete.
+        var truncated = false
+        var cancelled = false
+        /// A side couldn't be read at all.
+        var failure: String?
+
+        /// Whether a sync can trust what's listed: everything was read (folders that couldn't be are left alone).
+        var isComplete: Bool { !truncated && !cancelled && failure == nil }
+    }
+
+    /// More than this on one side, and the comparison stops (and says so).
+    static let itemLimit = 300_000
+    /// Modification dates this close count as the same.
+    static let dateTolerance: TimeInterval = 2
+
+    /// Stops a comparison in progress.
+    final class Control: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stopped = false
+        var isCancelled: Bool { lock.withLock { stopped } }
+        func cancel() { lock.withLock { stopped = true } }
+    }
+
+    @concurrent
+    static func compare(_ left: URL, _ right: URL, contents: Bool, includeHidden: Bool, control: Control,
+                        progress: @escaping @Sendable (Int) -> Void) async -> Result {
+        var result = Result()
+        for root in [left, right] where !FileManager.default.isReadableFile(atPath: root.path) {
+            result.failure = "“\(root.lastPathComponent)” can’t be read."
+            return result
+        }
+        var seen = 0
+        let report: () -> Void = {
+            seen += 1
+            if seen % 2000 == 0 { progress(seen) }
+        }
+        // Names are matched the way the disks do: on a case-insensitive disk (the usual) "Report.txt" and
+        // "report.txt" are the same item.
+        let ignoringCase = !caseSensitive(left) || !caseSensitive(right)
+        let leftScan = scan(left, includeHidden: includeHidden, ignoringCase: ignoringCase, control: control, counted: report)
+        let rightScan = scan(right, includeHidden: includeHidden, ignoringCase: ignoringCase, control: control, counted: report)
+        let fat = isFATLike(left) || isFATLike(right)
+        result.scanned = leftScan.items.count + rightScan.items.count
+        result.truncated = leftScan.truncated || rightScan.truncated
+        guard !control.isCancelled else {
+            result.cancelled = true
+            return result
+        }
+        let leftItems = leftScan.items, rightItems = rightScan.items
+        let unknown = leftScan.unknown.merging(rightScan.unknown) { first, _ in first }
+        let keys = Set(leftItems.keys).union(rightItems.keys).union(unknown.keys)
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        /// Whether `key`'s folder is a folder on both sides (otherwise a row above already covers it).
+        func parentShared(_ key: String) -> Bool {
+            let parent = (key as NSString).deletingLastPathComponent
+            return parent.isEmpty || (leftItems[parent]?.isDirectory == true && rightItems[parent]?.isDirectory == true
+                && leftItems[parent]?.isLink == false && rightItems[parent]?.isLink == false && unknown[parent] == nil)
+        }
+        /// Whether `key` is inside something that couldn't be read (on either side).
+        func insideUnknown(_ key: String) -> Bool {
+            var parent = (key as NSString).deletingLastPathComponent
+            while !parent.isEmpty {
+                if unknown[parent] != nil { return true }
+                parent = (parent as NSString).deletingLastPathComponent
+            }
+            return false
+        }
+        for key in keys {
+            if control.isCancelled {
+                result.cancelled = true
+                break
+            }
+            guard !insideUnknown(key) else { continue }
+            if let reason = unknown[key] {
+                let l = leftItems[key], r = rightItems[key]
+                result.differences.append(Difference(id: l?.path ?? r?.path ?? key, kind: .unknown, left: l, right: r, note: reason))
+                continue
+            }
+            guard parentShared(key) else { continue }
+            let l = leftItems[key], r = rightItems[key]
+            guard let l, let r else {
+                let item = l ?? r!
+                result.differences.append(Difference(id: item.path, kind: l == nil ? .onlyRight : .onlyLeft, left: l, right: r))
+                continue
+            }
+            if l.isDirectory != r.isDirectory || l.isLink != r.isLink {
+                result.differences.append(Difference(id: l.path, kind: .kindsDiffer, left: l, right: r))
+                continue
+            }
+            if l.isDirectory && !l.isLink { continue }
+            let gap = l.modified.timeIntervalSince(r.modified)
+            // FAT and exFAT keep local time: across a daylight-saving change everything looks an hour apart.
+            let sameDate = abs(gap) <= dateTolerance || fat && abs(abs(gap) - 3600) <= dateTolerance
+            let newer: Kind = gap > 0 ? .leftNewer : .rightNewer
+            var same: Bool
+            if l.isLink {
+                same = (try? FileManager.default.destinationOfSymbolicLink(atPath: left.appending(path: l.path).path))
+                    == (try? FileManager.default.destinationOfSymbolicLink(atPath: right.appending(path: r.path).path))
+            } else if l.size != r.size {
+                same = false
+            } else if contents {
+                same = sameBytes(left.appending(path: l.path), right.appending(path: r.path), control: control)
+            } else {
+                same = sameDate
+            }
+            if same {
+                result.identical += 1
+            } else {
+                result.differences.append(Difference(id: l.path, kind: sameDate ? .changed : newer, left: l, right: r))
+            }
+        }
+        return result
+    }
+
+    /// Whether the disk holding `url` tells "a" from "A" in names.
+    private static func caseSensitive(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]))?.volumeSupportsCaseSensitiveNames ?? false
+    }
+
+    /// FAT or exFAT (modification times in local time, two-second steps).
+    private static func isFATLike(_ url: URL) -> Bool {
+        var info = statfs()
+        guard statfs(url.path, &info) == 0 else { return false }
+        let type = withUnsafeBytes(of: info.f_fstypename) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+        return type == "msdos" || type == "exfat"
+    }
+
+    private struct Scan {
+        /// By key: the relative path, lowercased when names are matched ignoring case.
+        var items: [String: Item] = [:]
+        /// Folders that couldn't be read, and names that clash once case is ignored: why.
+        var unknown: [String: String] = [:]
+        var truncated = false
+    }
+
+    /// Every item under `root` by relative path (links aren't followed; .DS_Store, sockets, pipes and devices are left
+    /// out, and hidden items unless asked for).
+    private static func scan(_ root: URL, includeHidden: Bool, ignoringCase: Bool, control: Control, counted: () -> Void) -> Scan {
+        var scan = Scan()
+        guard let walker = FileManager.default.enumerator(atPath: root.path) else { return scan }
+        let base = root.path
+        while let relative = walker.nextObject() as? String {
+            if control.isCancelled { break }
+            let name = (relative as NSString).lastPathComponent
+            if name == ".DS_Store" { continue }
+            var info = stat()
+            guard lstat(base + "/" + relative, &info) == 0 else { continue }
+            let type = info.st_mode & S_IFMT
+            if !includeHidden, name.hasPrefix(".") || info.st_flags & UInt32(UF_HIDDEN) != 0 {
+                if type == S_IFDIR { walker.skipDescendants() }
+                continue
+            }
+            guard type == S_IFREG || type == S_IFDIR || type == S_IFLNK else { continue }
+            let key = ignoringCase ? relative.lowercased() : relative
+            if let other = scan.items[key], other.path != relative {
+                scan.unknown[key] = "“\(other.path)” and “\(relative)” differ only in case; the other side can’t tell them apart"
+                continue
+            }
+            // A folder that can't be read would look empty: what's inside is unknown, not missing.
+            if type == S_IFDIR, access(base + "/" + relative, R_OK | X_OK) != 0 {
+                scan.unknown[key] = "“\(relative)” can’t be read"
+                walker.skipDescendants()
+            }
+            let modified = Date(timeIntervalSince1970: TimeInterval(info.st_mtimespec.tv_sec) + TimeInterval(info.st_mtimespec.tv_nsec) / 1e9)
+            scan.items[key] = Item(isDirectory: type == S_IFDIR, isLink: type == S_IFLNK, size: Int64(info.st_size), modified: modified,
+                                   path: relative)
+            counted()
+            if scan.items.count >= itemLimit {
+                scan.truncated = true
+                break
+            }
+        }
+        return scan
+    }
+
+    /// Whether two files hold the same bytes, read side by side (stops at the first difference).
+    static func sameBytes(_ a: URL, _ b: URL, control: Control) -> Bool {
+        guard let first = FileHandle(forReadingAtPath: a.path), let second = FileHandle(forReadingAtPath: b.path) else { return false }
+        defer {
+            try? first.close()
+            try? second.close()
+        }
+        while !control.isCancelled {
+            let x = (try? first.read(upToCount: 1 << 20)) ?? Data()
+            let y = (try? second.read(upToCount: 1 << 20)) ?? Data()
+            if x != y { return false }
+            if x.isEmpty { return true }
+        }
+        return false
+    }
+
+    // MARK: - Syncing
+
+    enum Direction: Int, Sendable, CaseIterable {
+        case bothWays, leftToRight, rightToLeft
+
+        var title: String {
+            switch self {
+            case .bothWays: "Both Ways"
+            case .leftToRight: "Left to Right"
+            case .rightToLeft: "Right to Left"
+            }
+        }
+    }
+
+    enum Action: Int, Sendable, CaseIterable {
+        case copyRight, copyLeft, trashLeft, trashRight, skip
+
+        var title: String {
+            switch self {
+            case .copyRight: "Copy →"
+            case .copyLeft: "← Copy"
+            case .trashLeft: "Trash on the left"
+            case .trashRight: "Trash on the right"
+            case .skip: "Skip"
+            }
+        }
+    }
+
+    /// What can be done with a difference.
+    static func actions(for kind: Kind) -> [Action] {
+        switch kind {
+        case .onlyLeft: [.copyRight, .trashLeft, .skip]
+        case .onlyRight: [.copyLeft, .trashRight, .skip]
+        case .leftNewer, .rightNewer, .changed, .kindsDiffer: [.copyRight, .copyLeft, .skip]
+        case .unknown: [.skip]
+        }
+    }
+
+    /// What a sync does by default. Both ways: newer wins, what's only on one side is copied, and items that differ
+    /// with the same date (or a file against a folder) are left for you. One way: the source wins, and with `mirror`
+    /// what's only on the other side goes to the Trash.
+    static func defaultAction(for kind: Kind, direction: Direction, mirror: Bool) -> Action {
+        switch (direction, kind) {
+        case (_, .unknown): .skip
+        case (.bothWays, .onlyLeft): .copyRight
+        case (.bothWays, .onlyRight): .copyLeft
+        case (.bothWays, .leftNewer): .copyRight
+        case (.bothWays, .rightNewer): .copyLeft
+        case (.bothWays, .changed), (.bothWays, .kindsDiffer): .skip
+        case (.leftToRight, .onlyRight): mirror ? .trashRight : .skip
+        case (.leftToRight, _): .copyRight
+        case (.rightToLeft, .onlyLeft): mirror ? .trashLeft : .skip
+        case (.rightToLeft, _): .copyLeft
+        }
+    }
+}

@@ -148,6 +148,24 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         window?.makeFirstResponder(other.browser.focusView)
     }
 
+    /// Both panes' folders, left then right, when two panes each show a folder and neither is inside the other (a
+    /// sync between them would copy a folder into itself, or trash one side's own folder).
+    var paneFolders: (left: URL, right: URL)? {
+        guard panes.count == 2, case .folder(let left) = panes[0].destination, case .folder(let right) = panes[1].destination
+        else { return nil }
+        let l = TransferJob.realPath(left.standardizedFileURL.path), r = TransferJob.realPath(right.standardizedFileURL.path)
+        func inside(_ a: String, _ b: String) -> Bool { a == b || a.hasPrefix(b == "/" ? "/" : b + "/") }
+        guard !inside(l, r), !inside(r, l) else { return nil }
+        return (left, right)
+    }
+
+    /// View ▸ Compare with Other Pane: what differs between the two folders, and a sync.
+    @objc func compareWithOtherPane(_ sender: Any?) {
+        guard let (left, right) = paneFolders, let window, window.attachedSheet == nil else { return }
+        let controller = CompareController(left: left, right: right, undo: window.undoManager)
+        contentViewController?.presentAsSheet(controller)
+    }
+
     /// Copies (or moves) the selection into the other pane's folder, like a commander's F5/F6.
     @objc func copyToOtherPane(_ sender: Any?) { transferToOtherPane(move: false) }
     @objc func moveToOtherPane(_ sender: Any?) { transferToOtherPane(move: true) }
@@ -920,6 +938,8 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             return true
         case #selector(focusOtherPane(_:)):
             return isDualPane
+        case #selector(compareWithOtherPane(_:)):
+            return paneFolders != nil
         case #selector(ejectVolume(_:)):
             return !ejectTargets.isEmpty
         case #selector(askStrata(_:)):

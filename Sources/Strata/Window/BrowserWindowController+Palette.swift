@@ -154,6 +154,12 @@ extension BrowserWindowController {
                 },
             ], at: 0)
         }
+        if paneFolders != nil {
+            commands.append(command("Compare with Other Pane…", "arrow.left.arrow.right.square", nil,
+                                    keywords: ["Sync", "Diff", "Mirror", "Synchronize", "Folders"]) { [weak self] in
+                self?.compareWithOtherPane(nil)
+            })
+        }
         if !browser.selectedURLs.isEmpty, !browser.isShowingTrash, browser.effectiveMode != .treemap, browser.canWriteBesideSelection {
             commands.insert(command(browser.compressTitle, "doc.zipper", nil, keywords: ["Zip", "Archive"]) { [weak self] in
                 self?.browser.compress(nil)

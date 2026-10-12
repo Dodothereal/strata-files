@@ -57,7 +57,7 @@ your folders as a map, then use **Large Files** and **Duplicates** in the sideba
 ## Five views. Two panes.
 
 Icons, List, Columns, Gallery and Disk Usage, one keystroke apart (⌘1–⌘5, in Finder's order). Turn on **Dual Pane**
-to work with two folders side by side and copy or move between them with a keystroke.
+to work with two folders side by side, copy or move between them with a keystroke, or compare and sync them.
 
 <table>
   <tr>
