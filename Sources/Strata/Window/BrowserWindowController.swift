@@ -191,7 +191,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private func go(_ target: Destination, in targetPane: Pane? = nil, select: URL? = nil, recordHistory: Bool = true) {
+    /// `countVisit: false` for folders only passed through (spring loading): they don't become frequent places.
+    private func go(_ target: Destination, in targetPane: Pane? = nil, select: URL? = nil, recordHistory: Bool = true,
+                    countVisit: Bool = true) {
         let p = targetPane ?? pane
         p.columnLocation = nil
         if target != .duplicates { p.duplicateSearch?.set() }
@@ -210,7 +212,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             p.location = url
             p.folderEntry = FileEntry(url: url)
             p.browser.load(url, select: select)
-            Frecency.shared.record(url)
+            if countVisit { Frecency.shared.record(url) }
             Prefs.lastLocation = url
         case .search, .recents:
             runSearch(in: p)
@@ -672,6 +674,15 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
         guard let owner = panes.first(where: { $0.browser === browser }) else { return }
         activate(owner)
         navigate(to: url)
+    }
+
+    /// One Back step for a whole spring-loaded dive, and the folders passed through don't count as visits.
+    func browser(_ browser: BrowserViewController, springLoadTo url: URL, drag: Int) {
+        guard let owner = panes.first(where: { $0.browser === browser }) else { return }
+        activate(owner)
+        let firstHop = owner.springDrag != drag
+        owner.springDrag = drag
+        go(.folder(url.standardizedFileURL), recordHistory: firstHop, countVisit: false)
     }
 
     func browserSelectionDidChange(_ browser: BrowserViewController) {

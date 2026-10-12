@@ -54,7 +54,24 @@ final class SidebarViewController: NSViewController {
     /// "Open in New Tab" from the context menu.
     var onOpenInNewTab: ((URL) -> Void)?
 
-    private let outline = NSOutlineView()
+    private let outline = SidebarOutlineView()
+    /// Opens the location a drag rests on, in the current pane.
+    private lazy var springLoader = SpringLoader(view: outline, frame: { [weak self] folder in
+        guard let self, let row = row(for: folder) else { return nil }
+        return outline.rect(ofRow: row)
+    }, open: { [weak self] folder, _ in
+        guard let self, let row = row(for: folder) else { return }
+        outline.selectRowIndexes([row], byExtendingSelection: false)
+    })
+
+    private func row(for folder: URL) -> Int? {
+        for section in sections {
+            guard let item = section.items.first(where: { $0.url?.fileViewKey == folder.fileViewKey }) else { continue }
+            let row = outline.row(forItem: item)
+            return row >= 0 ? row : nil
+        }
+        return nil
+    }
     private var sections: [SidebarSection] = []
     private var suppressSelection = false
     private var current: SidebarTarget?
@@ -76,6 +93,7 @@ final class SidebarViewController: NSViewController {
         outline.dataSource = self
         outline.delegate = self
         outline.registerForDraggedTypes([.fileURL, .sidebarFavorite])
+        outline.onDragEnd = { [weak self] in self?.springLoader.cancel() }
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
         outline.setDraggingSourceOperationMask([], forLocal: false)
         let menu = NSMenu()
@@ -237,7 +255,16 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     // (shared with every view): move on the same disk, copy onto another one, Option copies.
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?,
                      proposedChildIndex index: Int) -> NSDragOperation {
-        if info.draggingPasteboard.string(forType: .sidebarFavorite) != nil {
+        // Files resting on a location spring it open; reordering favorites doesn't.
+        let isReorder = info.draggingPasteboard.string(forType: .sidebarFavorite) != nil
+        let urls = isReorder ? [] : FileDrop.urls(info)
+        let resting = index == NSOutlineViewDropOnItemIndex ? (item as? SidebarItem)?.url : nil
+        springLoader.hover(resting.flatMap { folder in
+            // A favorite can be a package (an app): springing would open its insides.
+            urls.isEmpty || FileDrop.isInside(urls, folder) || NSWorkspace.shared.isFilePackage(atPath: folder.path)
+                || !SpringLoader.canOpen(folder, browsing: nil) ? nil : folder
+        }, drag: info.draggingSequenceNumber)
+        if isReorder {
             if favoriteIndex(item, index) != nil { return .move }
             // Reordering only: retarget a drop anywhere else in Favorites to just below its first row.
             if let favorite = item as? SidebarItem, isFavorite(favorite),
@@ -247,7 +274,6 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             }
             return []
         }
-        let urls = FileDrop.urls(info)
         if favoriteIndex(item, index) != nil {
             let folders = urls.filter { TransferEngine.isPlainFolder($0) || $0.hasDirectoryPath }
             return folders.isEmpty ? [] : .link
@@ -257,6 +283,7 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
+        springLoader.cancel()
         if let at = favoriteIndex(item, index) {
             if let path = info.draggingPasteboard.string(forType: .sidebarFavorite) {
                 Places.addFavorites([URL(fileURLWithPath: path)], at: at)
@@ -402,4 +429,19 @@ extension SidebarViewController: NSMenuDelegate {
 final class SavedSearchBox: NSObject {
     let search: SavedSearch
     init(search: SavedSearch) { self.search = search }
+}
+
+/// The sidebar's outline, telling the controller when a drag leaves or ends (to stop spring loading).
+final class SidebarOutlineView: NSOutlineView {
+    var onDragEnd: (() -> Void)?
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        super.draggingExited(sender)
+        onDragEnd?()
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        super.draggingEnded(sender)
+        onDragEnd?()
+    }
 }

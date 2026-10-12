@@ -11,6 +11,18 @@ final class FileOutlineView: NSOutlineView {
     /// Tab with no modifiers (switches panes in dual-pane mode); nil keeps the default key-view loop.
     /// Tab; return false to let it move focus to the next control as usual.
     var onTab: (() -> Bool)?
+    /// A drag left the list or ended.
+    var onDragEnd: (() -> Void)?
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        super.draggingExited(sender)
+        onDragEnd?()
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        super.draggingEnded(sender)
+        onDragEnd?()
+    }
 
     override func keyDown(with event: NSEvent) {
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)

@@ -402,6 +402,16 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private var rowByKey: [String: Int] = [:]
     private weak var controller: ColumnBrowserViewController?
     let tableView = ColumnTableView()
+    /// Opens the folder a drag rests on in the next column, by selecting it.
+    fileprivate lazy var springLoader = SpringLoader(view: tableView, frame: { [weak self] folder in
+        guard let self, let row = rowByKey[folder.fileViewKey] else { return nil }
+        return tableView.rect(ofRow: row)
+    }, open: { [weak self] folder, _ in
+        guard let self, let row = rowByKey[folder.fileViewKey] else { return }
+        // Focusing the column makes its pane the active one in dual pane, like a click would.
+        tableView.window?.makeFirstResponder(tableView)
+        selectRow(row)
+    })
     private let scrollView = NSScrollView()
     private let divider = ColumnDividerView()
     private let spinner = NSProgressIndicator()
@@ -652,6 +662,9 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
                    proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
         let urls = FileDrop.urls(info)
+        let resting = !urls.isEmpty && dropOperation == .on && row >= 0 && row < entries.count && entries[row].isFolder
+            && !FileDrop.isInside(urls, entries[row].url) && SpringLoader.canOpen(entries[row].url, browsing: folder)
+        springLoader.hover(resting ? entries[row].url : nil, drag: info.draggingSequenceNumber)
         guard !urls.isEmpty else { return [] }
         if dropOperation == .on, row >= 0, row < entries.count, entries[row].isFolder {
             let operation = FileDrop.operation(urls, into: entries[row].url, info: info)
@@ -663,6 +676,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
                    dropOperation: NSTableView.DropOperation) -> Bool {
+        springLoader.cancel()
         let urls = FileDrop.urls(info)
         let target = row >= 0 && row < entries.count && dropOperation == .on && entries[row].isFolder ? entries[row].url : folder
         let operation = FileDrop.operation(urls, into: target, info: info)
@@ -721,6 +735,16 @@ final class ColumnTableView: NSTableView {
         let result = super.becomeFirstResponder()
         if result { pane?.becameFirstResponder() }
         return result
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        super.draggingExited(sender)
+        pane?.springLoader.cancel()
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        super.draggingEnded(sender)
+        pane?.springLoader.cancel()
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {

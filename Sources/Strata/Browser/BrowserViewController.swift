@@ -7,6 +7,8 @@ protocol BrowserViewControllerDelegate: AnyObject {
     func browserContentDidChange(_ browser: BrowserViewController)
     /// Column view moved deeper without changing the browser's folder.
     func browser(_ browser: BrowserViewController, columnLocationChanged url: URL)
+    /// A drag rested on `url` long enough to spring it open; `drag` is the drag's sequence number.
+    func browser(_ browser: BrowserViewController, springLoadTo url: URL, drag: Int)
 }
 
 /// One row in the list. Children load the first time a folder is expanded.
@@ -106,6 +108,17 @@ final class BrowserViewController: NSViewController {
     private var sortKey: SortKey = .name
     private var ascending = true
     private var pendingSelection: [URL] = []
+    /// Opens the folder row a drag rests on (only rows still on screen).
+    private lazy var springLoader = SpringLoader(view: outlineView, frame: { [weak self] folder in
+        guard let self, let node = node(for: folder) else { return nil }
+        let row = outlineView.row(forItem: node)
+        return row >= 0 ? outlineView.rect(ofRow: row) : nil
+    }, open: { [weak self] folder, drag in
+        guard let self, node(for: folder) != nil else { return }
+        springLoad(folder, drag: drag)
+    })
+    /// A drag is over the list: folders don't expand on hover then (they spring open instead).
+    private var isDragOver = false
     private var pendingRename: URL?
     private var renaming: FileNode?
     private var resortWork: DispatchWorkItem?
@@ -217,6 +230,10 @@ final class BrowserViewController: NSViewController {
             if filter.isEmpty { toggleQuickLook(nil) } else { setFilter(filter + " ") }
         }
         ov.contextMenu = { [weak self] in self?.makeContextMenu() }
+        ov.onDragEnd = { [weak self] in
+            self?.springLoader.cancel()
+            self?.isDragOver = false
+        }
     }
 
     private func addColumn(_ id: NSUserInterfaceItemIdentifier, _ title: String, width: CGFloat, min: CGFloat,
@@ -1180,6 +1197,11 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         return node.children![index]
     }
 
+    func outlineView(_ outlineView: NSOutlineView, shouldExpandItem item: Any) -> Bool {
+        // A drag resting on a folder springs it open; the outline's own expand-on-hover would compete.
+        !isDragOver
+    }
+
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         guard let node = item as? FileNode else { return false }
         if node.groupTitle != nil { return true }
@@ -1277,7 +1299,10 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?,
                      proposedChildIndex index: Int) -> NSDragOperation {
-        guard let urls = draggedURLs(info), !urls.isEmpty, let target = retargetDrop(outlineView, item) else { return [] }
+        let urls = draggedURLs(info) ?? []
+        isDragOver = true
+        springLoader.hover(springTarget(item, index, urls), drag: info.draggingSequenceNumber)
+        guard !urls.isEmpty, let target = retargetDrop(outlineView, item) else { return [] }
         let targetPath = target.standardizedFileURL.path
         if urls.contains(where: { targetPath == $0.path || targetPath.hasPrefix($0.path + "/") }) { return [] }
         let operation = dragOperation(urls, target, info)
@@ -1288,11 +1313,28 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
+        springLoader.cancel()
+        isDragOver = false
         guard let urls = draggedURLs(info), let target = (item as? FileNode)?.url ?? directory else { return false }
         let operation = dragOperation(urls, target, info)
         guard !operation.isEmpty else { return false }
         transfer(urls, into: target, move: operation == .move)
         return true
+    }
+
+    /// The folder row a file drag rests on (not between rows, not one of the dragged items or inside one), to spring
+    /// open.
+    private func springTarget(_ item: Any?, _ index: Int, _ dragged: [URL]) -> URL? {
+        guard !dragged.isEmpty, index == NSOutlineViewDropOnItemIndex, let node = item as? FileNode, node.groupTitle == nil,
+              node.entry.isFolder, !FileDrop.isInside(dragged, node.url),
+              SpringLoader.canOpen(node.url, browsing: directory) else { return nil }
+        return node.url
+    }
+
+    /// Opens a folder a drag rested on. Ignored while another folder loads: the rows on screen are the previous one's.
+    func springLoad(_ folder: URL, drag: Int) {
+        guard !isLoadingFolder else { return }
+        delegate?.browser(self, springLoadTo: folder, drag: drag)
     }
 
     private func retargetDrop(_ outlineView: NSOutlineView, _ item: Any?) -> URL? {

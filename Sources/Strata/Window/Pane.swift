@@ -15,6 +15,8 @@ final class Pane {
     /// The current folder, or the last one shown before a search or Recents.
     var location: URL
     var backStack: [Destination] = []
+    /// The drag whose spring-loading last moved this pane: the rest of that dive adds no Back steps.
+    var springDrag: Int?
     var forwardStack: [Destination] = []
     var folderEntry: FileEntry?
     /// In column view, the folder of the focused column (deeper than `location`).

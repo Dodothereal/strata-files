@@ -28,11 +28,17 @@ protocol FileCollectionViewDelegate: AnyObject {
     func fileView(_ view: NSViewController, handle key: FileViewKey) -> Bool
     /// Inline rename finished with a new, non-empty name that differs from the old one.
     func fileView(_ view: NSViewController, rename entry: FileEntry, to name: String)
+    /// A drag rested on `folder` long enough to spring it open; `drag` is the drag's sequence number.
+    func fileView(_ view: NSViewController, springLoad folder: URL, drag: Int)
+    /// Whether `folder` may spring open (readable, no privacy prompt).
+    func fileView(_ view: NSViewController, canSpringLoad folder: URL) -> Bool
 }
 
 extension FileCollectionViewDelegate {
     func fileView(_ view: NSViewController, handle key: FileViewKey) -> Bool { false }
     func fileView(_ view: NSViewController, rename entry: FileEntry, to name: String) {}
+    func fileView(_ view: NSViewController, springLoad folder: URL, drag: Int) {}
+    func fileView(_ view: NSViewController, canSpringLoad folder: URL) -> Bool { false }
 }
 
 /// What the browser needs from whichever presentation is active.
@@ -131,20 +137,24 @@ enum FileDrop {
         (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
     }
 
-    static func operation(_ urls: [URL], into target: URL, info: NSDraggingInfo) -> NSDragOperation {
-        guard let first = urls.first else { return [] }
-        let targetPath = target.standardizedFileURL.path
+    /// Whether `target` is one of `urls` or inside one of them, however either is spelled (`/tmp` is `/private/tmp`).
+    static func isInside(_ urls: [URL], _ target: URL) -> Bool {
         // Resolved once per drag update; items usually share a parent, so theirs are cached too.
-        let resolvedTarget = TransferJob.realPath(targetPath)
+        let resolvedTarget = TransferJob.realPath(target.standardizedFileURL.path)
         var parents: [String: String] = [:]
-        let inside = urls.contains { url in
+        return urls.contains { url in
             let parent = url.deletingLastPathComponent().path
             let real = parents[parent] ?? TransferJob.realPath(parent)
             parents[parent] = real
             let item = (real as NSString).appendingPathComponent(url.lastPathComponent)
             return resolvedTarget == item || resolvedTarget.hasPrefix(item == "/" ? "/" : item + "/")
         }
-        if inside { return [] }
+    }
+
+    static func operation(_ urls: [URL], into target: URL, info: NSDraggingInfo) -> NSDragOperation {
+        guard let first = urls.first else { return [] }
+        let targetPath = target.standardizedFileURL.path
+        if isInside(urls, target) { return [] }
         let mask = info.draggingSourceOperationMask
         let wantsCopy = NSEvent.modifierFlags.contains(.option) || !sameVolume(first, target)
         let operation: NSDragOperation
