@@ -2,6 +2,7 @@ import AppKit
 
 extension Notification.Name {
     static let prefsChanged = Notification.Name("StrataPrefsChanged")
+    static let favoritesChanged = Notification.Name("StrataFavoritesChanged")
 }
 
 enum Prefs {
@@ -17,6 +18,8 @@ enum Prefs {
         static let viewMode = "viewMode"
         static let gridIconSize = "gridIconSize"
         static let verifyCopies = "verifyCopies"
+        static let favoritePaths = "favoritePaths"
+        static let reopenWindows = "reopenWindows"
     }
 
     static func register() {
@@ -53,6 +56,21 @@ enum Prefs {
     static var gridIconSize: Double {
         get { defaults.double(forKey: Key.gridIconSize) }
         set { defaults.set(newValue, forKey: Key.gridIconSize) }
+    }
+
+    /// The sidebar's favorite folders once you've changed them (nil: the defaults).
+    static var favoritePaths: [String]? {
+        get { defaults.stringArray(forKey: Key.favoritePaths) }
+        set {
+            defaults.set(newValue, forKey: Key.favoritePaths)
+            NotificationCenter.default.post(name: .favoritesChanged, object: nil)
+        }
+    }
+
+    /// Open the windows and tabs of the last session at launch.
+    static var reopenWindows: Bool {
+        get { defaults.object(forKey: Key.reopenWindows) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.reopenWindows) }
     }
 
     /// Read every copied file back and compare it with the original (slower; catches failing disks and cables).

@@ -570,6 +570,46 @@ nonisolated enum TransferEngine {
         }
     }
 
+    /// A folder that isn't a package (apps and bundles are replaced, never merged into).
+    static func isPlainFolder(_ url: URL) -> Bool {
+        var info = stat()
+        guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else { return false }
+        return (try? url.resourceValues(forKeys: [.isPackageKey]))?.isPackage != true
+    }
+
+    /// One copy a merge needs: `decision` is nil (new item), `.replace` (incoming is newer) or `.keepBoth` (a file
+    /// meets a folder).
+    struct MergeStep: Sendable {
+        let source: URL
+        let destination: URL
+        let decision: ConflictDecision?
+    }
+
+    /// What merging folder `source` into folder `destination` copies: everything missing, subfolders merged in turn,
+    /// and same-named items only where the incoming one is newer.
+    static func mergePlan(_ source: URL, into destination: URL) -> [MergeStep] {
+        var steps: [MergeStep] = []
+        let names = ((try? FileManager.default.contentsOfDirectory(atPath: source.path)) ?? []).sorted()
+        for name in names where name != ".DS_Store" {
+            let from = source.appending(path: name), to = destination.appending(path: name)
+            var incoming = stat(), existing = stat()
+            guard lstat(from.path, &incoming) == 0 else { continue }
+            guard lstat(to.path, &existing) == 0 else {
+                steps.append(MergeStep(source: from, destination: to, decision: nil))
+                continue
+            }
+            let bothFolders = isPlainFolder(from) && isPlainFolder(to)
+            if bothFolders {
+                steps += mergePlan(from, into: to)
+            } else if (incoming.st_mode & S_IFMT == S_IFDIR) != (existing.st_mode & S_IFMT == S_IFDIR) {
+                steps.append(MergeStep(source: from, destination: to, decision: .keepBoth))
+            } else if incoming.st_mtimespec.tv_sec > existing.st_mtimespec.tv_sec {
+                steps.append(MergeStep(source: from, destination: to, decision: .replace))
+            }
+        }
+        return steps
+    }
+
     static func temporaryURL(for destination: URL) -> URL {
         let token = UUID().uuidString.prefix(8)
         // ".<name>.strata-XXXXXXXX" must stay within the 255-byte name limit.

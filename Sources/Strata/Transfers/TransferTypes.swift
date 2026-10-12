@@ -24,6 +24,9 @@ nonisolated enum ConflictDecision: Sendable {
     case keepBoth
     /// Leave the existing item alone and don't transfer this one.
     case skip
+    /// Copying a folder onto a folder: add what's missing and merge subfolders; where both have an item of the same
+    /// name, the newer one wins (the older goes to the Trash).
+    case merge
     /// Cancel the whole job.
     case stop
 }
@@ -42,6 +45,11 @@ nonisolated struct TransferConflict: Sendable {
     let existing: URL
     /// Conflicts still to be decided in this job, this one included.
     let remaining: Int
+
+    /// Merge is offered when copying a folder onto a folder (like Finder's Option-drag).
+    var canMerge: Bool {
+        mode == .copy && TransferEngine.isPlainFolder(source) && TransferEngine.isPlainFolder(existing)
+    }
 }
 
 /// Answers conflicts for a job. Use `.sheet(for:)` in the UI; `.keepBoth` never asks.

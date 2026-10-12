@@ -25,6 +25,12 @@ final class GitStatusBadge: NSView {
         didSet { if backgroundStyle != oldValue { needsDisplay = true } }
     }
 
+    /// Over an icon (Icons view) the badge sits on a small plate in the window's background color, so it reads on
+    /// any image.
+    var drawsBacking = false {
+        didSet { needsDisplay = true }
+    }
+
     static let tileSize = NSSize(width: 15, height: 14)
     static let dotDiameter: CGFloat = 7
     /// Space between the name and the tile, included in the intrinsic width.
@@ -57,6 +63,12 @@ final class GitStatusBadge: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let badge else { return }
+        if drawsBacking {
+            let plate = NSRect(x: bounds.maxX - Self.tileSize.width - 2, y: ((bounds.height - Self.tileSize.height) / 2).rounded() - 2,
+                               width: Self.tileSize.width + 4, height: Self.tileSize.height + 4)
+            NSColor.windowBackgroundColor.setFill()
+            NSBezierPath(roundedRect: plate, xRadius: 6, yRadius: 6).fill()
+        }
         let selected = backgroundStyle == .emphasized
         let color = badge.color
         let size = Self.tileSize

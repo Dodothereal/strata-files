@@ -25,6 +25,7 @@ enum MainMenu {
             item("Open in Terminal", #selector(BrowserViewController.openInTerminal(_:)), "t", [.command, .control]),
             item("Ask Strata…", #selector(BrowserWindowController.askStrata(_:)), "a", [.command, .option]),
             item("Show in Finder", #selector(BrowserViewController.showInFinder(_:))),
+            item("Add to Sidebar", #selector(BrowserViewController.addToSidebar(_:))),
             .separator(),
             item("Quick Look", #selector(BrowserViewController.toggleQuickLook(_:)), "y"),
             item("Rename", #selector(BrowserViewController.renameSelection(_:))),

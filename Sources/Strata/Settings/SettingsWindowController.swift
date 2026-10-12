@@ -65,6 +65,8 @@ private struct GeneralSettings: View {
                            get: { Prefs.showHidden }, set: { Prefs.showHidden = $0 })
                 PrefToggle(title: "Keep folders on top", caption: nil,
                            get: { Prefs.foldersFirst }, set: { Prefs.foldersFirst = $0 })
+                PrefToggle(title: "Reopen windows from last time", caption: "Windows, tabs and panes come back when Strata starts.",
+                           get: { Prefs.reopenWindows }, set: { Prefs.reopenWindows = $0 })
                 Picker("Return key", selection: Binding(get: { returnOpens }, set: { returnOpens = $0; Prefs.returnOpens = $0 })) {
                     Text("Renames the selection (like Finder)").tag(false)
                     Text("Opens the selection").tag(true)

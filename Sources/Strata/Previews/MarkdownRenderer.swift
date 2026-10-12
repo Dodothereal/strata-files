@@ -375,13 +375,14 @@ nonisolated final class MarkdownRenderer {
 }
 
 nonisolated enum MarkdownColors {
+    // Stronger with Increase Contrast, so code stands apart from prose.
     static let inlineCode = NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(white: 1, alpha: 0.1) : NSColor(white: 0, alpha: 0.06)
+        let alpha: CGFloat = appearance.isHighContrast ? 0.22 : appearance.isDark ? 0.1 : 0.06
+        return NSColor(white: appearance.isDark ? 1 : 0, alpha: alpha)
     }
     static let codeBlock = NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(white: 1, alpha: 0.06) : NSColor(white: 0, alpha: 0.04)
+        let alpha: CGFloat = appearance.isHighContrast ? 0.15 : appearance.isDark ? 0.06 : 0.04
+        return NSColor(white: appearance.isDark ? 1 : 0, alpha: alpha)
     }
     static let tableHeader = codeBlock
 }

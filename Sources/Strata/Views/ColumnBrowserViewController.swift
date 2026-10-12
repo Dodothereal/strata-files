@@ -340,6 +340,11 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     }
 
     @objc private func clipboardChanged() {
+        refreshVisibleRows()
+    }
+
+    /// Re-reads what visible rows show (clipboard dimming, git badges).
+    func refreshVisibleRows() {
         for pane in panes { pane.refreshVisibleRows() }
     }
 
@@ -618,7 +623,10 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = tableView.makeView(withIdentifier: ColumnCellView.identifier, owner: nil) as? ColumnCellView ?? ColumnCellView()
         let entry = entries[row]
-        cell.configure(entry, matches: matches[entry.url.fileViewKey] ?? [], dimmed: entry.isHidden || Clipboard.isCut(entry.url))
+        let git = GitStatusStore.shared
+        cell.configure(entry, matches: matches[entry.url.fileViewKey] ?? [],
+                       dimmed: entry.isHidden || Clipboard.isCut(entry.url) || git.isIgnored(entry.url),
+                       git: git.badge(for: entry.url, isDirectory: entry.isDirectory))
         return cell
     }
 
@@ -765,9 +773,9 @@ final class ColumnCellView: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(_ entry: FileEntry, matches: [Int], dimmed: Bool) {
+    func configure(_ entry: FileEntry, matches: [Int], dimmed: Bool, git: GitBadge? = nil) {
         isFolder = entry.isFolder
-        nameCell.configure(name: entry.name, icon: IconCache.shared.icon(for: entry), matches: matches, dimmed: dimmed)
+        nameCell.configure(name: entry.name, icon: IconCache.shared.icon(for: entry), matches: matches, dimmed: dimmed, git: git)
         applyTruncation()
         chevron.isHidden = !entry.isFolder
         setAccessibilityLabel(entry.isFolder ? "\(entry.name), folder" : entry.name)

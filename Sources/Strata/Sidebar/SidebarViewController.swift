@@ -10,6 +10,11 @@ final class SidebarSection {
     }
 }
 
+extension NSPasteboard.PasteboardType {
+    /// A favorite being reordered inside the sidebar (never a file URL: dropping it elsewhere mustn't move the folder).
+    static let sidebarFavorite = NSPasteboard.PasteboardType("dev.strata.sidebar-favorite")
+}
+
 /// Where a sidebar row takes you.
 enum SidebarTarget: Equatable {
     case folder(URL)
@@ -70,7 +75,9 @@ final class SidebarViewController: NSViewController {
         outline.allowsEmptySelection = true
         outline.dataSource = self
         outline.delegate = self
-        outline.registerForDraggedTypes([.fileURL])
+        outline.registerForDraggedTypes([.fileURL, .sidebarFavorite])
+        outline.setDraggingSourceOperationMask(.move, forLocal: true)
+        outline.setDraggingSourceOperationMask([], forLocal: false)
         let menu = NSMenu()
         menu.delegate = self
         outline.menu = menu
@@ -82,6 +89,7 @@ final class SidebarViewController: NSViewController {
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .savedSearchesChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .favoritesChanged, object: nil)
     }
 
     func reload() {
@@ -204,15 +212,59 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         onSelect?(item.target)
     }
 
-    // Drop files on a sidebar location with Finder's rules (shared with every view): move on the same disk, copy
-    // onto another one, Option copies.
+    // Favorites can be dragged to reorder them (a private type, so they never move folders on disk).
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+        guard let item = item as? SidebarItem, let url = item.url, isFavorite(item) else { return nil }
+        let pasteboardItem = NSPasteboardItem()
+        pasteboardItem.setString(url.path, forType: .sidebarFavorite)
+        return pasteboardItem
+    }
+
+    private var favoritesSection: SidebarSection? { sections.first { $0.title == "Favorites" } }
+
+    private func isFavorite(_ item: SidebarItem) -> Bool {
+        item.url != nil && favoritesSection?.items.contains { $0 === item } == true
+    }
+
+    /// Where between the favorites a drop lands (Recents stays first), or nil when it isn't between them.
+    private func favoriteIndex(_ item: Any?, _ childIndex: Int) -> Int? {
+        guard let section = item as? SidebarSection, section === favoritesSection, childIndex != NSOutlineViewDropOnItemIndex
+        else { return nil }
+        return max(0, childIndex - 1)
+    }
+
+    // Folders dropped between favorites are added there; files dropped on a location move or copy with Finder's rules
+    // (shared with every view): move on the same disk, copy onto another one, Option copies.
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?,
                      proposedChildIndex index: Int) -> NSDragOperation {
+        if info.draggingPasteboard.string(forType: .sidebarFavorite) != nil {
+            if favoriteIndex(item, index) != nil { return .move }
+            // Reordering only: retarget a drop anywhere else in Favorites to just below its first row.
+            if let favorite = item as? SidebarItem, isFavorite(favorite),
+               let row = favoritesSection?.items.firstIndex(where: { $0 === favorite }) {
+                outlineView.setDropItem(favoritesSection, dropChildIndex: max(1, row))
+                return .move
+            }
+            return []
+        }
+        let urls = FileDrop.urls(info)
+        if favoriteIndex(item, index) != nil {
+            let folders = urls.filter { TransferEngine.isPlainFolder($0) || $0.hasDirectoryPath }
+            return folders.isEmpty ? [] : .link
+        }
         guard let target = (item as? SidebarItem)?.url, index == NSOutlineViewDropOnItemIndex else { return [] }
-        return FileDrop.operation(FileDrop.urls(info), into: target, info: info)
+        return FileDrop.operation(urls, into: target, info: info)
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
+        if let at = favoriteIndex(item, index) {
+            if let path = info.draggingPasteboard.string(forType: .sidebarFavorite) {
+                Places.addFavorites([URL(fileURLWithPath: path)], at: at)
+            } else {
+                Places.addFavorites(FileDrop.urls(info), at: at)
+            }
+            return true
+        }
         guard let target = (item as? SidebarItem)?.url else { return false }
         let urls = FileDrop.urls(info)
         let operation = FileDrop.operation(urls, into: target, info: info)
@@ -235,7 +287,7 @@ final class SidebarRowView: NSTableRowView {
     override func drawSelection(in dirtyRect: NSRect) {
         guard selectionHighlightStyle != .none else { return }
         let rect = bounds.insetBy(dx: 10, dy: 1)
-        NSColor.labelColor.withAlphaComponent(0.1).setFill()
+        NSColor.labelColor.withAlphaComponent(effectiveAppearance.isHighContrast ? 0.25 : 0.1).setFill()
         NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8).fill()
     }
 }
@@ -246,12 +298,9 @@ final class SidebarCellView: NSTableCellView {
     private let label = NSTextField(labelWithString: "")
 
     /// Explicit colors: the source-list style recolors the semantic label color with the accent on selection.
-    private static let ink = NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 1, alpha: 0.9) : NSColor(white: 0, alpha: 0.85)
-    }
-    private static let iconInk = NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 1, alpha: 0.75) : NSColor(white: 0, alpha: 0.6)
-    }
+    /// Fully opaque with Increase Contrast.
+    private static let ink = NSColor.ink(light: 0.85, dark: 0.9)
+    private static let iconInk = NSColor.ink(light: 0.6, dark: 0.75)
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -302,6 +351,7 @@ extension SidebarViewController: NSMenuDelegate {
             return
         }
         guard let url = item.url else { return }
+        let favorite = isFavorite(item)
         func add(_ title: String, _ action: Selector) {
             let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
             entry.target = self
@@ -310,6 +360,12 @@ extension SidebarViewController: NSMenuDelegate {
         }
         add("Open in New Tab", #selector(openInNewTab(_:)))
         add("Copy Path", #selector(copyItemPath(_:)))
+        menu.addItem(.separator())
+        if favorite {
+            add("Remove from Sidebar", #selector(removeFavorite(_:)))
+        } else if !item.isEjectable {
+            add("Add to Favorites", #selector(addFavorite(_:)))
+        }
         if item.isEjectable {
             menu.addItem(.separator())
             add("Eject “\(item.title)”", #selector(ejectItem(_:)))
@@ -325,6 +381,16 @@ extension SidebarViewController: NSMenuDelegate {
         guard let url = sender.representedObject as? URL else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(url.path, forType: .string)
+    }
+
+    @objc private func removeFavorite(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        Places.removeFavorite(url)
+    }
+
+    @objc private func addFavorite(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        Places.addFavorites([url])
     }
 
     @objc private func ejectItem(_ sender: NSMenuItem) {

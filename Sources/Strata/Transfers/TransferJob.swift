@@ -276,15 +276,19 @@ final class TransferJob {
     }
 
     private func performPending() async {
-        for index in items.indices where items[index].outcome == .pending {
+        // Indices, not a snapshot: merges append the copies they need while the job runs.
+        var index = 0
+        while index < items.count {
+            defer { index += 1 }
+            guard items[index].outcome == .pending else { continue }
             if control.isCancelled { break }
             guard await prepare(index) else { continue }
-            let item = items[index]
+            let item = items[index], current = index
             let options = options, control = control, progress = progress
             let result = await worker.run {
-                TransferEngine.perform(index, item, options: options, control: control, progress: progress)
+                TransferEngine.perform(current, item, options: options, control: control, progress: progress)
             }
-            apply(result, to: index, isRetry: false)
+            apply(result, to: current, isRetry: false)
         }
     }
 
@@ -346,8 +350,38 @@ final class TransferJob {
         for (position, index) in clashes.enumerated() {
             guard !control.isCancelled else { return }
             let decision = await decide(index, remaining: clashes.count - position)
-            apply(decision, to: index)
+            if decision == .merge { await merge(index) } else { apply(decision, to: index) }
         }
+    }
+
+    /// Replaces a folder-onto-folder item by the copies its merge needs (appended, so they run after it). A "merge"
+    /// applied to all that meets two files settles them the same way: the newer wins.
+    private func merge(_ index: Int) async {
+        let item = items[index]
+        guard TransferEngine.isPlainFolder(item.source), TransferEngine.isPlainFolder(item.destination) else {
+            let incoming = try? item.source.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+            let existing = try? item.destination.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+            let newer = (incoming ?? .distantPast) > (existing ?? .distantPast)
+            apply(newer ? .replace : .skip, to: index)
+            return
+        }
+        let control = control
+        let steps = await worker.run { TransferEngine.mergePlan(item.source, into: item.destination) }
+        let sizes = await worker.run { steps.map { TransferEngine.scan($0.source, control: control) } }
+        // The folder is already there: the item itself is done; its contents follow as their own items.
+        items[index].outcome = .done
+        totalBytes -= item.bytes
+        totalFiles -= item.files
+        for (step, size) in zip(steps, sizes) {
+            var sub = TransferItem(source: step.source, destination: step.destination, operation: .copy)
+            sub.decision = step.decision
+            sub.bytes = size?.bytes ?? 0
+            sub.files = max(1, size?.files ?? 1)
+            items.append(sub)
+            totalBytes += sub.bytes
+            totalFiles += sub.files
+        }
+        changed()
     }
 
     private func decide(_ index: Int, remaining: Int) async -> ConflictDecision {
@@ -387,6 +421,9 @@ final class TransferJob {
             totalFiles -= item.files
         case .stop:
             cancel()
+        case .merge:
+            // Expanded by `merge(_:)` before it gets here; settle as keep-both if not.
+            items[index].decision = .keepBoth
         }
         changed()
     }
@@ -403,6 +440,10 @@ final class TransferJob {
             if !TransferEngine.exists(item.destination) { items[index].decision = nil }
         } else if TransferEngine.exists(item.destination) {
             let decision = await decide(index, remaining: 1)
+            if decision == .merge {
+                await merge(index)
+                return false
+            }
             apply(decision, to: index)
             if items[index].decision == .keepBoth {
                 items[index].destination = FileOps.available(item.destination, copyStyle: false)

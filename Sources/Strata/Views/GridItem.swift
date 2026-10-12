@@ -14,6 +14,8 @@ struct GridItemState: Equatable {
 /// optional detail line. Text and highlights are drawn; the image is an image view so thumbnails can crossfade in.
 final class GridItemView: NSView {
     let imageView = NSImageView()
+    /// Git status, at the icon's top-right corner.
+    let gitBadge = GitStatusBadge()
     private(set) var metrics = GridMetrics(iconSize: 64)
     private var name = ""
     private var matches: [Int] = []
@@ -39,6 +41,8 @@ final class GridItemView: NSView {
         imageView.unregisterDraggedTypes()
         imageView.setAccessibilityElement(false)
         addSubview(imageView)
+        gitBadge.drawsBacking = true
+        addSubview(gitBadge)
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
     }
@@ -122,6 +126,8 @@ final class GridItemView: NSView {
     override func layout() {
         super.layout()
         imageView.frame = iconRect
+        let size = NSSize(width: GitStatusBadge.tileSize.width + 4, height: GitStatusBadge.tileSize.height + 4)
+        gitBadge.frame = NSRect(x: iconRect.maxX - size.width + 3, y: iconRect.minY - 3, width: size.width, height: size.height)
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -323,7 +329,9 @@ final class GridItem: NSCollectionViewItem {
         itemView.setState(state)
     }
 
-    func configure(_ entry: FileEntry, matches: [Int], metrics: GridMetrics, showsInfo: Bool, dimmed: Bool, scale: CGFloat) {
+    func configure(_ entry: FileEntry, matches: [Int], metrics: GridMetrics, showsInfo: Bool, dimmed: Bool, scale: CGFloat,
+                   git: GitBadge? = nil) {
+        itemView.gitBadge.badge = git
         let sameFile = self.entry == entry
         self.entry = entry
         self.dimmed = dimmed

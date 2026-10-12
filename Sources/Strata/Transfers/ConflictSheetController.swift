@@ -78,6 +78,7 @@ final class ConflictSheetController: NSWindowController {
 
     @objc private func replace(_ sender: Any?) { finish(.replace) }
     @objc private func keepBoth(_ sender: Any?) { finish(.keepBoth) }
+    @objc private func merge(_ sender: Any?) { finish(.merge) }
     @objc private func skip(_ sender: Any?) { finish(.skip) }
     @objc private func stop(_ sender: Any?) { finish(.stop) }
 
@@ -149,6 +150,9 @@ final class ConflictSheetController: NSWindowController {
         let keepBoth = button("Keep Both", #selector(keepBoth(_:)))
         let replace = button("Replace", #selector(replace(_:)))
         replace.keyEquivalent = "\r"
+        let merge = button("Merge", #selector(merge(_:)))
+        merge.toolTip = "Add what’s missing and merge the folders; where both have the same item, the newer one is kept"
+        merge.isHidden = !conflict.canMerge
 
         applyToAll.title = "Apply to all \(conflict.remaining.formatted()) conflicts"
         applyToAll.font = .systemFont(ofSize: 12)
@@ -156,7 +160,7 @@ final class ConflictSheetController: NSWindowController {
 
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let row = NSStackView(views: [stop, spacer, skip, keepBoth, replace])
+        let row = NSStackView(views: [stop, spacer, skip, keepBoth, merge, replace])
         row.spacing = 10
         row.setCustomSpacing(10, after: spacer)
 

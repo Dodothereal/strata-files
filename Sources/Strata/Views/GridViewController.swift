@@ -195,12 +195,15 @@ final class GridViewController: NSViewController, FileCollectionController {
     private func configure(_ item: GridItem, at index: Int, refreshImage: Bool = true) {
         let entry = entries[index]
         item.emphasis = { [weak self] in self?.collectionView.isEmphasized ?? false }
-        let dimmed = entry.isHidden || Clipboard.isCut(entry.url)
+        let git = GitStatusStore.shared
+        let dimmed = entry.isHidden || Clipboard.isCut(entry.url) || git.isIgnored(entry.url)
+        let badge = git.badge(for: entry.url, isDirectory: entry.isDirectory)
         if refreshImage {
             item.configure(entry, matches: matches[entry.url.fileViewKey] ?? [], metrics: layout.metrics, showsInfo: showsItemInfo,
-                           dimmed: dimmed, scale: view.window?.backingScaleFactor ?? 2)
+                           dimmed: dimmed, scale: view.window?.backingScaleFactor ?? 2, git: badge)
         } else {
             item.dimmed = dimmed
+            item.itemView.gitBadge.badge = badge
             item.itemView.configure(name: entry.name, matches: matches[entry.url.fileViewKey] ?? [],
                                     detail: showsItemInfo ? ItemInfoLoader.shared.immediate(entry, showHidden: Prefs.showHidden) : nil,
                                     metrics: layout.metrics)
@@ -214,7 +217,11 @@ final class GridViewController: NSViewController, FileCollectionController {
             if reconfigure, let path = collectionView.indexPath(for: item) {
                 configure(item, at: path.item)
             } else {
-                if let entry = item.entry { item.dimmed = entry.isHidden || Clipboard.isCut(entry.url) }
+                if let entry = item.entry {
+                    let git = GitStatusStore.shared
+                    item.dimmed = entry.isHidden || Clipboard.isCut(entry.url) || git.isIgnored(entry.url)
+                    item.itemView.gitBadge.badge = git.badge(for: entry.url, isDirectory: entry.isDirectory)
+                }
                 item.updateState()
             }
         }

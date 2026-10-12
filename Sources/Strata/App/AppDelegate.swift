@@ -17,7 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         StrataAI.startIndexing()
         // Loads history now, so a plain copy left by an earlier build is removed right away.
         _ = OperationLog.shared
-        if windowControllers.isEmpty { openWindow(at: startLocation) }
+        if windowControllers.isEmpty, !restoreSession() { openWindow(at: startLocation) }
         if !Privacy.hasFullDiskAccess, !UserDefaults.standard.bool(forKey: "welcomeShown"),
            let window = windowControllers.first?.window {
             let sheet = WelcomeSheetController()
@@ -117,7 +117,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        saveSession()
         FileIndex.shared.saveNow()
+    }
+
+    // MARK: - Reopening windows
+
+    private static let sessionKey = "lastSession"
+
+    /// Every window's tabs (and each tab's panes), frontmost first, to reopen at the next launch.
+    private func saveSession() {
+        var seen = Set<ObjectIdentifier>()
+        var windows: [Workspace] = []
+        for window in NSApp.orderedWindows where window.windowController is BrowserWindowController {
+            let tabs = window.tabbedWindows ?? [window]
+            guard let first = tabs.first, seen.insert(ObjectIdentifier(first)).inserted else { continue }
+            let snapshots = tabs.compactMap { ($0.windowController as? BrowserWindowController)?.snapshot }
+            if !snapshots.isEmpty { windows.append(Workspace(name: "", tabs: snapshots)) }
+        }
+        UserDefaults.standard.set(try? JSONEncoder().encode(windows), forKey: Self.sessionKey)
+    }
+
+    /// Reopens the last session's windows (Settings ▸ General ▸ Reopen windows). False when there's nothing to open.
+    private func restoreSession() -> Bool {
+        guard Prefs.reopenWindows, let data = UserDefaults.standard.data(forKey: Self.sessionKey),
+              let windows = try? JSONDecoder().decode([Workspace].self, from: data) else { return false }
+        var opened = false
+        // Back to front, so the frontmost window ends up in front again. Folders that are gone are skipped.
+        for window in windows.reversed() {
+            let tabs = window.tabs.filter { tab in tab.first.map { FileManager.default.fileExists(atPath: $0) } ?? false }
+            guard !tabs.isEmpty else { continue }
+            open(Workspace(name: window.name, tabs: tabs))
+            opened = true
+        }
+        return opened
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

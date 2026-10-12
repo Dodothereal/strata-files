@@ -804,6 +804,12 @@ final class BrowserViewController: NSViewController {
         NSPasteboard.general.setString(urls.map(\.path).joined(separator: "\n"), forType: .string)
     }
 
+    /// Adds the selected folders (or, with nothing selected, this folder) to the sidebar's favorites.
+    @objc func addToSidebar(_ sender: Any?) {
+        let folders = selectedEntries.filter(\.isFolder).map(\.url)
+        Places.addFavorites(folders.isEmpty ? [directory].compactMap { $0 } : folders)
+    }
+
     @objc func addToShelf(_ sender: Any?) {
         ShelfPanel.shared.add(selectedURLs)
     }
@@ -860,6 +866,8 @@ final class BrowserViewController: NSViewController {
         guard let root = notification.userInfo?["root"] as? URL, let directory,
               directory.path == root.path || directory.path.hasPrefix(root.path + "/") else { return }
         clipboardChanged()
+        gridController?.refreshVisibleItems()
+        columnController?.refreshVisibleRows()
     }
 
     @objc private func clipboardChanged() {
@@ -1064,6 +1072,7 @@ final class BrowserViewController: NSViewController {
         add("Cut", #selector(cut(_:)), "scissors")
         add("Copy Path", #selector(copyPath(_:)), "link")
         add("Add to Shelf", #selector(addToShelf(_:)), "tray.and.arrow.down")
+        if selectedEntries.contains(where: \.isFolder) { add("Add to Sidebar", #selector(addToSidebar(_:)), "sidebar.left") }
         menu.addItem(.separator())
         add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
         add("Show in Finder", #selector(showInFinder(_:)), "macwindow")

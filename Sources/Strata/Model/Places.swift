@@ -33,7 +33,41 @@ enum Places {
         volumes().contains { $0.isEjectable && $0.url.standardizedFileURL.path == url.standardizedFileURL.path }
     }
 
+    /// The sidebar's favorites: your own list once you've added, removed or reordered any, else the defaults.
     static func favorites() -> [Place] {
+        guard let paths = Prefs.favoritePaths else { return defaultFavorites() }
+        let defaults = defaultFavorites()
+        return paths.compactMap { path in
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else { return nil }
+            let url = URL(fileURLWithPath: path)
+            return defaults.first { $0.url.standardizedFileURL.path == url.standardizedFileURL.path }
+                ?? Place(title: FileManager.default.displayName(atPath: path), url: url, symbol: "folder")
+        }
+    }
+
+    /// Adds folders to the favorites (at `index`, else at the end); ones already there move instead.
+    static func addFavorites(_ urls: [URL], at index: Int? = nil) {
+        let folders = urls.map(\.standardizedFileURL).filter { url in
+            var isDirectory: ObjCBool = false
+            return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+        }
+        guard !folders.isEmpty else { return }
+        let paths = Set(folders.map(\.path))
+        var current = favorites().map(\.url.standardizedFileURL)
+        let before = current.prefix(min(index ?? current.count, current.count)).filter { paths.contains($0.path) }.count
+        current.removeAll { paths.contains($0.path) }
+        let at = min(max(0, (index ?? current.count + before) - before), current.count)
+        current.insert(contentsOf: folders, at: at)
+        Prefs.favoritePaths = current.map(\.path)
+    }
+
+    static func removeFavorite(_ url: URL) {
+        let path = url.standardizedFileURL.path
+        Prefs.favoritePaths = favorites().map(\.url.standardizedFileURL.path).filter { $0 != path }
+    }
+
+    static func defaultFavorites() -> [Place] {
         let fm = FileManager.default
         var places = [
             Place(title: NSUserName(), url: home, symbol: "house"),

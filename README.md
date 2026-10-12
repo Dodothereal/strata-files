@@ -68,8 +68,8 @@ two folders side by side and copy or move between them with a keystroke.
 
 ## Made for developers
 
-Strata knows your projects. Files show their git status in list view, the current branch sits in the path bar, and
-the inspector recognizes Node, Rust, Swift, .NET, Python, Go and more. It lists a project's scripts and frees up the
+Strata knows your projects. Every file shows its git status, the current branch sits in the path bar, and the
+inspector recognizes Node, Rust, Swift, .NET, Python, Go and more. It lists a project's scripts and frees up the
 space taken by build folders like `node_modules` in a click (they go to the Trash, so nothing is lost). Code,
 Markdown, JSON, CSV, SQLite databases and archives preview right in the inspector, beautifully.
 
@@ -84,10 +84,11 @@ Markdown, JSON, CSV, SQLite databases and archives preview right in the inspecto
 
 | | |
 |---|---|
-| **Copy queue** | Big copies run in the background with progress you can pause, resume or cancel. Conflicts are asked up front, with a side-by-side comparison and a diff for text files. Turn on **Verify copies** in Settings to check that every byte arrived. Moves between disks keep the original if it changed while copying. |
+| **Copy queue** | Big copies run in the background with progress you can pause, resume or cancel. Conflicts are asked up front, with a side-by-side comparison and a diff for text files, and folders can be merged. Turn on **Verify copies** in Settings to check that every byte arrived. Moves between disks keep the original if it changed while copying. |
 | **History** | Renames, moves, copies and deletions are recorded. Undo them later, even days later and after a restart, as long as the items are still where they were left. |
 | **Recents** | Files you changed in the last 7 days, across your home folder, in one place. |
 | **Shelf** | Collect files from anywhere, then drop them all at once. |
+| **Your sidebar** | Drag folders into Favorites, reorder them, and eject disks right from the sidebar. Windows and tabs come back where you left them. |
 | **Workspaces** | Save a set of tabs and panes, and reopen them together. |
 | **Ask Strata** | Describe a bulk change ("rename these photos by date taken") and review the plan before anything happens. Runs on your Mac: built-in rules handle common requests, and Apple Intelligence handles the rest. |
 | **Summaries** | Get the gist of a PDF or document in the inspector: a short summary written by Apple Intelligence, or the key sentences without it. Nothing ever leaves your Mac. |
