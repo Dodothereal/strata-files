@@ -102,8 +102,9 @@ enum MainMenu {
             item("Edit Location", #selector(BrowserWindowController.goToFolder(_:)), "l", id: "go.editLocation"),
             item("Connect to Server…", #selector(BrowserWindowController.connectToServer(_:)), "k", [.command, .option]),
         ]))
-        let workspaces = NSMenuItem(title: "Workspaces", action: nil, keyEquivalent: "")
-        let workspacesMenu = NSMenu(title: "Workspaces")
+        let workspacesTitle = String(localized: "Workspaces", comment: "Window menu: submenu of saved sets of tabs")
+        let workspaces = NSMenuItem(title: workspacesTitle, action: nil, keyEquivalent: "")
+        let workspacesMenu = NSMenu(title: workspacesTitle)
         workspacesMenu.delegate = WorkspaceMenu.shared
         workspaces.submenu = workspacesMenu
         let window = submenu("Window", [
@@ -126,9 +127,9 @@ enum MainMenu {
     }
 
     /// `id`: a name for Settings ▸ Shortcuts when another command shares the action (otherwise the action names it).
-    private static func item(_ title: String, _ action: Selector, _ key: String = "",
+    private static func item(_ title: String.LocalizationValue, _ action: Selector, _ key: String = "",
                              _ modifiers: NSEvent.ModifierFlags = .command, id: String? = nil) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        let item = NSMenuItem(title: String(localized: title), action: action, keyEquivalent: key)
         item.keyEquivalentModifierMask = modifiers
         if let id { item.identifier = NSUserInterfaceItemIdentifier(id) }
         return item
@@ -143,7 +144,7 @@ enum MainMenu {
 
     /// Finder's Sort By shortcuts: ⌃⌥⌘1 Name, ⌃⌥⌘2 Kind, ⌃⌥⌘5 Date Modified, ⌃⌥⌘7 Size.
     private static func sortByMenu() -> NSMenuItem {
-        let titles = [("Name", "1"), ("Kind", "2"), ("Date Modified", "5"), ("Size", "7")]
+        let titles: [(String.LocalizationValue, String)] = [("Name", "1"), ("Kind", "2"), ("Date Modified", "5"), ("Size", "7")]
         let items = titles.enumerated().map { index, entry in
             let menuItem = item(entry.0, #selector(BrowserViewController.sortBy(_:)), entry.1, [.command, .option, .control])
             menuItem.tag = index
@@ -152,7 +153,8 @@ enum MainMenu {
         return submenu("Sort By", items)
     }
 
-    private static func submenu(_ title: String, _ items: [NSMenuItem]) -> NSMenuItem {
+    private static func submenu(_ title: String.LocalizationValue, _ items: [NSMenuItem]) -> NSMenuItem {
+        let title = String(localized: title)
         let menu = NSMenu(title: title)
         items.forEach(menu.addItem)
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
@@ -161,9 +163,10 @@ enum MainMenu {
     }
 
     private static func servicesItem() -> NSMenuItem {
-        let services = NSMenu(title: "Services")
+        let title = String(localized: "Services", comment: "App menu: the system Services submenu")
+        let services = NSMenu(title: title)
         NSApp.servicesMenu = services
-        let item = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.submenu = services
         return item
     }
@@ -189,7 +192,7 @@ final class WorkspaceMenu: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        let save = NSMenuItem(title: "Save Workspace…", action: #selector(save(_:)), keyEquivalent: "")
+        let save = NSMenuItem(title: String(localized: "Save Workspace…"), action: #selector(save(_:)), keyEquivalent: "")
         save.target = self
         menu.addItem(save)
         let saved = Workspaces.all
@@ -203,7 +206,7 @@ final class WorkspaceMenu: NSObject, NSMenuDelegate {
             menu.addItem(item)
         }
         menu.addItem(.separator())
-        let delete = NSMenuItem(title: "Delete Workspace", action: nil, keyEquivalent: "")
+        let delete = NSMenuItem(title: String(localized: "Delete Workspace", comment: "Window ▸ Workspaces: submenu listing saved workspaces to delete"), action: nil, keyEquivalent: "")
         let deleteMenu = NSMenu()
         for workspace in saved {
             let item = NSMenuItem(title: workspace.name, action: #selector(remove(_:)), keyEquivalent: "")

@@ -20,8 +20,8 @@ enum Places {
             } catch {
                 await MainActor.run {
                     let alert = NSAlert()
-                    alert.messageText = "“\(name)” couldn’t be ejected"
-                    alert.informativeText = "Close any files from it that are open in other apps, then try again. (\(error.localizedDescription))"
+                    alert.messageText = String(localized: "“\(name)” couldn’t be ejected")
+                    alert.informativeText = String(localized: "Close any files from it that are open in other apps, then try again. (\(error.localizedDescription))")
                     if let window { alert.beginSheetModal(for: window) } else { alert.runModal() }
                 }
             }
@@ -69,12 +69,16 @@ enum Places {
 
     static func defaultFavorites() -> [Place] {
         let fm = FileManager.default
+        // macOS's own names for its folders ("Schreibtisch", "Téléchargements"…), the same as Finder shows.
+        func named(_ url: URL, _ symbol: String) -> Place {
+            Place(title: fm.displayName(atPath: url.path), url: url, symbol: symbol)
+        }
         var places = [
             Place(title: NSUserName(), url: home, symbol: "house"),
-            Place(title: "Desktop", url: home.appending(path: "Desktop"), symbol: "menubar.dock.rectangle"),
-            Place(title: "Documents", url: home.appending(path: "Documents"), symbol: "doc"),
-            Place(title: "Downloads", url: home.appending(path: "Downloads"), symbol: "arrow.down.circle"),
-            Place(title: "Applications", url: URL(fileURLWithPath: "/Applications"), symbol: "square.grid.2x2"),
+            named(home.appending(path: "Desktop"), "menubar.dock.rectangle"),
+            named(home.appending(path: "Documents"), "doc"),
+            named(home.appending(path: "Downloads"), "arrow.down.circle"),
+            named(URL(fileURLWithPath: "/Applications"), "square.grid.2x2"),
         ]
         // Common homes for source code get a spot without any setup.
         for path in ["Developer", "Projects", "Code", "code", "src", "repos", "Documents/GitHub", "GitHub"] {
@@ -87,14 +91,14 @@ enum Places {
         }
         let iCloud = home.appending(path: "Library/Mobile Documents/com~apple~CloudDocs")
         if fm.fileExists(atPath: iCloud.path) {
-            places.append(Place(title: "iCloud Drive", url: iCloud, symbol: "icloud"))
+            places.append(named(iCloud, "icloud"))
         }
         return places
     }
 
     /// A folder's name as Finder shows it ("Trash" for `~/.Trash`; an archive opened as a folder goes by its file name).
     static func displayName(_ url: URL) -> String {
-        if Trash.isTrash(url) { return "Trash" }
+        if Trash.isTrash(url) { return String(localized: "Trash", comment: "The Trash folder") }
         if let (archive, top) = ArchiveCache.archive(containing: url), top.standardizedFileURL == url.standardizedFileURL {
             return archive.lastPathComponent
         }

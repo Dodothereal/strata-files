@@ -430,22 +430,30 @@ struct GitBadge: Equatable {
     var accessibilityLabel: String {
         if isFolder {
             switch state {
-            case .untracked: return "Untracked folder"
-            case .ignored: return "Ignored"
-            default: return "Contains \(state.title.lowercased()) files"
+            case .untracked: return String(localized: "Untracked folder", comment: "Git status of a folder")
+            case .ignored: return String(localized: "Ignored", comment: "Git status of a file or folder")
+            case .clean: return String(localized: "Contains unmodified files", comment: "Git status of a folder")
+            case .copied: return String(localized: "Contains copied files", comment: "Git status of a folder")
+            case .added: return String(localized: "Contains added files", comment: "Git status of a folder")
+            case .renamed: return String(localized: "Contains renamed files", comment: "Git status of a folder")
+            case .deleted: return String(localized: "Contains deleted files", comment: "Git status of a folder")
+            case .modified: return String(localized: "Contains modified files", comment: "Git status of a folder")
+            case .conflicted: return String(localized: "Contains conflicted files", comment: "Git status of a folder")
             }
         }
-        var label = state.title
-        if let originalPath, state == .renamed || state == .copied {
-            label += " from \(originalPath)"
+        var parts = [state.title]
+        if let originalPath, state == .renamed {
+            parts[0] = String(localized: "Renamed from \(originalPath)", comment: "Git status of a file; the placeholder is its previous path")
+        } else if let originalPath, state == .copied {
+            parts[0] = String(localized: "Copied from \(originalPath)", comment: "Git status of a file; the placeholder is the path it was copied from")
         }
         switch staging {
-        case .staged: label += ", staged"
-        case .unstaged: label += ", not staged"
-        case .partiallyStaged: label += ", partially staged"
+        case .staged: parts.append(String(localized: "staged", comment: "Git: the file's change is staged"))
+        case .unstaged: parts.append(String(localized: "not staged", comment: "Git: the file's change is not staged"))
+        case .partiallyStaged: parts.append(String(localized: "partially staged", comment: "Git: the file's changes are partly staged"))
         case nil: break
         }
-        return label
+        return parts.joined(separator: ", ")
     }
 }
 
@@ -467,15 +475,15 @@ extension GitFileState {
 
     var title: String {
         switch self {
-        case .clean: return "Unmodified"
-        case .ignored: return "Ignored"
-        case .untracked: return "Untracked"
-        case .copied: return "Copied"
-        case .added: return "Added"
-        case .renamed: return "Renamed"
-        case .deleted: return "Deleted"
-        case .modified: return "Modified"
-        case .conflicted: return "Conflicted"
+        case .clean: return String(localized: "Unmodified", comment: "Git status of a file or folder")
+        case .ignored: return String(localized: "Ignored", comment: "Git status of a file or folder")
+        case .untracked: return String(localized: "Untracked", comment: "Git status of a file or folder")
+        case .copied: return String(localized: "Copied", comment: "Git status of a file or folder")
+        case .added: return String(localized: "git.status.added", defaultValue: "Added", comment: "Git status of a file or folder")
+        case .renamed: return String(localized: "Renamed", comment: "Git status of a file or folder")
+        case .deleted: return String(localized: "Deleted", comment: "Git status of a file or folder")
+        case .modified: return String(localized: "git.status.modified", defaultValue: "Modified", comment: "Git status of a file or folder")
+        case .conflicted: return String(localized: "Conflicted", comment: "Git status of a file or folder")
         }
     }
 

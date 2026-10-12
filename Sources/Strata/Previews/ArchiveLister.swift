@@ -95,9 +95,9 @@ nonisolated enum ArchiveLister {
             }
         }
         if entries.isEmpty {
-            if run.timedOut { throw PreviewError.message("Listing this archive took too long.", symbol: "clock") }
-            if run.status != 0 { throw PreviewError.message("This archive couldn’t be read.", symbol: "archivebox") }
-            throw PreviewError.message("This archive is empty.", symbol: "archivebox")
+            if run.timedOut { throw PreviewError.message(String(localized: "Listing this archive took too long."), symbol: "clock") }
+            if run.status != 0 { throw PreviewError.message(String(localized: "This archive couldn’t be read."), symbol: "archivebox") }
+            throw PreviewError.message(String(localized: "This archive is empty."), symbol: "archivebox")
         }
 
         let root = ArchiveNode(name: "", isDirectory: true)
@@ -120,9 +120,9 @@ nonisolated enum ArchiveLister {
         sortAndTotal(root)
 
         let note: String? = if run.timedOut {
-            "Stopped after \(Int(timeout)) s"
+            String(localized: "Stopped after \(Int(timeout)) s", comment: "Archive listing stopped after this many seconds")
         } else if run.truncated || seen > entries.count {
-            "Showing first \(entries.count.formatted())"
+            String(localized: "Showing first \(entries.count.formatted())", comment: "Preview footer note: only the first part is shown (a count or a size)")
         } else {
             nil
         }

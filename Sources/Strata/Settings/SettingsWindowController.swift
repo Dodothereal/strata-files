@@ -8,7 +8,8 @@ final class SettingsWindowController: NSWindowController {
     private init() {
         let tabs = NSTabViewController()
         tabs.tabStyle = .toolbar
-        func pane(_ title: String, _ symbol: String, _ view: some View) -> NSTabViewItem {
+        func pane(_ title: String.LocalizationValue, _ symbol: String, _ view: some View) -> NSTabViewItem {
+            let title = String(localized: title)
             // Each pane reports its own height, so the window resizes to fit it (like System Settings panes) instead of
             // leaving short panes floating and cutting tall ones off; its title names the pane.
             let host = NSHostingController(rootView: view.frame(width: 520).fixedSize(horizontal: false, vertical: true))
@@ -26,7 +27,7 @@ final class SettingsWindowController: NSWindowController {
         tabs.addTabViewItem(pane("Shortcuts", "keyboard", ShortcutSettings()))
         let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]
-        window.title = "General"
+        window.title = String(localized: "General", comment: "Settings pane: general settings")
         super.init(window: window)
     }
 
@@ -40,16 +41,16 @@ final class SettingsWindowController: NSWindowController {
 
 /// Bridges a `Prefs` property into SwiftUI and refreshes when it changes.
 private struct PrefToggle: View {
-    let title: String
-    let caption: String?
+    let title: String.LocalizationValue
+    let caption: String.LocalizationValue?
     let get: () -> Bool
     let set: (Bool) -> Void
     @State private var value = false
 
     var body: some View {
         Toggle(isOn: Binding(get: { value }, set: { value = $0; set($0) })) {
-            Text(title)
-            if let caption { Text(caption) }
+            Text(String(localized: title))
+            if let caption { Text(String(localized: caption)) }
         }
         .onAppear { value = get() }
     }
@@ -62,6 +63,7 @@ private struct GeneralSettings: View {
 
     var body: some View {
         Form {
+            LanguageSection()
             Section("Browsing") {
                 PrefToggle(title: "Show hidden files", caption: "Also ⇧⌘. in any window.",
                            get: { Prefs.showHidden }, set: { Prefs.showHidden = $0 })
@@ -96,8 +98,11 @@ private struct GeneralSettings: View {
                 Text("Default File Browser")
             }
             Section("Command Line") {
-                LabeledContent("strata") {
+                // The command's name, as typed: not translated.
+                LabeledContent {
                     Button("Install…") { CommandLineTool.install() }
+                } label: {
+                    Text(verbatim: "strata")
                 }
                 Text("Then `strata .` opens the current folder in Strata, and `strata -s \"ext:pdf invoice\"` searches.")
                     .font(.callout)
@@ -116,17 +121,21 @@ private struct IndexSettings: View {
 
     var body: some View {
         Form {
-            Section("Index") {
+            Section {
                 LabeledContent("Status", value: status)
-                LabeledContent("Covers", value: "Your home folder and Applications")
+                LabeledContent(String(localized: "Covers", comment: "Settings ▸ Search & Index: which folders the index includes"),
+                               value: String(localized: "Your home folder and Applications"))
                 LabeledContent("Rebuild") {
                     Button("Rebuild Index") { FileIndex.shared.rebuild() }
                 }
+            } header: {
+                Text("Index", comment: "Settings ▸ Search & Index: section about the file index")
             }
             Section {
                 LabeledContent("Full Disk Access") {
                     if hasAccess {
-                        Label("On", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                        Label(String(localized: "On", comment: "Settings: Full Disk Access is granted"), systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
                     } else {
                         Button("Open Privacy Settings…") { NSWorkspace.shared.open(Privacy.settingsURL) }
                     }
@@ -137,7 +146,7 @@ private struct IndexSettings: View {
                         .foregroundStyle(.secondary)
                 }
             } header: {
-                Text("Access")
+                Text("Access", comment: "Settings ▸ Search & Index: section about Full Disk Access")
             }
             Section("Search Syntax") {
                 syntax("invoice 2026", "names containing all words")
@@ -155,9 +164,9 @@ private struct IndexSettings: View {
         .onReceive(timer) { _ in refresh() }
     }
 
-    private func syntax(_ example: String, _ meaning: String) -> some View {
+    private func syntax(_ example: String, _ meaning: String.LocalizationValue) -> some View {
         LabeledContent {
-            Text(meaning).foregroundStyle(.secondary)
+            Text(String(localized: meaning)).foregroundStyle(.secondary)
         } label: {
             Text(example).font(.system(.callout, design: .monospaced))
         }
@@ -167,9 +176,9 @@ private struct IndexSettings: View {
         Privacy.refresh()
         hasAccess = Privacy.hasFullDiskAccess
         switch FileIndex.shared.phase {
-        case .loading: status = "Loading…"
-        case .scanning(let items): status = "Indexing… \(items.formatted()) items so far"
-        case .ready: status = "\(FileIndex.shared.itemCount.formatted()) items · up to date"
+        case .loading: status = String(localized: "Loading…")
+        case .scanning(let items): status = String(localized: "Indexing… \(items) items so far", comment: "plural")
+        case .ready: status = String(localized: "\(FileIndex.shared.itemCount) items · up to date", comment: "plural")
         }
     }
 }
@@ -220,22 +229,23 @@ enum CommandLineTool {
         let command = "sudo mkdir -p /usr/local/bin && sudo ln -sf \(quoted) \(link)"
         let alert = NSAlert()
         if (try? FileManager.default.destinationOfSymbolicLink(atPath: link)) == tool {
-            alert.messageText = "The strata command is already installed."
+            alert.messageText = String(localized: "The strata command is already installed.")
         } else if FileManager.default.isWritableFile(atPath: "/usr/local/bin") {
             try? FileManager.default.removeItem(atPath: link)
             do {
                 try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: tool)
-                alert.messageText = "Installed the strata command."
-                alert.informativeText = "Try “strata .” in a terminal."
+                alert.messageText = String(localized: "Installed the strata command.")
+                alert.informativeText = String(localized: "Try “strata .” in a terminal.")
             } catch {
-                alert.messageText = "Couldn’t install the strata command."
+                alert.messageText = String(localized: "Couldn’t install the strata command.")
                 alert.informativeText = error.localizedDescription
             }
         } else {
-            alert.messageText = "Install the strata command"
-            alert.informativeText = "/usr/local/bin isn’t writable without an administrator password. Run this in a terminal:\n\n\(command)"
-            alert.addButton(withTitle: "Copy Command")
-            alert.addButton(withTitle: "Close")
+            alert.messageText = String(localized: "Install the strata command")
+            alert.informativeText = String(localized: "/usr/local/bin isn’t writable without an administrator password. Run this in a terminal:\n\n\(command)",
+                                           comment: "The last part is a shell command")
+            alert.addButton(withTitle: String(localized: "Copy Command"))
+            alert.addButton(withTitle: String(localized: "Close", comment: "Alert button: close this message"))
             if alert.runModal() == .alertFirstButtonReturn {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(command, forType: .string)

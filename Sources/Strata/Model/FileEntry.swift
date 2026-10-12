@@ -22,10 +22,22 @@ nonisolated struct FileEntry: Sendable, Hashable {
 
     /// macOS calls `.ts` an MPEG-2 stream and has no names for many source files; developers expect these.
     static let developerKinds: [String: String] = [
-        "ts": "TypeScript source", "tsx": "TypeScript JSX source", "jsx": "JavaScript JSX source", "mts": "TypeScript source",
-        "rs": "Rust source", "go": "Go source", "kt": "Kotlin source", "kts": "Kotlin script", "gd": "GDScript source",
-        "dart": "Dart source", "vue": "Vue component", "svelte": "Svelte component", "toml": "TOML document",
-        "lock": "Lockfile", "tf": "Terraform configuration", "proto": "Protocol Buffers definition",
+        "ts": String(localized: "TypeScript source", comment: "Kind of file"),
+        "tsx": String(localized: "TypeScript JSX source", comment: "Kind of file"),
+        "jsx": String(localized: "JavaScript JSX source", comment: "Kind of file"),
+        "mts": String(localized: "TypeScript source", comment: "Kind of file"),
+        "rs": String(localized: "Rust source", comment: "Kind of file"),
+        "go": String(localized: "Go source", comment: "Kind of file"),
+        "kt": String(localized: "Kotlin source", comment: "Kind of file"),
+        "kts": String(localized: "Kotlin script", comment: "Kind of file"),
+        "gd": String(localized: "GDScript source", comment: "Kind of file"),
+        "dart": String(localized: "Dart source", comment: "Kind of file"),
+        "vue": String(localized: "Vue component", comment: "Kind of file"),
+        "svelte": String(localized: "Svelte component", comment: "Kind of file"),
+        "toml": String(localized: "TOML document", comment: "Kind of file"),
+        "lock": String(localized: "Lockfile", comment: "Kind of file: a package manager’s lock file"),
+        "tf": String(localized: "Terraform configuration", comment: "Kind of file"),
+        "proto": String(localized: "Protocol Buffers definition", comment: "Kind of file"),
     ]
 
     /// The Kind shown everywhere (list, inspector, conflict sheet, AI plans): the system's description, except for
@@ -36,7 +48,8 @@ nonisolated struct FileEntry: Sendable, Hashable {
         if !isDirectory, let developer = developerKinds[ext], !(ext == "ts" || ext == "mts") || (size ?? 0) < 4_000_000 {
             return developer
         }
-        return system ?? (isDirectory && !isPackage ? "Folder" : "Document")
+        return system ?? (isDirectory && !isPackage ? String(localized: "Folder", comment: "Kind of item")
+                                                    : String(localized: "Document", comment: "Kind of item"))
     }
 
     static let resourceKeys: [URLResourceKey] = [

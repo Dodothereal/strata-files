@@ -41,8 +41,8 @@ extension BrowserViewController {
         }
         guard let folder = ArchiveCache.folder(for: archive), let kind = ArchiveKind(fileName: archive.lastPathComponent) else {
             let alert = NSAlert()
-            alert.messageText = "“\(archive.lastPathComponent)” couldn’t be opened."
-            alert.informativeText = "It can’t be read."
+            alert.messageText = String(localized: "“\(archive.lastPathComponent)” couldn’t be opened.")
+            alert.informativeText = String(localized: "It can’t be read.")
             return Self.present(alert, in: window) { _ in }
         }
         let key = folder.path
@@ -63,11 +63,11 @@ extension BrowserViewController {
             if inspection.complete, inspection.bytes > Self.largeArchive {
                 let size = ByteCountFormatter.string(fromByteCount: inspection.bytes, countStyle: .file)
                 let alert = NSAlert()
-                alert.messageText = "“\(archive.lastPathComponent)” holds \(size)."
-                alert.informativeText = "Opening it as a folder unpacks all of it into Strata’s caches first. Extract puts it next to the archive instead."
-                alert.addButton(withTitle: "Open")
-                alert.addButton(withTitle: "Extract")
-                alert.addButton(withTitle: "Cancel")
+                alert.messageText = String(localized: "“\(archive.lastPathComponent)” holds \(size).", comment: "An archive, then its unpacked size (“5 GB”)")
+                alert.informativeText = String(localized: "Opening it as a folder unpacks all of it into Strata’s caches first. Extract puts it next to the archive instead.")
+                alert.addButton(withTitle: String(localized: "Open", comment: "Alert button: open the archive as a folder"))
+                alert.addButton(withTitle: String(localized: "Extract", comment: "Alert button: unpack the archive next to it"))
+                alert.addButton(withTitle: String(localized: "Cancel"))
                 let response = await withCheckedContinuation { continuation in
                     Self.present(alert, in: window) { continuation.resume(returning: $0) }
                 }
@@ -99,7 +99,7 @@ extension BrowserViewController {
         } catch {
             OpeningArchives.waiters[key] = nil
             delegate?.browser(self, openingArchive: nil, stop: nil)
-            return Self.report([(archive, error)], title: "couldn’t be opened", in: window)
+            return Self.report([(archive, error)], .open, in: window)
         }
         let job = ArchiveJob(.browse(archive, at: folder), undo: nil)
         delegate?.browser(self, openingArchive: archive) { job.cancel() }
@@ -111,7 +111,7 @@ extension BrowserViewController {
                 ArchiveCache.remove(entry)
                 if job.state == .failed, let message = job.errorMessage {
                     let alert = NSAlert()
-                    alert.messageText = "“\(archive.lastPathComponent)” couldn’t be opened."
+                    alert.messageText = String(localized: "“\(archive.lastPathComponent)” couldn’t be opened.")
                     alert.informativeText = message
                     Self.present(alert, in: window) { _ in }
                 }

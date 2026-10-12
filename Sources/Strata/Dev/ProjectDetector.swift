@@ -204,7 +204,8 @@ nonisolated enum ProjectDetector {
         let projectFiles = withExtension(["csproj", "fsproj", "vbproj"])
         let solutions = withExtension(["sln", "slnx"])
         if !projectFiles.isEmpty || !solutions.isEmpty {
-            kinds.append(ProjectKindInfo(kind: .dotnet, detail: solutions.isEmpty ? nil : "Solution"))
+            kinds.append(ProjectKindInfo(kind: .dotnet, detail: solutions.isEmpty ? nil
+                : String(localized: "Solution", comment: "A .NET project that has a Visual Studio solution file (.sln)")))
             if !projectFiles.isEmpty {
                 addArtifact("bin", .dotnet, .build)
                 addArtifact("obj", .dotnet, .build)

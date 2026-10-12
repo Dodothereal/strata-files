@@ -8,7 +8,7 @@ final class SearchScopeBar: NSSplitViewItemAccessoryViewController {
     var onMatchCase: ((Bool) -> Void)?
 
     private let scope = NSSegmentedControl()
-    private let matchCase = NSButton(checkboxWithTitle: "Match Case", target: nil, action: nil)
+    private let matchCase = NSButton(checkboxWithTitle: String(localized: "Match Case"), target: nil, action: nil)
     private let summary = NSTextField(labelWithString: "")
     private let save = NSButton()
 
@@ -16,7 +16,7 @@ final class SearchScopeBar: NSSplitViewItemAccessoryViewController {
         scope.segmentStyle = .automatic
         scope.trackingMode = .selectOne
         scope.segmentCount = 2
-        scope.setLabel("Everywhere", forSegment: 0)
+        scope.setLabel(String(localized: "Everywhere", comment: "Search scope: the whole index"), forSegment: 0)
         scope.selectedSegment = 0
         scope.controlSize = .small
         scope.target = self
@@ -26,7 +26,7 @@ final class SearchScopeBar: NSSplitViewItemAccessoryViewController {
         matchCase.font = .systemFont(ofSize: 11)
         matchCase.target = self
         matchCase.action = #selector(matchCaseChanged)
-        matchCase.toolTip = "Names must match the letters’ case and accents exactly (case: in the search)"
+        matchCase.toolTip = String(localized: "Names must match the letters’ case and accents exactly (case: in the search)", comment: "Keep case: as is, it is search syntax")
 
         summary.font = .systemFont(ofSize: 11)
         summary.textColor = .secondaryLabelColor
@@ -36,7 +36,7 @@ final class SearchScopeBar: NSSplitViewItemAccessoryViewController {
         save.controlSize = .small
         save.image = NSImage(systemSymbolName: "bookmark", accessibilityDescription: nil)
         save.imagePosition = .imageLeading
-        save.title = "Save Search"
+        save.title = String(localized: "Save Search")
         save.target = self
         save.action = #selector(saveClicked)
 
@@ -64,7 +64,7 @@ final class SearchScopeBar: NSSplitViewItemAccessoryViewController {
         setMatchCase(matchCase, applies: caseApplies)
         if let folderName {
             scope.segmentCount = 2
-            scope.setLabel("“\(folderName)”", forSegment: 1)
+            scope.setLabel(String(localized: "“\(folderName)”", comment: "Search scope: the current folder, by name in quotes"), forSegment: 1)
         } else {
             scope.segmentCount = 1
         }

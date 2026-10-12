@@ -11,7 +11,7 @@ enum FileOps {
 
     /// An archive opened as a folder is a temporary copy: nothing inside it is changed from Strata.
     static let insideArchiveError = CocoaError(.fileWriteNoPermission, userInfo: [
-        NSLocalizedDescriptionKey: "Items inside an archive opened as a folder can’t be changed. Copy them out first.",
+        NSLocalizedDescriptionKey: String(localized: "Items inside an archive opened as a folder can’t be changed. Copy them out first."),
     ])
 
     static func rename(_ url: URL, to name: String, undo: UndoManager?) async throws -> URL {
@@ -20,7 +20,7 @@ enum FileOps {
         if TransferEngine.exists(destination), destination.path.lowercased() != url.path.lowercased() {
             throw CocoaError(.fileWriteFileExists, userInfo: [
                 NSFilePathErrorKey: destination.path,
-                NSLocalizedDescriptionKey: "The name “\(name)” is already taken. Please choose a different name.",
+                NSLocalizedDescriptionKey: String(localized: "The name “\(name)” is already taken. Please choose a different name."),
             ])
         }
         try await move([(from: url, to: destination)], actionName: "Rename", undo: undo)
@@ -60,8 +60,7 @@ enum FileOps {
             } catch {
                 let pair = pairs[step.pair]
                 let named = NSError(domain: NSCocoaErrorDomain, code: (error as NSError).code, userInfo: [
-                    NSLocalizedDescriptionKey: "“\(pair.from.lastPathComponent)” couldn’t be renamed to “\(pair.to.lastPathComponent)”: "
-                        + error.localizedDescription,
+                    NSLocalizedDescriptionKey: String(localized: "“\(pair.from.lastPathComponent)” couldn’t be renamed to “\(pair.to.lastPathComponent)”: \(error.localizedDescription)"),
                     NSUnderlyingErrorKey: error,
                 ])
                 // Back the way it came; whatever can't go back stays where it is, but never hidden.
@@ -148,9 +147,23 @@ enum FileOps {
         return pairs.contains { key($0.to) != key($0.from) && sources.contains(key($0.to)) }
     }
 
+    /// A translated piece of a file name ("untitled folder", " copy"), or the English one when the translation can't be
+    /// part of a name: translations come from language files anyone can contribute, and a "/" or ".." in one must never
+    /// place an item somewhere else (nor a leading "." hide it).
+    nonisolated static func nameText(_ translated: String, english: String) -> String {
+        let trimmed = translated.trimmingCharacters(in: .whitespaces)
+        let unsafe = translated.contains("/") || translated.contains(":")
+            || translated.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) || $0 == "\u{0}" }
+        // Nor "~…", which a plan would read as a path in your home folder.
+        guard !unsafe, !trimmed.isEmpty, !trimmed.hasPrefix("."), !trimmed.hasPrefix("~"), translated.utf8.count <= 100 else { return english }
+        return translated
+    }
+
     static func newFolder(in directory: URL, undo: UndoManager?) throws -> URL {
         guard !ArchiveCache.contains(directory) else { throw insideArchiveError }
-        let url = available(directory.appending(path: "untitled folder"), copyStyle: false)
+        let name = nameText(String(localized: "untitled folder", comment: "Name of a new folder, as Finder names it"),
+                            english: "untitled folder")
+        let url = available(directory.appending(path: name), copyStyle: false)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
         let entry = OperationLog.shared.recordCreate("New Folder", [url])
         registerTrashUndo([url], "New Folder", undo, entry: entry)
@@ -242,7 +255,12 @@ enum FileOps {
         let base = ext.isEmpty ? url.lastPathComponent : url.deletingPathExtension().lastPathComponent
         var n = 1
         while true {
-            let suffix = copyStyle ? (n == 1 ? " copy" : " copy \(n)") : " \(n + 1)"
+            let suffix = !copyStyle ? " \(n + 1)"
+                : n == 1 ? nameText(String(localized: " copy", comment: "Added to a duplicate’s name like Finder: “Report copy.pdf”. Keep the leading space."),
+                                    english: " copy")
+                // The number stays plain digits ("copy 2"), whatever the region: it's part of a name on disk.
+                : nameText(String(localized: " copy \(String(n))", comment: "Added to a later duplicate’s name like Finder: “Report copy 2.pdf”. Keep the leading space."),
+                           english: " copy \(n)")
             let tail = suffix + (ext.isEmpty ? "" : "." + ext)
             // Shorten the base so the new name still fits the 255-byte limit.
             let fitted = TransferEngine.fitting(base, maxBytes: max(1, 255 - tail.utf8.count))
@@ -273,7 +291,7 @@ enum FileOps {
     /// silently.
     static func reportUndoFailure(_ actionName: String, _ error: Error) {
         let alert = NSAlert()
-        alert.messageText = "Couldn’t undo “\(actionName)”"
+        alert.messageText = String(localized: "Couldn’t undo “\(OperationLog.displayName(actionName))”")
         alert.informativeText = error.localizedDescription
         if let window = NSApp.keyWindow { alert.beginSheetModal(for: window) } else { alert.runModal() }
     }
@@ -294,7 +312,7 @@ enum FileOps {
         undo.registerUndo(withTarget: undo) { target in
             MainActor.assumeIsolated { handler(target) }
         }
-        undo.setActionName(actionName)
+        undo.setActionName(OperationLog.displayName(actionName))
     }
 
     /// Undo for completed moves: move everything back. The inverse is registered right away, inside the undo

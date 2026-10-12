@@ -15,7 +15,7 @@ final class SQLitePreviewView: PreviewView {
         load({
             guard try SQLiteReader.isSQLite(url) else { throw PreviewError.unsupported }
             let tables = try SQLiteReader.tables(url)
-            guard let first = tables.first else { throw PreviewError.message("This database has no tables.", symbol: "cylinder") }
+            guard let first = tables.first else { throw PreviewError.message(String(localized: "This database has no tables."), symbol: "cylinder") }
             return SQLiteSnapshot(tables: tables, rows: try SQLiteReader.rows(url, table: first.name))
         }, apply: { [weak self] snapshot in
             self?.show(snapshot)
@@ -65,14 +65,16 @@ final class SQLitePreviewView: PreviewView {
         picker.removeAllItems()
         for table in tables {
             let item = NSMenuItem(title: table.name, action: nil, keyEquivalent: "")
-            item.image = NSImage(systemSymbolName: table.isView ? "eye" : "tablecells", accessibilityDescription: table.isView ? "View" : "Table")
+            item.image = NSImage(systemSymbolName: table.isView ? "eye" : "tablecells", accessibilityDescription: table.isView
+                ? String(localized: "Database View", comment: "SQLite: a database view (a saved query), not a table")
+                : String(localized: "Table", comment: "SQLite: a database table"))
             if let count = table.rowCount { item.badge = NSMenuItemBadge(string: count.formatted()) }
             picker.menu?.addItem(item)
         }
         let tableCount = tables.count(where: { !$0.isView }), viewCount = tables.count - tableCount
         summary.stringValue = [
-            tableCount > 0 ? (tableCount == 1 ? "1 table" : "\(tableCount) tables") : nil,
-            viewCount > 0 ? (viewCount == 1 ? "1 view" : "\(viewCount) views") : nil,
+            tableCount > 0 ? String(localized: "\(tableCount) tables", comment: "plural") : nil,
+            viewCount > 0 ? String(localized: "\(viewCount) views", comment: "plural") : nil,
         ].compactMap { $0 }.joined(separator: " · ")
         contentView.subviews.forEach { $0.isHidden = false }
         show(snapshot.rows, of: tables[0])
@@ -82,14 +84,16 @@ final class SQLitePreviewView: PreviewView {
         grid.show(rows.data)
         let total = table.rowCount ?? rows.data.rows.count
         let rowText = table.rowCount == nil && rows.data.rows.count == SQLiteReader.rowLimit
-            ? "\(SQLiteReader.rowLimit.formatted())+ rows" : (total == 1 ? "1 row" : "\(total.formatted()) rows")
-        let columns = rows.data.columns.count == 1 ? "1 column" : "\(rows.data.columns.count.formatted()) columns"
-        let kind = table.isView ? "View" : "Table"
+            ? String(localized: "\(SQLiteReader.rowLimit)+ rows", comment: "plural") : String(localized: "\(total) rows", comment: "plural")
+        let columns = String(localized: "\(rows.data.columns.count) columns", comment: "plural")
+        let kind = table.isView ? String(localized: "Database View", comment: "SQLite: a database view (a saved query), not a table")
+            : String(localized: "Table", comment: "SQLite: a database table")
         if let error = rows.error {
             footer.show([kind, columns], warning: error)
         } else {
             let truncated = rows.data.rows.count == SQLiteReader.rowLimit && total > SQLiteReader.rowLimit
-            footer.show(["\(rowText) × \(columns)"], note: truncated ? "Showing first \(SQLiteReader.rowLimit.formatted())" : (table.isView ? kind : nil))
+            footer.show(["\(rowText) × \(columns)"], note: truncated
+                ? String(localized: "Showing first \(SQLiteReader.rowLimit.formatted())", comment: "Preview footer note: only the first part is shown (a count or a size)") : (table.isView ? kind : nil))
         }
     }
 

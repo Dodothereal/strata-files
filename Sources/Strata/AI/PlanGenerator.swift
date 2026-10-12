@@ -25,83 +25,148 @@ nonisolated struct PlanRecipe: Sendable, Hashable {
     /// "Rename by date taken", "Move into “Archive” — only images named “Screenshot”, modified before Sep 11, 2026".
     var title: String {
         let dateWord: String = switch dateSource {
-        case .taken: "date taken"
-        case .created: "date created"
-        case .modified: "date modified"
-        case .best: "date"
+        case .taken: String(localized: "date taken", comment: "Which date a plan uses, as in “Group into folders by year (date taken)”")
+        case .created: String(localized: "date created", comment: "Which date a plan uses, as in “Group into folders by year (date created)”")
+        case .modified: String(localized: "date modified", comment: "Which date a plan uses, as in “Group into folders by year (date modified)”")
+        case .best: String(localized: "date", comment: "Which date a plan uses, as in “Group into folders by year (date)”")
         }
         var text: String
         switch action {
         case let .rename(template, transforms):
             let datey = ["{date}", "{time}", "{datetime}", "{year}", "{month}", "{day}"].contains { template.contains($0) }
+            let changes = transforms.map(\.title).joined(separator: ", ")
             if template == "{name}" {
-                text = "Rename: " + transforms.map(\.title).joined(separator: ", ")
+                text = String(localized: "Rename: \(changes)", comment: "Plan description; the changes are like “lowercase, spaces → dashes”")
             } else if datey, template.hasPrefix("{name}") {
-                text = "Add the \(dateWord) after each name"
+                text = switch dateSource {
+                case .taken: String(localized: "Add the date taken after each name")
+                case .created: String(localized: "Add the date created after each name")
+                case .modified: String(localized: "Add the date modified after each name")
+                case .best: String(localized: "Add the date after each name")
+                }
             } else if datey, template.contains("{name}") {
-                text = "Add the \(dateWord) before each name"
+                text = switch dateSource {
+                case .taken: String(localized: "Add the date taken before each name")
+                case .created: String(localized: "Add the date created before each name")
+                case .modified: String(localized: "Add the date modified before each name")
+                case .best: String(localized: "Add the date before each name")
+                }
             } else if datey {
                 let withTime = template.contains("{time}") || template.contains("{datetime}")
-                text = "Rename by " + (withTime ? dateWord.replacingOccurrences(of: "date", with: "date and time") : dateWord)
+                text = switch (dateSource, withTime) {
+                case (.taken, false): String(localized: "Rename by date taken")
+                case (.taken, true): String(localized: "Rename by date and time taken")
+                case (.created, false): String(localized: "Rename by date created")
+                case (.created, true): String(localized: "Rename by date and time created")
+                case (.modified, false): String(localized: "Rename by date modified")
+                case (.modified, true): String(localized: "Rename by date and time modified")
+                case (.best, false): String(localized: "Rename by date")
+                case (.best, true): String(localized: "Rename by date and time")
+                }
             } else if template.hasSuffix(" {n}"), !template.dropLast(4).contains("{") {
-                let base = template.dropLast(4)
-                text = "Number them “\(base) 01”, “\(base) 02”, …"
+                let base = String(template.dropLast(4))
+                text = String(localized: "Number them “\(base) 01”, “\(base) 02”, …", comment: "Plan description; the name is the user’s")
             } else {
-                text = "Rename to “\(Self.readable(template))”"
+                text = String(localized: "Rename to “\(Self.readable(template))”", comment: "Plan description; the pattern is like “year-month name”")
             }
-            if template != "{name}", !transforms.isEmpty { text += ", " + transforms.map(\.title).joined(separator: ", ") }
-        case let .move(folder): text = "Move into “\(folder)”"
+            if template != "{name}", !transforms.isEmpty { text += ", " + changes }
+        case let .move(folder): text = String(localized: "Move into “\(folder)”", comment: "Plan description; a folder name")
         case let .group(key, inside):
-            let by: String = switch key {
-            case .year, .month, .day: dateSource == .best ? key.rawValue : "\(key.rawValue) (\(dateWord))"
-            case .kind: "kind"
-            case .extension: "extension"
-            case .camera: "camera"
-            }
-            text = "Group into folders by \(by)" + (inside.map { " inside “\($0)”" } ?? "")
-        case .trash: text = "Move to the Trash"
+            // Whole sentences: "by year" needs its own grammar in many languages.
+            let date: String? = dateSource == .best ? nil : dateWord
+            text = Self.groupDescription(key, date: date, inside: inside)
+        case .trash: text = String(localized: "Move to the Trash", comment: "Plan description")
         }
-        if let only = Self.describe(filter) { text += " — only \(only)" }
+        if let only = Self.describe(filter) {
+            text = String(localized: "\(text) — only \(only)",
+                          comment: "A plan description, then which items it applies to: “Move into “Archive” — only images named “Screenshot””")
+        }
         return text
+    }
+
+    /// "Group into folders by year (date taken) inside “Photos”", as one sentence per case.
+    static func groupDescription(_ key: PlanRecipe.GroupKey, date: String?, inside: String?) -> String {
+        switch (key, date, inside) {
+        case (.year, nil, nil): return String(localized: "Group into folders by year", comment: "Plan description")
+        case (.year, nil, let folder?): return String(localized: "Group into folders by year inside “\(folder)”", comment: "Plan description; a folder name")
+        case (.year, let date?, nil): return String(localized: "Group into folders by year (\(date))", comment: "Plan description; the date used, like “date taken”")
+        case (.year, let date?, let folder?):
+            return String(localized: "Group into folders by year (\(date)) inside “\(folder)”", comment: "Plan description; the date used, then a folder name")
+        case (.month, nil, nil): return String(localized: "Group into folders by month", comment: "Plan description")
+        case (.month, nil, let folder?): return String(localized: "Group into folders by month inside “\(folder)”", comment: "Plan description; a folder name")
+        case (.month, let date?, nil): return String(localized: "Group into folders by month (\(date))", comment: "Plan description; the date used, like “date taken”")
+        case (.month, let date?, let folder?):
+            return String(localized: "Group into folders by month (\(date)) inside “\(folder)”", comment: "Plan description; the date used, then a folder name")
+        case (.day, nil, nil): return String(localized: "Group into folders by day", comment: "Plan description")
+        case (.day, nil, let folder?): return String(localized: "Group into folders by day inside “\(folder)”", comment: "Plan description; a folder name")
+        case (.day, let date?, nil): return String(localized: "Group into folders by day (\(date))", comment: "Plan description; the date used, like “date taken”")
+        case (.day, let date?, let folder?):
+            return String(localized: "Group into folders by day (\(date)) inside “\(folder)”", comment: "Plan description; the date used, then a folder name")
+        case (.kind, _, nil): return String(localized: "Group into folders by kind", comment: "Plan description: images, PDFs…")
+        case (.kind, _, let folder?): return String(localized: "Group into folders by kind inside “\(folder)”", comment: "Plan description; a folder name")
+        case (.extension, _, nil): return String(localized: "Group into folders by extension", comment: "Plan description: the name’s extension")
+        case (.extension, _, let folder?):
+            return String(localized: "Group into folders by extension inside “\(folder)”", comment: "Plan description; a folder name")
+        case (.camera, _, nil): return String(localized: "Group into folders by camera", comment: "Plan description")
+        case (.camera, _, let folder?): return String(localized: "Group into folders by camera inside “\(folder)”", comment: "Plan description; a folder name")
+        }
     }
 
     /// "{year}-{month} {name}" → "year-month name".
     static func readable(_ template: String) -> String {
-        let words = ["{date}": "date", "{time}": "time", "{datetime}": "date time", "{year}": "year", "{month}": "month",
-                     "{monthname}": "month name", "{day}": "day", "{name}": "name", "{n}": "number", "{camera}": "camera",
-                     "{kind}": "kind", "{parent}": "folder name"]
+        let words = ["{date}": String(localized: "date", comment: "A part of a name pattern, as in “Rename to “year-month name””"),
+                     "{time}": String(localized: "time", comment: "A part of a name pattern, as in “Rename to “date time””"),
+                     "{datetime}": String(localized: "date time", comment: "A part of a name pattern: the date and time"),
+                     "{year}": String(localized: "year", comment: "A part of a name pattern, as in “Rename to “year-month name””"),
+                     "{month}": String(localized: "month", comment: "A part of a name pattern, as in “Rename to “year-month name””"),
+                     "{monthname}": String(localized: "month name", comment: "A part of a name pattern: the month’s name"),
+                     "{day}": String(localized: "day", comment: "A part of a name pattern: the day of the month"),
+                     "{name}": String(localized: "name", comment: "A part of a name pattern: the item’s current name"),
+                     "{n}": String(localized: "number", comment: "A part of a name pattern: a sequence number"),
+                     "{camera}": String(localized: "camera", comment: "A part of a name pattern: the camera model"),
+                     "{kind}": String(localized: "kind", comment: "A part of a name pattern: the item’s kind"),
+                     "{parent}": String(localized: "folder name", comment: "A part of a name pattern: the name of the item’s folder")]
         return words.reduce(template) { $0.replacingOccurrences(of: $1.key, with: $1.value) }
     }
 
     /// "images named “Screenshot”, modified before Sep 11, 2026", or nil for no constraints.
     static func describe(_ filter: SearchFilter) -> String? {
-        var head: [String] = []
+        var things: [String] = []
         if !filter.kinds.isEmpty {
-            let titles = SearchFilter.Kind.allCases.filter(filter.kinds.contains).map { $0 == .pdf ? "PDFs" : $0.title.lowercased() }
-            head.append(titles.joined(separator: " and "))
+            things.append(ListFormatter.localizedString(byJoining: SearchFilter.Kind.allCases.filter(filter.kinds.contains).map(\.noun)))
         }
-        if !filter.extensions.isEmpty { head.append(filter.extensions.sorted().map { "." + $0 }.joined(separator: ", ")) }
-        if head.isEmpty, !filter.nameContains.isEmpty { head.append("items") }
-        if !filter.nameContains.isEmpty { head.append("named " + filter.nameContains.map { "“\($0)”" }.joined(separator: " + ")) }
+        if !filter.extensions.isEmpty { things.append(filter.extensions.sorted().map { "." + $0 }.joined(separator: ", ")) }
+        var head = things.joined(separator: " ")
+        if !filter.nameContains.isEmpty {
+            let names = filter.nameContains.map { "“\($0)”" }.joined(separator: " + ")
+            head = head.isEmpty ? String(localized: "items named \(names)", comment: "Which items a plan applies to; names like “Screenshot”")
+                : String(localized: "\(head) named \(names)", comment: "Which items a plan applies to: “images named “Screenshot””")
+        }
         var tail: [String] = []
         if let dates = filter.dateDescription { tail.append(dates.prefix(1).lowercased() + dates.dropFirst()) }
-        if let min = filter.minSize { tail.append("over " + ByteCountFormatter.string(fromByteCount: min, countStyle: .file)) }
-        if let max = filter.maxSize { tail.append("under " + ByteCountFormatter.string(fromByteCount: max, countStyle: .file)) }
+        if let min = filter.minSize {
+            tail.append(String(localized: "over \(ByteCountFormatter.string(fromByteCount: min, countStyle: .file))",
+                               comment: "Which items a plan applies to: bigger than a size, as in “images, over 10 MB”"))
+        }
+        if let max = filter.maxSize {
+            tail.append(String(localized: "under \(ByteCountFormatter.string(fromByteCount: max, countStyle: .file))",
+                               comment: "Which items a plan applies to: smaller than a size, as in “images, under 10 MB”"))
+        }
         if head.isEmpty, tail.isEmpty { return nil }
-        if head.isEmpty { head.append("items") }
-        return ([head.joined(separator: " ")] + tail).joined(separator: ", ")
+        if head.isEmpty { head = String(localized: "items", comment: "Which items a plan applies to, as in “items, over 10 MB”") }
+        return ([head] + tail).joined(separator: ", ")
     }
 }
 
 nonisolated extension PlanRecipe.NameTransform {
     var title: String {
         switch self {
-        case .lowercase: "lowercase"
-        case .uppercase: "uppercase"
-        case .titlecase: "title case"
-        case .spacesToDashes: "spaces → dashes"
-        case .spacesToUnderscores: "spaces → underscores"
-        case .removeSpaces: "remove spaces"
+        case .lowercase: String(localized: "lowercase", comment: "Name change: make names lowercase")
+        case .uppercase: String(localized: "uppercase", comment: "Name change: make names uppercase")
+        case .titlecase: String(localized: "title case", comment: "Name change: capitalize each word")
+        case .spacesToDashes: String(localized: "spaces → dashes", comment: "Name change: replace spaces with dashes")
+        case .spacesToUnderscores: String(localized: "spaces → underscores", comment: "Name change: replace spaces with underscores")
+        case .removeSpaces: String(localized: "remove spaces", comment: "Name change: remove spaces")
         }
     }
 
@@ -127,14 +192,16 @@ nonisolated enum PlanError: LocalizedError {
             switch AIModel.status {
             case .available: break
             case .appleIntelligenceNotEnabled:
-                return "Strata’s built-in rules don’t cover this request. Turn on Apple Intelligence to plan anything you can describe."
+                return String(localized: "Strata’s built-in rules don’t cover this request. Turn on Apple Intelligence to plan anything you can describe.")
             case .deviceNotEligible:
-                return "Strata’s built-in rules don’t cover this request. Try describing it like “rename these photos by date taken” or “move PDFs into a folder named Invoices”."
+                return String(localized: "Strata’s built-in rules don’t cover this request. Try describing it like “rename these photos by date taken” or “move PDFs into a folder named Invoices”.",
+                              comment: "Keep the quoted examples in English: the built-in rules only understand English requests")
             default:
-                return "Strata’s built-in rules don’t cover this request. \(AIModel.explanation ?? "")"
+                return String(localized: "Strata’s built-in rules don’t cover this request. \(AIModel.explanation ?? "")",
+                              comment: "Followed by why Apple Intelligence can’t be used")
             }
-            return "Strata couldn’t turn this request into file operations. Try rephrasing it."
-        case .nothingSelected: return "Select the files you want to change first."
+            return String(localized: "Strata couldn’t turn this request into file operations. Try rephrasing it.")
+        case .nothingSelected: return String(localized: "Select the files you want to change first.")
         }
     }
 }
@@ -424,7 +491,9 @@ nonisolated enum ModelPlanner {
                 default: break
                 }
             }
-            return operations.isEmpty ? .unsupported : .explicit(operations, summary: content["summary"]?.meaningfulString ?? "Custom plan")
+            let summary = content["summary"]?.meaningfulString
+                ?? String(localized: "Custom plan", comment: "What a request was understood as, when the model didn’t say")
+            return operations.isEmpty ? .unsupported : .explicit(operations, summary: summary)
         default:
             return .unsupported
         }
@@ -455,7 +524,8 @@ nonisolated enum PlanExpander {
             var dated: [PlanItem] = []
             for item in matching {
                 if needsDate, item.date(recipe.dateSource) == nil {
-                    output.skipped.append((item, recipe.dateSource == .taken ? "No date taken in its metadata" : "No date available"))
+                    output.skipped.append((item, recipe.dateSource == .taken ? String(localized: "No date taken in its metadata")
+                                                                             : String(localized: "No date available")))
                 } else {
                     dated.append(item)
                 }
@@ -481,7 +551,7 @@ nonisolated enum PlanExpander {
                     continue
                 }
                 guard let name = groupName(item, key: key, source: recipe.dateSource) else {
-                    output.skipped.append((item, key == .camera ? "No camera in its metadata" : "No date available"))
+                    output.skipped.append((item, key == .camera ? String(localized: "No camera in its metadata") : String(localized: "No date available")))
                     continue
                 }
                 output.operations.append(.move(item.url, into: inside.map { $0 + "/" + name } ?? name))
@@ -512,7 +582,8 @@ nonisolated enum PlanExpander {
             switch token {
             case "name": return item.baseName
             case "n": return String(repeating: "0", count: max(0, width - String(index).count)) + String(index)
-            case "camera": return item.cameraModel ?? "Unknown camera"
+            case "camera": return item.cameraModel ?? FileOps.nameText(String(localized: "Unknown camera", comment: "Put in a new name when a photo has no camera model"),
+                                                                       english: "Unknown camera")
             case "kind": return item.kind
             case "parent": return item.url.deletingLastPathComponent().lastPathComponent
             default: return ""
@@ -540,13 +611,22 @@ nonisolated enum PlanExpander {
         case .day:
             return date.map { String(format: "%04d-%02d-%02d", calendar.component(.year, from: $0), calendar.component(.month, from: $0),
                                      calendar.component(.day, from: $0)) }
-        case .extension: return item.isFolder ? "Folders" : item.ext.isEmpty ? "No Extension" : item.ext.uppercased()
+        // Folder names that come from translations are checked like any name (nothing like "../x" or "~/x"), and
+        // fall back to English when they can't be one.
+        case .extension:
+            return item.isFolder ? FileOps.nameText(String(localized: "Folders", comment: "Name of a new folder that folders are grouped into"), english: "Folders")
+                : item.ext.isEmpty ? FileOps.nameText(String(localized: "No Extension", comment: "Name of a new folder for items without a name extension"),
+                                                      english: "No Extension")
+                : item.ext.uppercased()
         case .camera: return item.cameraModel
         case .kind:
-            if item.isFolder { return "Folders" }
+            if item.isFolder {
+                return FileOps.nameText(String(localized: "Folders", comment: "Name of a new folder that folders are grouped into"), english: "Folders")
+            }
             let order: [SearchFilter.Kind] = [.pdf, .image, .movie, .audio, .archive, .spreadsheet, .presentation, .code, .text, .diskImage, .application, .document]
             let kind = order.first { $0.matches(type: item.contentType, isDirectory: false, isPackage: false, extension: item.ext.lowercased()) }
-            return kind?.title ?? "Other"
+            return kind.map { FileOps.nameText($0.title, english: $0.englishTitle) }
+                ?? FileOps.nameText(String(localized: "Other", comment: "Name of a new folder for items of no known kind"), english: "Other")
         }
     }
 

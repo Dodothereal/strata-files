@@ -8,6 +8,17 @@ struct PaletteItem {
         case action = "Command"
         case path = "Go to"
         case match = "File"
+
+        /// What the row says at its end when it has no shortcut.
+        var label: String {
+            switch self {
+            case .folder: String(localized: "Folder", comment: "Command palette row tag: a folder")
+            case .file: String(localized: "Here", comment: "Command palette row tag: an item in the current folder")
+            case .action: String(localized: "Command", comment: "Command palette row tag: a command to run")
+            case .path: String(localized: "Go to", comment: "Command palette row tag: go to the typed path")
+            case .match: String(localized: "palette.tag.file", defaultValue: "File", comment: "Command palette row tag: a file found on disk (not the File menu)")
+            }
+        }
     }
 
     let title: String
@@ -103,7 +114,8 @@ final class CommandPalette: NSObject {
         field.drawsBackground = false
         field.focusRingType = .none
         field.font = .systemFont(ofSize: 20, weight: .regular)
-        field.placeholderString = "Jump to a folder (try github/acme), open a file, or run a command…"
+        field.placeholderString = String(localized: "Jump to a folder (try github/acme), open a file, or run a command…",
+                                         comment: "Keep github/acme as is: it is an example of what to type")
         field.cell?.usesSingleLineMode = true
         field.cell?.isScrollable = true
         field.delegate = self
@@ -230,7 +242,7 @@ final class CommandPalette: NSObject {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return nil }
         let url = URL(fileURLWithPath: path)
-        return PaletteItem(title: Format.tildePath(url), subtitle: isDirectory.boolValue ? "Open folder" : "Reveal file",
+        return PaletteItem(title: Format.tildePath(url), subtitle: isDirectory.boolValue ? String(localized: "Open folder") : String(localized: "Reveal file"),
                            icon: IconCache.shared.icon(forPath: path), kind: .path) { [weak self] in self?.goToPath?(url) }
     }
 
@@ -398,7 +410,7 @@ private final class PaletteCell: NSTableCellView {
         subtitle.isHidden = item.subtitle.isEmpty
         titleAboveSubtitle.isActive = !item.subtitle.isEmpty
         titleCentered.isActive = item.subtitle.isEmpty
-        accessory.stringValue = item.shortcut ?? item.kind.rawValue
+        accessory.stringValue = item.shortcut ?? item.kind.label
         accessory.textColor = selected ? secondary : .tertiaryLabelColor
     }
 }

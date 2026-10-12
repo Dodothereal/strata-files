@@ -9,6 +9,25 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
 
         var title: String {
             switch self {
+            case .folder: String(localized: "Folders", comment: "Kind of items; also the name of a folder a plan groups them into")
+            case .document: String(localized: "Documents", comment: "Kind of items; also the name of a folder a plan groups them into")
+            case .pdf: String(localized: "PDFs", comment: "Kind of items; also the name of a folder a plan groups them into")
+            case .text: String(localized: "Text files", comment: "Kind of items; also the name of a folder a plan groups them into")
+            case .image: String(localized: "Images", comment: "Kind of items; also the name of a folder a plan groups them into")
+            case .movie: String(localized: "Movies", comment: "Kind of items; also the name of a folder a plan groups them into")
+            case .audio: String(localized: "Audio", comment: "Kind of items; also the name of a folder a plan groups them into")
+            case .archive: String(localized: "Archives", comment: "Kind of items; also the name of a folder a plan groups them into")
+            case .code: String(localized: "Code", comment: "Kind of items: source code files; also a folder name")
+            case .spreadsheet: String(localized: "Spreadsheets", comment: "Kind of items; also the name of a folder a plan groups them into")
+            case .presentation: String(localized: "Presentations", comment: "Kind of items; also the name of a folder a plan groups them into")
+            case .application: String(localized: "Apps", comment: "Kind of items; also the name of a folder a plan groups them into")
+            case .diskImage: String(localized: "Disk images", comment: "Kind of items; also the name of a folder a plan groups them into")
+            }
+        }
+
+        /// The title in English: the name of a folder a plan groups this kind into when the translation can't be one.
+        var englishTitle: String {
+            switch self {
             case .folder: "Folders"
             case .document: "Documents"
             case .pdf: "PDFs"
@@ -22,6 +41,25 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
             case .presentation: "Presentations"
             case .application: "Apps"
             case .diskImage: "Disk images"
+            }
+        }
+
+        /// The kind inside a sentence ("Move into “Archive” — only images named “Screenshot”").
+        var noun: String {
+            switch self {
+            case .folder: String(localized: "folders", comment: "Kind of items, inside a sentence: “only folders named “2024””")
+            case .document: String(localized: "documents", comment: "Kind of items, inside a sentence: “only documents named “Invoice””")
+            case .pdf: String(localized: "PDFs", comment: "Kind of items; also the name of a folder a plan groups them into")
+            case .text: String(localized: "text files", comment: "Kind of items, inside a sentence: “only text files named “notes””")
+            case .image: String(localized: "images", comment: "Kind of items, inside a sentence: “only images named “Screenshot””")
+            case .movie: String(localized: "movies", comment: "Kind of items, inside a sentence: “only movies named “Trip””")
+            case .audio: String(localized: "audio", comment: "Kind of items, inside a sentence: “only audio named “Memo””")
+            case .archive: String(localized: "archives", comment: "Kind of items, inside a sentence: “only archives named “Backup””")
+            case .code: String(localized: "code", comment: "Kind of items (source code files), inside a sentence: “only code named “main””")
+            case .spreadsheet: String(localized: "spreadsheets", comment: "Kind of items, inside a sentence: “only spreadsheets named “Budget””")
+            case .presentation: String(localized: "presentations", comment: "Kind of items, inside a sentence: “only presentations named “Q3””")
+            case .application: String(localized: "apps", comment: "Kind of items, inside a sentence: “only apps named “Notes””")
+            case .diskImage: String(localized: "disk images", comment: "Kind of items, inside a sentence: “only disk images named “Installer””")
             }
         }
 
@@ -148,14 +186,16 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
         for ext in extensions.sorted() { chips.append(Chip(symbol: "doc", text: "." + ext)) }
         switch (minSize, maxSize) {
         case let (min?, max?): chips.append(Chip(symbol: "scalemass", text: "\(Self.bytes(min))–\(Self.bytes(max))"))
-        case let (min?, nil): chips.append(Chip(symbol: "scalemass", text: "Over \(Self.bytes(min))"))
-        case let (nil, max?): chips.append(Chip(symbol: "scalemass", text: "Under \(Self.bytes(max))"))
+        case let (min?, nil): chips.append(Chip(symbol: "scalemass", text: String(localized: "Over \(Self.bytes(min))", comment: "Search condition: bigger than a size")))
+        case let (nil, max?): chips.append(Chip(symbol: "scalemass", text: String(localized: "Under \(Self.bytes(max))", comment: "Search condition: smaller than a size")))
         default: break
         }
         if let dates = dateDescription { chips.append(Chip(symbol: "calendar", text: dates)) }
-        for fragment in nameContains { chips.append(Chip(symbol: "textformat", text: "Name contains “\(fragment)”")) }
+        for fragment in nameContains { chips.append(Chip(symbol: "textformat", text: String(localized: "Name contains “\(fragment)”"))) }
         for keyword in keywords { chips.append(Chip(symbol: "character.textbox", text: "“\(keyword)”")) }
-        if let contentQuery { chips.append(Chip(symbol: "text.magnifyingglass", text: "About “\(contentQuery)”")) }
+        if let contentQuery {
+            chips.append(Chip(symbol: "text.magnifyingglass", text: String(localized: "About “\(contentQuery)”", comment: "Search condition: what documents are about")))
+        }
         return chips
     }
 
@@ -167,9 +207,10 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
         case let (after?, before?):
             let last = before.addingTimeInterval(-1)
             return Calendar.current.isDate(after, inSameDayAs: last)
-                ? "Modified \(after.formatted(day))" : "Modified \(after.formatted(day)) – \(last.formatted(day))"
-        case let (after?, nil): return "Modified since \(after.formatted(day))"
-        case let (nil, before?): return "Modified before \(before.formatted(day))"
+                ? String(localized: "Modified \(after.formatted(day))", comment: "Search condition: modified on a day")
+                : String(localized: "Modified \(after.formatted(day)) – \(last.formatted(day))", comment: "Search condition: modified between two days")
+        case let (after?, nil): return String(localized: "Modified since \(after.formatted(day))")
+        case let (nil, before?): return String(localized: "Modified before \(before.formatted(day))")
         default: return nil
         }
     }

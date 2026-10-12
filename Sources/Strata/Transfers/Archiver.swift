@@ -79,12 +79,15 @@ nonisolated enum Archiver {
     /// Zips `items` next to the first one: `Name.zip` for one item, `Archive.zip` for several (a taken name gets a
     /// number). Returns the zip.
     static func compress(_ items: [URL], control: Control) throws -> URL {
-        guard let first = items.first else { throw Failure(message: "Nothing to compress.") }
+        guard let first = items.first else { throw Failure(message: String(localized: "Nothing to compress.")) }
         let fm = FileManager.default
         let folder = first.deletingLastPathComponent()
         try requireWritable(folder)
         try requireOutsideCopies(folder)
-        let name = items.count == 1 ? first.lastPathComponent + ".zip" : "Archive.zip"
+        let name = items.count == 1 ? first.lastPathComponent + ".zip"
+            // The name is translated; the extension stays .zip whatever the translation.
+            : FileOps.nameText(String(localized: "Archive", comment: "Name of the zip made from several items, as Finder names it (“Archive.zip”); the .zip is added"),
+                               english: "Archive") + ".zip"
         let work = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: folder, create: true)
         defer { removeTree(work) }
         let zip = work.appending(path: name)
@@ -189,11 +192,11 @@ nonisolated enum Archiver {
         let root = work.appending(path: "contents", directoryHint: .isDirectory)
         try unpack(archive, kind: kind, inspection: inspection, into: root, control: control)
         let top = try fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
-        guard let only = top.first else { throw Failure(message: "“\(archive.lastPathComponent)” is empty.") }
+        guard let only = top.first else { throw Failure(message: String(localized: "“\(archive.lastPathComponent)” is empty.")) }
         if top.count == 1 {
             // What's placed is that one item, so links inside it must stay inside it, and it can't be a link itself.
             guard !isSymlink(only) else {
-                throw Failure(message: "“\(archive.lastPathComponent)” holds only a link, so it wasn’t extracted.")
+                throw Failure(message: String(localized: "“\(archive.lastPathComponent)” holds only a link, so it wasn’t extracted."))
             }
             try check(only, control: control, quarantine: quarantine(of: archive))
             return try place(only, in: folder, as: only.lastPathComponent)
@@ -231,7 +234,9 @@ nonisolated enum Archiver {
         if base == name, let dot = name.lastIndex(of: ".") { base = String(name[..<dot]) }
         // Never a name that isn't one: "", ".", ".." (".tar.gz", "...tar.gz").
         let trimmed = base.trimmingCharacters(in: CharacterSet(charactersIn: "."))
-        return trimmed.isEmpty ? "Archive" : base
+        guard trimmed.isEmpty else { return base }
+        return FileOps.nameText(String(localized: "Archive", comment: "Name of the folder extracted from an archive whose own name can’t be used"),
+                                english: "Archive")
     }
 
     private static func unpack(_ archive: URL, kind: ArchiveKind, inspection: Inspection, into root: URL,
@@ -241,8 +246,8 @@ nonisolated enum Archiver {
         let disk = root.deletingLastPathComponent()
         if inspection.complete, let free = availableSpace(onDiskOf: disk), inspection.bytes > free - reserve(free: free) {
             let format = { (bytes: Int64) in ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
-            throw Failure(message: "There isn’t enough space to extract “\(archive.lastPathComponent)”: it needs "
-                + "\(format(inspection.bytes)), and \(format(max(0, free - reserve(free: free)))) can be used.")
+            let needed = format(inspection.bytes), usable = format(max(0, free - reserve(free: free)))
+            throw Failure(message: String(localized: "There isn’t enough space to extract “\(archive.lastPathComponent)”: it needs \(needed), and \(usable) can be used."))
         }
         // `root`'s parent is a private folder; `root` itself becomes the extracted folder, so it gets usual permissions.
         try fm.createDirectory(at: root, withIntermediateDirectories: false)
@@ -267,7 +272,7 @@ nonisolated enum Archiver {
     private static let passwordMarker = "\u{1}password"
 
     private static func passwordProtected(_ archive: URL) -> Failure {
-        Failure(message: "“\(archive.lastPathComponent)” is password-protected. Open it with Archive Utility to enter the password.")
+        Failure(message: String(localized: "“\(archive.lastPathComponent)” is password-protected. Open it with Archive Utility to enter the password."))
     }
 
     /// Everything in `boundary` (a folder, or a single file) must stay inside it: a link may only point within it,
@@ -282,7 +287,7 @@ nonisolated enum Archiver {
     static func check(_ boundary: URL, control: Control? = nil, quarantine: Data? = nil) throws {
         let rootPath = boundary.path
         var info = stat()
-        guard lstat(rootPath, &info) == 0 else { throw Failure(message: "The extracted files couldn’t be checked.") }
+        guard lstat(rootPath, &info) == 0 else { throw Failure(message: String(localized: "The extracted files couldn’t be checked.")) }
         clearAccessList(rootPath)
         if let quarantine { try markQuarantined(rootPath, quarantine) }
         switch info.st_mode & S_IFMT {
@@ -292,7 +297,7 @@ nonisolated enum Archiver {
         case S_IFDIR:
             chmod(rootPath, (info.st_mode & 0o7777 & ~(S_ISUID | S_ISGID)) | S_IRWXU)
         default:
-            throw Failure(message: "The archive holds nothing that can be extracted safely.")
+            throw Failure(message: String(localized: "The archive holds nothing that can be extracted safely."))
         }
         let fm = FileManager.default
         var walkError: Error?
@@ -301,7 +306,7 @@ nonisolated enum Archiver {
                                          errorHandler: { _, error in
                                              walkError = error
                                              return false
-                                         }) else { throw Failure(message: "The extracted files couldn’t be checked.") }
+                                         }) else { throw Failure(message: String(localized: "The extracted files couldn’t be checked.")) }
         var seen = 0
         while let url = walker.nextObject() as? URL {
             seen += 1
@@ -309,7 +314,7 @@ nonisolated enum Archiver {
             let relative = url.relativePath
             let path = rootPath + "/" + relative
             guard lstat(path, &info) == 0 else {
-                throw Failure(message: "“\(relative)” in the archive couldn’t be checked, so nothing was extracted.")
+                throw Failure(message: String(localized: "“\(relative)” in the archive couldn’t be checked, so nothing was extracted."))
             }
             clearAccessList(path)
             if let quarantine { try markQuarantined(path, quarantine) }
@@ -319,7 +324,7 @@ nonisolated enum Archiver {
                 var budget = 4096
                 guard let target = try? fm.destinationOfSymbolicLink(atPath: path),
                       resolve(target, from: parent, in: rootPath, hops: 0, budget: &budget) != nil else {
-                    throw Failure(message: "This archive contains a link that points outside it (“\(relative)”), so it wasn’t extracted.")
+                    throw Failure(message: String(localized: "This archive contains a link that points outside it (“\(relative)”), so it wasn’t extracted."))
                 }
             case S_IFDIR:
                 // Readable and enterable, so the walk sees what's inside (and the folder can be removed later).
@@ -331,7 +336,7 @@ nonisolated enum Archiver {
             }
         }
         if let walkError {
-            throw Failure(message: "The extracted files couldn’t all be checked (\(walkError.localizedDescription)), so nothing was extracted.")
+            throw Failure(message: String(localized: "The extracted files couldn’t all be checked (\(walkError.localizedDescription)), so nothing was extracted."))
         }
     }
 
@@ -393,7 +398,8 @@ nonisolated enum Archiver {
     private static func markQuarantined(_ path: String, _ value: Data) throws {
         let result = value.withUnsafeBytes { setxattr(path, quarantineAttribute, $0.baseAddress, value.count, 0, XATTR_NOFOLLOW) }
         guard result != 0, errno != ENOTSUP else { return }
-        throw Failure(message: "“\((path as NSString).lastPathComponent)” couldn’t be marked as downloaded, so nothing was extracted.")
+        let name = (path as NSString).lastPathComponent
+        throw Failure(message: String(localized: "“\(name)” couldn’t be marked as downloaded, so nothing was extracted."))
     }
 
     // MARK: - Placing results
@@ -431,7 +437,7 @@ nonisolated enum Archiver {
             if isFolder { rmdir(destination.path) } else { unlink(destination.path) }
             throw POSIXError(POSIXErrorCode(rawValue: error) ?? .EIO)
         }
-        throw Failure(message: "No free name for “\(name)”.")
+        throw Failure(message: String(localized: "No free name for “\(name)”."))
     }
 
     /// `url`, or `name 2.ext`, `name 3.ext`… when it's taken (a dangling link counts as taken). For staging only:
@@ -457,13 +463,14 @@ nonisolated enum Archiver {
     /// Nothing is made inside an archive opened as a folder (a temporary copy).
     private static func requireOutsideCopies(_ folder: URL) throws {
         guard !ArchiveCache.contains(folder) else {
-            throw Failure(message: "Nothing can be made inside an archive opened as a folder. Copy what you need out first.")
+            throw Failure(message: String(localized: "Nothing can be made inside an archive opened as a folder. Copy what you need out first."))
         }
     }
 
     private static func requireWritable(_ folder: URL) throws {
         guard access(folder.path, W_OK) == 0 else {
-            throw Failure(message: "“\(FileManager.default.displayName(atPath: folder.path))” can’t be changed, so nothing can be made there.")
+            let name = FileManager.default.displayName(atPath: folder.path)
+            throw Failure(message: String(localized: "“\(name)” can’t be changed, so nothing can be made there."))
         }
     }
 
@@ -596,13 +603,15 @@ nonisolated enum Archiver {
         process.waitUntilExit()
         if control.isCancelled { throw CancellationError() }
         if lowSpace.isSet {
-            throw Failure(message: "Stopped: the disk was running out of space.")
+            throw Failure(message: String(localized: "Stopped: the disk was running out of space."))
         }
         guard process.terminationStatus == 0 else {
             if tail.contains(where: { $0.contains("Incorrect passphrase") || $0.contains("Passphrase required") }) {
                 throw Failure(message: passwordMarker)
             }
-            throw Failure(message: reason(tail) ?? "It stopped with an error (\(process.terminationStatus)).")
+            let status = Int(process.terminationStatus)
+            throw Failure(message: reason(tail) ?? String(localized: "It stopped with an error (\(status)).",
+                                                          comment: "An archive tool failed; the number is its exit status"))
         }
     }
 
@@ -622,14 +631,14 @@ nonisolated enum Archiver {
             var text = refusal[...]
             for prefix in ["x ", "tar: "] where text.hasPrefix(prefix) { text = text.dropFirst(prefix.count) }
             let entry = text.range(of: ": ").map { text[..<$0.lowerBound] } ?? text
-            return "This archive tries to write outside its folder (“\(entry)”), so it wasn’t extracted."
+            return String(localized: "This archive tries to write outside its folder (“\(String(entry))”), so it wasn’t extracted.")
         }
         for line in lines.reversed() where !line.contains("Error exit delayed") && !line.contains("Removing leading '/'") {
             var text = line[...]
             for prefix in ["x ", "tar: ", "ditto: "] where text.hasPrefix(prefix) { text = text.dropFirst(prefix.count) }
             if text.contains("Path contains '..'") || text.contains("Cannot extract through symlink") || text.contains("Absolute path") {
                 let entry = text.range(of: ": ").map { text[..<$0.lowerBound] } ?? text
-                return "This archive tries to write outside its folder (“\(entry)”), so it wasn’t extracted."
+                return String(localized: "This archive tries to write outside its folder (“\(String(entry))”), so it wasn’t extracted.")
             }
             // Drop errno noise: "…: Unknown error: -1", "…: Undefined error: 0".
             for noise in [": Unknown error", ": Undefined error"] {

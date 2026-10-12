@@ -55,7 +55,7 @@ final class GridViewController: NSViewController, FileCollectionController {
         cv.registerForDraggedTypes([.fileURL])
         cv.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
         cv.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
-        cv.setAccessibilityLabel("Icons")
+        cv.setAccessibilityLabel(String(localized: "Icons", comment: "View mode: items as icons"))
         cv.controller = self
 
         scrollView.documentView = cv

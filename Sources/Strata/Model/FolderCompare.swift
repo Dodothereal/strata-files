@@ -25,13 +25,13 @@ nonisolated enum FolderCompare {
 
         var title: String {
             switch self {
-            case .onlyLeft: "Only on the left"
-            case .onlyRight: "Only on the right"
-            case .leftNewer: "Newer on the left"
-            case .rightNewer: "Newer on the right"
-            case .changed: "Different, same date"
-            case .kindsDiffer: "File vs. folder"
-            case .unknown: "Can’t be compared"
+            case .onlyLeft: String(localized: "Only on the left", comment: "Compare Folders: how an item differs")
+            case .onlyRight: String(localized: "Only on the right", comment: "Compare Folders: how an item differs")
+            case .leftNewer: String(localized: "Newer on the left", comment: "Compare Folders: how an item differs")
+            case .rightNewer: String(localized: "Newer on the right", comment: "Compare Folders: how an item differs")
+            case .changed: String(localized: "Different, same date", comment: "Compare Folders: how an item differs")
+            case .kindsDiffer: String(localized: "File vs. folder", comment: "Compare Folders: a file on one side, a folder on the other")
+            case .unknown: String(localized: "Can’t be compared", comment: "Compare Folders: how an item differs")
             }
         }
 
@@ -94,7 +94,7 @@ nonisolated enum FolderCompare {
                         progress: @escaping @Sendable (Int) -> Void) async -> Result {
         var result = Result()
         for root in [left, right] where !FileManager.default.isReadableFile(atPath: root.path) {
-            result.failure = "“\(root.lastPathComponent)” can’t be read."
+            result.failure = String(localized: "“\(root.lastPathComponent)” can’t be read.")
             return result
         }
         var seen = 0
@@ -221,12 +221,12 @@ nonisolated enum FolderCompare {
             guard type == S_IFREG || type == S_IFDIR || type == S_IFLNK else { continue }
             let key = ignoringCase ? relative.lowercased() : relative
             if let other = scan.items[key], other.path != relative {
-                scan.unknown[key] = "“\(other.path)” and “\(relative)” differ only in case; the other side can’t tell them apart"
+                scan.unknown[key] = String(localized: "“\(other.path)” and “\(relative)” differ only in case; the other side can’t tell them apart")
                 continue
             }
             // A folder that can't be read would look empty: what's inside is unknown, not missing.
             if type == S_IFDIR, access(base + "/" + relative, R_OK | X_OK) != 0 {
-                scan.unknown[key] = "“\(relative)” can’t be read"
+                scan.unknown[key] = String(localized: "“\(relative)” can’t be read", comment: "Compare Folders: why a folder can’t be compared")
                 walker.skipDescendants()
             }
             let modified = Date(timeIntervalSince1970: TimeInterval(info.st_mtimespec.tv_sec) + TimeInterval(info.st_mtimespec.tv_nsec) / 1e9)
@@ -264,9 +264,9 @@ nonisolated enum FolderCompare {
 
         var title: String {
             switch self {
-            case .bothWays: "Both Ways"
-            case .leftToRight: "Left to Right"
-            case .rightToLeft: "Right to Left"
+            case .bothWays: String(localized: "Both Ways", comment: "Compare Folders: sync direction")
+            case .leftToRight: String(localized: "Left to Right", comment: "Compare Folders: sync direction")
+            case .rightToLeft: String(localized: "Right to Left", comment: "Compare Folders: sync direction")
             }
         }
     }
@@ -276,11 +276,11 @@ nonisolated enum FolderCompare {
 
         var title: String {
             switch self {
-            case .copyRight: "Copy →"
-            case .copyLeft: "← Copy"
-            case .trashLeft: "Trash on the left"
-            case .trashRight: "Trash on the right"
-            case .skip: "Skip"
+            case .copyRight: String(localized: "Copy →", comment: "Compare Folders: copy the item to the right side")
+            case .copyLeft: String(localized: "← Copy", comment: "Compare Folders: copy the item to the left side")
+            case .trashLeft: String(localized: "Trash on the left", comment: "Compare Folders: move the left item to the Trash")
+            case .trashRight: String(localized: "Trash on the right", comment: "Compare Folders: move the right item to the Trash")
+            case .skip: String(localized: "Skip", comment: "Compare Folders: leave the item as it is")
             }
         }
     }

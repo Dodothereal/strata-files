@@ -20,19 +20,19 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
     private let mode = NSPopUpButton()
     private let find = NSTextField()
     private let replacement = NSTextField()
-    private let regex = NSButton(checkboxWithTitle: "Regular expression", target: nil, action: nil)
-    private let matchCase = NSButton(checkboxWithTitle: "Match case", target: nil, action: nil)
+    private let regex = NSButton(checkboxWithTitle: String(localized: "Regular expression"), target: nil, action: nil)
+    private let matchCase = NSButton(checkboxWithTitle: String(localized: "Match case"), target: nil, action: nil)
     private let addition = NSTextField()
     private let position = NSPopUpButton()
     private let template = NSTextField()
     private let start = NSTextField()
     private let caseMenu = NSPopUpButton()
-    private let includeExtension = NSButton(checkboxWithTitle: "Change extensions too", target: nil, action: nil)
+    private let includeExtension = NSButton(checkboxWithTitle: String(localized: "Change extensions too"), target: nil, action: nil)
     private let rulesStack = NSStackView()
     private let table = NSTableView()
     private let summary = NSTextField(labelWithString: "")
-    private let renameButton = NSButton(title: "Rename", target: nil, action: nil)
-    private let cancelButton = NSButton(title: "Cancel", target: nil, action: nil)
+    private let renameButton = NSButton(title: String(localized: "Rename", comment: "Button: rename the items"), target: nil, action: nil)
+    private let cancelButton = NSButton(title: String(localized: "Cancel"), target: nil, action: nil)
 
     /// `urls` in the order the window shows them, which is the order they're numbered in.
     init(urls: [URL], baseFolder: URL, undo: UndoManager?) {
@@ -45,21 +45,22 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        let title = NSTextField(labelWithString: "Rename \(Format.count(urls.count, "Item", "Items"))")
+        let title = NSTextField(labelWithString: String(localized: "Rename \(urls.count) Items", comment: "plural"))
         title.font = .systemFont(ofSize: 15, weight: .semibold)
 
         for m in RenameRules.Mode.allCases { mode.addItem(withTitle: m.title) }
         mode.target = self
         mode.action = #selector(changed(_:))
 
-        configure(find, placeholder: "Find")
-        configure(replacement, placeholder: "Replace with")
-        configure(addition, placeholder: "Text to add")
+        configure(find, placeholder: String(localized: "Find", comment: "Batch rename field: the text to replace in names"))
+        configure(replacement, placeholder: String(localized: "Replace with", comment: "Batch rename field: the text that replaces it"))
+        configure(addition, placeholder: String(localized: "Text to add"))
         configure(template, placeholder: "{name} {n}")
         template.stringValue = rules.template
         configure(start, placeholder: "1")
         start.stringValue = "1"
-        position.addItems(withTitles: ["after name", "before name"])
+        position.addItems(withTitles: [String(localized: "after name", comment: "Batch rename: add the text after the name"),
+                                       String(localized: "before name", comment: "Batch rename: add the text before the name")])
         for transform in PlanRecipe.NameTransform.allCases { caseMenu.addItem(withTitle: transform.title.capitalizedFirst) }
         caseMenu.selectItem(at: PlanRecipe.NameTransform.allCases.firstIndex(of: rules.transform) ?? 0)
         for control in [regex, matchCase, includeExtension] as [NSButton] {
@@ -132,19 +133,21 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
         ])
         view = container
         showRuleControls()
-        summary.stringValue = "Reading \(Format.count(urls.count, "item", "items"))…"
-        for (field, label) in [(find, "Find"), (replacement, "Replace with"), (addition, "Text to add"), (template, "Name format"),
-                               (start, "Start numbers at")] {
+        summary.stringValue = String(localized: "Reading \(urls.count) items…", comment: "plural")
+        for (field, label) in [(find, String(localized: "Find", comment: "Batch rename field: the text to replace in names")),
+                               (replacement, String(localized: "Replace with", comment: "Batch rename field: the text that replaces it")),
+                               (addition, String(localized: "Text to add")), (template, String(localized: "Name format")),
+                               (start, String(localized: "Start numbers at"))] {
             field.setAccessibilityLabel(label)
         }
-        mode.setAccessibilityLabel("Rename rule")
-        position.setAccessibilityLabel("Where to add the text")
-        caseMenu.setAccessibilityLabel("Change case to")
+        mode.setAccessibilityLabel(String(localized: "Rename rule"))
+        position.setAccessibilityLabel(String(localized: "Where to add the text"))
+        caseMenu.setAccessibilityLabel(String(localized: "Change case to"))
         Task { [weak self] in
             guard let self else { return }
             items = await PlanItem.load(urls)
             if items.isEmpty {
-                summary.stringValue = "These items couldn’t be read."
+                summary.stringValue = String(localized: "These items couldn’t be read.")
                 summary.textColor = .systemRed
                 return
             }
@@ -186,21 +189,22 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
         }
         switch RenameRules.Mode(rawValue: mode.indexOfSelectedItem) ?? .replace {
         case .replace:
-            rulesStack.addArrangedSubview(row([label("Find:"), find]))
-            rulesStack.addArrangedSubview(row([label("Replace with:"), replacement]))
+            rulesStack.addArrangedSubview(row([label(String(localized: "Find:", comment: "Label of the text to replace in names")), find]))
+            rulesStack.addArrangedSubview(row([label(String(localized: "Replace with:")), replacement]))
             rulesStack.addArrangedSubview(row([label(""), regex, matchCase]))
         case .add:
-            rulesStack.addArrangedSubview(row([label("Add:"), addition, position]))
+            rulesStack.addArrangedSubview(row([label(String(localized: "Add:", comment: "Label of the text to add to names")), addition, position]))
         case .format:
-            rulesStack.addArrangedSubview(row([label("Name:"), template]))
-            rulesStack.addArrangedSubview(row([label("Start at:"), start]))
-            let help = NSTextField(wrappingLabelWithString: "{name} the current name · {n} a number · {date} {time} {year} {month} {day} when it was taken or made · {camera} · {kind} · {parent} its folder")
+            rulesStack.addArrangedSubview(row([label(String(localized: "Name:", comment: "Label of the name pattern, like “{name} {n}”")), template]))
+            rulesStack.addArrangedSubview(row([label(String(localized: "Start at:", comment: "Label of the first number")), start]))
+            let help = NSTextField(wrappingLabelWithString: String(localized: "{name} the current name · {n} a number · {date} {time} {year} {month} {day} when it was taken or made · {camera} · {kind} · {parent} its folder",
+                                                                  comment: "Keep the tokens in braces as they are: they’re what people type"))
             help.font = .systemFont(ofSize: 11)
             help.textColor = .secondaryLabelColor
             help.preferredMaxLayoutWidth = 480
             rulesStack.addArrangedSubview(row([label(""), help]))
         case .changeCase:
-            rulesStack.addArrangedSubview(row([label("Change to:"), caseMenu]))
+            rulesStack.addArrangedSubview(row([label(String(localized: "Change to:", comment: "Label of the case to change names to")), caseMenu]))
         }
         // Format keeps extensions ({name} is the name without one).
         includeExtension.isHidden = RenameRules.Mode(rawValue: mode.indexOfSelectedItem) == .format
@@ -272,8 +276,10 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
             self.plan = plan
             rows = plan.steps + plan.excluded
             let renames = plan.steps.count
-            var parts = [renames == 0 ? "No names change" : "\(Format.count(renames, "item", "items")) will be renamed"]
-            if !plan.excluded.isEmpty { parts.append("\(plan.excluded.count.formatted()) can’t be") }
+            var parts = [renames == 0 ? String(localized: "No names change") : String(localized: "\(renames) items will be renamed", comment: "plural")]
+            if !plan.excluded.isEmpty {
+                parts.append(String(localized: "\(plan.excluded.count) can’t be renamed", comment: "plural; after “N items will be renamed”"))
+            }
             summary.stringValue = parts.joined(separator: " · ")
             summary.textColor = plan.excluded.isEmpty ? .secondaryLabelColor : .systemOrange
             renameButton.isEnabled = renames > 0
@@ -320,17 +326,19 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
             control.isEnabled = false
         }
         cancelButton.isEnabled = false
-        summary.stringValue = "Renaming…"
+        summary.stringValue = String(localized: "Renaming…")
         let count = plan.steps.count
         Task { [weak self] in
             guard let self else { return }
-            let outcome = await PlanExecutor.apply(plan, actionName: "Rename \(Format.count(count, "Item", "Items"))", undo: undo)
+            // History records the English "Rename" (its pencil icon, translated when shown); the Edit menu says how many.
+            let outcome = await PlanExecutor.apply(plan, actionName: "Rename", undoName: String(localized: "Rename \(count) Items", comment: "plural"),
+                                                   undo: undo)
             let window = view.window?.sheetParent
             dismiss(nil)
             onApplied?(outcome.results)
             if !outcome.failures.isEmpty, let window {
                 let alert = NSAlert()
-                alert.messageText = "Some items couldn’t be renamed."
+                alert.messageText = String(localized: "Some items couldn’t be renamed.")
                 alert.informativeText = outcome.failures.prefix(5).joined(separator: "\n")
                 alert.beginSheetModal(for: window, completionHandler: nil)
             }

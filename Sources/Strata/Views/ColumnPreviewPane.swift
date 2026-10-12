@@ -106,18 +106,22 @@ final class ColumnPreviewPane: NSView {
         self.entry = entry
         nameLabel.stringValue = entry.name
         subtitle.stringValue = [entry.kind, entry.size.map(Format.bytes)].compactMap { $0 }.joined(separator: " · ")
-        setAccessibilityLabel("Preview of \(entry.name)")
+        setAccessibilityLabel(String(localized: "Preview of \(entry.name)", comment: "Accessibility; the placeholder is a file name"))
         setImage(IconCache.shared.icon(for: entry), animated: false)
         requestThumbnail(entry, side: imageSide.constant)
 
         var rows: [(String, String)] = [
-            ("Created", Format.date(entry.created)),
-            ("Modified", Format.date(entry.modified)),
+            (String(localized: "Created", comment: "Info row label: the date the item was created"), Format.date(entry.created)),
+            (String(localized: "Modified", comment: "Info row label: the date the item was last modified"), Format.date(entry.modified)),
         ]
-        if let added = entry.added { rows.append(("Added", Format.date(added))) }
+        if let added = entry.added {
+            rows.append((String(localized: "Added", comment: "Info row label: the date the item was added to its folder"), Format.date(added)))
+        }
         let wantsDimensions = entry.contentType?.conforms(to: .image) == true
-        if wantsDimensions { rows.append(("Dimensions", "…")) }
-        setRows(rows)
+        if wantsDimensions { rows.append((String(localized: "Dimensions", comment: "Info row label: an image's size in pixels"), "…")) }
+        let fields = setRows(rows)
+        // The dimensions row is the last one; its value arrives later.
+        if wantsDimensions { dimensionsField = fields.last }
         if wantsDimensions {
             ItemInfoLoader.shared.cancel(infoTicket)
             infoTicket = ItemInfoLoader.shared.request(entry, showHidden: true) { [weak self] text in
@@ -167,13 +171,16 @@ final class ColumnPreviewPane: NSView {
         }
     }
 
-    private func setRows(_ rows: [(String, String)]) {
+    /// The value fields, in row order.
+    @discardableResult
+    private func setRows(_ rows: [(String, String)]) -> [NSTextField] {
         while grid.numberOfRows > 0 {
             let row = grid.row(at: 0)
             for index in 0..<row.numberOfCells { row.cell(at: index).contentView?.removeFromSuperview() }
             grid.removeRow(at: 0)
         }
         dimensionsField = nil
+        var fields: [NSTextField] = []
         for (name, value) in rows {
             let label = NSTextField(labelWithString: name)
             label.font = FileViewStyle.detailFont
@@ -183,7 +190,7 @@ final class ColumnPreviewPane: NSView {
             field.font = FileViewStyle.detailFont
             field.lineBreakMode = .byTruncatingTail
             field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            if name == "Dimensions" { dimensionsField = field }
+            fields.append(field)
             grid.addRow(with: [label, field])
         }
         if grid.numberOfColumns == 2 {
@@ -192,5 +199,6 @@ final class ColumnPreviewPane: NSView {
             labelColumnWidth = 0
             needsLayout = true
         }
+        return fields
     }
 }

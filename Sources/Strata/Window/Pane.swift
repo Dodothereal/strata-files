@@ -51,8 +51,8 @@ final class Pane {
         switch destination {
         case .folder(let url): (Places.displayName(url), Trash.isTrash(url) ? "trash" : "folder")
         case .search(let text, _): (BrowserWindowController.searchTitle(text), "magnifyingglass")
-        case .recents: ("Recents", "clock")
-        case .duplicates: ("Duplicates", "square.on.square")
+        case .recents: (String(localized: "Recents", comment: "Title of the view listing recently used files"), "clock")
+        case .duplicates: (String(localized: "Duplicates", comment: "Title of the view listing duplicate files"), "square.on.square")
         }
     }
 }
@@ -181,7 +181,8 @@ private final class PaneHeaderView: NSVisualEffectView {
         label.stringValue = title
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityLabel(active ? "\(title), focused pane" : "\(title), pane")
+        setAccessibilityLabel(active ? String(localized: "\(title), focused pane", comment: "Accessibility: the pane header; where the pane is")
+                                     : String(localized: "\(title), pane", comment: "Accessibility: the pane header; where the pane is"))
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         label.textColor = active ? .labelColor : .secondaryLabelColor
         icon.contentTintColor = active ? .controlAccentColor : .tertiaryLabelColor

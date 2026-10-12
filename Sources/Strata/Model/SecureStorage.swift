@@ -64,7 +64,9 @@ nonisolated enum SecureStorage {
         let key = SymmetricKey(size: .bits256)
         let item: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: account,
-            kSecAttrLabel: service, kSecAttrDescription: "Encrypts Strata's search index and history",
+            kSecAttrLabel: service,
+            kSecAttrDescription: String(localized: "Encrypts Strata's search index and history",
+                                        comment: "Keychain item description, shown in Keychain Access"),
             kSecValueData: key.withUnsafeBytes { Data($0) },
         ]
         let added = SecItemAdd(item as CFDictionary, nil)

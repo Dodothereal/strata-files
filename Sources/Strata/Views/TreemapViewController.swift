@@ -182,7 +182,7 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
         super.init(frame: frame)
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
-        setAccessibilityLabel("Disk usage")
+        setAccessibilityLabel(String(localized: "Disk usage", comment: "Accessibility label of the disk usage map"))
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -314,7 +314,7 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
         // An empty folder (or a filter matching nothing) is the browser's empty state, drawn over the map.
         guard !items.isEmpty else { return }
         let pending = items.contains { $0.bytes == nil }
-        let text = pending ? "Calculating sizes…" : "Nothing here takes up space"
+        let text = pending ? String(localized: "Calculating sizes…") : String(localized: "Nothing here takes up space")
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         let string = NSAttributedString(string: text, attributes: [
@@ -372,7 +372,7 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
         let sizeFont = NSFont.monospacedDigitSystemFont(ofSize: large ? 12 : 10.5, weight: .regular)
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byTruncatingMiddle
-        let name = tile.item?.name ?? "Other · \(Format.count(tile.otherCount, "item", "items"))"
+        let name = tile.item?.name ?? String(localized: "Other · \(tile.otherCount) items", comment: "plural")
         let nameText = NSAttributedString(string: name, attributes: [
             .font: nameFont, .foregroundColor: NSColor.labelColor.withAlphaComponent(alpha), .paragraphStyle: paragraph,
         ])
@@ -606,12 +606,14 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
         var share = ""
         if totalBytes > 0 {
             let fraction = Double(tile.bytes) / Double(totalBytes)
-            share = " — " + fraction.formatted(.percent.precision(.fractionLength(fraction < 0.1 ? 1 : 0))) + " of this folder"
+            let percent = fraction.formatted(.percent.precision(.fractionLength(fraction < 0.1 ? 1 : 0)))
+            share = " — " + String(localized: "\(percent) of this folder", comment: "Share of the folder's size; placeholder: a percentage, e.g. 12%")
         }
         guard let item = tile.item else {
-            return "\(Format.count(tile.otherCount, "smaller item", "smaller items"))\(separator)\(Format.bytes(tile.bytes))\(share)"
+            let count = String(localized: "\(tile.otherCount) smaller items", comment: "plural")
+            return "\(count)\(separator)\(Format.bytes(tile.bytes))\(share)"
         }
-        let kind = item.isFolder ? "Folder" : item.group.title
+        let kind = item.isFolder ? String(localized: "Folder", comment: "Kind of item") : item.group.title
         return "\(item.name)\(separator)\(Format.bytes(tile.bytes))\(share)\(separator)\(kind)"
     }
 
@@ -696,12 +698,14 @@ final class TreemapLegendView: NSView {
             stack.setVisibilityPriority(index == 0 ? .mustHold : NSStackView.VisibilityPriority(rawValue: 900 - Float(index) * 10), for: entry)
         }
         let pending = items.filter { $0.bytes == nil }.count
-        var text = Format.count(items.count, "item", "items") + " · " + Format.bytes(bytes)
-        if pending > 0 { text = "Measuring \(Format.count(pending, "folder", "folders"))…  " + text }
-        if unmeasured > 0 { text += " · \(Format.count(unmeasured, "folder", "folders")) need Full Disk Access to be measured" }
+        var text = String(localized: "\(items.count) items", comment: "plural") + " · " + Format.bytes(bytes)
+        if pending > 0 { text = String(localized: "Measuring \(pending) folders…", comment: "plural") + "  " + text }
+        if unmeasured > 0 { text += " · " + String(localized: "\(unmeasured) folders need Full Disk Access to be measured", comment: "plural") }
         total.stringValue = text
         if pending > 0 { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
-        setAccessibilityLabel("Legend: " + groups.map { "\($0.key.title) \(Format.bytes($0.value))" }.joined(separator: ", ") + ". " + text)
+        let legend = groups.map { "\($0.key.title) \(Format.bytes($0.value))" }.joined(separator: ", ")
+        setAccessibilityLabel(String(localized: "Legend: \(legend). \(text)",
+                                     comment: "Accessibility: the disk usage legend; placeholders: kinds with their sizes, then the totals"))
     }
 }
 

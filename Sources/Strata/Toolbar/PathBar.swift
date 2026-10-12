@@ -49,7 +49,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         field.drawsBackground = false
         field.focusRingType = .none
         field.font = .systemFont(ofSize: 13)
-        field.placeholderString = "Go to folder…"
+        field.placeholderString = String(localized: "Go to folder…", comment: "Placeholder of the path bar while typing a path")
         field.lineBreakMode = .byTruncatingHead
         field.cell?.isScrollable = true
         field.cell?.usesSingleLineMode = true
@@ -168,7 +168,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
             // Another disk's Trash is `.Trashes/<uid>`: shown as one "Trash" step.
             if component == ".Trashes", Trash.isTrash(current.appending(path: String(getuid()))) { continue }
             if Trash.isTrash(current) {
-                parts.append(("Trash", current, "trash"))
+                parts.append((String(localized: "Trash", comment: "Path bar: a Trash folder"), current, "trash"))
             } else {
                 parts.append((String(component), current, nil))
             }
@@ -304,7 +304,7 @@ final class CrumbButton: NSButton {
             .foregroundColor: emphasized ? NSColor.labelColor : NSColor.secondaryLabelColor,
         ])
         if let symbol {
-            image = NSImage(systemSymbolName: symbol, accessibilityDescription: title.isEmpty ? "Home" : title)
+            image = NSImage(systemSymbolName: symbol, accessibilityDescription: title.isEmpty ? String(localized: "Home", comment: "Accessibility: the home folder crumb") : title)
             symbolConfiguration = .init(pointSize: 12, weight: .medium)
             contentTintColor = .secondaryLabelColor
             imagePosition = title.isEmpty ? .imageOnly : .imageLeading
@@ -351,7 +351,7 @@ final class ChevronButton: NSButton {
         self.navigate = navigate
         super.init(frame: .zero)
         isBordered = false
-        image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Subfolders")
+        image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: String(localized: "Subfolders"))
         symbolConfiguration = .init(pointSize: 9, weight: .semibold)
         contentTintColor = .tertiaryLabelColor
         imagePosition = .imageOnly
@@ -359,8 +359,9 @@ final class ChevronButton: NSButton {
         layer?.cornerRadius = 5
         target = self
         action = #selector(showMenu)
-        toolTip = "Folders in \(folder.lastPathComponent)"
-        setAccessibilityLabel("Folders in \(FileManager.default.displayName(atPath: folder.path))")
+        toolTip = String(localized: "Folders in \(folder.lastPathComponent)", comment: "Menu of a folder's subfolders; the folder's name")
+        setAccessibilityLabel(String(localized: "Folders in \(FileManager.default.displayName(atPath: folder.path))",
+                                     comment: "Menu of a folder's subfolders; the folder's name"))
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -402,7 +403,7 @@ final class ChevronButton: NSButton {
             menu.addItem(item)
         }
         if folders.isEmpty {
-            let empty = NSMenuItem(title: "No Folders", action: nil, keyEquivalent: "")
+            let empty = NSMenuItem(title: String(localized: "No Folders", comment: "Menu item: the folder has no subfolders"), action: nil, keyEquivalent: "")
             empty.isEnabled = false
             menu.addItem(empty)
         }

@@ -24,9 +24,11 @@ final class DelimitedPreviewView: PreviewView {
 
     private func show(_ table: DelimitedTable) {
         grid.show(table.data)
-        let rows = table.totalRows.map { $0 == 1 ? "1 row" : "\($0.formatted()) rows" } ?? "\(table.data.rows.count.formatted())+ rows"
-        let columns = table.data.columns.count == 1 ? "1 column" : "\(table.data.columns.count.formatted()) columns"
-        let shown = table.data.rows.count < (table.totalRows ?? .max) ? "Showing first \(table.data.rows.count.formatted())" : nil
+        let rows = table.totalRows.map { String(localized: "\($0) rows", comment: "plural") }
+            ?? String(localized: "\(table.data.rows.count)+ rows", comment: "plural")
+        let columns = String(localized: "\(table.data.columns.count) columns", comment: "plural")
+        let shown = table.data.rows.count < (table.totalRows ?? .max)
+            ? String(localized: "Showing first \(table.data.rows.count.formatted())", comment: "Preview footer note: only the first part is shown (a count or a size)") : nil
         footer.show(["\(rows) × \(columns)"], note: shown)
     }
 }
@@ -73,7 +75,8 @@ nonisolated enum DelimitedLoader {
             let width = min(columnLimit, max(header.count, rows.map(\.count).max() ?? 0))
             let columns = (0..<width).map { index in
                 let title = index < header.count ? header[index].trimmingCharacters(in: .whitespaces) : ""
-                return GridColumn(title: title.isEmpty ? "Column \(index + 1)" : title)
+                return GridColumn(title: title.isEmpty
+                    ? String(localized: "Column \(index + 1)", comment: "Title of an unnamed table column; the placeholder is its number") : title)
             }
             var grid = GridData(columns: columns, rows: rows.map { $0.prefix(width).map(GridValue.text) })
             grid.detectNumericColumns()

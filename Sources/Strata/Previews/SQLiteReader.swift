@@ -53,7 +53,7 @@ nonisolated enum SQLiteReader {
     private static func readRows(_ db: OpaquePointer?, table: String) -> SQLiteRows {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, "SELECT * FROM \(quoted(table)) LIMIT \(rowLimit)", -1, &statement, nil) == SQLITE_OK else {
-            return SQLiteRows(data: GridData(columns: [], rows: []), error: "This table couldn’t be read (\(message(db))).")
+            return SQLiteRows(data: GridData(columns: [], rows: []), error: String(localized: "This table couldn’t be read (\(message(db))).", comment: "Placeholder: SQLite's error message"))
         }
         defer { sqlite3_finalize(statement) }
         let columnCount = Int(sqlite3_column_count(statement))
@@ -64,8 +64,8 @@ nonisolated enum SQLiteReader {
             let step = sqlite3_step(statement)
             if step == SQLITE_DONE { break }
             guard step == SQLITE_ROW else {
-                let error = step == SQLITE_INTERRUPT ? "Reading this took too long; showing what was read in time."
-                    : "Reading stopped early (\(message(db)))."
+                let error = step == SQLITE_INTERRUPT ? String(localized: "Reading this took too long; showing what was read in time.")
+                    : String(localized: "Reading stopped early (\(message(db))).", comment: "Placeholder: SQLite's error message")
                 return SQLiteRows(data: GridData(columns: columns, rows: rows), error: error)
             }
             var row: [GridValue] = []
@@ -107,14 +107,14 @@ nonisolated enum SQLiteReader {
         let status = sqlite3_open_v2(components.string ?? url.path, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil)
         guard status == SQLITE_OK else {
             sqlite3_close_v2(db)
-            throw PreviewError.message("This database couldn’t be opened.")
+            throw PreviewError.message(String(localized: "This database couldn’t be opened."))
         }
         // The schema is the file's: don't let its views or triggers call functions with side effects.
         sqlite3_exec(db, "PRAGMA trusted_schema = OFF", nil, nil, nil)
         // A corrupt or encrypted file opens fine and fails on the first read.
         guard withBudget(db, 2, { sqlite3_exec(db, "SELECT count(*) FROM sqlite_master", nil, nil, nil) }) == SQLITE_OK else {
             sqlite3_close_v2(db)
-            throw PreviewError.message("This database is encrypted or damaged.", symbol: "lock")
+            throw PreviewError.message(String(localized: "This database is encrypted or damaged."), symbol: "lock")
         }
         return db
     }
@@ -122,7 +122,7 @@ nonisolated enum SQLiteReader {
     private static func query(_ db: OpaquePointer?, _ sql: String, row: (OpaquePointer?) throws -> Void) throws {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw PreviewError.message("This database couldn’t be read (\(message(db))).")
+            throw PreviewError.message(String(localized: "This database couldn’t be read (\(message(db))).", comment: "Placeholder: SQLite's error message"))
         }
         defer { sqlite3_finalize(statement) }
         while sqlite3_step(statement) == SQLITE_ROW { try row(statement) }
@@ -169,6 +169,6 @@ nonisolated enum SQLiteReader {
     }
 
     private static func message(_ db: OpaquePointer?) -> String {
-        sqlite3_errmsg(db).map { String(cString: $0) } ?? "Unknown error"
+        sqlite3_errmsg(db).map { String(cString: $0) } ?? String(localized: "Unknown error")
     }
 }

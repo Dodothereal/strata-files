@@ -215,21 +215,24 @@ final class GitBranchPill: NSView {
             menu.addItem(item)
         }
         if let upstream = model.upstream {
-            var line = "Tracking \(upstream)"
-            if model.ahead > 0 || model.behind > 0 { line += " · \(model.ahead) ahead, \(model.behind) behind" }
+            var line = String(localized: "Tracking \(upstream)", comment: "Git: the branch's upstream branch")
+            if model.ahead > 0 || model.behind > 0 { line += " · " + aheadBehind(model) }
             info(line)
         } else if !model.isDetached {
-            info("No upstream branch")
+            info(String(localized: "No upstream branch"))
         }
-        if let changes = model.changes { info(changes == 0 ? "Working tree clean" : Format.count(changes, "changed file", "changed files")) }
-        if model.stashCount > 0 { info(Format.count(model.stashCount, "stash", "stashes")) }
+        if let changes = model.changes {
+            info(changes == 0 ? String(localized: "Working tree clean", comment: "Git: no uncommitted changes")
+                : String(localized: "\(changes) changed files", comment: "plural"))
+        }
+        if model.stashCount > 0 { info(String(localized: "\(model.stashCount) stashes", comment: "plural")) }
         menu.addItem(.separator())
-        let copyBranch = NSMenuItem(title: model.isDetached ? "Copy Commit ID" : "Copy Branch Name",
+        let copyBranch = NSMenuItem(title: model.isDetached ? String(localized: "Copy Commit ID") : String(localized: "Copy Branch Name"),
                                     action: #selector(copyBranch), keyEquivalent: "")
         copyBranch.target = self
         menu.addItem(copyBranch)
         if !model.isDetached, model.oid != nil {
-            let copyCommit = NSMenuItem(title: "Copy Commit ID", action: #selector(copyCommit), keyEquivalent: "")
+            let copyCommit = NSMenuItem(title: String(localized: "Copy Commit ID"), action: #selector(copyCommit), keyEquivalent: "")
             copyCommit.target = self
             menu.addItem(copyCommit)
         }
@@ -245,6 +248,12 @@ final class GitBranchPill: NSView {
         if let oid = model?.oid { copy(oid) }
     }
 
+    /// "3 ahead, 2 behind": each count a whole phrase.
+    private func aheadBehind(_ model: Model) -> String {
+        [String(localized: "\(model.ahead) ahead", comment: "plural"), String(localized: "\(model.behind) behind", comment: "plural")]
+            .joined(separator: ", ")
+    }
+
     private func copy(_ string: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(string, forType: .string)
@@ -256,18 +265,25 @@ final class GitBranchPill: NSView {
             toolTip = nil
             return
         }
-        var parts = [model.isDetached ? "Detached at \(model.branch)" : "Branch \(model.branch)"]
+        var parts = [model.isDetached ? String(localized: "Detached at \(model.branch)", comment: "Git: HEAD is detached at this commit")
+                     : String(localized: "Branch \(model.branch)", comment: "Git: the current branch")]
         if let operation = model.operation { parts.append(operation) }
-        if model.ahead > 0 { parts.append("\(model.ahead) ahead") }
-        if model.behind > 0 { parts.append("\(model.behind) behind") }
-        if let changes = model.changes { parts.append(changes == 0 ? "no changes" : Format.count(changes, "change", "changes")) }
-        if model.isStale { parts.append("status timed out") }
+        if model.ahead > 0 { parts.append(String(localized: "\(model.ahead) ahead", comment: "plural")) }
+        if model.behind > 0 { parts.append(String(localized: "\(model.behind) behind", comment: "plural")) }
+        if let changes = model.changes {
+            parts.append(changes == 0 ? String(localized: "no changes", comment: "Git, in an accessibility label: no uncommitted changes")
+                : String(localized: "\(changes) changes", comment: "plural"))
+        }
+        if model.isStale { parts.append(String(localized: "status timed out", comment: "Git, in an accessibility label: status didn't finish in time")) }
         setAccessibilityLabel(parts.joined(separator: ", "))
-        var tip = model.isDetached ? "Detached HEAD at \(model.branch)" : "On branch \(model.branch)"
-        if let upstream = model.upstream { tip += "\nTracking \(upstream)" }
-        if model.ahead > 0 || model.behind > 0 { tip += "\n\(model.ahead) ahead, \(model.behind) behind" }
-        if let changes = model.changes { tip += "\n" + (changes == 0 ? "Working tree clean" : Format.count(changes, "changed file", "changed files")) }
-        if model.isStale { tip += "\ngit status timed out; showing the last known state" }
-        toolTip = tip
+        var lines = [model.isDetached ? String(localized: "Detached HEAD at \(model.branch)") : String(localized: "On branch \(model.branch)")]
+        if let upstream = model.upstream { lines.append(String(localized: "Tracking \(upstream)", comment: "Git: the branch's upstream branch")) }
+        if model.ahead > 0 || model.behind > 0 { lines.append(aheadBehind(model)) }
+        if let changes = model.changes {
+            lines.append(changes == 0 ? String(localized: "Working tree clean", comment: "Git: no uncommitted changes")
+                : String(localized: "\(changes) changed files", comment: "plural"))
+        }
+        if model.isStale { lines.append(String(localized: "git status timed out; showing the last known state")) }
+        toolTip = lines.joined(separator: "\n")
     }
 }

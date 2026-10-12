@@ -120,11 +120,12 @@ final class TransferQueue {
         let active = jobs.filter { $0.state.isActive }
         guard !active.isEmpty else { return .terminateNow }
         let alert = NSAlert()
-        alert.messageText = active.count == 1 ? "A copy or archive is still in progress" : "\(active.count) jobs are still in progress"
-        alert.informativeText = "Quitting stops them. Items already copied stay; the item being copied (or a half-made "
-            + "archive) is removed."
-        alert.addButton(withTitle: "Stop and Quit")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = active.count == 1
+            ? String(localized: "A copy or archive is still in progress")
+            : String(localized: "\(active.count) jobs are still in progress", comment: "plural")
+        alert.informativeText = String(localized: "Quitting stops them. Items already copied stay; the item being copied (or a half-made archive) is removed.")
+        alert.addButton(withTitle: String(localized: "Stop and Quit", comment: "Quit alert button: stop the transfers and quit"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
         // Return keeps the transfers going; stopping them takes a deliberate click.
         alert.buttons[0].hasDestructiveAction = true
         alert.buttons[0].keyEquivalent = ""
@@ -254,10 +255,10 @@ enum TransferUndo {
                 // Moved items go back first, then whatever they replaced comes out of the Trash into the freed spots.
                 let back = moved.reversed().map(\.reversed) + replaced.reversed().map(\.reversed)
                 perform(back, actionName: actionName, undo: undo, containers: containers.isEmpty ? .none : .remove(containers))
-                undo.setActionName(actionName)
+                undo.setActionName(OperationLog.displayName(actionName))
             }
         }
-        undo.setActionName(actionName)
+        undo.setActionName(OperationLog.displayName(actionName))
     }
 
     /// Moves items and registers the inverse right away, so redo works even when the moves themselves take a while.
@@ -297,7 +298,7 @@ enum TransferUndo {
                             containers: containers.inverse)
                 }
             }
-            undo.setActionName(actionName)
+            undo.setActionName(OperationLog.displayName(actionName))
             return
         }
         guard let undo, !done.isEmpty else { return }
@@ -305,7 +306,7 @@ enum TransferUndo {
         undo.registerUndo(withTarget: undo) { undo in
             MainActor.assumeIsolated { perform(inverse, actionName: actionName, undo: undo, containers: containers.inverse) }
         }
-        undo.setActionName(actionName)
+        undo.setActionName(OperationLog.displayName(actionName))
     }
 }
 

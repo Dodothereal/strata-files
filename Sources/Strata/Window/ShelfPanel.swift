@@ -11,7 +11,7 @@ final class ShelfPanel: NSPanel {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 240, height: 210),
                    styleMask: [.titled, .closable, .utilityWindow, .nonactivatingPanel, .fullSizeContentView],
                    backing: .buffered, defer: true)
-        title = "Shelf"
+        title = String(localized: "Shelf", comment: "Window title: the floating shelf for gathering files")
         titlebarAppearsTransparent = true
         isFloatingPanel = true
         hidesOnDeactivate = false
@@ -66,7 +66,8 @@ private final class ShelfWell: NSView, NSDraggingSource {
         label.textColor = .secondaryLabelColor
         label.alignment = .center
         label.lineBreakMode = .byTruncatingMiddle
-        func button(_ title: String, _ symbol: String, _ action: Selector) -> NSButton {
+        func button(_ localizedTitle: String.LocalizationValue, _ symbol: String, _ action: Selector) -> NSButton {
+            let title = String(localized: localizedTitle)
             let button = NSButton(title: title, image: NSImage(systemSymbolName: symbol, accessibilityDescription: title)!, target: self, action: action)
             button.bezelStyle = .accessoryBarAction
             button.controlSize = .small
@@ -113,12 +114,13 @@ private final class ShelfWell: NSView, NSDraggingSource {
             iconView.image = NSImage(systemSymbolName: "tray.and.arrow.down", accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: 34, weight: .light))
             iconView.contentTintColor = .tertiaryLabelColor
-            label.stringValue = "Drop files here"
+            label.stringValue = String(localized: "Drop files here")
         } else {
             iconView.image = items.count == 1 ? NSWorkspace.shared.icon(forFile: items[0].path)
                 : NSWorkspace.shared.icon(forFiles: items.map(\.path))
             iconView.contentTintColor = nil
-            label.stringValue = items.count == 1 ? items[0].lastPathComponent : "\(items.count) items · drag out to drop them all"
+            label.stringValue = items.count == 1 ? items[0].lastPathComponent
+                : String(localized: "\(items.count) items · drag out to drop them all", comment: "plural")
         }
     }
 

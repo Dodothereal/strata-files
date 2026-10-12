@@ -13,7 +13,8 @@ final class TransfersViewController: NSViewController {
     private let listStack = NSStackView()
     private let scrollView = NSScrollView()
     private let emptyView = NSStackView()
-    private let clearButton = NSButton(title: "Clear", target: nil, action: nil)
+    private let clearButton = NSButton(title: String(localized: "Clear", comment: "Transfers popover: remove finished jobs from the list"),
+                                       target: nil, action: nil)
     private var rows: [ObjectIdentifier: TransferRowView] = [:]
     private var listHeight: NSLayoutConstraint!
 
@@ -25,14 +26,14 @@ final class TransfersViewController: NSViewController {
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        let title = NSTextField(labelWithString: "Transfers")
+        let title = NSTextField(labelWithString: TransfersToolbarItem.localizedLabel)
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         clearButton.target = self
         clearButton.action = #selector(clearFinished(_:))
         clearButton.bezelStyle = .push
         clearButton.controlSize = .small
         clearButton.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        clearButton.toolTip = "Remove finished transfers from the list"
+        clearButton.toolTip = String(localized: "Remove finished transfers from the list")
         let header = NSStackView(views: [title, NSView(), clearButton])
         header.edgeInsets = NSEdgeInsets(top: 10, left: 16, bottom: 8, right: 12)
         header.translatesAutoresizingMaskIntoConstraints = false
@@ -54,10 +55,10 @@ final class TransfersViewController: NSViewController {
         scrollView.autohidesScrollers = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
-        let emptyTitle = NSTextField(labelWithString: "No Transfers")
+        let emptyTitle = NSTextField(labelWithString: String(localized: "No Transfers"))
         emptyTitle.font = .systemFont(ofSize: 13, weight: .medium)
         emptyTitle.textColor = .secondaryLabelColor
-        let emptyBody = NSTextField(labelWithString: "Copies and moves you start appear here.")
+        let emptyBody = NSTextField(labelWithString: String(localized: "Copies and moves you start appear here."))
         emptyBody.font = .systemFont(ofSize: 11)
         emptyBody.textColor = .tertiaryLabelColor
         emptyView.setViews([emptyTitle, emptyBody], in: .center)
@@ -239,14 +240,15 @@ final class TransferRowView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    private func makeButton(_ symbol: String, _ label: String, _ action: Selector) -> NSButton {
+    private func makeButton(_ symbol: String, _ label: String.LocalizationValue, _ action: Selector) -> NSButton {
+        let text = String(localized: label)
         let button = NSButton()
         button.isBordered = false
         button.imagePosition = .imageOnly
         button.target = self
         button.action = action
-        button.toolTip = label
-        button.setAccessibilityLabel(label)
+        button.toolTip = text
+        button.setAccessibilityLabel(text)
         setSymbol(symbol, on: button)
         button.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -298,12 +300,14 @@ final class TransferRowView: NSView {
 
         pauseButton.isHidden = !(job.canPause || job.canResume)
         if job.canResume {
-            pauseButton.toolTip = "Resume"
-            pauseButton.setAccessibilityLabel("Resume")
+            let resume = String(localized: "Resume", comment: "Transfers list: continue a paused job")
+            pauseButton.toolTip = resume
+            pauseButton.setAccessibilityLabel(resume)
             setSymbol("play.circle.fill", on: pauseButton)
         } else {
-            pauseButton.toolTip = "Pause"
-            pauseButton.setAccessibilityLabel("Pause")
+            let pause = String(localized: "Pause", comment: "Transfers list: pause a job")
+            pauseButton.toolTip = pause
+            pauseButton.setAccessibilityLabel(pause)
             setSymbol("pause.circle.fill", on: pauseButton)
         }
         cancelButton.isHidden = !job.canCancel
@@ -325,7 +329,7 @@ final class TransferRowView: NSView {
         case .failed:
             result.addAttribute(.foregroundColor, value: NSColor.systemRed, range: NSRange(location: 0, length: result.length))
         case .finished where job.failureCount > 0:
-            let failed = "\(job.failureCount.formatted()) failed"
+            let failed = TransferFormat.failed(job.failureCount)
             let range = (text as NSString).range(of: failed)
             if range.location != NSNotFound { result.addAttribute(.foregroundColor, value: NSColor.systemRed, range: range) }
         default:

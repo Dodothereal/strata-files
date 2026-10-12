@@ -68,7 +68,7 @@ enum Privacy {
 final class WelcomeSheetController: NSWindowController {
     private var timer: Timer?
     private let status = NSTextField(labelWithString: "")
-    private let primary = NSButton(title: "Open Privacy Settings", target: nil, action: nil)
+    private let primary = NSButton(title: String(localized: "Open Privacy Settings"), target: nil, action: nil)
     var onGranted: (() -> Void)?
 
     init() {
@@ -77,28 +77,28 @@ final class WelcomeSheetController: NSWindowController {
 
         let icon = DraggableAppIcon(image: NSApp.applicationIconImage)
         icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.toolTip = "Drag into the Full Disk Access list"
-        let caption = NSTextField(labelWithString: "Drag me into the list")
+        icon.toolTip = String(localized: "Drag into the Full Disk Access list")
+        let caption = NSTextField(labelWithString: String(localized: "Drag me into the list", comment: "Welcome sheet: under the app icon"))
         caption.font = .systemFont(ofSize: 11, weight: .medium)
         caption.textColor = .tertiaryLabelColor
-        let title = NSTextField(labelWithString: "Welcome to Strata")
+        let title = NSTextField(labelWithString: String(localized: "Welcome to Strata"))
         title.font = .systemFont(ofSize: 20, weight: .bold)
         let body = NSTextField(wrappingLabelWithString:
-            "Give Strata Full Disk Access to see folder sizes everywhere and browse protected places like Library, Mail and other apps’ data, with one switch instead of a permission prompt per folder.")
+            String(localized: "Give Strata Full Disk Access to see folder sizes everywhere and browse protected places like Library, Mail and other apps’ data, with one switch instead of a permission prompt per folder."))
         body.font = .systemFont(ofSize: 13)
         body.textColor = .secondaryLabelColor
         body.alignment = .center
         body.preferredMaxLayoutWidth = 380
         status.font = .systemFont(ofSize: 12, weight: .medium)
         status.textColor = .secondaryLabelColor
-        status.stringValue = "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on."
+        status.stringValue = String(localized: "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.")
 
         primary.bezelStyle = .push
         primary.controlSize = .large
         primary.keyEquivalent = "\r"
         primary.target = self
         primary.action = #selector(openSettings)
-        let later = NSButton(title: "Not Now", target: self, action: #selector(dismiss))
+        let later = NSButton(title: String(localized: "Not Now"), target: self, action: #selector(dismiss))
         later.bezelStyle = .push
         later.controlSize = .large
         later.keyEquivalent = "\u{1b}"
@@ -144,7 +144,7 @@ final class WelcomeSheetController: NSWindowController {
         Privacy.refresh()
         guard Privacy.hasFullDiskAccess else { return }
         timer?.invalidate()
-        status.stringValue = "✓ Full Disk Access is on. You’re all set."
+        status.stringValue = String(localized: "✓ Full Disk Access is on. You’re all set.")
         status.textColor = .systemGreen
         primary.isEnabled = false
         onGranted?()

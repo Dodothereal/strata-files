@@ -6,11 +6,11 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
 
     private struct Shortcut {
         let keys: [String]
-        let action: String
+        let action: String.LocalizationValue
     }
 
     private static let sections: [(title: String, items: [Shortcut])] = [
-        ("Go", [
+        (String(localized: "Go", comment: "Keyboard shortcuts section: getting around"), [
             Shortcut(keys: ["⌘", "K"], action: "Command palette: jump anywhere, run any command"),
             Shortcut(keys: ["⌘", "L"], action: "Type a path (Tab completes)"),
             Shortcut(keys: ["⇧", "⌘", "G"], action: "Go to folder"),
@@ -26,7 +26,7 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
             Shortcut(keys: ["⇧", "⌘", "A"], action: "Applications"),
             Shortcut(keys: ["⌥", "⌘", "K"], action: "Connect to a server (SMB, AFP, NFS, WebDAV)"),
         ]),
-        ("Find", [
+        (String(localized: "Find", comment: "Keyboard shortcuts section: filtering and searching"), [
             Shortcut(keys: ["a–z"], action: "Type in the list to filter this folder (fuzzy)"),
             Shortcut(keys: ["↩"], action: "While filtering: open the top match"),
             Shortcut(keys: ["esc"], action: "Clear the filter"),
@@ -44,7 +44,7 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
             Shortcut(keys: ["duration:>10m"], action: "Video and audio length; pages:>20 for PDFs (via Spotlight)"),
             Shortcut(keys: ["author:ana"], action: "Document author; artist: for music (via Spotlight)"),
         ]),
-        ("Files", [
+        (String(localized: "Files", comment: "Keyboard shortcuts section: working with files"), [
             Shortcut(keys: ["↩"], action: "Rename (or open — see Settings)"),
             Shortcut(keys: ["space"], action: "Quick Look (also ⌘Y)"),
             Shortcut(keys: ["⌘", "O"], action: "Open"),
@@ -66,7 +66,7 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
             Shortcut(keys: ["⌘", "E"], action: "Eject"),
             Shortcut(keys: ["⌥", "drag"], action: "Copy instead of move"),
         ]),
-        ("View", [
+        (String(localized: "View", comment: "Keyboard shortcuts section: how the list looks"), [
             Shortcut(keys: ["⌘", "1"], action: "Icons"),
             Shortcut(keys: ["⌘", "2"], action: "List"),
             Shortcut(keys: ["⌘", "3"], action: "Columns"),
@@ -81,7 +81,7 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
             Shortcut(keys: ["⌘", "R"], action: "Reload (and recount sizes)"),
             Shortcut(keys: ["⌃", "⌘", "F"], action: "Full screen"),
         ]),
-        ("Panes, Tabs & Windows", [
+        (String(localized: "Panes, Tabs & Windows", comment: "Keyboard shortcuts section"), [
             Shortcut(keys: ["⌘", "\\"], action: "Dual pane on or off"),
             Shortcut(keys: ["tab"], action: "In dual pane: switch pane (also ⌥⌘\\)"),
             Shortcut(keys: ["F5"], action: "Copy selection to the other pane"),
@@ -103,13 +103,13 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 560, height: 640),
                             styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
                             backing: .buffered, defer: true)
-        panel.title = "Keyboard Shortcuts"
+        panel.title = String(localized: "Keyboard Shortcuts")
         panel.titlebarAppearsTransparent = true
         panel.isFloatingPanel = false
         panel.minSize = NSSize(width: 460, height: 360)
         super.init(window: panel)
 
-        search.placeholderString = "Search shortcuts"
+        search.placeholderString = String(localized: "Search shortcuts")
         search.delegate = self
         search.translatesAutoresizingMaskIntoConstraints = false
 
@@ -182,7 +182,8 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
         content.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let query = filter.trimmingCharacters(in: .whitespaces).lowercased()
         for section in Self.sections {
-            let items = query.isEmpty ? section.items : section.items.filter {
+            let all = section.items.map { (keys: $0.keys, action: String(localized: $0.action)) }
+            let items = query.isEmpty ? all : all.filter {
                 $0.action.lowercased().contains(query) || $0.keys.joined(separator: " ").lowercased().contains(query)
                     || section.title.lowercased().contains(query)
             }
@@ -201,7 +202,7 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
             }
         }
         if content.arrangedSubviews.isEmpty {
-            let none = NSTextField(labelWithString: "No shortcuts match “\(filter)”.")
+            let none = NSTextField(labelWithString: String(localized: "No shortcuts match “\(filter)”."))
             none.textColor = .secondaryLabelColor
             content.addArrangedSubview(none)
         }
@@ -275,14 +276,14 @@ private final class Keycap: NSView {
 /// The sidebar's footer: a quiet button that opens the shortcuts list.
 final class SidebarFooterController: NSSplitViewItemAccessoryViewController {
     override func loadView() {
-        let button = NSButton(title: "Keyboard Shortcuts", image: NSImage(systemSymbolName: "command", accessibilityDescription: nil)!,
+        let button = NSButton(title: String(localized: "Keyboard Shortcuts"), image: NSImage(systemSymbolName: "command", accessibilityDescription: nil)!,
                               target: nil, action: #selector(AppDelegate.showShortcuts(_:)))
         button.bezelStyle = .accessoryBarAction
         button.isBordered = false
         button.imagePosition = .imageLeading
         button.contentTintColor = .secondaryLabelColor
         button.font = .systemFont(ofSize: 12)
-        button.toolTip = "Every shortcut in Strata (⌘/)"
+        button.toolTip = String(localized: "Every shortcut in Strata (⌘/)")
         button.translatesAutoresizingMaskIntoConstraints = false
         let container = NSView()
         container.addSubview(button)

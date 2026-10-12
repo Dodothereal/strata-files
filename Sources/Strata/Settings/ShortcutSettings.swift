@@ -70,7 +70,9 @@ private struct ShortcutRowView: View {
                     Image(systemName: "arrow.uturn.backward.circle")
                 }
                 .buttonStyle(.borderless)
-                .help("Back to \(command.defaultCombo.display.isEmpty ? "no shortcut" : command.defaultCombo.display)")
+                .help(command.defaultCombo.display.isEmpty
+                      ? String(localized: "Back to no shortcut", comment: "Help tag: restore a command’s built-in state, which has no shortcut")
+                      : String(localized: "Back to \(command.defaultCombo.display)", comment: "Help tag: restore a command’s built-in shortcut (“Back to ⇧⌘G”)"))
                 .accessibilityLabel("Restore the built-in shortcut")
             }
             ShortcutRecorder(id: command.id, title: command.title, display: display)
@@ -108,7 +110,7 @@ final class RecorderButton: NSButton {
         controlSize = .small
         target = self
         action = #selector(clicked)
-        setAccessibilityLabel("Shortcut for \(title)")
+        setAccessibilityLabel(String(localized: "Shortcut for \(title)", comment: "Accessibility: the shortcut field of a command"))
         refresh()
     }
 
@@ -117,9 +119,9 @@ final class RecorderButton: NSButton {
     func refresh() {
         guard monitor == nil else { return }
         let display = ShortcutStore.shared.combo(for: id).display
-        title = display.isEmpty ? "None" : display
+        title = display.isEmpty ? String(localized: "None", comment: "Shortcut field: the command has no shortcut") : display
         contentTintColor = display.isEmpty ? .secondaryLabelColor : nil
-        setAccessibilityValue(display.isEmpty ? "No shortcut" : display)
+        setAccessibilityValue(display.isEmpty ? String(localized: "No shortcut") : display)
     }
 
     @objc private func clicked() {
@@ -127,10 +129,10 @@ final class RecorderButton: NSButton {
     }
 
     private func start() {
-        title = "Type shortcut…"
+        title = String(localized: "Type shortcut…", comment: "Shortcut field while recording: press the new keys")
         window?.makeFirstResponder(self)
         NSAccessibility.post(element: self, notification: .announcementRequested,
-                             userInfo: [.announcement: "Type the new shortcut for \(commandTitle). Escape keeps it, Delete removes it."])
+                             userInfo: [.announcement: String(localized: "Type the new shortcut for \(commandTitle). Escape keeps it, Delete removes it.")])
         // Every key in this window goes here while recording, ⌘ combinations included (they mustn't run menu commands).
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             guard let self else { return event }
@@ -185,7 +187,7 @@ final class RecorderButton: NSButton {
         guard combo.isUsable else {
             // A plain key would stop typing (the list filters as you type): ⌘ or ⌃ is needed, or a function key.
             NSSound.beep()
-            title = "Add ⌘ or ⌃"
+            title = String(localized: "Add ⌘ or ⌃", comment: "Shortcut field: the keys pressed need Command or Control too")
             return
         }
         stop()
@@ -224,8 +226,8 @@ enum ShortcutChange {
         let store = ShortcutStore.shared
         if let system = store.systemConflict(for: combo) {
             let alert = NSAlert()
-            alert.messageText = "\(combo.display) belongs to “\(system)”."
-            alert.informativeText = "That shortcut can’t be changed here. Choose another one."
+            alert.messageText = String(localized: "\(combo.display) belongs to “\(system)”.", comment: "A keyboard shortcut (“⌘H”), then a menu command of macOS")
+            alert.informativeText = String(localized: "That shortcut can’t be changed here. Choose another one.")
             if let window { alert.beginSheetModal(for: window, completionHandler: nil) } else { alert.runModal() }
             return
         }
@@ -234,10 +236,10 @@ enum ShortcutChange {
             return
         }
         let alert = NSAlert()
-        alert.messageText = "\(combo.display) is used by “\(other.title)”."
-        alert.informativeText = "Use it for “\(title)” instead? “\(other.title)” will have no shortcut."
-        alert.addButton(withTitle: "Use Here")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = String(localized: "\(combo.display) is used by “\(other.title)”.", comment: "A keyboard shortcut (“⌘K”), then a menu command")
+        alert.informativeText = String(localized: "Use it for “\(title)” instead? “\(other.title)” will have no shortcut.")
+        alert.addButton(withTitle: String(localized: "Use Here", comment: "Alert button: give the shortcut to this command"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
         alert.beginSheetModal(for: window) { response in
             guard response == .alertFirstButtonReturn else { return }
             reset ? store.reset(id) : store.set(combo, for: id)

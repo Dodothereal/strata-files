@@ -81,13 +81,18 @@ extension BrowserWindowController {
 
     private func commandItems() -> [PaletteItem] {
         let hasSelection = !browser.selectedURLs.isEmpty
-        func command(_ title: String, _ symbol: String, _ shortcut: String?, keywords: [String] = [],
-                     _ run: @escaping () -> Void) -> PaletteItem {
+        // Titles worked out in code (already localized) come through here; literal ones through `command` below.
+        func localizedCommand(_ title: String, _ symbol: String, _ shortcut: String?, keywords: [String] = [],
+                              _ run: @escaping () -> Void) -> PaletteItem {
             let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
             // The shortcut as currently set (Settings ▸ Shortcuts can change or remove it).
             let live = shortcut.map { ShortcutStore.shared.live($0) }.flatMap { $0.isEmpty ? nil : $0 }
             return PaletteItem(title: title, subtitle: "", icon: image, kind: .action, shortcut: live, keywords: keywords, run: run)
+        }
+        func command(_ title: String.LocalizationValue, _ symbol: String, _ shortcut: String?, keywords: [String] = [],
+                     _ run: @escaping () -> Void) -> PaletteItem {
+            localizedCommand(String(localized: title), symbol, shortcut, keywords: keywords, run)
         }
         var commands = [
             command("New Folder", "folder.badge.plus", "⇧⌘N") { [weak self] in self?.browser.newFolder(nil) },
@@ -95,17 +100,23 @@ extension BrowserWindowController {
             command("New Window", "macwindow.badge.plus", "⌘N") { (NSApp.delegate as? AppDelegate)?.newWindow(nil) },
             command("Open in Terminal", "terminal", "⌃⌘T") { [weak self] in self?.browser.openInTerminal(nil) },
             command("Copy Path", "link", "⌥⌘C") { [weak self] in self?.browser.copyPath(nil) },
-            command(Prefs.showHidden ? "Hide Hidden Files" : "Show Hidden Files", Prefs.showHidden ? "eye.slash" : "eye.circle", "⇧⌘.") {
+            localizedCommand(Prefs.showHidden ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files"),
+                             Prefs.showHidden ? "eye.slash" : "eye.circle", "⇧⌘.") {
                 Prefs.showHidden.toggle()
             },
-            command(Prefs.foldersFirst ? "Mix Folders with Files" : "Keep Folders on Top", "folder", nil) { Prefs.foldersFirst.toggle() },
-            command(splitController.splitViewItems.last?.isCollapsed == true ? "Show Inspector" : "Hide Inspector", "sidebar.right", "⌘I") { [weak self] in
+            localizedCommand(Prefs.foldersFirst ? String(localized: "Mix Folders with Files") : String(localized: "Keep Folders on Top"),
+                             "folder", nil) { Prefs.foldersFirst.toggle() },
+            localizedCommand(splitController.splitViewItems.last?.isCollapsed == true ? String(localized: "Show Inspector")
+                                 : String(localized: "Hide Inspector"), "sidebar.right", "⌘I") { [weak self] in
                 self?.splitController.toggleInspector(nil)
             },
-            command(splitController.splitViewItems.first?.isCollapsed == true ? "Show Sidebar" : "Hide Sidebar", "sidebar.left", "⌃⌘S") { [weak self] in
+            localizedCommand(splitController.splitViewItems.first?.isCollapsed == true ? String(localized: "Show Sidebar")
+                                 : String(localized: "Hide Sidebar"), "sidebar.left", "⌃⌘S") { [weak self] in
                 self?.splitController.toggleSidebar(nil)
             },
-            command(isDualPane ? "Single Pane" : "Dual Pane", "rectangle.split.2x1", "⌘\\") { [weak self] in self?.toggleDualPane(nil) },
+            localizedCommand(isDualPane ? String(localized: "Single Pane") : String(localized: "Dual Pane"), "rectangle.split.2x1", "⌘\\") { [weak self] in
+                self?.toggleDualPane(nil)
+            },
             command("View as Icons", "square.grid.2x2", "⌘1") { [weak self] in self?.browser.setMode(.grid); self?.syncViewModeItem() },
             command("View as List", "list.bullet", "⌘2") { [weak self] in self?.browser.setMode(.list); self?.syncViewModeItem() },
             command("View as Columns", "rectangle.split.3x1", "⌘3") { [weak self] in self?.browser.setMode(.columns); self?.syncViewModeItem() },
@@ -148,8 +159,8 @@ extension BrowserWindowController {
                     self?.browser.share(nil)
                 },
                 command("Duplicate", "plus.square.on.square", "⌘D") { [weak self] in self?.browser.duplicate(nil) },
-                command(browser.renameTitle, "pencil", browser.selectedURLs.count > 1 ? nil : "↩",
-                        keywords: ["Batch", "Replace", "Number"]) { [weak self] in self?.browser.renameSelection(nil) },
+                localizedCommand(browser.renameTitle, "pencil", browser.selectedURLs.count > 1 ? nil : "↩",
+                                 keywords: ["Batch", "Replace", "Number"]) { [weak self] in self?.browser.renameSelection(nil) },
 
                 command("Delete Immediately…", "xmark.bin", "⌥⌘⌫", keywords: ["Remove", "Erase"]) { [weak self] in
                     self?.browser.deleteImmediately(nil)
@@ -163,12 +174,12 @@ extension BrowserWindowController {
             })
         }
         if !browser.selectedURLs.isEmpty, !browser.isShowingTrash, browser.effectiveMode != .treemap, browser.canWriteBesideSelection {
-            commands.insert(command(browser.compressTitle, "doc.zipper", nil, keywords: ["Zip", "Archive"]) { [weak self] in
+            commands.insert(localizedCommand(browser.compressTitle, "doc.zipper", nil, keywords: ["Zip", "Archive"]) { [weak self] in
                 self?.browser.compress(nil)
             }, at: 0)
         }
         if !browser.selectedArchives.isEmpty, !browser.isShowingTrash, browser.canWriteBesideSelection {
-            commands.insert(command(browser.extractTitle, "archivebox", nil, keywords: ["Unzip", "Expand", "Decompress"]) { [weak self] in
+            commands.insert(localizedCommand(browser.extractTitle, "archivebox", nil, keywords: ["Unzip", "Expand", "Decompress"]) { [weak self] in
                 self?.browser.extract(nil)
             }, at: 0)
         }

@@ -14,26 +14,26 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
     private var control: FolderCompare.Control?
     private var lastResult: FolderCompare.Result?
 
-    private let contents = NSButton(checkboxWithTitle: "Compare contents", target: nil, action: nil)
+    private let contents = NSButton(checkboxWithTitle: String(localized: "Compare contents"), target: nil, action: nil)
     private let filter = NSPopUpButton()
     private let direction = NSPopUpButton()
-    private let mirror = NSButton(checkboxWithTitle: "Move extras to the Trash", target: nil, action: nil)
+    private let mirror = NSButton(checkboxWithTitle: String(localized: "Move extras to the Trash"), target: nil, action: nil)
     private let table = NSTableView()
     private let summary = NSTextField(labelWithString: "")
     private let spinner = NSProgressIndicator()
-    private let syncButton = NSButton(title: "Sync", target: nil, action: nil)
-    private let closeButton = NSButton(title: "Close", target: nil, action: nil)
+    private let syncButton = NSButton(title: String(localized: "Sync", comment: "Button: sync the two folders"), target: nil, action: nil)
+    private let closeButton = NSButton(title: String(localized: "Close", comment: "Button: close the Compare sheet"), target: nil, action: nil)
 
     private enum Filter: Int, CaseIterable {
         case all, onlyLeft, onlyRight, newer, changed
 
         var title: String {
             switch self {
-            case .all: "All Differences"
-            case .onlyLeft: "Only on the Left"
-            case .onlyRight: "Only on the Right"
-            case .newer: "Newer on One Side"
-            case .changed: "Different, Same Date"
+            case .all: String(localized: "All Differences")
+            case .onlyLeft: String(localized: "Only on the Left")
+            case .onlyRight: String(localized: "Only on the Right")
+            case .newer: String(localized: "Newer on One Side")
+            case .changed: String(localized: "Different, Same Date")
             }
         }
 
@@ -58,40 +58,45 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        let title = NSTextField(labelWithString: "Compare Folders")
+        let title = NSTextField(labelWithString: String(localized: "Compare Folders"))
         title.font = .systemFont(ofSize: 15, weight: .semibold)
         // The folders by name (both always visible); where they are, on hover.
-        let sides = NSTextField(labelWithString: "“\(left.lastPathComponent)” (left)   ⇄   “\(right.lastPathComponent)” (right)")
+        let sides = NSTextField(labelWithString: String(localized: "“\(left.lastPathComponent)” (left)   ⇄   “\(right.lastPathComponent)” (right)",
+                                                         comment: "The two folders being compared, by name"))
         sides.font = .systemFont(ofSize: 12)
         sides.textColor = .secondaryLabelColor
         sides.lineBreakMode = .byTruncatingMiddle
-        sides.toolTip = "Left: \(Format.tildePath(left))\nRight: \(Format.tildePath(right))"
+        sides.toolTip = String(localized: "Left: \(Format.tildePath(left))\nRight: \(Format.tildePath(right))",
+                               comment: "Tooltip: where the two compared folders are")
         sides.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         contents.target = self
         contents.action = #selector(rescan(_:))
-        contents.toolTip = "Read files of the same size to find ones whose contents differ (slower)"
+        contents.toolTip = String(localized: "Read files of the same size to find ones whose contents differ (slower)")
         for item in Filter.allCases { filter.addItem(withTitle: item.title) }
         filter.target = self
         filter.action = #selector(filterChanged(_:))
-        filter.setAccessibilityLabel("Show")
+        filter.setAccessibilityLabel(String(localized: "Show", comment: "Accessibility: the menu choosing which differences are listed"))
         for item in FolderCompare.Direction.allCases { direction.addItem(withTitle: item.title) }
         direction.target = self
         direction.action = #selector(directionChanged(_:))
-        direction.setAccessibilityLabel("Sync direction")
+        direction.setAccessibilityLabel(String(localized: "Sync direction"))
         mirror.target = self
         mirror.action = #selector(directionChanged(_:))
         mirror.isEnabled = false
-        mirror.toolTip = "One-way syncs only: items only on the side being synced to go to the Trash, so both sides match"
-        let syncLabel = NSTextField(labelWithString: "Sync:")
-        let showLabel = NSTextField(labelWithString: "Show:")
+        mirror.toolTip = String(localized: "One-way syncs only: items only on the side being synced to go to the Trash, so both sides match")
+        let syncLabel = NSTextField(labelWithString: String(localized: "Sync:", comment: "Label before the sync direction menu"))
+        let showLabel = NSTextField(labelWithString: String(localized: "Show:", comment: "Label before the menu choosing which differences are listed"))
         let spacer = NSView()
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
         let options = NSStackView(views: [showLabel, filter, contents, spacer, syncLabel, direction, mirror])
         options.spacing = 8
 
-        for (id, title, width) in [("status", "", 26.0), ("path", "Item", 280.0), ("left", "Left: \(left.lastPathComponent)", 150.0),
-                                   ("action", "Sync", 140.0), ("right", "Right: \(right.lastPathComponent)", 150.0)] {
+        for (id, title, width) in [("status", "", 26.0),
+                                   ("path", String(localized: "Item", comment: "Compare column: the item's path"), 280.0),
+                                   ("left", String(localized: "Left: \(left.lastPathComponent)", comment: "Compare column: the left folder"), 150.0),
+                                   ("action", String(localized: "compare.column.sync", defaultValue: "Sync", comment: "Compare column header: what the sync does with the item (copy →, ←, skip)"), 140.0),
+                                   ("right", String(localized: "Right: \(right.lastPathComponent)", comment: "Compare column: the right folder"), 150.0)] {
             let column = NSTableColumn(identifier: .init(id))
             column.title = title
             column.width = width
@@ -105,7 +110,7 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         table.allowsMultipleSelection = true
         table.dataSource = self
         table.delegate = self
-        table.setAccessibilityLabel("Differences")
+        table.setAccessibilityLabel(String(localized: "Differences", comment: "Accessibility: the list of differences between the folders"))
         // Right-click (or the keyboard's menu) sets what the selected rows do, all at once.
         let menu = NSMenu()
         menu.delegate = self
@@ -180,12 +185,12 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         table.reloadData()
         syncButton.isEnabled = false
         spinner.startAnimation(nil)
-        summary.stringValue = "Comparing…"
+        summary.stringValue = String(localized: "Comparing…")
         let left = left, right = right, contents = contents.state == .on, hidden = Prefs.showHidden
         let progress: @Sendable (Int) -> Void = { [weak self] count in
             Task { @MainActor in
                 guard let self, self.control === control else { return }
-                self.summary.stringValue = "Comparing… \(count.formatted()) items"
+                self.summary.stringValue = String(localized: "Comparing… \(count) items", comment: "plural")
             }
         }
         Task { [weak self] in
@@ -240,8 +245,8 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         }
         if differences.isEmpty {
             summary.stringValue = result.truncated
-                ? "No differences in the first \(FolderCompare.itemLimit.formatted()) items of each side"
-                : "The folders match (\(Format.count(result.identical, "item", "items")) compared)"
+                ? String(localized: "No differences in the first \(FolderCompare.itemLimit) items of each side", comment: "plural")
+                : String(localized: "The folders match (\(result.identical) items compared)", comment: "plural")
             syncButton.isEnabled = false
             return
         }
@@ -249,17 +254,20 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         let right = chosen.filter { $0 == .copyRight }.count
         let left = chosen.filter { $0 == .copyLeft }.count
         let trashed = chosen.filter { $0 == .trashLeft || $0 == .trashRight }.count
-        var parts = [Format.count(differences.count, "difference", "differences")]
-        if right > 0 { parts.append("\(right.formatted()) to copy →") }
-        if left > 0 { parts.append("\(left.formatted()) to copy ←") }
-        if trashed > 0 { parts.append("\(trashed.formatted()) to the Trash") }
+        var parts = [String(localized: "\(differences.count) differences", comment: "plural")]
+        if right > 0 { parts.append(String(localized: "\(right.formatted()) to copy →", comment: "Items the sync copies to the right")) }
+        if left > 0 { parts.append(String(localized: "\(left.formatted()) to copy ←", comment: "Items the sync copies to the left")) }
+        if trashed > 0 { parts.append(String(localized: "\(trashed.formatted()) to the Trash", comment: "Items the sync moves to the Trash")) }
         let unknown = differences.filter { $0.kind == .unknown }.count
-        if unknown > 0 { parts.append("\(unknown.formatted()) can’t be compared") }
+        if unknown > 0 { parts.append(String(localized: "\(unknown.formatted()) can’t be compared", comment: "Items that couldn't be compared")) }
         // A partial list can't be synced: what it doesn't show could be overwritten or trashed by mistake.
-        if result.truncated { parts.append("too many items to sync: only the first \(FolderCompare.itemLimit.formatted()) of each side were compared") }
+        if result.truncated {
+            parts.append(String(localized: "too many items to sync: only the first \(FolderCompare.itemLimit.formatted()) of each side were compared"))
+        }
         summary.stringValue = parts.joined(separator: " · ")
         syncButton.isEnabled = right + left + trashed > 0 && result.isComplete
-        syncButton.title = right + left + trashed > 0 ? "Sync \(Format.count(right + left + trashed, "Item", "Items"))" : "Sync"
+        syncButton.title = right + left + trashed > 0 ? String(localized: "Sync \(right + left + trashed) Items", comment: "plural")
+            : String(localized: "Sync", comment: "Button: sync the two folders")
     }
 
     // MARK: - Table
@@ -310,7 +318,7 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
             }
             popup.selectItem(withTag: (actions[difference.id] ?? .skip).rawValue)
             popup.isEnabled = difference.kind != .unknown
-            popup.setAccessibilityLabel("Sync \(difference.id)")
+            popup.setAccessibilityLabel(String(localized: "Sync \(difference.id)", comment: "Accessibility: the sync choice for an item; its path"))
             return popup
         default:
             return nil
@@ -334,8 +342,8 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
 
     private static func describe(_ item: FolderCompare.Item) -> String {
         let date = item.modified.formatted(date: .abbreviated, time: .shortened)
-        if item.isLink { return "Link · \(date)" }
-        if item.isDirectory { return "Folder · \(date)" }
+        if item.isLink { return String(localized: "Link · \(date)", comment: "Compare: a symbolic link and when it was modified") }
+        if item.isDirectory { return String(localized: "Folder · \(date)", comment: "Compare: a folder and when it was modified") }
         return "\(Format.bytes(item.size)) · \(date)"
     }
 
@@ -388,23 +396,31 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         let trash = trashLeft + trashRight
         guard !(toRight.isEmpty && toLeft.isEmpty && trash.isEmpty), let window = view.window else { return }
         let count = toRight.count + toLeft.count + trash.count
-        let leftName = "“\(left.lastPathComponent)” on the left", rightName = "“\(right.lastPathComponent)” on the right"
+        let leftName = left.lastPathComponent, rightName = right.lastPathComponent
         let alert = NSAlert()
-        alert.messageText = "Sync \(Format.count(count, "item", "items"))?"
+        alert.messageText = String(localized: "Sync \(count) items?", comment: "plural")
         var lines: [String] = []
-        if !toRight.isEmpty { lines.append("\(Format.count(toRight.count, "item", "items")) copied to \(rightName)") }
-        if !toLeft.isEmpty { lines.append("\(Format.count(toLeft.count, "item", "items")) copied to \(leftName)") }
-        if !trashRight.isEmpty { lines.append("\(Format.count(trashRight.count, "item", "items")) in \(rightName) moved to the Trash") }
-        if !trashLeft.isEmpty { lines.append("\(Format.count(trashLeft.count, "item", "items")) in \(leftName) moved to the Trash") }
+        if !toRight.isEmpty {
+            lines.append(String(localized: "\(toRight.count) items copied to “\(rightName)” on the right", comment: "plural"))
+        }
+        if !toLeft.isEmpty {
+            lines.append(String(localized: "\(toLeft.count) items copied to “\(leftName)” on the left", comment: "plural"))
+        }
+        if !trashRight.isEmpty {
+            lines.append(String(localized: "\(trashRight.count) items in “\(rightName)” on the right moved to the Trash", comment: "plural"))
+        }
+        if !trashLeft.isEmpty {
+            lines.append(String(localized: "\(trashLeft.count) items in “\(leftName)” on the left moved to the Trash", comment: "plural"))
+        }
         if replacesOtherKind > 0 {
-            lines.append("\(Format.count(replacesOtherKind, "item replaces", "items replace")) a file with a folder or a folder with a file")
+            lines.append(String(localized: "\(replacesOtherKind) items replace a file with a folder or a folder with a file", comment: "plural"))
         }
         let hidden = differences.count - shown.count
-        if hidden > 0 { lines.append("(This includes rows the Show menu hides.)") }
-        alert.informativeText = lines.joined(separator: "\n")
-            + "\n\nWhatever a copy replaces goes to the Trash first. Copies are checked after they’re written. Edit ▸ Undo undoes the copies and the Trash step separately."
-        alert.addButton(withTitle: "Sync")
-        alert.addButton(withTitle: "Cancel")
+        if hidden > 0 { lines.append(String(localized: "(This includes rows the Show menu hides.)")) }
+        alert.informativeText = lines.joined(separator: "\n") + "\n\n"
+            + String(localized: "Whatever a copy replaces goes to the Trash first. Copies are checked after they’re written. Edit ▸ Undo undoes the copies and the Trash step separately.")
+        alert.addButton(withTitle: String(localized: "Sync", comment: "Button: sync the two folders"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
         alert.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .alertFirstButtonReturn else { return }
             let undo = undo, left = left, right = right, parent = window.sheetParent
@@ -416,7 +432,7 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
                         try await FileOps.trashInBackground(trash, undo: undo)
                     } catch {
                         let failed = NSAlert(error: error)
-                        failed.messageText = "Some items couldn’t be moved to the Trash, so the sync stopped there."
+                        failed.messageText = String(localized: "Some items couldn’t be moved to the Trash, so the sync stopped there.")
                         if let parent { failed.beginSheetModal(for: parent, completionHandler: nil) }
                         return
                     }

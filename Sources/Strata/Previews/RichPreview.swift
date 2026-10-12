@@ -58,7 +58,7 @@ nonisolated enum PreviewFormat: Sendable {
             self = .code(language)
         } else if let contentType, !contentType.conforms(to: .image), !contentType.conforms(to: .audiovisualContent),
                   [UTType.sourceCode, .script, .shellScript, .xml].contains(where: contentType.conforms(to:)) {
-            self = .code(Language(name: contentType.localizedDescription ?? "Source", lexer: .plain))
+            self = .code(Language(name: contentType.localizedDescription ?? String(localized: "Source", comment: "Fallback name of a source code file type"), lexer: .plain))
         } else if contentType?.conforms(to: .json) == true {
             self = .json
         } else {

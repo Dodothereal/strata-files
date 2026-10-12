@@ -24,14 +24,14 @@ final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NSOutlineV
     private func configure() {
         nameColumn.minWidth = 120
         nameColumn.headerCell = GridLeadingHeaderCell()
-        nameColumn.title = "Name"
+        nameColumn.title = String(localized: "Name", comment: "Column title")
         sizeColumn.headerCell = GridHeaderCell()
-        sizeColumn.title = "Size"
+        sizeColumn.title = String(localized: "Size", comment: "Column title")
         sizeColumn.width = 72
         sizeColumn.minWidth = 56
         sizeColumn.headerCell.alignment = .right
         dateColumn.headerCell = GridHeaderCell()
-        dateColumn.title = "Date Modified"
+        dateColumn.title = String(localized: "Date Modified", comment: "Column title")
         dateColumn.width = 150
         dateColumn.minWidth = 90
         outlineView.addTableColumn(nameColumn)
@@ -85,10 +85,12 @@ final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NSOutlineV
         if root.children.count + node.children.count <= 12 {
             for child in node.children where child.isDirectory { outlineView.expandItem(child) }
         }
-        var parts = [listing.files == 1 ? "1 file" : "\(listing.files.formatted()) files"]
-        if listing.folders > 0 { parts.append(listing.folders == 1 ? "1 folder" : "\(listing.folders.formatted()) folders") }
+        var parts = [String(localized: "\(listing.files) files", comment: "plural")]
+        if listing.folders > 0 { parts.append(String(localized: "\(listing.folders) folders", comment: "plural")) }
         parts.append(Format.bytes(listing.uncompressed))
-        let note = listing.note ?? listing.compressed.map { "\(Format.bytes($0)) compressed" }
+        let note = listing.note ?? listing.compressed.map {
+            String(localized: "\(Format.bytes($0)) compressed", comment: "Archive size on disk; placeholder: a size, e.g. 12 MB")
+        }
         footer.show(parts, note: note)
     }
 

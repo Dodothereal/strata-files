@@ -62,7 +62,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         strip.registerForDraggedTypes([.fileURL])
         strip.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
         strip.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
-        strip.setAccessibilityLabel("Gallery")
+        strip.setAccessibilityLabel(String(localized: "Gallery", comment: "View mode: items in a gallery"))
         strip.controller = self
 
         stripScroll.documentView = strip

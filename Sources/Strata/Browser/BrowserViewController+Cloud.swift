@@ -12,7 +12,7 @@ extension BrowserViewController {
         let urls = selectedURLs.filter { CloudStore.shared.status(for: $0) == .cloudOnly }
         guard !urls.isEmpty else { return }
         let failures = CloudActions.download(urls)
-        if !failures.isEmpty { Self.report(failures.map { (url: $0.0, error: $0.1) }, title: "couldn’t be downloaded", in: view.window) }
+        if !failures.isEmpty { Self.report(failures.map { (url: $0.0, error: $0.1) }, .download, in: view.window) }
         CloudStore.shared.refresh(Set(urls.map { $0.deletingLastPathComponent() }))
     }
 
@@ -20,10 +20,7 @@ extension BrowserViewController {
         let urls = selectedURLs.filter { CloudStore.shared.status(for: $0) == .downloaded }
         guard !urls.isEmpty else { return }
         let failures = CloudActions.removeDownload(urls)
-        if !failures.isEmpty {
-            let title = failures.count == 1 ? "couldn’t have its download removed" : "couldn’t have their downloads removed"
-            Self.report(failures.map { (url: $0.0, error: $0.1) }, title: title, in: view.window)
-        }
+        if !failures.isEmpty { Self.report(failures.map { (url: $0.0, error: $0.1) }, .removeDownload, in: view.window) }
         CloudStore.shared.refresh(Set(urls.map { $0.deletingLastPathComponent() }))
     }
 }

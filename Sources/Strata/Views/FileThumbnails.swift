@@ -276,7 +276,7 @@ final class ItemInfoLoader {
                 if !showHidden, name.hasPrefix(".") { continue }
                 count += 1
             }
-            return "\(count.formatted()) \(count == 1 ? "item" : "items")"
+            return String(localized: "\(count) items", comment: "plural")
         }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],

@@ -35,7 +35,10 @@ enum StrataAI {
     static func paletteItems(for hits: [SemanticHit], open: @escaping (URL) -> Void) -> [PaletteItem] {
         hits.map { hit in
             var subtitle = hit.snippet
-            if let page = hit.page { subtitle = "p. \(page) · " + subtitle }
+            if let page = hit.page {
+                subtitle = String(localized: "p. \(page) · \(hit.snippet)",
+                                  comment: "Content search result: the PDF page the matching text is on, then the text")
+            }
             return PaletteItem(title: hit.title ?? hit.url.lastPathComponent, subtitle: subtitle,
                                icon: IconCache.shared.icon(forPath: hit.url.path), kind: .match,
                                fixedScore: Int(hit.score * 100)) { open(hit.url) }
@@ -71,9 +74,11 @@ extension BrowserWindowController {
     func aiPaletteItems() -> [PaletteItem] {
         let sparkles = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
-        let subtitle = browser.selectedURLs.isEmpty ? "Rename, move or organize everything here" : "Rename, move or organize the selection"
+        let subtitle = browser.selectedURLs.isEmpty ? String(localized: "Rename, move or organize everything here")
+            : String(localized: "Rename, move or organize the selection")
         let shortcut = ShortcutStore.shared.live("⌥⌘A")
-        return [PaletteItem(title: "Ask Strata…", subtitle: subtitle, icon: sparkles, kind: .action,
+        return [PaletteItem(title: String(localized: "Ask Strata…", comment: "Command: describe a change for the selected files"),
+                            subtitle: subtitle, icon: sparkles, kind: .action,
                             shortcut: shortcut.isEmpty ? nil : shortcut) { [weak self] in
             self?.askStrata(nil)
         }]

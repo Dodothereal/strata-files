@@ -29,8 +29,10 @@ final class ConflictSheetController: NSWindowController {
 
     init(conflict: TransferConflict) {
         self.conflict = conflict
-        existingCard = ItemCard(caption: "Existing", url: conflict.existing)
-        incomingCard = ItemCard(caption: "Incoming", url: conflict.source)
+        existingCard = ItemCard(caption: String(localized: "Existing", comment: "Conflict sheet: over the item already there"),
+                                url: conflict.existing)
+        incomingCard = ItemCard(caption: String(localized: "Incoming", comment: "Conflict sheet: over the item being copied or moved"),
+                                url: conflict.source)
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 400), styleMask: [.titled],
                             backing: .buffered, defer: true)
         super.init(window: panel)
@@ -87,12 +89,15 @@ final class ConflictSheetController: NSWindowController {
     private func buildContent() -> NSView {
         let name = conflict.existing.lastPathComponent
         let folder = FileManager.default.displayName(atPath: conflict.existing.deletingLastPathComponent().path)
-        let title = NSTextField(wrappingLabelWithString: "An item named “\(name)” already exists in “\(folder)”.")
+        let title = NSTextField(wrappingLabelWithString: String(localized: "An item named “\(name)” already exists in “\(folder)”."))
         title.font = .systemFont(ofSize: 15, weight: .semibold)
         title.preferredMaxLayoutWidth = Self.width - 48
-        let verb = conflict.mode == .copy ? "copying" : "moving"
-        let isFolder = ItemCard.isFolder(conflict.existing)
-        let detail = "Replace it with the one you’re \(verb)? The existing \(isFolder ? "folder" : "item") will be moved to the Trash."
+        let detail = switch (conflict.mode, ItemCard.isFolder(conflict.existing)) {
+        case (.copy, true): String(localized: "Replace it with the one you’re copying? The existing folder will be moved to the Trash.")
+        case (.copy, false): String(localized: "Replace it with the one you’re copying? The existing item will be moved to the Trash.")
+        case (.move, true): String(localized: "Replace it with the one you’re moving? The existing folder will be moved to the Trash.")
+        case (.move, false): String(localized: "Replace it with the one you’re moving? The existing item will be moved to the Trash.")
+        }
         let subtitle = NSTextField(wrappingLabelWithString: detail)
         subtitle.font = .systemFont(ofSize: 12)
         subtitle.textColor = .secondaryLabelColor
@@ -137,24 +142,25 @@ final class ConflictSheetController: NSWindowController {
     }
 
     private func buildButtons() -> NSView {
-        func button(_ title: String, _ action: Selector) -> NSButton {
-            let button = NSButton(title: title, target: self, action: action)
+        func button(_ title: String.LocalizationValue, _ action: Selector) -> NSButton {
+            let button = NSButton(title: String(localized: title), target: self, action: action)
             button.bezelStyle = .push
             button.controlSize = .large
             return button
         }
         let stop = button("Stop", #selector(stop(_:)))
         stop.keyEquivalent = "\u{1b}"
-        stop.toolTip = "Cancel the whole \(conflict.mode == .copy ? "copy" : "move") (Esc)"
+        stop.toolTip = conflict.mode == .copy ? String(localized: "Cancel the whole copy (Esc)")
+            : String(localized: "Cancel the whole move (Esc)")
         let skip = button("Skip", #selector(skip(_:)))
         let keepBoth = button("Keep Both", #selector(keepBoth(_:)))
         let replace = button("Replace", #selector(replace(_:)))
         replace.keyEquivalent = "\r"
         let merge = button("Merge", #selector(merge(_:)))
-        merge.toolTip = "Add what’s missing and merge the folders; where both have the same item, the newer one is kept"
+        merge.toolTip = String(localized: "Add what’s missing and merge the folders; where both have the same item, the newer one is kept")
         merge.isHidden = !conflict.canMerge
 
-        applyToAll.title = "Apply to all \(conflict.remaining.formatted()) conflicts"
+        applyToAll.title = String(localized: "Apply to all \(conflict.remaining) conflicts", comment: "plural")
         applyToAll.font = .systemFont(ofSize: 12)
         applyToAll.isHidden = conflict.remaining <= 1
 
@@ -198,12 +204,14 @@ final class ConflictSheetController: NSWindowController {
 
     private func showDiff(_ diff: LineDiff.Result) {
         diffSection.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let header = NSTextField(labelWithString: diff.isIdentical ? "Contents" : "Changes")
+        let header = NSTextField(labelWithString: diff.isIdentical
+            ? String(localized: "Contents", comment: "Conflict sheet: heading over the files’ contents")
+            : String(localized: "Changes", comment: "Conflict sheet: heading over the line differences"))
         header.font = .systemFont(ofSize: 11, weight: .semibold)
         header.textColor = .secondaryLabelColor
 
         if diff.isIdentical {
-            let note = NSTextField(labelWithString: "Both files have identical contents.")
+            let note = NSTextField(labelWithString: String(localized: "Both files have identical contents."))
             note.font = .systemFont(ofSize: 12)
             note.textColor = .secondaryLabelColor
             let icon = NSImageView(image: NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: nil) ?? NSImage())
@@ -397,7 +405,8 @@ final class ItemCard: NSView {
     func show(_ facts: ItemFacts, comparedTo other: ItemFacts) {
         var size: [String] = []
         if facts.isFolder {
-            size.append(facts.files.map { Format.count($0, "item", "items") } ?? "Folder")
+            size.append(facts.files.map { String(localized: "\($0) items", comment: "plural") }
+                ?? String(localized: "Folder", comment: "Kind of item"))
         } else if let kind = facts.kind {
             size.append(kind)
         }
@@ -405,21 +414,25 @@ final class ItemCard: NSView {
             // "1 KB" on both sides hides which is larger: show exact bytes when the rounded sizes match.
             let rounded = Format.bytes(bytes)
             let exact = other.bytes.map { $0 != bytes && Format.bytes($0) == rounded } ?? false
-            size.append(exact ? Format.count(Int(bytes), "byte", "bytes") : rounded)
+            size.append(exact ? String(localized: "\(Int(bytes)) bytes", comment: "plural") : rounded)
         }
         sizeLabel.stringValue = size.joined(separator: " · ")
-        dateLabel.stringValue = "Modified \(Format.date(facts.modified))"
+        dateLabel.stringValue = String(localized: "Modified \(Format.date(facts.modified))",
+                                       comment: "Conflict sheet: the item’s modification date")
 
         pills.arrangedSubviews.forEach { $0.removeFromSuperview() }
         if let digest = facts.digest, digest == other.digest {
-            pills.addArrangedSubview(PillView("Identical", tint: .systemGray))
+            pills.addArrangedSubview(PillView(String(localized: "Identical", comment: "Conflict sheet: both items hold the same bytes"),
+                                              tint: .systemGray))
             return
         }
         if let mine = facts.modified, let theirs = other.modified, mine.timeIntervalSince(theirs) > 1 {
-            pills.addArrangedSubview(PillView("Newer", tint: .systemBlue))
+            pills.addArrangedSubview(PillView(String(localized: "Newer", comment: "Conflict sheet: this item was modified later"),
+                                              tint: .systemBlue))
         }
         if let mine = facts.bytes, let theirs = other.bytes, mine > theirs {
-            pills.addArrangedSubview(PillView("Larger", tint: .systemOrange))
+            pills.addArrangedSubview(PillView(String(localized: "Larger", comment: "Conflict sheet: this item is bigger"),
+                                              tint: .systemOrange))
         }
     }
 
@@ -593,7 +606,7 @@ final class DiffView: NSView {
             case .gap(let count):
                 NSColor.quaternarySystemFill.setFill()
                 rowRect.fill()
-                let label = "⋯  \(count.formatted()) unchanged \(count == 1 ? "line" : "lines")"
+                let label = "⋯  " + String(localized: "\(count) unchanged lines", comment: "plural")
                 (label as NSString).draw(at: NSPoint(x: gutterWidth, y: y + 1.5), withAttributes: [
                     .font: NSFont.systemFont(ofSize: 10.5), .foregroundColor: NSColor.tertiaryLabelColor,
                 ])

@@ -1,10 +1,13 @@
 import AppKit
 
 final class SidebarSection {
+    /// Names the section in code ("favorites"); `title` is what's shown, in your language.
+    let id: String
     let title: String
     var items: [SidebarItem]
 
-    init(title: String, items: [SidebarItem]) {
+    init(id: String, title: String, items: [SidebarItem]) {
+        self.id = id
         self.title = title
         self.items = items
     }
@@ -31,6 +34,8 @@ final class SidebarItem {
     var isEjectable = false
     /// A Finder tag's color for its dot (Tags section).
     var tint: NSColor?
+    /// A Finder tag's stored name (Tags section): `title` shows it in your language, this is what's matched and removed.
+    var tagName: String?
 
     init(_ place: Place) {
         title = place.title
@@ -120,31 +125,39 @@ final class SidebarViewController: NSViewController {
     }
 
     func reload() {
-        let favorites = [SidebarItem(title: "Recents", target: .recents, symbol: "clock")] + Places.favorites().map(SidebarItem.init)
+        let favorites = [SidebarItem(title: String(localized: "Recents", comment: "Sidebar item: recently used files"), target: .recents, symbol: "clock")]
+            + Places.favorites().map(SidebarItem.init)
         let pinned = Set(favorites.compactMap(\.url?.path))
         let home = Places.home.path
         let frequent = Frecency.shared.ranked()
             .filter { !pinned.contains($0.path) && $0.path != home && $0.path != "/" && !Trash.isTrash($0) }
             .prefix(5)
             .map { SidebarItem(Place(title: FileManager.default.displayName(atPath: $0.path), url: $0, symbol: "folder")) }
-        sections = [SidebarSection(title: "Favorites", items: favorites)]
+        sections = [SidebarSection(id: "favorites", title: String(localized: "Favorites", comment: "Sidebar section title"), items: favorites)]
         let searches = SavedSearches.all.map { SidebarItem(title: $0.name, target: .search($0), symbol: "magnifyingglass") }
-        if !searches.isEmpty { sections.append(SidebarSection(title: "Searches", items: searches)) }
-        if !frequent.isEmpty { sections.append(SidebarSection(title: "Frequent", items: Array(frequent))) }
-        sections.append(SidebarSection(title: "Insights", items: [
-            SidebarItem(title: "Large Files", target: .largeFiles, symbol: "externaldrive.badge.exclamationmark"),
-            SidebarItem(title: "Duplicates", target: .duplicates, symbol: "square.on.square"),
+        if !searches.isEmpty {
+            sections.append(SidebarSection(id: "searches", title: String(localized: "Searches", comment: "Sidebar section title: saved searches"), items: searches))
+        }
+        if !frequent.isEmpty {
+            sections.append(SidebarSection(id: "frequent", title: String(localized: "Frequent", comment: "Sidebar section title: folders you open often"),
+                                           items: Array(frequent)))
+        }
+        sections.append(SidebarSection(id: "insights", title: String(localized: "Insights", comment: "Sidebar section title: Large Files and Duplicates"), items: [
+            SidebarItem(title: String(localized: "Large Files", comment: "Sidebar item"), target: .largeFiles, symbol: "externaldrive.badge.exclamationmark"),
+            SidebarItem(title: String(localized: "Duplicates", comment: "Sidebar item: identical files"), target: .duplicates, symbol: "square.on.square"),
         ]))
-        sections.append(SidebarSection(title: "Locations", items: Places.volumes().map(SidebarItem.init)
-            + [SidebarItem(title: "Trash", target: .folder(Trash.home), symbol: Self.trashSymbol)]))
+        sections.append(SidebarSection(id: "locations", title: String(localized: "Locations", comment: "Sidebar section title: disks and the Trash"),
+                                       items: Places.volumes().map(SidebarItem.init)
+            + [SidebarItem(title: String(localized: "Trash", comment: "Sidebar item: the Trash"), target: .folder(Trash.home), symbol: Self.trashSymbol)]))
         // Finder's Tags: the colored ones, then others you've used here. Each shows everything with that tag (Spotlight).
         let tags = TagStore.shared.suggestions.prefix(12).map { tag in
-            let item = SidebarItem(title: tag.name, target: .search(SavedSearch(name: tag.name, query: SpotlightQuery.term(forTag: tag.name), scopePath: nil)),
+            let item = SidebarItem(title: tag.shownName, target: .search(SavedSearch(name: tag.name, query: SpotlightQuery.term(forTag: tag.name), scopePath: nil)),
                                    symbol: tag.displayColor == nil ? "circle" : "circle.fill")
             item.tint = tag.displayColor ?? .secondaryLabelColor
+            item.tagName = tag.name
             return item
         }
-        if !tags.isEmpty { sections.append(SidebarSection(title: "Tags", items: Array(tags))) }
+        if !tags.isEmpty { sections.append(SidebarSection(id: "tags", title: String(localized: "Tags", comment: "Sidebar section title: Finder tags"), items: Array(tags))) }
         outline.reloadData()
         outline.expandItem(nil, expandChildren: true)
         if let current { highlight(current) }
@@ -256,7 +269,7 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         return pasteboardItem
     }
 
-    private var favoritesSection: SidebarSection? { sections.first { $0.title == "Favorites" } }
+    private var favoritesSection: SidebarSection? { sections.first { $0.id == "favorites" } }
 
     private func isFavorite(_ item: SidebarItem) -> Bool {
         item.url != nil && favoritesSection?.items.contains { $0 === item } == true
@@ -408,17 +421,18 @@ extension SidebarViewController: NSMenuDelegate {
         guard let item = outline.item(atRow: outline.clickedRow) as? SidebarItem else { return }
         // Tags you added can leave the sidebar; the seven colored ones stay, like Finder's.
         if item.tint != nil {
-            let isStandard = FinderTag.standard.contains { $0.name.caseInsensitiveCompare(item.title) == .orderedSame }
+            let name = item.tagName ?? item.title
+            let isStandard = FinderTag.standard.contains { $0.name.caseInsensitiveCompare(name) == .orderedSame }
             if !isStandard {
-                let remove = NSMenuItem(title: "Remove “\(item.title)” from Sidebar", action: #selector(forgetTag(_:)), keyEquivalent: "")
+                let remove = NSMenuItem(title: String(localized: "Remove “\(item.title)” from Sidebar"), action: #selector(forgetTag(_:)), keyEquivalent: "")
                 remove.target = self
-                remove.representedObject = item.title
+                remove.representedObject = name
                 menu.addItem(remove)
             }
             return
         }
         if case .search(let search) = item.target {
-            let remove = NSMenuItem(title: "Remove “\(search.name)”", action: #selector(removeSearch(_:)), keyEquivalent: "")
+            let remove = NSMenuItem(title: String(localized: "Remove “\(search.name)”", comment: "Sidebar menu: remove a saved search"), action: #selector(removeSearch(_:)), keyEquivalent: "")
             remove.target = self
             remove.representedObject = SavedSearchBox(search: search)
             menu.addItem(remove)
@@ -428,7 +442,7 @@ extension SidebarViewController: NSMenuDelegate {
         if Trash.isTrash(url) {
             add("Open in New Tab", #selector(openInNewTab(_:)), url)
             menu.addItem(.separator())
-            let empty = NSMenuItem(title: "Empty Trash…", action: #selector(AppDelegate.emptyTrash(_:)), keyEquivalent: "")
+            let empty = NSMenuItem(title: String(localized: "Empty Trash…"), action: #selector(AppDelegate.emptyTrash(_:)), keyEquivalent: "")
             menu.addItem(empty)
             return
         }
@@ -447,8 +461,8 @@ extension SidebarViewController: NSMenuDelegate {
         }
     }
 
-    private func add(_ title: String, _ action: Selector, _ url: URL) {
-        let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
+    private func add(_ title: String.LocalizationValue, _ action: Selector, _ url: URL) {
+        let entry = NSMenuItem(title: String(localized: title), action: action, keyEquivalent: "")
         entry.target = self
         entry.representedObject = url
         outline.menu?.addItem(entry)

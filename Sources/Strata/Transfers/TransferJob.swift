@@ -310,11 +310,12 @@ final class TransferJob {
         let folder = item.destination.deletingLastPathComponent().standardizedFileURL.path
         let sameFolder = parent == folder
         if !TransferEngine.exists(source) {
-            fail(index, "The item couldn’t be found")
+            fail(index, String(localized: "The item couldn’t be found"))
         } else if !TransferEngine.exists(item.destination.deletingLastPathComponent()) {
-            fail(index, "The destination folder couldn’t be found")
+            fail(index, String(localized: "The destination folder couldn’t be found"))
         } else if Self.isInside(folder, source.path) {
-            fail(index, "A folder can’t be \(mode == .copy ? "copied" : "moved") into itself")
+            fail(index, mode == .copy ? String(localized: "A folder can’t be copied into itself")
+                : String(localized: "A folder can’t be moved into itself"))
         } else if mode == .move, sameFolder, item.destination.lastPathComponent == source.lastPathComponent {
             items[index].outcome = .done   // Already there.
         } else if mode == .copy {
@@ -411,7 +412,7 @@ final class TransferJob {
         case .replace:
             let existing = item.destination.standardizedFileURL.path
             if item.source.path.hasPrefix(existing + "/") {
-                fail(index, "“\(item.destination.lastPathComponent)” can’t be replaced by an item inside it")
+                fail(index, String(localized: "“\(item.destination.lastPathComponent)” can’t be replaced by an item inside it"))
             } else {
                 items[index].decision = .replace
             }
@@ -470,8 +471,11 @@ final class TransferJob {
             .filter { !(clones && TransferEngine.device($0.source) == disk) }
             .reduce(Int64(0)) { $0 + $1.bytes }
         guard needed > available else { return nil }
-        let volume = values?.volumeName ?? "the disk"
-        return "Not enough space on “\(volume)”: \(Format.bytes(needed)) needed, \(Format.bytes(available)) available"
+        let need = Format.bytes(needed), have = Format.bytes(available)
+        guard let volume = values?.volumeName else {
+            return String(localized: "Not enough space on the disk: \(need) needed, \(have) available")
+        }
+        return String(localized: "Not enough space on “\(volume)”: \(need) needed, \(have) available")
     }
 
     /// Whether `folder` is `item` or inside it, comparing real paths: a symlink can make a folder look like it's

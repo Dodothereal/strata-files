@@ -37,6 +37,7 @@ final class ShortcutStore {
             case NSDeleteFunctionKey: return "⌦"
             case 0xD, 0x3: return "↩"
             case 0x9: return "⇥"
+            // Key names as printed on keycaps and in the shortcut lists (and matched by `live`): not translated.
             case 0x1B: return "esc"
             case 0x20: return "Space"
             case NSHomeFunctionKey: return "↖"

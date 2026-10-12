@@ -8,14 +8,14 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
     private let address = NSComboBox()
     private let message = NSTextField(wrappingLabelWithString: "")
     private let spinner = NSProgressIndicator()
-    private let connectButton = NSButton(title: "Connect", target: nil, action: nil)
-    private let cancelButton = NSButton(title: "Cancel", target: nil, action: nil)
+    private let connectButton = NSButton(title: String(localized: "Connect", comment: "Button: connect to the server"), target: nil, action: nil)
+    private let cancelButton = NSButton(title: String(localized: "Cancel"), target: nil, action: nil)
     private var request: ServerConnection.Request?
 
     override func loadView() {
-        let title = NSTextField(labelWithString: "Connect to Server")
+        let title = NSTextField(labelWithString: String(localized: "Connect to Server"))
         title.font = .systemFont(ofSize: 15, weight: .semibold)
-        let hint = NSTextField(wrappingLabelWithString: "smb://server/share, afp://, nfs:// or a WebDAV https:// address. A server name alone connects with SMB.")
+        let hint = NSTextField(wrappingLabelWithString: String(localized: "smb://server/share, afp://, nfs:// or a WebDAV https:// address. A server name alone connects with SMB."))
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
 
@@ -24,7 +24,7 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         address.completes = true
         address.numberOfVisibleItems = 10
         address.delegate = self
-        address.setAccessibilityLabel("Server address")
+        address.setAccessibilityLabel(String(localized: "Server address"))
         if let last = ServerConnection.recents.first { address.stringValue = last }
 
         message.font = .systemFont(ofSize: 11)
@@ -41,7 +41,7 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         connectButton.target = self
         connectButton.action = #selector(connect(_:))
         connectButton.keyEquivalent = "\r"
-        let clear = NSButton(title: "Clear Recents", target: self, action: #selector(clearRecents(_:)))
+        let clear = NSButton(title: String(localized: "Clear Recents", comment: "Button: forget the recently used server addresses"), target: self, action: #selector(clearRecents(_:)))
         clear.bezelStyle = .accessoryBarAction
         clear.controlSize = .small
         clear.isHidden = ServerConnection.recents.isEmpty

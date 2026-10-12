@@ -74,14 +74,14 @@ final class FilterPill: NSView {
         glass.cornerRadius = 18
         addSubview(glass)
 
-        let icon = NSImageView(image: NSImage(systemSymbolName: "line.3.horizontal.decrease", accessibilityDescription: "Filter")!)
+        let icon = NSImageView(image: NSImage(systemSymbolName: "line.3.horizontal.decrease", accessibilityDescription: String(localized: "Filter", comment: "Accessibility: the type-to-filter capsule’s icon"))!)
         icon.symbolConfiguration = .init(pointSize: 12, weight: .semibold)
         icon.contentTintColor = .secondaryLabelColor
         query.font = .systemFont(ofSize: 13, weight: .semibold)
         query.lineBreakMode = .byTruncatingHead
         count.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         count.textColor = .secondaryLabelColor
-        let hint = NSTextField(labelWithString: "esc")
+        let hint = NSTextField(labelWithString: String(localized: "esc", comment: "Key name: the Escape key, as shown in a keyboard shortcut"))
         hint.font = .systemFont(ofSize: 10, weight: .medium)
         hint.textColor = .tertiaryLabelColor
 
@@ -118,10 +118,11 @@ final class FilterPill: NSView {
             return
         }
         query.stringValue = text
-        count.stringValue = matches == 1 ? "1 match" : "\(matches) matches"
+        count.stringValue = String(localized: "\(matches) matches", comment: "plural")
         // VoiceOver hears how the filter is doing as you type.
+        let announcement = String(localized: "\(matches) matches for \(text)", comment: "plural")
         NSAccessibility.post(element: self, notification: .announcementRequested,
-                             userInfo: [.announcement: "\(count.stringValue) for \(text)", .priority: NSAccessibilityPriorityLevel.low.rawValue])
+                             userInfo: [.announcement: announcement, .priority: NSAccessibilityPriorityLevel.low.rawValue])
         count.textColor = matches == 0 ? .systemRed : .secondaryLabelColor
         if isHidden {
             isHidden = false

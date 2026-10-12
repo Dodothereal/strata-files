@@ -37,7 +37,7 @@ final class ProjectInspectorView: NSView {
         ])
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
-        setAccessibilityLabel("Project")
+        setAccessibilityLabel(String(localized: "Project", comment: "Inspector section title: the folder's software project (kind, git, build artifacts, scripts)"))
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -72,7 +72,7 @@ final class ProjectInspectorView: NSView {
         guard let info else { return }
 
         if !info.kinds.isEmpty {
-            addSection(header("Project"))
+            addSection(header(String(localized: "Project", comment: "Inspector section title: the folder's software project (kind, git, build artifacts, scripts)")))
             let chips = FlowView(spacing: 6, lineSpacing: 6)
             for kind in info.kinds { chips.add(KindChip(kind)) }
             add(chips, spacingAfter: 18)
@@ -95,37 +95,42 @@ final class ProjectInspectorView: NSView {
         let items = FlowView(spacing: 12, lineSpacing: 4)
         let counts = git.counts
         if git.outcome == .timedOut {
-            items.add(StatusItem(nil, "Status timed out", color: .tertiaryLabelColor))
+            items.add(StatusItem(nil, String(localized: "Status timed out", comment: "Git status didn't finish in time"), color: .tertiaryLabelColor))
         } else if case .failed = git.outcome {
-            items.add(StatusItem(nil, "Status unavailable", color: .tertiaryLabelColor))
+            items.add(StatusItem(nil, String(localized: "Status unavailable", comment: "Git status couldn't be read"), color: .tertiaryLabelColor))
         } else if counts.isClean {
-            items.add(StatusItem(symbol: "checkmark.circle", git.isRepositoryRoot ? "Working tree clean" : "No changes in this folder"))
+            items.add(StatusItem(symbol: "checkmark.circle", git.isRepositoryRoot ? String(localized: "Working tree clean", comment: "Git: no uncommitted changes")
+                : String(localized: "No changes in this folder", comment: "Git: no uncommitted changes inside the selected folder")))
         } else {
             let entries: [(Int, GitFileState, String)] = [
-                (counts.conflicted, .conflicted, "conflicted"), (counts.modified, .modified, "modified"),
-                (counts.added, .added, "added"), (counts.deleted, .deleted, "deleted"),
-                (counts.renamed, .renamed, "renamed"), (counts.untracked, .untracked, "untracked"),
+                (counts.conflicted, .conflicted, String(localized: "\(counts.conflicted) conflicted", comment: "plural")),
+                (counts.modified, .modified, String(localized: "\(counts.modified) modified", comment: "plural")),
+                (counts.added, .added, String(localized: "\(counts.added) added", comment: "plural")),
+                (counts.deleted, .deleted, String(localized: "\(counts.deleted) deleted", comment: "plural")),
+                (counts.renamed, .renamed, String(localized: "\(counts.renamed) renamed", comment: "plural")),
+                (counts.untracked, .untracked, String(localized: "\(counts.untracked) untracked", comment: "plural")),
             ]
             for (count, state, title) in entries where count > 0 {
-                items.add(StatusItem(state.color, "\(count) \(title)"))
+                items.add(StatusItem(state.color, title))
             }
-            if counts.staged > 0 { items.add(StatusItem(symbol: "tray.full", "\(counts.staged) staged")) }
+            if counts.staged > 0 { items.add(StatusItem(symbol: "tray.full", String(localized: "\(counts.staged) staged", comment: "plural"))) }
         }
-        if git.stashCount > 0 { items.add(StatusItem(symbol: "archivebox", Format.count(git.stashCount, "stash", "stashes"))) }
+        if git.stashCount > 0 { items.add(StatusItem(symbol: "archivebox", String(localized: "\(git.stashCount) stashes", comment: "plural"))) }
         add(items, spacingAfter: 18)
     }
 
     private func buildArtifacts(_ artifacts: [ProjectArtifact]) {
         let total = label("", size: 11, color: .secondaryLabelColor, monospacedDigits: true)
         artifactsTotalLabel = total
-        addSection(header("Build Artifacts", accessory: total))
+        addSection(header(String(localized: "Build Artifacts", comment: "Inspector section title: regenerable build output folders"), accessory: total))
         for artifact in artifacts {
             let row = ArtifactRow(artifact, selected: isSelected(artifact))
             row.onToggle = { [weak self] on in self?.toggle(artifact, on) }
             artifactRows[artifact.id] = row
             add(row, spacingAfter: 2)
         }
-        let button = NSButton(title: "Clean", target: self, action: #selector(cleanClicked))
+        let button = NSButton(title: String(localized: "Clean", comment: "Button: move the selected build folders to the Trash"),
+                              target: self, action: #selector(cleanClicked))
         button.bezelStyle = .push
         button.controlSize = .regular
         button.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
@@ -142,7 +147,7 @@ final class ProjectInspectorView: NSView {
         var sources: [String] = []
         for script in scripts where !sources.contains(script.source) { sources.append(script.source) }
         let runnerName = scripts.first.map { $0.source == "package.json" ? $0.runner.rawValue : "" } ?? ""
-        addSection(header("Scripts", accessory: sources.count == 1 && !runnerName.isEmpty
+        addSection(header(String(localized: "Scripts", comment: "Inspector section title: runnable project scripts"), accessory: sources.count == 1 && !runnerName.isEmpty
             ? label(runnerName, size: 11, color: .tertiaryLabelColor) : nil))
 
         let limit = showsAllScripts ? Int.max : Self.collapsedScriptCount
@@ -162,7 +167,8 @@ final class ProjectInspectorView: NSView {
             if let last = stack.arrangedSubviews.last, sources.count > 1 { stack.setCustomSpacing(8, after: last) }
         }
         if scripts.count > shown {
-            let more = NSButton(title: "Show \(scripts.count - shown) More", target: self, action: #selector(showMoreScripts))
+            let more = NSButton(title: String(localized: "Show \(scripts.count - shown) More", comment: "plural"), target: self,
+                                action: #selector(showMoreScripts))
             more.isBordered = false
             more.font = .systemFont(ofSize: 11, weight: .medium)
             more.contentTintColor = .controlAccentColor
@@ -202,15 +208,19 @@ final class ProjectInspectorView: NSView {
         }
         let all = info.artifacts
         let known = all.compactMap(\.bytes).reduce(0, +)
-        artifactsTotalLabel?.stringValue = info.isMeasuring ? (known > 0 ? Format.bytes(known) + "+" : "") : Format.bytes(known)
+        artifactsTotalLabel?.stringValue = info.isMeasuring
+            ? (known > 0 ? String(localized: "\(Format.bytes(known))+", comment: "A total size still being measured: at least this much") : "")
+            : Format.bytes(known)
         let chosen = selectedArtifacts
         let chosenBytes = chosen.compactMap(\.bytes).reduce(0, +)
         let pending = chosen.contains { !$0.isMeasured }
         if let cleanButton {
-            cleanButton.title = chosen.isEmpty ? "Clean" : pending ? "Clean…" : "Clean \(Format.bytes(chosenBytes))…"
+            cleanButton.title = chosen.isEmpty ? String(localized: "Clean", comment: "Button: move the selected build folders to the Trash")
+                : pending ? String(localized: "Clean…", comment: "Button: move the selected build folders to the Trash (asks first)")
+                : String(localized: "Clean \(Format.bytes(chosenBytes))…", comment: "Button: move the selected build folders, this size in total, to the Trash (asks first)")
             cleanButton.isEnabled = !chosen.isEmpty
-            cleanButton.toolTip = chosen.isEmpty ? "Select folders to move to the Trash"
-                : "Move \(chosen.map(\.name).joined(separator: ", ")) to the Trash"
+            cleanButton.toolTip = chosen.isEmpty ? String(localized: "Select folders to move to the Trash")
+                : String(localized: "Move \(chosen.map(\.name).joined(separator: ", ")) to the Trash", comment: "Tooltip; the placeholder is a list of folder names")
         }
     }
 
@@ -410,11 +420,12 @@ private final class BranchLine: NSView {
         super.init(frame: .zero)
         setAccessibilityElement(true)
         setAccessibilityRole(.staticText)
-        var label = git.branch.isDetached ? "Detached at \(git.branch.displayName)" : "Branch \(git.branch.displayName)"
-        if git.branch.ahead > 0 { label += ", \(git.branch.ahead) ahead" }
-        if git.branch.behind > 0 { label += ", \(git.branch.behind) behind" }
-        if let operation = git.operation { label += ", \(operation.title)" }
-        setAccessibilityLabel(label)
+        var parts = [git.branch.isDetached ? String(localized: "Detached at \(git.branch.displayName)", comment: "Git: HEAD is detached at this commit")
+                     : String(localized: "Branch \(git.branch.displayName)", comment: "Git: the current branch")]
+        if git.branch.ahead > 0 { parts.append(String(localized: "\(git.branch.ahead) ahead", comment: "plural")) }
+        if git.branch.behind > 0 { parts.append(String(localized: "\(git.branch.behind) behind", comment: "plural")) }
+        if let operation = git.operation { parts.append(operation.title) }
+        setAccessibilityLabel(parts.joined(separator: ", "))
         toolTip = git.branch.oid.map { "HEAD \(String($0.prefix(12)))" }
     }
 
@@ -543,7 +554,7 @@ private final class ArtifactRow: NSView {
             ]))
         }
         if artifact.role == .environment {
-            name.append(NSAttributedString(string: "  environment", attributes: [
+            name.append(NSAttributedString(string: "  " + String(localized: "environment", comment: "Note after a build folder's name: it's a virtual environment"), attributes: [
                 .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.tertiaryLabelColor,
             ]))
         }
@@ -601,7 +612,9 @@ private final class ArtifactRow: NSView {
             sizeLabel.stringValue = ""
             spinner.startAnimation(nil)
         }
-        setAccessibilityLabel("\(artifact.name), \(artifact.bytes.map(Format.bytes) ?? "measuring")")
+        let size = artifact.bytes.map(Format.bytes)
+            ?? String(localized: "measuring", comment: "Accessibility: the folder's size is still being measured")
+        setAccessibilityLabel("\(artifact.name), \(size)")
     }
 
     @objc private func toggled() {
@@ -628,14 +641,14 @@ private final class ScriptRow: NSView {
             ?? label(script.command.isEmpty ? script.invocation : script.command, size: 10.5, color: .secondaryLabelColor,
                      monospaced: true)
         command.lineBreakMode = .byTruncatingTail
-        runButton.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: "Run \(script.name) in Terminal")
+        runButton.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: String(localized: "Run \(script.name) in Terminal"))
         runButton.symbolConfiguration = .init(pointSize: 9, weight: .bold)
         runButton.isBordered = false
         runButton.imagePosition = .imageOnly
         runButton.contentTintColor = .secondaryLabelColor
         runButton.target = self
         runButton.action = #selector(runClicked)
-        runButton.toolTip = "Run “\(script.invocation)” in Terminal"
+        runButton.toolTip = String(localized: "Run “\(script.invocation)” in Terminal", comment: "Tooltip; the placeholder is a shell command")
         toolTip = ([script.invocation] + [script.summary, script.command.isEmpty ? nil : script.command].compactMap { $0 })
             .joined(separator: "\n")
 
@@ -702,11 +715,11 @@ private final class ScriptRow: NSView {
 
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
-        let run = NSMenuItem(title: "Run in Terminal", action: #selector(runClicked), keyEquivalent: "")
+        let run = NSMenuItem(title: String(localized: "Run in Terminal"), action: #selector(runClicked), keyEquivalent: "")
         run.target = self
         run.image = NSImage(systemSymbolName: "play", accessibilityDescription: nil)
         menu.addItem(run)
-        let copy = NSMenuItem(title: "Copy Command", action: #selector(copyCommand), keyEquivalent: "")
+        let copy = NSMenuItem(title: String(localized: "Copy Command", comment: "Menu command: copy the script's shell command"), action: #selector(copyCommand), keyEquivalent: "")
         copy.target = self
         copy.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: nil)
         menu.addItem(copy)

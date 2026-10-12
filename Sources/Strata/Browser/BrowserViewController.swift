@@ -247,10 +247,10 @@ final class BrowserViewController: NSViewController {
         }
     }
 
-    private func addColumn(_ id: NSUserInterfaceItemIdentifier, _ title: String, width: CGFloat, min: CGFloat,
+    private func addColumn(_ id: NSUserInterfaceItemIdentifier, _ title: String.LocalizationValue, width: CGFloat, min: CGFloat,
                            ascending: Bool, alignment: NSTextAlignment = .left) {
         let column = NSTableColumn(identifier: id)
-        column.title = title
+        column.title = String(localized: title)
         column.width = width
         column.minWidth = min
         column.headerCell.alignment = alignment
@@ -293,7 +293,7 @@ final class BrowserViewController: NSViewController {
         nodesByPath = [:]
         outlineView.reloadData()
         pushContent()
-        emptyState.show(symbol: "hourglass", title: "Loading…")
+        emptyState.show(symbol: "hourglass", title: String(localized: "Loading…"))
         delegate?.browserSelectionDidChange(self)
     }
 
@@ -441,26 +441,27 @@ final class BrowserViewController: NSViewController {
             if error.code == NSFileReadNoPermissionError || posix == Int(EPERM) || posix == Int(EACCES) {
                 if Privacy.hasFullDiskAccess {
                     // Full Disk Access is on, so this is ordinary file permissions (another user's or the system's).
-                    emptyState.show(symbol: "lock", title: "You don’t have permission to see this folder’s contents")
+                    emptyState.show(symbol: "lock", title: String(localized: "You don’t have permission to see this folder’s contents"))
                 } else {
                     emptyState.show(
                         symbol: "lock",
-                        title: "Strata can’t read this folder",
-                        message: "macOS protects this location. Give Strata Full Disk Access to browse it.",
-                        button: ("Open Privacy Settings", { NSWorkspace.shared.open(Privacy.settingsURL) }))
+                        title: String(localized: "Strata can’t read this folder"),
+                        message: String(localized: "macOS protects this location. Give Strata Full Disk Access to browse it."),
+                        button: (String(localized: "Open Privacy Settings"), { NSWorkspace.shared.open(Privacy.settingsURL) }))
                 }
             } else if error.code == NSFileReadNoSuchFileError {
-                emptyState.show(symbol: "questionmark.folder", title: "This folder no longer exists")
+                emptyState.show(symbol: "questionmark.folder", title: String(localized: "This folder no longer exists"))
             } else {
-                emptyState.show(symbol: "exclamationmark.triangle", title: "Couldn’t open this folder", message: error.localizedDescription)
+                emptyState.show(symbol: "exclamationmark.triangle", title: String(localized: "Couldn’t open this folder"), message: error.localizedDescription)
             }
         } else if isLoaded && rows.isEmpty {
             if isShowingResults && filter.isEmpty {
-                emptyState.show(symbol: "magnifyingglass", title: "No Results")
+                emptyState.show(symbol: "magnifyingglass", title: String(localized: "No Results"))
             } else if filter.isEmpty {
-                emptyState.show(symbol: "folder", title: "Empty Folder")
+                emptyState.show(symbol: "folder", title: String(localized: "Empty Folder", comment: "Shown in place of the files of a folder that has none"))
             } else {
-                emptyState.show(symbol: "magnifyingglass", title: "No Matches", message: "Nothing here matches “\(filter)”. Press Esc to clear the filter.")
+                emptyState.show(symbol: "magnifyingglass", title: String(localized: "No Matches"),
+                                message: String(localized: "Nothing here matches “\(filter)”. Press Esc to clear the filter."))
             }
         } else {
             emptyState.isHidden = true
@@ -727,22 +728,24 @@ final class BrowserViewController: NSViewController {
             parts = resultsSummary.isEmpty ? [] : [resultsSummary]
         } else if isShowingResults {
             let shown = filter.isEmpty ? nodes.count : rows.count
-            parts = [resultsTotal > shown ? "Top \(shown.formatted()) of \(Format.count(resultsTotal, "result", "results"))"
-                                          : Format.count(shown, "result", "results")]
+            parts = [resultsTotal > shown ? String(localized: "Top \(shown.formatted()) of \(resultsTotal) results", comment: "plural")
+                                          : String(localized: "\(shown) results", comment: "plural")]
         } else {
             parts = [filter.isEmpty
-                ? Format.count(nodes.count, "item", "items")
-                : "\(rows.count.formatted()) of \(Format.count(nodes.count, "item", "items"))"]
+                ? String(localized: "\(nodes.count) items", comment: "plural")
+                : String(localized: "\(rows.count.formatted()) of \(nodes.count) items", comment: "plural")]
         }
         let selected = selectedEntries
         if !selected.isEmpty {
             let sizes = selected.map { $0.isDirectory ? folderSize($0.url)?.bytes : $0.size }
             let known = sizes.compactMap { $0 }
-            var text = "\(selected.count.formatted()) selected"
-            if known.count == sizes.count { text += ", \(Format.bytes(known.reduce(0, +)))" }
-            parts.append(text)
+            parts.append(known.count == sizes.count
+                ? String(localized: "\(selected.count) selected, \(Format.bytes(known.reduce(0, +)))", comment: "plural")
+                : String(localized: "\(selected.count) selected", comment: "plural"))
         }
-        if let availableCapacity, !isShowingResults { parts.append("\(Format.bytes(availableCapacity)) available") }
+        if let availableCapacity, !isShowingResults {
+            parts.append(String(localized: "\(Format.bytes(availableCapacity)) available", comment: "Status bar: free space on the folder’s disk"))
+        }
         return parts.joined(separator: "  ·  ")
     }
 
@@ -851,7 +854,8 @@ final class BrowserViewController: NSViewController {
     /// "Rename", or "Rename 3 Items…" for several, like Finder.
     var renameTitle: String {
         let count = selectedEntries.count
-        return count > 1 ? "Rename \(Format.count(count, "Item", "Items"))…" : "Rename"
+        return count > 1 ? String(localized: "Rename \(count) Items…", comment: "plural")
+                         : String(localized: "Rename", comment: "Menu command: rename the selected item")
     }
 
     /// View ▸ Sort By: the same orders as the list's column headers, for every view. Tags follow `sortMenuKeys`.
@@ -1080,12 +1084,13 @@ final class BrowserViewController: NSViewController {
         let oldName = url.lastPathComponent
         guard !newName.isEmpty, newName != oldName else { return }
         if newName.contains("/") {
-            renameRefused("The name “\(newName)” can’t be used.", "Names can’t contain “/”. Try a different name.")
+            renameRefused(String(localized: "The name “\(newName)” can’t be used."),
+                          String(localized: "Names can’t contain “/”. Try a different name."))
             return
         }
         if newName.hasPrefix("."), !oldName.hasPrefix(".") {
-            renameRefused("You can’t use a name that begins with a dot “.”.",
-                          "These names are reserved for the system, and the item would be hidden. Please choose another name.")
+            renameRefused(String(localized: "You can’t use a name that begins with a dot “.”."),
+                          String(localized: "These names are reserved for the system, and the item would be hidden. Please choose another name."))
             return
         }
         let commit = { [self] in
@@ -1104,15 +1109,17 @@ final class BrowserViewController: NSViewController {
         }
         let alert = NSAlert()
         if oldExtension.isEmpty {
-            alert.messageText = "Are you sure you want to add the extension “.\(newExtension)” to the end of the name?"
+            alert.messageText = String(localized: "Are you sure you want to add the extension “.\(newExtension)” to the end of the name?")
         } else if newExtension.isEmpty {
-            alert.messageText = "Are you sure you want to remove the extension “.\(oldExtension)”?"
+            alert.messageText = String(localized: "Are you sure you want to remove the extension “.\(oldExtension)”?")
         } else {
-            alert.messageText = "Are you sure you want to change the extension from “.\(oldExtension)” to “.\(newExtension)”?"
+            alert.messageText = String(localized: "Are you sure you want to change the extension from “.\(oldExtension)” to “.\(newExtension)”?")
         }
-        alert.informativeText = "If you make this change, your document may open in a different app."
-        alert.addButton(withTitle: oldExtension.isEmpty ? "Don’t Add" : "Keep .\(oldExtension)")
-        alert.addButton(withTitle: newExtension.isEmpty ? "Remove" : "Use .\(newExtension)")
+        alert.informativeText = String(localized: "If you make this change, your document may open in a different app.")
+        alert.addButton(withTitle: oldExtension.isEmpty ? String(localized: "Don’t Add", comment: "Alert button: don’t add the file extension")
+                                                        : String(localized: "Keep .\(oldExtension)", comment: "Alert button: keep the file extension (“Keep .txt”)"))
+        alert.addButton(withTitle: newExtension.isEmpty ? String(localized: "Remove", comment: "Alert button: remove the file extension")
+                                                        : String(localized: "Use .\(newExtension)", comment: "Alert button: use the new file extension (“Use .md”)"))
         alert.beginSheetModal(for: window) { response in
             if response == .alertSecondButtonReturn { commit() }
         }
@@ -1190,19 +1197,24 @@ final class BrowserViewController: NSViewController {
     private func makeContextMenu() -> NSMenu {
         let menu = NSMenu()
         let selected = selectedEntries
-        func add(_ title: String, _ action: Selector, _ symbol: String? = nil) {
+        // `addTitled` takes a title that's already localized (Rename 3 Items…), `add` a literal.
+        func addTitled(_ title: String, _ action: Selector, _ symbol: String? = nil) {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self
             if let symbol { item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
             menu.addItem(item)
         }
+        func add(_ title: String.LocalizationValue, _ action: Selector, _ symbol: String? = nil) {
+            addTitled(String(localized: title), action, symbol)
+        }
+        let hiddenFilesTitle = Prefs.showHidden ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files")
         if selected.isEmpty {
             // Inside an archive opened as a folder nothing is added; Finder is shown the archive itself.
             if isInsideArchive {
                 add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
                 add("Show Archive in Finder", #selector(showArchiveInFinder(_:)), "macwindow")
                 menu.addItem(.separator())
-                add(Prefs.showHidden ? "Hide Hidden Files" : "Show Hidden Files", #selector(toggleHiddenFiles(_:)), "eye")
+                addTitled(hiddenFilesTitle, #selector(toggleHiddenFiles(_:)), "eye")
                 return menu
             }
             add("New Folder", #selector(newFolder(_:)), "folder.badge.plus")
@@ -1212,7 +1224,7 @@ final class BrowserViewController: NSViewController {
             add("Copy Path", #selector(copyPath(_:)), "link")
             add("Show in Finder", #selector(showInFinder(_:)), "macwindow")
             menu.addItem(.separator())
-            add(Prefs.showHidden ? "Hide Hidden Files" : "Show Hidden Files", #selector(toggleHiddenFiles(_:)), "eye")
+            addTitled(hiddenFilesTitle, #selector(toggleHiddenFiles(_:)), "eye")
             if isShowingTrash {
                 menu.addItem(.separator())
                 addEmptyTrash()
@@ -1220,7 +1232,7 @@ final class BrowserViewController: NSViewController {
             return menu
         }
         func addEmptyTrash() {
-            let empty = NSMenuItem(title: "Empty Trash…", action: #selector(AppDelegate.emptyTrash(_:)), keyEquivalent: "")
+            let empty = NSMenuItem(title: String(localized: "Empty Trash…"), action: #selector(AppDelegate.emptyTrash(_:)), keyEquivalent: "")
             empty.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
             menu.addItem(empty)
         }
@@ -1245,7 +1257,7 @@ final class BrowserViewController: NSViewController {
                 let submenu = NSMenu()
                 for app in apps.prefix(24) {
                     var title = FileManager.default.displayName(atPath: app.path)
-                    if app == defaultApp { title += " (default)" }
+                    if app == defaultApp { title = String(localized: "\(title) (default)", comment: "Open With submenu: the app that opens the file by default") }
                     let item = NSMenuItem(title: title, action: #selector(openWithApplication(_:)), keyEquivalent: "")
                     item.target = self
                     item.representedObject = app
@@ -1254,7 +1266,7 @@ final class BrowserViewController: NSViewController {
                     item.image = icon
                     submenu.addItem(item)
                 }
-                let openWith = NSMenuItem(title: "Open With", action: nil, keyEquivalent: "")
+                let openWith = NSMenuItem(title: String(localized: "Open With"), action: nil, keyEquivalent: "")
                 openWith.image = NSImage(systemSymbolName: "app.badge", accessibilityDescription: nil)
                 openWith.submenu = submenu
                 menu.addItem(openWith)
@@ -1278,12 +1290,12 @@ final class BrowserViewController: NSViewController {
             add("Show Archive in Finder", #selector(showArchiveInFinder(_:)), "macwindow")
             return menu
         }
-        add(renameTitle, #selector(renameSelection(_:)), "pencil")
+        addTitled(renameTitle, #selector(renameSelection(_:)), "pencil")
         if inTrash {
             addEmptyTrash()
         } else {
-            add(compressTitle, #selector(compress(_:)), "doc.zipper")
-            if !selectedArchives.isEmpty { add(extractTitle, #selector(extract(_:)), "archivebox") }
+            addTitled(compressTitle, #selector(compress(_:)), "doc.zipper")
+            if !selectedArchives.isEmpty { addTitled(extractTitle, #selector(extract(_:)), "archivebox") }
             add("Duplicate", #selector(duplicate(_:)), "plus.square.on.square")
             if !reachesIntoTrash { add("Move to Trash", #selector(moveToTrash(_:)), "trash") }
         }
@@ -1553,7 +1565,7 @@ extension BrowserViewController: NSMenuItemValidation {
         case #selector(moveToTrash(_:)):
             // Finder's File menu says Put Back for things in the Trash, and won't trash what's inside a trashed folder.
             let inTrash = hasSelection && selectedEntries.allSatisfy { Trash.contains($0.url) }
-            item.title = inTrash ? "Put Back" : "Move to Trash"
+            item.title = inTrash ? String(localized: "Put Back") : String(localized: "Move to Trash")
             return hasSelection && (inTrash || !selectedEntries.contains { Trash.isInTrash($0.url) })
         case #selector(putBack(_:)):
             return hasSelection && selectedEntries.allSatisfy { Trash.contains($0.url) }
@@ -1563,7 +1575,7 @@ extension BrowserViewController: NSMenuItemValidation {
             return hasSelection && selectedEntries.allSatisfy { !$0.isVolume && TagStore.canTag($0.url) }
         case #selector(compress(_:)):
             // Finder names what it compresses: "Compress “Photos”", "Compress 3 Items".
-            item.title = hasSelection ? compressTitle : "Compress"
+            item.title = hasSelection ? compressTitle : String(localized: "Compress", comment: "Menu command: zip the selected items")
             return hasSelection && !isShowingTrash && effectiveMode != .treemap && canWriteBesideSelection
         case #selector(extract(_:)):
             item.title = extractTitle

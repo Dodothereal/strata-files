@@ -55,10 +55,10 @@ nonisolated enum PlanValidator {
         func claim(_ kind: PlanStep.Kind, _ item: PlanItem, _ destination: URL, note: String? = nil) {
             let target = key(destination)
             if claimed.contains(target) {
-                exclude(kind, item.url, destination, "Same name as another item in this plan")
+                exclude(kind, item.url, destination, String(localized: "Same name as another item in this plan"))
             } else if TransferEngine.exists(destination), !Self.sameItem(destination, item.url), !vacated.contains(target) {
                 // Identity, not spelling: on a case-sensitive disk "Photo.jpg" can be a different file from "photo.jpg".
-                exclude(kind, item.url, destination, "Would replace “\(destination.lastPathComponent)”")
+                exclude(kind, item.url, destination, String(localized: "Would replace “\(destination.lastPathComponent)”"))
             } else {
                 claimed.insert(target)
                 vacated.insert(key(item.url))
@@ -81,22 +81,22 @@ nonisolated enum PlanValidator {
         for operation in operations {
             switch operation {
             case let .rename(url, name):
-                guard let item = selection[key(url)] else { exclude(.rename, url, nil, "Not part of the selection"); continue }
-                guard touched.insert(key(item.url)).inserted else { exclude(.rename, url, nil, "Already changed by another step"); continue }
+                guard let item = selection[key(url)] else { exclude(.rename, url, nil, String(localized: "Not part of the selection")); continue }
+                guard touched.insert(key(item.url)).inserted else { exclude(.rename, url, nil, String(localized: "Already changed by another step")); continue }
                 var newName = name.trimmingCharacters(in: .whitespacesAndNewlines)
                 var note: String?
                 if keepExtensions, !item.isFolder, !item.ext.isEmpty,
                    (newName as NSString).pathExtension.lowercased() != item.ext.lowercased() {
                     newName += "." + item.ext
-                    note = "Kept the .\(item.ext) extension"
+                    note = String(localized: "Kept the .\(item.ext) extension")
                 }
                 if let problem = nameProblem(newName) { exclude(.rename, url, nil, problem); continue }
                 if newName == item.name { unchanged += 1; continue }
                 claim(.rename, item, item.url.deletingLastPathComponent().appending(path: newName), note: note)
 
             case let .move(url, folderText):
-                guard let item = selection[key(url)] else { exclude(.move, url, nil, "Not part of the selection"); continue }
-                guard touched.insert(key(item.url)).inserted else { exclude(.move, url, nil, "Already changed by another step"); continue }
+                guard let item = selection[key(url)] else { exclude(.move, url, nil, String(localized: "Not part of the selection")); continue }
+                guard touched.insert(key(item.url)).inserted else { exclude(.move, url, nil, String(localized: "Already changed by another step")); continue }
                 let folder: URL
                 switch resolveFolder(folderText, base: base, instruction: request.instruction) {
                 case let .success(url): folder = url
@@ -104,12 +104,12 @@ nonisolated enum PlanValidator {
                 }
                 if key(folder) == key(item.url.deletingLastPathComponent()) { unchanged += 1; continue }
                 if item.isFolder, key(folder) == key(item.url) || isInside(folder, item.url) {
-                    exclude(.move, item.url, folder, "A folder can’t go inside itself")
+                    exclude(.move, item.url, folder, String(localized: "A folder can’t go inside itself"))
                     continue
                 }
                 var isDirectory: ObjCBool = false
                 if fm.fileExists(atPath: folder.path, isDirectory: &isDirectory), !isDirectory.boolValue {
-                    exclude(.move, item.url, folder, "“\(folder.lastPathComponent)” is a file, not a folder")
+                    exclude(.move, item.url, folder, String(localized: "“\(folder.lastPathComponent)” is a file, not a folder"))
                     continue
                 }
                 needFolder(folder)
@@ -120,7 +120,7 @@ nonisolated enum PlanValidator {
                 case let .success(folder):
                     var isDirectory: ObjCBool = false
                     if fm.fileExists(atPath: folder.path, isDirectory: &isDirectory) {
-                        if !isDirectory.boolValue { exclude(.createFolder, nil, folder, "A file named “\(folder.lastPathComponent)” exists") }
+                        if !isDirectory.boolValue { exclude(.createFolder, nil, folder, String(localized: "A file named “\(folder.lastPathComponent)” exists")) }
                     } else {
                         needFolder(folder)
                     }
@@ -128,8 +128,8 @@ nonisolated enum PlanValidator {
                 }
 
             case let .trash(url):
-                guard let item = selection[key(url)] else { exclude(.trash, url, nil, "Not part of the selection"); continue }
-                guard touched.insert(key(item.url)).inserted else { exclude(.trash, url, nil, "Already changed by another step"); continue }
+                guard let item = selection[key(url)] else { exclude(.trash, url, nil, String(localized: "Not part of the selection")); continue }
+                guard touched.insert(key(item.url)).inserted else { exclude(.trash, url, nil, String(localized: "Already changed by another step")); continue }
                 vacated.insert(key(item.url))
                 steps.append(PlanStep(id: nextID, kind: .trash, source: item.url, destination: nil))
                 nextID += 1
@@ -159,7 +159,7 @@ nonisolated enum PlanValidator {
                     let step = steps[index]
                     excluded.append(PlanStep(id: step.id, kind: step.kind, source: step.source, destination: step.destination,
                                              isEnabled: false,
-                                             problem: "Would replace “\(step.destination?.lastPathComponent ?? "")”, which keeps its name"))
+                                             problem: String(localized: "Would replace “\(step.destination?.lastPathComponent ?? "")”, which keeps its name")))
                 }
                 steps = steps.enumerated().filter { !stranded.contains($0.offset) }.map(\.element)
             }
@@ -188,7 +188,7 @@ nonisolated enum PlanValidator {
             }
             if let changed {
                 excluded.append(PlanStep(id: step.id, kind: step.kind, source: step.source, destination: step.destination, isEnabled: false,
-                                         problem: "“\(changed.lastPathComponent)” is changed by this plan too"))
+                                         problem: String(localized: "“\(changed.lastPathComponent)” is changed by this plan too")))
             } else {
                 kept.append(step)
             }
@@ -208,13 +208,13 @@ nonisolated enum PlanValidator {
 
     /// Why a file name can't be used, or nil.
     static func nameProblem(_ name: String) -> String? {
-        if name.isEmpty { return "The new name is empty" }
-        if name == "." || name == ".." { return "“\(name)” isn’t a valid name" }
-        if name.contains("/") { return "Names can’t contain “/”" }
-        if name.contains(":") { return "Names can’t contain “:”" }
-        if name.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) { return "The name has invisible characters" }
-        if name.hasPrefix(".") { return "Names starting with “.” are hidden" }
-        if name.utf8.count > 255 { return "The name is too long" }
+        if name.isEmpty { return String(localized: "The new name is empty") }
+        if name == "." || name == ".." { return String(localized: "“\(name)” isn’t a valid name") }
+        if name.contains("/") { return String(localized: "Names can’t contain “/”") }
+        if name.contains(":") { return String(localized: "Names can’t contain “:”") }
+        if name.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) { return String(localized: "The name has invisible characters") }
+        if name.hasPrefix(".") { return String(localized: "Names starting with “.” are hidden") }
+        if name.utf8.count > 255 { return String(localized: "The name is too long") }
         return nil
     }
 
@@ -226,7 +226,7 @@ nonisolated enum PlanValidator {
     static func resolveFolder(_ raw: String, base: URL, instruction: String) -> Result<URL, Problem> {
         var text = raw.trimmingCharacters(in: CharacterSet(charactersIn: " \"'“”‘’"))
         while text.count > 1, text.hasSuffix("/") { text.removeLast() }
-        guard !text.isEmpty else { return .failure(Problem(message: "No folder name")) }
+        guard !text.isEmpty else { return .failure(Problem(message: String(localized: "No folder name"))) }
 
         let folder: URL
         if text.hasPrefix("~") || text.hasPrefix("/") {
@@ -234,11 +234,11 @@ nonisolated enum PlanValidator {
             let named = instruction.localizedCaseInsensitiveContains(text)
                 || instruction.localizedCaseInsensitiveContains(folder.path)
             if !isInside(folder, base), !named {
-                return .failure(Problem(message: "Outside “\(base.lastPathComponent)” and not named in your request"))
+                return .failure(Problem(message: String(localized: "Outside “\(base.lastPathComponent)” and not named in your request")))
             }
         } else {
             let components = text.split(separator: "/").map { $0.trimmingCharacters(in: .whitespaces) }
-            if components.contains(where: { $0 == ".." || $0 == "." }) { return .failure(Problem(message: "Folder paths can’t go up a level")) }
+            if components.contains(where: { $0 == ".." || $0 == "." }) { return .failure(Problem(message: String(localized: "Folder paths can’t go up a level"))) }
             if let problem = components.lazy.compactMap(nameProblem).first { return .failure(Problem(message: problem)) }
             folder = components.reduce(base) { $0.appending(path: $1, directoryHint: .isDirectory) }.standardizedFileURL
         }
@@ -248,7 +248,7 @@ nonisolated enum PlanValidator {
         let real = existing.resolvingSymlinksInPath()
         let realBase = base.resolvingSymlinksInPath()
         if isInside(folder, base), !(key(real) == key(realBase) || isInside(real, realBase)) {
-            return .failure(Problem(message: "“\(existing.lastPathComponent)” links outside “\(base.lastPathComponent)”"))
+            return .failure(Problem(message: String(localized: "“\(existing.lastPathComponent)” links outside “\(base.lastPathComponent)”")))
         }
         return .success(folder)
     }

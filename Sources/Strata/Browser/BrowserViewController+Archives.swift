@@ -10,12 +10,14 @@ extension BrowserViewController {
     /// "Compress “Photos”" or "Compress 3 Items", like Finder.
     var compressTitle: String {
         let selected = selectedEntries
-        return selected.count == 1 ? "Compress “\(selected[0].name)”" : "Compress \(selected.count.formatted()) Items"
+        return selected.count == 1 ? String(localized: "Compress “\(selected[0].name)”")
+                                   : String(localized: "Compress \(selected.count) Items", comment: "plural")
     }
 
     /// "Extract", or "Extract 3 Archives".
     var extractTitle: String {
-        selectedArchives.count > 1 ? "Extract \(selectedArchives.count.formatted()) Archives" : "Extract"
+        selectedArchives.count > 1 ? String(localized: "Extract \(selectedArchives.count) Archives", comment: "plural")
+                                   : String(localized: "Extract", comment: "Menu command: unpack the selected archive")
     }
 
     /// Whether what Compress or Extract makes next to the selection has somewhere to go.

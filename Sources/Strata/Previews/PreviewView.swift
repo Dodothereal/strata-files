@@ -7,7 +7,7 @@ nonisolated enum PreviewError: Error {
     /// A calm, user-facing explanation, shown under an SF Symbol.
     case message(String, symbol: String = "exclamationmark.triangle")
 
-    static let empty = PreviewError.message("This file is empty.", symbol: "doc")
+    static let empty = PreviewError.message(String(localized: "This file is empty."), symbol: "doc")
 }
 
 /// Base for the rich previews: runs one background load, shows a spinner if it takes a moment, then the content
@@ -68,7 +68,7 @@ class PreviewView: NSView {
             case .success(let value):
                 apply(value)
             case .failure(PreviewError.unsupported):
-                if let fallback { fallback() } else { showMessage(symbol: "eye.slash", "No Preview Available") }
+                if let fallback { fallback() } else { showMessage(symbol: "eye.slash", String(localized: "No Preview Available")) }
             case .failure(PreviewError.message(let text, let symbol)):
                 showMessage(symbol: symbol, text)
             case .failure(let error):
@@ -124,12 +124,12 @@ class PreviewView: NSView {
         switch (error.domain, error.code) {
         case (NSCocoaErrorDomain, CocoaError.fileReadNoPermission.rawValue), (NSPOSIXErrorDomain, Int(EACCES)),
              (NSPOSIXErrorDomain, Int(EPERM)):
-            return ("lock", "You don’t have permission to read this file.")
+            return ("lock", String(localized: "You don’t have permission to read this file."))
         case (NSCocoaErrorDomain, CocoaError.fileReadNoSuchFile.rawValue), (NSCocoaErrorDomain, CocoaError.fileNoSuchFile.rawValue),
              (NSPOSIXErrorDomain, Int(ENOENT)):
-            return ("questionmark.folder", "This file no longer exists.")
+            return ("questionmark.folder", String(localized: "This file no longer exists."))
         default:
-            return ("exclamationmark.triangle", "This file couldn’t be read.")
+            return ("exclamationmark.triangle", String(localized: "This file couldn’t be read."))
         }
     }
 }
@@ -182,7 +182,7 @@ final class PreviewFooter: NSView {
     func show(_ parts: [String], note: String? = nil, warning: String? = nil) {
         leading.stringValue = parts.joined(separator: " · ")
         if let warning {
-            let symbol = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Warning")?
+            let symbol = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: String(localized: "Warning", comment: "Accessibility: a warning symbol"))?
                 .withSymbolConfiguration(.init(pointSize: 10, weight: .regular).applying(.init(paletteColors: [.systemYellow])))
             let attachment = NSTextAttachment()
             attachment.image = symbol

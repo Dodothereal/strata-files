@@ -36,8 +36,8 @@ final class PlanSheetController: NSViewController {
     private let overlay = NSStackView()
     private let summary = NSTextField(labelWithString: "")
     private let footerSpinner = NSProgressIndicator()
-    private let cancelButton = NSButton(title: "Cancel", target: nil, action: nil)
-    private let applyButton = NSButton(title: "Apply", target: nil, action: nil)
+    private let cancelButton = NSButton(title: String(localized: "Cancel"), target: nil, action: nil)
+    private let applyButton = NSButton(title: String(localized: "Apply", comment: "Button: apply the plan’s changes"), target: nil, action: nil)
 
     static let size = NSSize(width: 680, height: 540)
 
@@ -74,7 +74,7 @@ final class PlanSheetController: NSViewController {
     func start(instruction: String?) {
         Task {
             items = await PlanItem.load(urls)
-            subtitle.stringValue = "\(AIText.count(items.count, "item", "items")) in “\(FileManager.default.displayName(atPath: baseFolder.path))”"
+            subtitle.stringValue = String(localized: "\(items.count) items in “\(FileManager.default.displayName(atPath: baseFolder.path))”", comment: "plural")
             render()
             if let instruction, !instruction.isEmpty {
                 field.stringValue = instruction
@@ -88,7 +88,7 @@ final class PlanSheetController: NSViewController {
         _ = view
         self.items = items
         field.stringValue = instruction
-        subtitle.stringValue = "\(AIText.count(items.count, "item", "items")) in “\(baseFolder.lastPathComponent)”"
+        subtitle.stringValue = String(localized: "\(items.count) items in “\(baseFolder.lastPathComponent)”", comment: "plural")
         self.phase = phase
     }
 
@@ -98,7 +98,7 @@ final class PlanSheetController: NSViewController {
         let root = NSView(frame: NSRect(origin: .zero, size: Self.size))
 
         let icon = AppIconBadge()
-        let title = NSTextField(labelWithString: "Ask Strata")
+        let title = NSTextField(labelWithString: String(localized: "Ask Strata", comment: "Title of the sheet where you describe a change for the selected files"))
         title.font = .systemFont(ofSize: 15, weight: .semibold)
         subtitle.font = .systemFont(ofSize: 12)
         subtitle.textColor = .secondaryLabelColor
@@ -111,7 +111,7 @@ final class PlanSheetController: NSViewController {
         header.alignment = .centerY
         header.spacing = 10
 
-        field.placeholderString = "Describe what to do — e.g. “rename these photos by date taken”"
+        field.placeholderString = String(localized: "Describe what to do — e.g. “rename these photos by date taken”")
         field.font = .systemFont(ofSize: 14)
         field.bezelStyle = .roundedBezel
         field.controlSize = .large
@@ -121,7 +121,7 @@ final class PlanSheetController: NSViewController {
         field.target = self
         field.action = #selector(generate(_:))
         field.delegate = self
-        planButton.title = "Plan"
+        planButton.title = String(localized: "Plan", comment: "Button: make a plan for the described change")
         planButton.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
         planButton.imagePosition = .imageLeading
         planButton.bezelStyle = .push
@@ -244,11 +244,12 @@ final class PlanSheetController: NSViewController {
         case .prompt:
             rows = []
             badge.set(nil)
-            summary.stringValue = AIModel.isAvailable ? "Plans are made on this Mac and shown before anything changes."
-                : AIModel.isSupported ? "\(AIModel.shortStatus) — Strata’s built-in rules handle common requests."
-                : "Strata’s built-in rules make the plan, and it’s shown before anything changes."
-            showSuggestions(PlanGenerator.suggestions(for: items), title: items.isEmpty ? nil : "Try one of these")
-            applyButton.title = "Apply"
+            summary.stringValue = AIModel.isAvailable ? String(localized: "Plans are made on this Mac and shown before anything changes.")
+                : AIModel.isSupported ? String(localized: "\(AIModel.shortStatus) — Strata’s built-in rules handle common requests.",
+                                               comment: "Starts with why Apple Intelligence can’t be used, like “Apple Intelligence is off”")
+                : String(localized: "Strata’s built-in rules make the plan, and it’s shown before anything changes.")
+            showSuggestions(PlanGenerator.suggestions(for: items), title: items.isEmpty ? nil : String(localized: "Try one of these"))
+            applyButton.title = String(localized: "Apply", comment: "Button: apply the plan’s changes")
             applyButton.isEnabled = false
         case .planning:
             rows = []
@@ -257,7 +258,8 @@ final class PlanSheetController: NSViewController {
             spinner.controlSize = .regular
             spinner.startAnimation(nil)
             overlay.addArrangedSubview(spinner)
-            overlay.addArrangedSubview(label(AIModel.isAvailable ? "Planning with Apple Intelligence…" : "Planning…", size: 12.5, color: .secondaryLabelColor))
+            overlay.addArrangedSubview(label(AIModel.isAvailable ? String(localized: "Planning with Apple Intelligence…") : String(localized: "Planning…"),
+                                             size: 12.5, color: .secondaryLabelColor))
             summary.stringValue = ""
             planButton.isEnabled = false
             applyButton.isEnabled = false
@@ -268,7 +270,7 @@ final class PlanSheetController: NSViewController {
             understood.attributedStringValue = interpretation(plan)
             if rows.isEmpty {
                 overlay.addArrangedSubview(symbol("checkmark.circle", size: 26, color: .tertiaryLabelColor))
-                overlay.addArrangedSubview(label("Nothing to change — everything already matches.", size: 12.5, color: .secondaryLabelColor))
+                overlay.addArrangedSubview(label(String(localized: "Nothing to change — everything already matches."), size: 12.5, color: .secondaryLabelColor))
             }
             updateFooter(plan)
         case let .failed(message, suggestions):
@@ -279,23 +281,23 @@ final class PlanSheetController: NSViewController {
             text.alignment = .center
             overlay.addArrangedSubview(text)
             if AIModel.canOpenSettings {
-                let settings = NSButton(title: "Open Apple Intelligence Settings…", target: self, action: #selector(openSettings(_:)))
+                let settings = NSButton(title: String(localized: "Open Apple Intelligence Settings…"), target: self, action: #selector(openSettings(_:)))
                 settings.bezelStyle = .push
                 settings.controlSize = .small
                 overlay.addArrangedSubview(settings)
             }
             if !suggestions.isEmpty {
                 overlay.setCustomSpacing(18, after: overlay.arrangedSubviews.last!)
-                appendSuggestions(suggestions, title: "Strata can do these without it")
+                appendSuggestions(suggestions, title: String(localized: "Strata can do these without it", comment: "Heading of requests Strata can plan without Apple Intelligence"))
             }
             summary.stringValue = ""
-            applyButton.title = "Apply"
+            applyButton.title = String(localized: "Apply", comment: "Button: apply the plan’s changes")
             applyButton.isEnabled = false
         case let .applying(plan):
             rows = plan.steps + plan.excluded
             footerSpinner.isHidden = false
             footerSpinner.startAnimation(nil)
-            summary.stringValue = "Applying…"
+            summary.stringValue = String(localized: "Applying…")
             field.isEnabled = false
             planButton.isEnabled = false
             applyButton.isEnabled = false
@@ -307,13 +309,14 @@ final class PlanSheetController: NSViewController {
 
     private func updateFooter(_ plan: Plan) {
         var text = plan.summary
-        if plan.unaffected > 0 { text += " · \(plan.unaffected.formatted()) unchanged" }
+        if plan.unaffected > 0 { text += " · " + String(localized: "\(plan.unaffected) unchanged", comment: "plural; how many selected items a plan leaves as they are") }
         summary.stringValue = text
         let count = plan.changeCount
         // A new plan after a partly failed one: the button applies again (it had become "Done").
         applyButton.action = #selector(apply(_:))
         summary.textColor = .secondaryLabelColor
-        applyButton.title = count == 0 ? "Apply" : "Apply \(AIText.count(count, "Change", "Changes"))"
+        applyButton.title = count == 0 ? String(localized: "Apply", comment: "Button: apply the plan’s changes")
+            : String(localized: "Apply \(count) Changes", comment: "plural")
         applyButton.isEnabled = count > 0
     }
 
@@ -323,17 +326,22 @@ final class PlanSheetController: NSViewController {
         check.image = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 10.5, weight: .semibold).applying(.init(paletteColors: [.white, .systemGreen])))
         text.append(NSAttributedString(attachment: check))
-        text.append(NSAttributedString(string: "  Understood as ", attributes: [.foregroundColor: NSColor.secondaryLabelColor,
-                                                                                 .font: NSFont.systemFont(ofSize: 11.5)]))
-        text.append(NSAttributedString(string: plan.interpretation, attributes: [.foregroundColor: NSColor.labelColor,
-                                                                                  .font: NSFont.systemFont(ofSize: 11.5, weight: .medium)]))
+        let sentence = "  " + String(localized: "Understood as \(plan.interpretation)",
+                                     comment: "Ask Strata: what the request was read as, like “Understood as Rename by date taken”")
+        let line = NSMutableAttributedString(string: sentence, attributes: [.foregroundColor: NSColor.secondaryLabelColor,
+                                                                            .font: NSFont.systemFont(ofSize: 11.5)])
+        let range = (sentence as NSString).range(of: plan.interpretation, options: .backwards)
+        if range.location != NSNotFound, !plan.interpretation.isEmpty {
+            line.addAttributes([.foregroundColor: NSColor.labelColor, .font: NSFont.systemFont(ofSize: 11.5, weight: .medium)], range: range)
+        }
+        text.append(line)
         return text
     }
 
     private func showSuggestions(_ suggestions: [String], title: String?) {
         guard !suggestions.isEmpty else {
             overlay.addArrangedSubview(symbol("sparkles", size: 26, color: .tertiaryLabelColor))
-            overlay.addArrangedSubview(label("Describe a rename, move, grouping or clean-up.", size: 12.5, color: .secondaryLabelColor))
+            overlay.addArrangedSubview(label(String(localized: "Describe a rename, move, grouping or clean-up."), size: 12.5, color: .secondaryLabelColor))
             return
         }
         appendSuggestions(suggestions, title: title)
@@ -415,9 +423,9 @@ final class PlanSheetController: NSViewController {
             } else {
                 // Keep the sheet up to explain; what did apply can be undone with ⌘Z.
                 phase = .review(plan)
-                summary.stringValue = "\(AIText.count(outcome.failures.count, "change", "changes")) failed: \(outcome.failures[0])"
+                summary.stringValue = String(localized: "\(outcome.failures.count) changes failed: \(outcome.failures[0])", comment: "plural")
                 summary.textColor = .systemRed
-                applyButton.title = "Done"
+                applyButton.title = String(localized: "button.done", defaultValue: "Done", comment: "Button that closes the sheet once the plan is applied")
                 applyButton.action = #selector(done(_:))
                 applyButton.isEnabled = true
                 pendingOutcome = outcome
@@ -507,7 +515,7 @@ final class PlanRowView: NSTableCellView {
             label.cell?.truncatesLastVisibleLine = true
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
-        arrow.image = NSImage(systemSymbolName: "arrow.right", accessibilityDescription: "becomes")
+        arrow.image = NSImage(systemSymbolName: "arrow.right", accessibilityDescription: String(localized: "becomes", comment: "VoiceOver: an old name becomes a new one"))
         arrow.symbolConfiguration = .init(pointSize: 10, weight: .semibold)
         arrow.contentTintColor = .tertiaryLabelColor
         for view in [checkbox, icon, before, arrow, after] { addSubview(view) }
@@ -558,7 +566,8 @@ final class PlanRowView: NSTableCellView {
         case .createFolder:
             let path = step.destination.map { relative($0, to: base) } ?? ""
             before.attributedStringValue = NSAttributedString(string: path, attributes: [.font: font.withWeight(.medium), .foregroundColor: primary])
-            after.attributedStringValue = NSAttributedString(string: "New folder", attributes: [.font: font, .foregroundColor: secondary])
+            after.attributedStringValue = NSAttributedString(string: String(localized: "New folder", comment: "Plan step: a folder the plan creates"),
+                                                             attributes: [.font: font, .foregroundColor: secondary])
         default:
             before.attributedStringValue = NSAttributedString(string: step.beforeName, attributes: [
                 .font: font, .foregroundColor: excluded ? NSColor.secondaryLabelColor : secondary,
@@ -568,7 +577,8 @@ final class PlanRowView: NSTableCellView {
                     .font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.systemOrange,
                 ])
             } else if step.kind == .trash {
-                after.attributedStringValue = NSAttributedString(string: "Trash", attributes: [.font: font.withWeight(.medium), .foregroundColor: dim ? secondary : NSColor.systemRed])
+                after.attributedStringValue = NSAttributedString(string: String(localized: "Trash", comment: "Plan step: where an item goes (the Trash)"),
+                                                                 attributes: [.font: font.withWeight(.medium), .foregroundColor: dim ? secondary : NSColor.systemRed])
             } else if step.kind == .move, let destination = step.destination {
                 let folder = relative(destination.deletingLastPathComponent(), to: base)
                 let text = NSMutableAttributedString(string: folder + "/", attributes: [.font: font.withWeight(.semibold), .foregroundColor: dim ? secondary : NSColor.controlAccentColor])
@@ -582,8 +592,10 @@ final class PlanRowView: NSTableCellView {
         if let note = step.note { tip += "\n" + note }
         if let problem = step.problem { tip += "\n" + problem }
         toolTip = tip
-        setAccessibilityLabel(step.kind == .trash ? "\(step.kind.title): \(before.stringValue)"
-                              : "\(step.kind.title): \(before.stringValue) to \(after.stringValue)")
+        setAccessibilityLabel(step.kind == .trash
+                              ? String(localized: "\(step.kind.title): \(before.stringValue)", comment: "VoiceOver: a plan step (like “Move to Trash”), then an item’s name")
+                              : String(localized: "\(step.kind.title): \(before.stringValue) to \(after.stringValue)",
+                                       comment: "VoiceOver: a plan step (like “Rename”), an item’s name, then what it becomes"))
         needsLayout = true
     }
 
@@ -702,11 +714,12 @@ final class BadgeView: NSView {
             text.append(NSAttributedString(attachment: attachment))
             text.append(NSAttributedString(string: " "))
         }
-        text.append(NSAttributedString(string: source.rawValue))
+        text.append(NSAttributedString(string: source.title))
         text.addAttributes([.foregroundColor: NSColor.secondaryLabelColor, .font: NSFont.systemFont(ofSize: 11, weight: .medium)],
                            range: NSRange(location: 0, length: text.length))
         label.attributedStringValue = text
-        toolTip = source == .model ? "Planned on this Mac with Apple Intelligence" : "Planned by Strata’s built-in rules — no AI involved"
+        toolTip = source == .model ? String(localized: "Planned on this Mac with Apple Intelligence")
+            : String(localized: "Planned by Strata’s built-in rules — no AI involved")
     }
 
     override var wantsUpdateLayer: Bool { true }

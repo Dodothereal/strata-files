@@ -51,8 +51,9 @@ nonisolated struct SpotlightQuery: Equatable, Sendable {
             }
         }
         // An artist is music's: without a kind, fonts and templates (which have "authors") would match too.
-        if query.conditions.contains(where: { $0.label.hasPrefix("artist") }), !query.conditions.contains(where: \.isKind) {
-            var audio = Condition(attributes: ["kMDItemContentTypeTree"], test: .equals("public.audio"), label: "audio")
+        if query.conditions.contains(where: { $0.attributes.contains("kMDItemComposer") }), !query.conditions.contains(where: \.isKind) {
+            var audio = Condition(attributes: ["kMDItemContentTypeTree"], test: .equals("public.audio"),
+                                  label: String(localized: "audio", comment: "Search summary: kind of files"))
             audio.isKind = true
             query.conditions.insert(audio, at: 0)
         }
@@ -68,44 +69,62 @@ nonisolated struct SpotlightQuery: Equatable, Sendable {
         switch key {
         case "camera", "device":
             return Condition(attributes: ["kMDItemAcquisitionModel", "kMDItemAcquisitionMake"], test: .contains(value),
-                             label: "camera “\(value)”")
+                             label: String(localized: "camera “\(value)”", comment: "Search summary: taken with a camera, like “camera “iPhone””"))
         case "author", "by":
             // Authors only: kMDItemCreator is the app that made the file.
-            return Condition(attributes: ["kMDItemAuthors"], test: .contains(value), label: "by “\(value)”")
+            return Condition(attributes: ["kMDItemAuthors"], test: .contains(value),
+                             label: String(localized: "by “\(value)”", comment: "Search summary: written by an author"))
         case "artist":
-            return Condition(attributes: ["kMDItemAuthors", "kMDItemComposer"], test: .contains(value), label: "artist “\(value)”")
+            return Condition(attributes: ["kMDItemAuthors", "kMDItemComposer"], test: .contains(value),
+                             label: String(localized: "artist “\(value)”", comment: "Search summary: music by an artist"))
         case "width", "height", "pages":
             guard let (comparison, number) = comparison(value, units: [:]) else { return nil }
             let attribute = key == "width" ? "kMDItemPixelWidth" : key == "height" ? "kMDItemPixelHeight" : "kMDItemNumberOfPages"
-            let noun = key == "pages" ? "pages" : key == "width" ? "px wide" : "px high"
             return Condition(attributes: [attribute], test: .compare(comparison, number),
-                             label: "\(describe(comparison)) \(Int(number)) \(noun)")
+                             label: describe(comparison, Int(number), key))
         case "duration", "length":
             let units: [String: Double] = ["s": 1, "sec": 1, "secs": 1, "second": 1, "seconds": 1, "m": 60, "min": 60, "mins": 60,
                                            "minute": 60, "minutes": 60, "h": 3600, "hr": 3600, "hour": 3600, "hours": 3600]
             guard let (comparison, seconds) = comparison(value, units: units) else { return nil }
-            let words: [Condition.Comparison: String] = [.greater: "longer than", .greaterOrEqual: "at least", .less: "shorter than",
-                                               .lessOrEqual: "at most", .equal: "exactly"]
-            return Condition(attributes: ["kMDItemDurationSeconds"], test: .compare(comparison, seconds),
-                             label: "\(words[comparison] ?? "") \(duration(seconds))")
+            let length = duration(seconds)
+            let label = switch comparison {
+            case .greater: String(localized: "longer than \(length)", comment: "Search summary: a duration, like “longer than 10 min”")
+            case .greaterOrEqual: String(localized: "at least \(length)", comment: "Search summary: a duration, like “at least 10 min”")
+            case .less: String(localized: "shorter than \(length)", comment: "Search summary: a duration, like “shorter than 10 min”")
+            case .lessOrEqual: String(localized: "at most \(length)", comment: "Search summary: a duration, like “at most 10 min”")
+            case .equal: String(localized: "exactly \(length)", comment: "Search summary: a duration, like “exactly 10 min”")
+            }
+            return Condition(attributes: ["kMDItemDurationSeconds"], test: .compare(comparison, seconds), label: label)
         case "kind", "type", "is":
-            let types: [String: (String, String)] = [
-                "image": ("public.image", "images"), "images": ("public.image", "images"), "photo": ("public.image", "images"),
-                "photos": ("public.image", "images"), "picture": ("public.image", "images"), "pictures": ("public.image", "images"),
-                "video": ("public.movie", "videos"), "videos": ("public.movie", "videos"), "movie": ("public.movie", "videos"),
-                "movies": ("public.movie", "videos"), "audio": ("public.audio", "audio"), "music": ("public.audio", "audio"),
-                "song": ("public.audio", "audio"), "songs": ("public.audio", "audio"), "pdf": ("com.adobe.pdf", "PDFs"),
-                "pdfs": ("com.adobe.pdf", "PDFs"), "text": ("public.text", "text"), "presentation": ("public.presentation", "presentations"),
-                "presentations": ("public.presentation", "presentations"), "spreadsheet": ("public.spreadsheet", "spreadsheets"),
-                "spreadsheets": ("public.spreadsheet", "spreadsheets"), "document": ("public.content", "documents"),
-                "documents": ("public.content", "documents"), "doc": ("public.content", "documents"),
-                "font": ("public.font", "fonts"), "fonts": ("public.font", "fonts"),
+            let types: [String: String] = [
+                "image": "public.image", "images": "public.image", "photo": "public.image",
+                "photos": "public.image", "picture": "public.image", "pictures": "public.image",
+                "video": "public.movie", "videos": "public.movie", "movie": "public.movie",
+                "movies": "public.movie", "audio": "public.audio", "music": "public.audio",
+                "song": "public.audio", "songs": "public.audio", "pdf": "com.adobe.pdf",
+                "pdfs": "com.adobe.pdf", "text": "public.text", "presentation": "public.presentation",
+                "presentations": "public.presentation", "spreadsheet": "public.spreadsheet",
+                "spreadsheets": "public.spreadsheet", "document": "public.content",
+                "documents": "public.content", "doc": "public.content",
+                "font": "public.font", "fonts": "public.font",
             ]
             // A kind Spotlight has no type for narrows nothing (rather than becoming a name to look for).
-            guard let (type, label) = types[value.lowercased()] else {
+            guard let type = types[value.lowercased()] else {
                 var none = Condition(attributes: [], test: .equals(""), label: "")
                 none.isKind = true
                 return none
+            }
+            // For the results summary.
+            let label = switch type {
+            case "public.image": String(localized: "images", comment: "Search summary: kind of files")
+            case "public.movie": String(localized: "videos", comment: "Search summary: kind of files")
+            case "public.audio": String(localized: "audio", comment: "Search summary: kind of files")
+            case "com.adobe.pdf": String(localized: "PDFs", comment: "Search summary: kind of files")
+            case "public.text": String(localized: "text", comment: "Search summary: kind of files (plain text)")
+            case "public.presentation": String(localized: "presentations", comment: "Search summary: kind of files")
+            case "public.spreadsheet": String(localized: "spreadsheets", comment: "Search summary: kind of files")
+            case "public.font": String(localized: "fonts", comment: "Search summary: kind of files")
+            default: String(localized: "documents", comment: "Search summary: kind of files")
             }
             var condition = Condition(attributes: ["kMDItemContentTypeTree"], test: .equals(type), label: label)
             condition.isKind = true
@@ -145,13 +164,24 @@ nonisolated struct SpotlightQuery: Equatable, Sendable {
         return formatter.string(from: seconds) ?? "\(Int(seconds)) s"
     }
 
-    private static func describe(_ comparison: Condition.Comparison) -> String {
-        switch comparison {
-        case .greater: "over"
-        case .greaterOrEqual: "at least"
-        case .less: "under"
-        case .lessOrEqual: "at most"
-        case .equal: "exactly"
+    /// "over 20 pages", "at most 1000 px wide": `key` is pages, width or height.
+    private static func describe(_ comparison: Condition.Comparison, _ number: Int, _ key: String) -> String {
+        switch (key, comparison) {
+        case ("pages", .greater): String(localized: "over \(number) pages", comment: "plural")
+        case ("pages", .greaterOrEqual): String(localized: "at least \(number) pages", comment: "plural")
+        case ("pages", .less): String(localized: "under \(number) pages", comment: "plural")
+        case ("pages", .lessOrEqual): String(localized: "at most \(number) pages", comment: "plural")
+        case ("pages", .equal): String(localized: "exactly \(number) pages", comment: "plural")
+        case ("width", .greater): String(localized: "over \(number) px wide", comment: "Search summary: image width in pixels")
+        case ("width", .greaterOrEqual): String(localized: "at least \(number) px wide", comment: "Search summary: image width in pixels")
+        case ("width", .less): String(localized: "under \(number) px wide", comment: "Search summary: image width in pixels")
+        case ("width", .lessOrEqual): String(localized: "at most \(number) px wide", comment: "Search summary: image width in pixels")
+        case ("width", .equal): String(localized: "exactly \(number) px wide", comment: "Search summary: image width in pixels")
+        case (_, .greater): String(localized: "over \(number) px high", comment: "Search summary: image height in pixels")
+        case (_, .greaterOrEqual): String(localized: "at least \(number) px high", comment: "Search summary: image height in pixels")
+        case (_, .less): String(localized: "under \(number) px high", comment: "Search summary: image height in pixels")
+        case (_, .lessOrEqual): String(localized: "at most \(number) px high", comment: "Search summary: image height in pixels")
+        case (_, .equal): String(localized: "exactly \(number) px high", comment: "Search summary: image height in pixels")
         }
     }
 
@@ -230,9 +260,15 @@ nonisolated struct SpotlightQuery: Equatable, Sendable {
     /// "Tagged “Red” · images · camera “iPhone” · named “report” · .pdf", for the results summary.
     var summary: String {
         var parts: [String] = []
-        if !tags.isEmpty { parts.append("Tagged " + ListFormatter.localizedString(byJoining: tags.map { "“\($0)”" })) }
+        if !tags.isEmpty {
+            let list = ListFormatter.localizedString(byJoining: tags.map { "“\($0)”" })
+            parts.append(String(localized: "Tagged \(list)", comment: "Search summary: with Finder tags, like “Tagged “Red” and “Work””"))
+        }
         parts += conditions.map(\.label).filter { !$0.isEmpty }
-        if !words.isEmpty { parts.append("named " + ListFormatter.localizedString(byJoining: words.map { "“\($0)”" })) }
+        if !words.isEmpty {
+            let list = ListFormatter.localizedString(byJoining: words.map { "“\($0)”" })
+            parts.append(String(localized: "named \(list)", comment: "Search summary: names containing words, like “named “report””"))
+        }
         if !extensions.isEmpty { parts.append(extensions.map { "." + $0 }.joined(separator: ", ")) }
         guard let first = parts.first else { return "" }
         parts[0] = first.prefix(1).uppercased() + first.dropFirst()

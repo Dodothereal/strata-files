@@ -50,23 +50,23 @@ nonisolated enum AIModel {
     static var explanation: String? {
         switch status {
         case .available: nil
-        case .deviceNotEligible: "This Mac doesn’t support Apple Intelligence."
-        case .appleIntelligenceNotEnabled: "Turn on Apple Intelligence in System Settings to use this."
-        case .modelNotReady: "Apple Intelligence is still getting ready. Try again in a little while."
-        case .unsupportedLanguage: "Apple Intelligence doesn’t support your Mac’s language yet."
-        case .disabled: "Apple Intelligence features are turned off."
+        case .deviceNotEligible: String(localized: "This Mac doesn’t support Apple Intelligence.")
+        case .appleIntelligenceNotEnabled: String(localized: "Turn on Apple Intelligence in System Settings to use this.")
+        case .modelNotReady: String(localized: "Apple Intelligence is still getting ready. Try again in a little while.")
+        case .unsupportedLanguage: String(localized: "Apple Intelligence doesn’t support your Mac’s language yet.")
+        case .disabled: String(localized: "Apple Intelligence features are turned off.")
         }
     }
 
     /// A short phrase for captions: what to do (or why not) when the model isn't available.
     static var shortStatus: String {
         switch status {
-        case .available: "Apple Intelligence · On this Mac"
-        case .appleIntelligenceNotEnabled: "Apple Intelligence is off"
-        case .deviceNotEligible: "Apple Intelligence isn’t available on this Mac"
-        case .modelNotReady: "Apple Intelligence is getting ready"
-        case .unsupportedLanguage: "Apple Intelligence doesn’t support this language yet"
-        case .disabled: "Apple Intelligence is turned off"
+        case .available: String(localized: "Apple Intelligence · On this Mac", comment: "Caption: summaries and plans are made by Apple Intelligence on this Mac")
+        case .appleIntelligenceNotEnabled: String(localized: "Apple Intelligence is off")
+        case .deviceNotEligible: String(localized: "Apple Intelligence isn’t available on this Mac")
+        case .modelNotReady: String(localized: "Apple Intelligence is getting ready")
+        case .unsupportedLanguage: String(localized: "Apple Intelligence doesn’t support this language yet")
+        case .disabled: String(localized: "Apple Intelligence is turned off")
         }
     }
 
@@ -88,16 +88,16 @@ nonisolated enum AIErrorText {
     static func describe(_ error: Error) -> String {
         if let error = error as? LanguageModelSession.GenerationError {
             switch error {
-            case .exceededContextWindowSize: return "The document is too long for the on-device model."
-            case .assetsUnavailable: return "Apple Intelligence isn’t ready yet. Try again in a little while."
-            case .guardrailViolation, .refusal: return "The on-device model declined this request."
-            case .unsupportedLanguageOrLocale: return "This language isn’t supported by the on-device model."
-            case .rateLimited, .concurrentRequests: return "The on-device model is busy. Try again in a moment."
-            case .decodingFailure, .unsupportedGuide: return "The on-device model returned something unexpected."
+            case .exceededContextWindowSize: return String(localized: "The document is too long for the on-device model.")
+            case .assetsUnavailable: return String(localized: "Apple Intelligence isn’t ready yet. Try again in a little while.")
+            case .guardrailViolation, .refusal: return String(localized: "The on-device model declined this request.")
+            case .unsupportedLanguageOrLocale: return String(localized: "This language isn’t supported by the on-device model.")
+            case .rateLimited, .concurrentRequests: return String(localized: "The on-device model is busy. Try again in a moment.")
+            case .decodingFailure, .unsupportedGuide: return String(localized: "The on-device model returned something unexpected.")
             @unknown default: return error.localizedDescription
             }
         }
-        if error is CancellationError { return "Cancelled." }
+        if error is CancellationError { return String(localized: "Cancelled.") }
         return error.localizedDescription
     }
 }

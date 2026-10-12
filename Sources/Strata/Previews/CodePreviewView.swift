@@ -74,13 +74,13 @@ final class CodePreviewView: PreviewView {
         lineStarts = document.lineStarts
 
         let lines = document.lineStarts.count
-        let summary = [document.languageName, lines == 1 ? "1 line" : "\(lines.formatted()) lines"] + [document.note].compactMap { $0 }
+        let summary = [document.languageName, String(localized: "\(lines) lines", comment: "plural")] + [document.note].compactMap { $0 }
         if let line = document.errorLine {
-            footer.show(summary, warning: "Invalid JSON at line \(line.formatted())")
+            footer.show(summary, warning: String(localized: "Invalid JSON at line \(line.formatted())"))
             pendingScrollLine = line - 1
             needsLayout = true
         } else {
-            footer.show(summary, note: document.isTruncated ? "Showing first \(TextFile.limitDescription)" : nil)
+            footer.show(summary, note: document.isTruncated ? String(localized: "Showing first \(TextFile.limitDescription)", comment: "Preview footer note: only the first part is shown (a count or a size)") : nil)
         }
     }
 
@@ -205,7 +205,7 @@ nonisolated enum CodeLoader {
             if let xml = try binaryPropertyListAsXML(url) {
                 language = Languages.plist
                 text = xml
-                note = "Binary, shown as XML"
+                note = String(localized: "Binary, shown as XML", comment: "Preview footer note: a binary property list converted to XML for display")
             } else {
                 language = sourceLanguage
                 let file = try TextFile.read(url)
@@ -227,7 +227,7 @@ nonisolated enum CodeLoader {
         guard !text.isEmpty else { throw PreviewError.empty }
         if let shortened = shortenLongLines(text) {
             text = shortened
-            note = note ?? "Long lines shortened"
+            note = note ?? String(localized: "Long lines shortened", comment: "Preview footer note: very long lines are cut off")
         }
         try Task.checkCancellation()
 

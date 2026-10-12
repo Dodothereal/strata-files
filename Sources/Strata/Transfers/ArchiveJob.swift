@@ -154,7 +154,7 @@ final class ArchiveJob {
 
     private static func kind(_ archive: URL) throws -> ArchiveKind {
         guard let kind = ArchiveKind(fileName: archive.lastPathComponent) else {
-            throw Archiver.Failure(message: "“\(archive.lastPathComponent)” isn’t an archive Strata can open.")
+            throw Archiver.Failure(message: String(localized: "“\(archive.lastPathComponent)” isn’t an archive Strata can open."))
         }
         return kind
     }
@@ -175,34 +175,43 @@ extension ArchiveJob {
     /// "Compressing “Photos”", "Extracted “Archive.zip”", "Opening “Archive.zip”".
     var title: String {
         let done = state == .finished
-        let what = sources.count == 1 ? "“\(sources[0].lastPathComponent)”" : Format.count(sources.count, "item", "items")
-        let verb = switch (operation, done) {
-        case (.compress, false): "Compressing"
-        case (.compress, true): "Compressed"
-        case (.extract, false): "Extracting"
-        case (.extract, true): "Extracted"
-        case (.browse, false): "Opening"
-        case (.browse, true): "Opened"
+        // Extracting and opening always have one archive.
+        if case .compress(let items) = operation, items.count != 1 {
+            return done ? String(localized: "Compressed \(items.count) items", comment: "plural")
+                : String(localized: "Compressing \(items.count) items", comment: "plural")
         }
-        return "\(verb) \(what)"
+        let name = sources.first?.lastPathComponent ?? ""
+        return switch (operation, done) {
+        case (.compress, false): String(localized: "Compressing “\(name)”", comment: "Transfers list: job title")
+        case (.compress, true): String(localized: "Compressed “\(name)”", comment: "Transfers list: job title")
+        case (.extract, false): String(localized: "Extracting “\(name)”", comment: "Transfers list: job title")
+        case (.extract, true): String(localized: "Extracted “\(name)”", comment: "Transfers list: job title")
+        case (.browse, false): String(localized: "Opening “\(name)”", comment: "Transfers list: job title (an archive opened as a folder)")
+        case (.browse, true): String(localized: "Opened “\(name)”", comment: "Transfers list: job title (an archive opened as a folder)")
+        }
     }
 
     var statusText: String {
         switch state {
-        case .queued: return "Waiting for another archive to finish…"
-        case .scanning: return "Preparing…"
+        case .queued: return String(localized: "Waiting for another archive to finish…")
+        case .scanning: return String(localized: "Preparing…", comment: "Transfers list: a job reading what it will do")
         case .running:
-            if totalEntries > 0 { return "\(min(entriesDone, totalEntries).formatted()) of \(Format.count(totalEntries, "item", "items"))" }
-            return entriesDone > 0 ? Format.count(entriesDone, "item", "items") : "Working…"
-        case .paused: return "Paused"
+            if totalEntries > 0 {
+                return String(localized: "\(min(entriesDone, totalEntries).formatted()) of \(totalEntries) items", comment: "plural")
+            }
+            return entriesDone > 0 ? String(localized: "\(entriesDone) items", comment: "plural")
+                : String(localized: "Working…", comment: "Transfers list: a job in progress")
+        case .paused: return String(localized: "Paused", comment: "Transfers list: job status")
         case .finished:
             if case .compress = operation, let result,
                let size = (try? result.resourceValues(forKeys: [.fileSizeKey]))?.fileSize {
-                return "Done · \(result.lastPathComponent), \(Format.bytes(Int64(size)))"
+                return String(localized: "Done · \(result.lastPathComponent), \(Format.bytes(Int64(size)))",
+                              comment: "Transfers list: a finished Compress, with the zip’s name and size")
             }
-            return result.map { "Done · \($0.lastPathComponent)" } ?? "Done"
-        case .failed: return errorMessage ?? "Failed"
-        case .cancelled: return "Stopped"
+            return result.map { String(localized: "Done · \($0.lastPathComponent)", comment: "Transfers list: a finished job, with what it made") }
+                ?? String(localized: "Done", comment: "Transfers list: job status")
+        case .failed: return errorMessage ?? String(localized: "Failed", comment: "Transfers list: job status")
+        case .cancelled: return String(localized: "Stopped", comment: "Transfers list: job status (cancelled)")
         }
     }
 

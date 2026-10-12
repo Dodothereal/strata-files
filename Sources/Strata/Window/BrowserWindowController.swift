@@ -17,7 +17,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// What a search is called in titles: Large Files by name, others by their text.
     static func searchTitle(_ text: String) -> String {
-        text == largeFilesQuery ? "Large Files" : "Search: \(text)"
+        text == largeFilesQuery ? String(localized: "Large Files")
+            : String(localized: "Search: \(text)", comment: "Window title while searching; the search text")
     }
 
     private var panes: [Pane]
@@ -138,7 +139,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         refreshPanels()
         // Filled symbol while two panes are showing.
         dualPaneItem?.image = NSImage(systemSymbolName: isDualPane ? "rectangle.split.2x1.fill" : "rectangle.split.2x1",
-                                      accessibilityDescription: "Dual Pane")
+                                      accessibilityDescription: String(localized: "Dual Pane"))
         updateHeaders()
     }
 
@@ -271,7 +272,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         case .search(let text, let scope):
             setSearchField(text)
             // The query itself, so a search shows what was asked (Large Files by name).
-            pathBar.showTitle(text == Self.largeFilesQuery ? "Large Files" : "“\(text)”", symbol: "magnifyingglass")
+            pathBar.showTitle(text == Self.largeFilesQuery ? String(localized: "Large Files")
+                                  : String(localized: "“\(text)”", comment: "Path bar title while searching: the search text in quotes"),
+                              symbol: "magnifyingglass")
             if text == Self.largeFilesQuery && scope == nil {
                 split.sidebar.highlight(.largeFiles)
             } else {
@@ -287,17 +290,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             split.noticeBar.hide()
         case .duplicates:
             setSearchField("")
-            pathBar.showTitle("Duplicates", symbol: "square.on.square")
+            pathBar.showTitle(String(localized: "Duplicates", comment: "Title of the view listing duplicate files"), symbol: "square.on.square")
             split.sidebar.highlight(.duplicates)
-            window?.title = "Duplicates"
+            window?.title = String(localized: "Duplicates", comment: "Title of the view listing duplicate files")
             window?.representedURL = nil
             split.scopeBar.isHidden = true
             split.noticeBar.hide()
         case .recents:
             setSearchField("")
-            pathBar.showTitle("Recents", symbol: "clock")
+            pathBar.showTitle(String(localized: "Recents", comment: "Title of the view listing recently used files"), symbol: "clock")
             split.sidebar.highlight(.recents)
-            window?.title = "Recents"
+            window?.title = String(localized: "Recents", comment: "Title of the view listing recently used files")
             window?.representedURL = nil
             split.scopeBar.isHidden = true
             split.noticeBar.hide()
@@ -497,15 +500,16 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                     if !FileIndex.shared.isReady, FileIndex.shared.overlapsIndexedFolders(scope) {
                         // Reading your home folder now would duplicate the first index (and ask for the folders macOS
                         // guards in it).
-                        p.browser.showMessage(symbol: "hourglass", title: "Indexing…", message: "Search works as soon as the first index is built.")
+                        p.browser.showMessage(symbol: "hourglass", title: String(localized: "Indexing…"),
+                                              message: String(localized: "Search works as soon as the first index is built."))
                         showSummary("", for: p)
                         return
                     }
                     if Privacy.measuringWouldPrompt(scope, browsing: p.location) {
                         // A link or saved search pointing into a guarded folder you haven't opened: macOS would ask.
                         let name = Places.displayName(scope)
-                        p.browser.showMessage(symbol: "lock", title: "Open “\(name)” to search it",
-                                              message: "macOS asks before apps read this folder. Open it in Strata once, then search it.")
+                        p.browser.showMessage(symbol: "lock", title: String(localized: "Open “\(name)” to search it"),
+                                              message: String(localized: "macOS asks before apps read this folder. Open it in Strata once, then search it."))
                         showSummary("", for: p)
                         return
                     }
@@ -516,7 +520,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                 p.folderSearch = nil
                 let givenUpBefore = NameRegex.namesGivenUp
                 guard let result = await FileIndex.shared.understand(text, in: scope) else {
-                    p.browser.showMessage(symbol: "hourglass", title: "Indexing…", message: "Search works as soon as the first index is built.")
+                    p.browser.showMessage(symbol: "hourglass", title: String(localized: "Indexing…"),
+                                          message: String(localized: "Search works as soon as the first index is built."))
                     return
                 }
                 // Documents whose text matches (on-device, Documents/Desktop/Downloads) follow the name matches. Explicit
@@ -538,14 +543,25 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                     .compactMap { FileEntry(url: $0.url) }
                     .filter { entry in structural.map { $0.matches(entry) } ?? true }
                 entries += byContent
-                p.browser.showResults(entries, total: result.total + byContent.count)
-                let place = scope.map { "in “\(Places.displayName($0))”" } ?? "everywhere"
-                var summary = result.total + byContent.count == 0 ? "No results \(place)"
-                    : "\(Format.count(result.total + byContent.count, "result", "results")) \(place)"
-                if !byContent.isEmpty { summary += " · \(byContent.count) by content" }
-                if let filter = result.interpretation { summary += " · " + filter.summary }
-                if NameRegex.namesGivenUp > givenUpBefore { summary += " · the pattern took too long on some names, so they’re left out" }
-                showSummary(summary, for: p)
+                let total = result.total + byContent.count
+                p.browser.showResults(entries, total: total)
+                var parts: [String]
+                if let scope {
+                    let name = Places.displayName(scope)
+                    parts = [total == 0 ? String(localized: "No results in “\(name)”")
+                        : String(localized: "\(total) results in “\(name)”", comment: "plural")]
+                } else {
+                    parts = [total == 0 ? String(localized: "No results everywhere")
+                        : String(localized: "\(total) results everywhere", comment: "plural")]
+                }
+                if !byContent.isEmpty {
+                    parts.append(String(localized: "\(byContent.count) by content", comment: "plural"))
+                }
+                if let filter = result.interpretation { parts.append(filter.summary) }
+                if NameRegex.namesGivenUp > givenUpBefore {
+                    parts.append(String(localized: "the pattern took too long on some names, so they’re left out"))
+                }
+                showSummary(parts.joined(separator: " · "), for: p)
             case .recents:
                 guard let hits = await FileIndex.shared.recentFiles() else {
                     p.browser.showResults([], total: 0)
@@ -573,12 +589,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         let entries = await Self.entries(result.urls)
         guard generation == p.searchGeneration, p.destination == target else { return }
         p.browser.showResults(entries, total: result.total)
-        let place = scope.map { "in “\(Places.displayName($0))”" } ?? "on this Mac"
-        var summary = result.total == 0 ? "No results \(place)" : "\(Format.count(result.total, "result", "results")) \(place)"
-        summary += " · \(query.summary)"
-        if result.total > result.urls.count { summary += " · first \(result.urls.count.formatted()) shown" }
-        if result.timedOut { summary += " · Spotlight took too long; results may be incomplete" }
-        showSummary(summary, for: p)
+        var parts: [String]
+        if let scope {
+            let name = Places.displayName(scope)
+            parts = [result.total == 0 ? String(localized: "No results in “\(name)”")
+                : String(localized: "\(result.total) results in “\(name)”", comment: "plural")]
+        } else {
+            parts = [result.total == 0 ? String(localized: "No results on this Mac")
+                : String(localized: "\(result.total) results on this Mac", comment: "plural")]
+        }
+        parts.append(query.summary)
+        if result.total > result.urls.count {
+            parts.append(String(localized: "first \(result.urls.count) shown", comment: "plural"))
+        }
+        if result.timedOut { parts.append(String(localized: "Spotlight took too long; results may be incomplete")) }
+        showSummary(parts.joined(separator: " · "), for: p)
     }
 
     @concurrent
@@ -599,7 +624,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             p.folderSearch = search
             search.start()
         }
-        let place = "“\(Places.displayName(scope))”"
+        let name = Places.displayName(scope)
         let isCurrent = { generation == p.searchGeneration && p.destination == target }
         // Small folders are done almost at once: give them a moment so they don't flash "Searching…".
         if !search.isFinished { try? await Task.sleep(for: .milliseconds(120)) }
@@ -613,17 +638,18 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                 p.browser.showResults(found.hits.map(FileEntry.init(hit:)), total: found.total)
             } else if shown < 0 {
                 shown = 0
-                p.browser.showMessage(symbol: "magnifyingglass", title: "Searching…",
-                                      message: "\(place) isn’t in the index, so Strata is reading it directly.")
+                p.browser.showMessage(symbol: "magnifyingglass", title: String(localized: "Searching…"),
+                                      message: String(localized: "“\(name)” isn’t in the index, so Strata is reading it directly."))
             }
             if finished {
-                var summary = found.total == 0 ? "No results in \(place)"
-                    : "\(Format.count(found.total, "result", "results")) in \(place)"
-                if let filter = found.interpretation { summary += " · " + filter.summary }
-                showSummary(summary + (search.usesIndex ? " · searched directly, indexed folders from the index"
-                                                        : " · not indexed, searched directly"), for: p)
+                var parts = [found.total == 0 ? String(localized: "No results in “\(name)”")
+                    : String(localized: "\(found.total) results in “\(name)”", comment: "plural")]
+                if let filter = found.interpretation { parts.append(filter.summary) }
+                parts.append(search.usesIndex ? String(localized: "searched directly, indexed folders from the index")
+                                              : String(localized: "not indexed, searched directly"))
+                showSummary(parts.joined(separator: " · "), for: p)
             } else {
-                showSummary("Searching \(place) directly… \(Format.count(search.scannedCount, "item", "items"))", for: p)
+                showSummary(String(localized: "Searching “\(name)” directly… \(search.scannedCount) items", comment: "plural"), for: p)
             }
             if finished {
                 // The scan answers more searches here for a minute (`canServe`); after that its memory goes.
@@ -643,10 +669,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         p.searchGeneration += 1
         let generation = p.searchGeneration
         guard FileIndex.shared.isReady else {
-            p.browser.showMessage(symbol: "hourglass", title: "Indexing…", message: "Duplicates appear once the first index is built.")
+            p.browser.showMessage(symbol: "hourglass", title: String(localized: "Indexing…"),
+                                  message: String(localized: "Duplicates appear once the first index is built."))
             return
         }
-        p.browser.showMessage(symbol: "square.on.square", title: "Looking for duplicates…")
+        p.browser.showMessage(symbol: "square.on.square", title: String(localized: "Looking for duplicates…"))
         let cancelled = CancelFlag()
         p.duplicateSearch?.set()
         p.duplicateSearch = cancelled
@@ -654,8 +681,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             let groups = await FileIndex.shared.duplicates(progress: { done, total in
                 Task { @MainActor in
                     guard generation == p.searchGeneration, total > 0 else { return }
-                    p.browser.showMessage(symbol: "square.on.square", title: "Looking for duplicates…",
-                                          message: "Checked \(done.formatted()) of \(Format.count(total, "size group", "size groups")).")
+                    p.browser.showMessage(symbol: "square.on.square", title: String(localized: "Looking for duplicates…"),
+                                          message: String(localized: "Checked \(done.formatted()) of \(total) size groups.", comment: "plural"))
                 }
             }, isCancelled: { cancelled.isSet }) ?? []
             guard generation == p.searchGeneration, p.destination == .duplicates else { return }
@@ -663,13 +690,19 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             let rows = groups.prefix(500).map { group in
                 let entries = group.paths.compactMap { FileEntry(url: URL(fileURLWithPath: $0)) }
                 let name = (group.paths.first as NSString?)?.lastPathComponent ?? ""
-                return (title: name, detail: "\(group.paths.count) copies · \(Format.bytes(group.size)) each · \(Format.bytes(group.reclaimable)) to reclaim",
-                        entries: entries)
+                let detail = [
+                    String(localized: "\(group.paths.count) copies", comment: "plural"),
+                    String(localized: "\(Format.bytes(group.size)) each", comment: "Size of each copy of a duplicate file"),
+                    String(localized: "\(Format.bytes(group.reclaimable)) to reclaim", comment: "Disk space freed by removing the extra copies"),
+                ].joined(separator: " · ")
+                return (title: name, detail: detail, entries: entries)
             }.filter { $0.entries.count > 1 }
             if rows.isEmpty {
-                p.browser.showMessage(symbol: "checkmark.circle", title: "No duplicates", message: "No identical files of 1 MB or more.")
+                p.browser.showMessage(symbol: "checkmark.circle", title: String(localized: "No duplicates"),
+                                      message: String(localized: "No identical files of 1 MB or more."))
             } else {
-                p.browser.showGroups(rows, summary: "\(Format.count(groups.count, "set", "sets")) of duplicates · \(Format.bytes(reclaimable)) to reclaim")
+                p.browser.showGroups(rows, summary: String(localized: "\(groups.count) sets of duplicates", comment: "plural") + " · "
+                                     + String(localized: "\(Format.bytes(reclaimable)) to reclaim", comment: "Disk space freed by removing the extra copies"))
             }
         }
     }
@@ -743,7 +776,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private func refreshPanels() {
         var status = browser.statusText
         if case .scanning(let items) = FileIndex.shared.phase {
-            status += (status.isEmpty ? "" : "  ·  ") + "Indexing \(items.formatted()) items…"
+            status += (status.isEmpty ? "" : "  ·  ") + String(localized: "Indexing \(items) items…", comment: "plural")
         }
         split.status.text = status
         // Two panes: each shows its own counts under its list; the shared bar would sit across both.
@@ -781,8 +814,9 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
             if case .folder(let url) = destination { updateNotice(for: url) } else { split.noticeBar.hide() }
             return
         }
-        split.noticeBar.show(symbol: "archivebox", text: "Opening “\(archive.lastPathComponent)”…",
-                             button: stop == nil ? nil : "Stop", action: stop)
+        split.noticeBar.show(symbol: "archivebox", text: String(localized: "Opening “\(archive.lastPathComponent)”…"),
+                             button: stop == nil ? nil : String(localized: "Stop", comment: "Button: stop opening an archive"),
+                             action: stop)
     }
 
     func browser(_ browser: BrowserViewController, reveal url: URL) {
@@ -864,8 +898,10 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
         case .back, .forward:
             let isBack = id == .back
             let item = NSToolbarItem(itemIdentifier: id)
-            item.label = isBack ? "Back" : "Forward"
-            item.toolTip = isBack ? "Back (⌘[)" : "Forward (⌘])"
+            item.label = isBack ? String(localized: "Back", comment: "Toolbar button: go to the previous place")
+                : String(localized: "Forward", comment: "Toolbar button: go to the next place")
+            item.toolTip = isBack ? String(localized: "Back (⌘[)", comment: "Toolbar tooltip with its shortcut")
+                : String(localized: "Forward (⌘])", comment: "Toolbar tooltip with its shortcut")
             item.image = NSImage(systemSymbolName: isBack ? "chevron.left" : "chevron.right", accessibilityDescription: item.label)
             item.target = self
             item.action = isBack ? #selector(goBack(_:)) : #selector(goForward(_:))
@@ -874,7 +910,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             return item
         case .pathBar:
             let item = NSToolbarItem(itemIdentifier: id)
-            item.label = "Location"
+            item.label = String(localized: "Location", comment: "Toolbar item: the path bar")
             item.view = pathBar
             item.visibilityPriority = .high
             return item
@@ -886,10 +922,10 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             return item
         case .dualPane:
             let item = NSToolbarItem(itemIdentifier: id)
-            item.label = "Dual Pane"
-            item.toolTip = "Show two folders side by side (⌘\\). Tab switches sides; F5 copies and F6 moves to the other side."
+            item.label = String(localized: "Dual Pane")
+            item.toolTip = String(localized: "Show two folders side by side (⌘\\). Tab switches sides; F5 copies and F6 moves to the other side.")
             item.image = NSImage(systemSymbolName: isDualPane ? "rectangle.split.2x1.fill" : "rectangle.split.2x1",
-                                 accessibilityDescription: "Dual Pane")
+                                 accessibilityDescription: String(localized: "Dual Pane"))
             item.target = self
             item.action = #selector(toggleDualPane(_:))
             item.isBordered = true
@@ -897,8 +933,8 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             return item
         case .share:
             let item = NSSharingServicePickerToolbarItem(itemIdentifier: id)
-            item.label = "Share"
-            item.toolTip = "Share the selection: AirDrop, Messages, Mail and more"
+            item.label = String(localized: "Share", comment: "Toolbar button: share the selection")
+            item.toolTip = String(localized: "Share the selection: AirDrop, Messages, Mail and more")
             item.delegate = self
             // The first to go into the overflow menu when the window is narrow, before Dual Pane and Search.
             item.visibilityPriority = .low
@@ -909,7 +945,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             return item
         case .search:
             let item = NSSearchToolbarItem(itemIdentifier: id)
-            item.searchField.placeholderString = "Search"
+            item.searchField.placeholderString = String(localized: "Search", comment: "Placeholder of the toolbar search field")
             item.searchField.delegate = self
             item.preferredWidthForSearchField = 200
             searchItem = item

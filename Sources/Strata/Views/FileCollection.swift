@@ -78,15 +78,24 @@ enum BrowserViewMode: Int, CaseIterable {
 
     var title: String {
         switch self {
-        case .list: "List"
-        case .grid: "Icons"
-        case .columns: "Columns"
-        case .gallery: "Gallery"
-        case .treemap: "Disk Usage"
+        case .list: String(localized: "List", comment: "View mode: items in a list")
+        case .grid: String(localized: "Icons", comment: "View mode: items as icons")
+        case .columns: String(localized: "Columns", comment: "View mode: items in columns")
+        case .gallery: String(localized: "Gallery", comment: "View mode: items in a gallery")
+        case .treemap: String(localized: "Disk Usage", comment: "View mode: items as a map of how much space they take")
         }
     }
 
-    var menuTitle: String { "as \(title)" }
+    /// The View menu's item: "as Icons" … "as Disk Usage".
+    var menuTitle: String {
+        switch self {
+        case .list: String(localized: "as List", comment: "View menu command: show items in a list")
+        case .grid: String(localized: "as Icons", comment: "View menu command: show items as icons")
+        case .columns: String(localized: "as Columns", comment: "View menu command: show items in columns")
+        case .gallery: String(localized: "as Gallery", comment: "View menu command: show items in a gallery")
+        case .treemap: String(localized: "as Disk Usage", comment: "View menu command: show items as a map of how much space they take")
+        }
+    }
 
     var symbolName: String {
         switch self {
@@ -109,9 +118,9 @@ enum BrowserViewMode: Int, CaseIterable {
         let modes = ordered
         let group = NSToolbarItemGroup(itemIdentifier: identifier, images: modes.map(\.image), selectionMode: .selectOne,
                                        labels: modes.map(\.title), target: target, action: action)
-        group.label = "View"
-        group.paletteLabel = "View Mode"
-        group.toolTip = "Change how items are shown (⌘1–⌘5)"
+        group.label = String(localized: "View", comment: "Toolbar item label: the view mode control")
+        group.paletteLabel = String(localized: "View Mode", comment: "Toolbar customization palette label")
+        group.toolTip = String(localized: "Change how items are shown (⌘1–⌘5)")
         group.controlRepresentation = .expanded
         for (item, mode) in zip(group.subitems, modes) { item.toolTip = "\(mode.menuTitle) (⌘\(mode.keyEquivalent))" }
         group.selectedIndex = 0
@@ -220,15 +229,15 @@ enum FileKindGroup: Int, CaseIterable, Sendable {
 
     var title: String {
         switch self {
-        case .folders: "Folders"
-        case .images: "Images"
-        case .video: "Video"
-        case .audio: "Audio"
-        case .code: "Code"
-        case .archives: "Archives"
-        case .documents: "Documents"
-        case .apps: "Apps"
-        case .other: "Other"
+        case .folders: String(localized: "Folders", comment: "Kind of file, in the disk usage legend")
+        case .images: String(localized: "Images", comment: "Kind of file, in the disk usage legend")
+        case .video: String(localized: "Video", comment: "Kind of file, in the disk usage legend")
+        case .audio: String(localized: "Audio", comment: "Kind of file, in the disk usage legend")
+        case .code: String(localized: "Code", comment: "Kind of file, in the disk usage legend")
+        case .archives: String(localized: "Archives", comment: "Kind of file, in the disk usage legend")
+        case .documents: String(localized: "Documents", comment: "Kind of file, in the disk usage legend")
+        case .apps: String(localized: "Apps", comment: "Kind of file, in the disk usage legend")
+        case .other: String(localized: "Other", comment: "Kind of file, in the disk usage legend")
         }
     }
 

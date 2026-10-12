@@ -53,11 +53,11 @@ final class TagStore {
         let failures: [(url: URL, error: Error)]
         var errorDescription: String? {
             failures.count == 1
-                ? "The tags of “\(failures[0].url.lastPathComponent)” couldn’t be changed."
-                : "The tags of \(failures.count.formatted()) items couldn’t be changed."
+                ? String(localized: "The tags of “\(failures[0].url.lastPathComponent)” couldn’t be changed.")
+                : String(localized: "The tags of \(failures.count) items couldn’t be changed.", comment: "plural")
         }
         var failureReason: String? {
-            "They’re locked, or you don’t have permission to change them."
+            String(localized: "They’re locked, or you don’t have permission to change them.", comment: "Why tags couldn’t be changed")
         }
     }
 
@@ -204,7 +204,7 @@ final class TagStore {
         undo.registerUndo(withTarget: undo) { undo in
             MainActor.assumeIsolated { try? TagStore.shared.apply(previous, undo: undo, added: []) }
         }
-        undo.setActionName("Tags")
+        undo.setActionName(String(localized: "Tags", comment: "Undo action name: changing Finder tags"))
     }
 
     /// Names you added here, for suggestions and the sidebar (only those you chose, most recent first).

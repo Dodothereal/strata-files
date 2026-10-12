@@ -110,25 +110,32 @@ enum ProjectActions {
         let alert = NSAlert()
         let count = artifacts.reduce(0) { $0 + $1.urls.count }
         alert.messageText = count == 1
-            ? "Move “\(artifacts[0].name)” to the Trash?"
-            : "Move \(count) build folders to the Trash?"
+            ? String(localized: "Move “\(artifacts[0].name)” to the Trash?")
+            : String(localized: "Move \(count) build folders to the Trash?", comment: "plural")
         let lines = artifacts.map { artifact -> String in
             let size = artifact.bytes.map { " — " + Format.bytes($0) } ?? ""
-            let multiple = artifact.urls.count > 1 ? " (\(artifact.urls.count) folders)" : ""
+            let multiple = artifact.urls.count > 1
+                ? " (" + String(localized: "\(artifact.urls.count) folders", comment: "plural") + ")" : ""
             return "• \(artifact.name)\(multiple)\(size)"
         }
         let hasEnvironment = artifacts.contains { $0.role == .environment }
         // Sizes still being measured make any total an understatement.
         let measured = artifacts.allSatisfy { $0.bytes != nil }
-        let frees = measured ? "Frees \(Format.bytes(total)). " : total > 0 ? "Frees at least \(Format.bytes(total)). " : ""
-        alert.informativeText = lines.joined(separator: "\n") + "\n\n"
-            + frees + "They’re rebuilt by the next install or build"
-            + (hasEnvironment ? "; virtual environments need to be recreated." : ".")
-            + " You can undo this with ⌘Z."
+        var sentences: [String] = []
+        if measured {
+            sentences.append(String(localized: "Frees \(Format.bytes(total)).", comment: "Placeholder: a size, e.g. 1.2 GB"))
+        } else if total > 0 {
+            sentences.append(String(localized: "Frees at least \(Format.bytes(total)).", comment: "Placeholder: a size, e.g. 1.2 GB"))
+        }
+        sentences.append(hasEnvironment
+            ? String(localized: "They’re rebuilt by the next install or build; virtual environments need to be recreated.")
+            : String(localized: "They’re rebuilt by the next install or build."))
+        sentences.append(String(localized: "You can undo this with ⌘Z."))
+        alert.informativeText = lines.joined(separator: "\n") + "\n\n" + sentences.joined(separator: " ")
         alert.alertStyle = .warning
-        let trash = alert.addButton(withTitle: "Move to Trash")
+        let trash = alert.addButton(withTitle: String(localized: "Move to Trash"))
         trash.hasDestructiveAction = true
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: String(localized: "Cancel"))
         alert.beginSheetModal(for: window) { response in
             guard response == .alertFirstButtonReturn else { return completion([]) }
             let urls = artifacts.flatMap(\.urls)

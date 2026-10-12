@@ -110,10 +110,10 @@ nonisolated struct PlanStep: Sendable, Hashable, Identifiable {
         /// For VoiceOver and other spoken or written descriptions.
         var title: String {
             switch self {
-            case .rename: "Rename"
-            case .move: "Move"
-            case .createFolder: "New folder"
-            case .trash: "Move to Trash"
+            case .rename: String(localized: "Rename", comment: "Kind of plan step, read by VoiceOver: rename an item")
+            case .move: String(localized: "Move", comment: "Kind of plan step, read by VoiceOver: move an item")
+            case .createFolder: String(localized: "New folder", comment: "Kind of plan step, read by VoiceOver: create a folder")
+            case .trash: String(localized: "Move to Trash", comment: "Kind of plan step, read by VoiceOver: move an item to the Trash")
             }
         }
     }
@@ -138,6 +138,14 @@ nonisolated struct Plan: Sendable {
     enum Source: String, Sendable {
         case rules = "Built-in rules"
         case model = "Apple Intelligence"
+
+        /// For the review sheet's badge.
+        var title: String {
+            switch self {
+            case .rules: String(localized: "Built-in rules", comment: "Badge: the plan was made by Strata’s rules, not by AI")
+            case .model: "Apple Intelligence"
+            }
+        }
     }
 
     var instruction: String
@@ -157,12 +165,12 @@ nonisolated struct Plan: Sendable {
         let enabled = enabledSteps
         func count(_ kind: PlanStep.Kind) -> Int { enabled.filter { $0.kind == kind }.count }
         var parts: [String] = []
-        if count(.rename) > 0 { parts.append(AIText.count(count(.rename), "rename", "renames")) }
-        if count(.move) > 0 { parts.append(AIText.count(count(.move), "move", "moves")) }
-        if count(.createFolder) > 0 { parts.append(AIText.count(count(.createFolder), "new folder", "new folders")) }
-        if count(.trash) > 0 { parts.append("\(count(.trash).formatted()) to Trash") }
-        if parts.isEmpty { parts.append("No changes") }
-        if !excluded.isEmpty { parts.append("\(excluded.count.formatted()) skipped") }
+        if count(.rename) > 0 { parts.append(String(localized: "\(count(.rename)) renames", comment: "plural; noun: how many items a plan renames")) }
+        if count(.move) > 0 { parts.append(String(localized: "\(count(.move)) moves", comment: "plural; noun: how many items a plan moves")) }
+        if count(.createFolder) > 0 { parts.append(String(localized: "\(count(.createFolder)) new folders", comment: "plural")) }
+        if count(.trash) > 0 { parts.append(String(localized: "\(count(.trash)) to Trash", comment: "plural; how many items a plan moves to the Trash")) }
+        if parts.isEmpty { parts.append(String(localized: "No changes")) }
+        if !excluded.isEmpty { parts.append(String(localized: "\(excluded.count) skipped", comment: "plural; how many steps of a plan were left out")) }
         return parts.joined(separator: " · ")
     }
 

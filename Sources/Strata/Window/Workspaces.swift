@@ -24,14 +24,14 @@ enum Workspaces {
         guard !tabs.isEmpty else { return }
 
         let alert = NSAlert()
-        alert.messageText = "Save Workspace"
-        alert.informativeText = "Saves \(Format.count(tabs.count, "tab", "tabs")) and their panes, to reopen together from Window ▸ Workspaces."
+        alert.messageText = String(localized: "Save Workspace")
+        alert.informativeText = String(localized: "Saves \(tabs.count) tabs and their panes, to reopen together from Window ▸ Workspaces.", comment: "plural")
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-        field.placeholderString = "Name"
+        field.placeholderString = String(localized: "Name", comment: "Placeholder: the new workspace's name")
         field.stringValue = URL(fileURLWithPath: tabs[0][0]).lastPathComponent
         alert.accessoryView = field
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: String(localized: "Save", comment: "Button: save the workspace"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
         alert.window.initialFirstResponder = field
         alert.beginSheetModal(for: window) { response in
             MainActor.assumeIsolated {

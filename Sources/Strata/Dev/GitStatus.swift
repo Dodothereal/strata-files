@@ -110,13 +110,14 @@ nonisolated enum GitOperation: Sendable, Equatable {
 
     var title: String {
         switch self {
-        case .merging: return "Merging"
-        case .rebasing(let step?, let total?): return "Rebasing \(step)/\(total)"
-        case .rebasing: return "Rebasing"
-        case .cherryPicking: return "Cherry-picking"
-        case .reverting: return "Reverting"
-        case .bisecting: return "Bisecting"
-        case .applyingMailbox: return "Applying patches"
+        case .merging: return String(localized: "Merging", comment: "Git operation in progress")
+        case .rebasing(let step?, let total?):
+            return String(localized: "Rebasing \(step)/\(total)", comment: "Git operation in progress: rebase step out of total steps")
+        case .rebasing: return String(localized: "Rebasing", comment: "Git operation in progress")
+        case .cherryPicking: return String(localized: "Cherry-picking", comment: "Git operation in progress")
+        case .reverting: return String(localized: "Reverting", comment: "Git operation in progress")
+        case .bisecting: return String(localized: "Bisecting", comment: "Git operation in progress")
+        case .applyingMailbox: return String(localized: "Applying patches", comment: "Git operation in progress (git am)")
         }
     }
 }
@@ -156,13 +157,13 @@ nonisolated struct GitStatusCounts: Sendable, Equatable {
     /// "3 modified · 1 untracked", most important first.
     var summary: String {
         var parts: [String] = []
-        if conflicted > 0 { parts.append("\(conflicted) conflicted") }
-        if modified > 0 { parts.append("\(modified) modified") }
-        if added > 0 { parts.append("\(added) added") }
-        if deleted > 0 { parts.append("\(deleted) deleted") }
-        if renamed > 0 { parts.append("\(renamed) renamed") }
-        if untracked > 0 { parts.append("\(untracked) untracked") }
-        return parts.isEmpty ? "No changes" : parts.joined(separator: " · ")
+        if conflicted > 0 { parts.append(String(localized: "\(conflicted) conflicted", comment: "plural")) }
+        if modified > 0 { parts.append(String(localized: "\(modified) modified", comment: "plural")) }
+        if added > 0 { parts.append(String(localized: "\(added) added", comment: "plural")) }
+        if deleted > 0 { parts.append(String(localized: "\(deleted) deleted", comment: "plural")) }
+        if renamed > 0 { parts.append(String(localized: "\(renamed) renamed", comment: "plural")) }
+        if untracked > 0 { parts.append(String(localized: "\(untracked) untracked", comment: "plural")) }
+        return parts.isEmpty ? String(localized: "No changes", comment: "Git: no uncommitted changes") : parts.joined(separator: " · ")
     }
 }
 

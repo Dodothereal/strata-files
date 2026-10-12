@@ -225,7 +225,7 @@ extension FileEntry {
                   isHidden: url.lastPathComponent.hasPrefix("."), isSymlink: false, isVolume: false,
                   size: hit.isDirectory ? nil : hit.size,
                   modified: Date(timeIntervalSince1970: TimeInterval(hit.mtime)), created: nil, added: nil,
-                  kind: hit.isDirectory && !hit.isPackage ? "Folder"
+                  kind: hit.isDirectory && !hit.isPackage ? String(localized: "Folder", comment: "Kind of item: a folder")
                       : FileEntry.kind(extension: url.pathExtension, isDirectory: hit.isDirectory, isPackage: hit.isPackage,
                                        size: hit.size, system: type?.localizedDescription),
                   contentType: type)

@@ -565,7 +565,8 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
                 let code = (error as NSError).code
                 let denied = code == NSFileReadNoPermissionError
                     || ((error as NSError).userInfo[NSUnderlyingErrorKey] as? NSError).map { $0.code == Int(EPERM) || $0.code == Int(EACCES) } == true
-                self.message.stringValue = denied ? "No permission to see this folder’s contents" : "This folder couldn’t be read"
+                self.message.stringValue = denied ? String(localized: "No permission to see this folder’s contents")
+                    : String(localized: "This folder couldn’t be read")
                 self.message.isHidden = false
                 self.setEntries([], matches: [:])
             }
@@ -826,7 +827,8 @@ final class ColumnCellView: NSTableCellView {
                            tags: tags, cloud: cloud)
         applyTruncation()
         chevron.isHidden = !entry.isFolder
-        setAccessibilityLabel(entry.isFolder ? "\(entry.name), folder" : entry.name)
+        setAccessibilityLabel(entry.isFolder
+            ? String(localized: "\(entry.name), folder", comment: "Accessibility label of a folder row; the placeholder is its name") : entry.name)
         updateChevron()
     }
 

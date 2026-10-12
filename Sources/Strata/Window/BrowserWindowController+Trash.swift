@@ -21,8 +21,8 @@ extension BrowserWindowController {
     func updateNotice(for url: URL) {
         if let (archive, _) = ArchiveCache.archive(containing: url) {
             return split.noticeBar.show(symbol: "archivebox",
-                                        text: "Inside “\(archive.lastPathComponent)”, a read-only copy. Copy things out to keep them.",
-                                        button: "Extract All") { [weak self] in
+                                        text: String(localized: "Inside “\(archive.lastPathComponent)”, a read-only copy. Copy things out to keep them."),
+                                        button: String(localized: "Extract All")) { [weak self] in
                 self?.browser.extractArchive(archive)
             }
         }
@@ -31,11 +31,17 @@ extension BrowserWindowController {
         Task { [weak self] in
             let others = await Trash.contents().filter { $0.count > 0 && $0.folder.standardizedFileURL != url.standardizedFileURL }
             guard let self, case .folder(let shown) = destination, shown == url, let first = others.first else { return }
-            let text = others.count == 1
-                ? "“\(first.disk)” has \(Format.count(first.count, "more item", "more items")) in its own Trash."
-                : "Other disks have items in their own Trash: "
-                    + ListFormatter.localizedString(byJoining: others.map { "“\($0.disk)” (\($0.count.formatted()))" }) + "."
-            split.noticeBar.show(symbol: "externaldrive", text: text, button: "Show “\(first.disk)”") { [weak self] in
+            let text: String
+            if others.count == 1 {
+                text = String(localized: "“\(first.disk)” has \(first.count) more items in its own Trash.", comment: "plural")
+            } else {
+                let disks = ListFormatter.localizedString(byJoining: others.map {
+                    String(localized: "“\($0.disk)” (\($0.count.formatted()))", comment: "A disk and how many items its Trash holds")
+                })
+                text = String(localized: "Other disks have items in their own Trash: \(disks).", comment: "A list of disks with their item counts")
+            }
+            split.noticeBar.show(symbol: "externaldrive", text: text,
+                                 button: String(localized: "Show “\(first.disk)”", comment: "Button: show that disk's Trash")) { [weak self] in
                 self?.navigate(to: first.folder)
             }
         }

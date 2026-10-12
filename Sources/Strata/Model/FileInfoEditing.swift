@@ -9,10 +9,10 @@ nonisolated enum FileInfoEditing {
 
         var title: String {
             switch self {
-            case .readWrite: "Read & Write"
-            case .readOnly: "Read Only"
-            case .writeOnly: "Write Only (Drop Box)"
-            case .none: "No Access"
+            case .readWrite: String(localized: "Read & Write", comment: "Get Info permission level, as in Finder")
+            case .readOnly: String(localized: "Read Only", comment: "Get Info permission level, as in Finder")
+            case .writeOnly: String(localized: "Write Only (Drop Box)", comment: "Get Info permission level, as in Finder")
+            case .none: String(localized: "No Access", comment: "Get Info permission level, as in Finder")
             }
         }
 

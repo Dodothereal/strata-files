@@ -28,13 +28,13 @@ struct AppearanceSettings: View {
                     Slider(value: Binding(get: { size }, set: { size = $0.rounded(); Prefs.nameTextSize = $0.rounded() }), in: 11...16, step: 1) {
                         Text("Text size")
                     } minimumValueLabel: {
-                        Text("A").font(.system(size: 10))
+                        Text(verbatim: "A").font(.system(size: 10))
                     } maximumValueLabel: {
-                        Text("A").font(.system(size: 16))
+                        Text(verbatim: "A").font(.system(size: 16))
                     }
                     Text("\(Int(size)) pt").monospacedDigit().foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
                 }
-                Text("Quarterly Report.pdf")
+                Text("Quarterly Report.pdf", comment: "Settings ▸ Appearance: a sample file name showing the text size")
                     .font(.system(size: size))
                     .padding(.vertical, [2.0, 5.0, 9.0][min(max(density, 0), 2)])
                     .accessibilityLabel("Preview of a file name at this size")

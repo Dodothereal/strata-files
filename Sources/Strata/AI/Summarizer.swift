@@ -42,9 +42,9 @@ nonisolated enum Summarizer {
                 }
                 var note: String?
                 if extracted.truncated, let pages = extracted.pageCount, pages > extracted.pageStarts.count {
-                    note = "Summarised from the first \(extracted.pageStarts.count) of \(pages) pages"
+                    note = String(localized: "Summarised from the first \(extracted.pageStarts.count.formatted()) of \(pages) pages", comment: "plural")
                 } else if extracted.truncated {
-                    note = "Summarised from the beginning of the document"
+                    note = String(localized: "Summarised from the beginning of the document")
                 }
                 // Metadata title, else the document's own heading, else the file name.
                 let title = extracted.title ?? heading(extracted.text) ?? url.deletingPathExtension().lastPathComponent
@@ -80,7 +80,9 @@ nonisolated enum Summarizer {
                 } catch {
                     // Refusals, guardrails, an overfull context: still show something useful, and say why.
                     var summary = fallback
-                    summary.note = "Apple Intelligence couldn’t summarise this (\(AIErrorText.describe(error).lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))))"
+                    // The reason is a sentence of its own (never lowercased: German nouns, names…).
+                    let reason = AIErrorText.describe(error)
+                    summary.note = String(localized: "Apple Intelligence couldn’t summarise this. \(reason)", comment: "Then a sentence saying why, like “The on-device model is busy.”")
                     continuation.yield(summary)
                     continuation.finish()
                 }
@@ -115,12 +117,14 @@ nonisolated enum Summarizer {
         var note: String?
         if body.count > characterBudget {
             let parts = sections(body, size: characterBudget, limit: 6)
-            if parts.total > parts.kept.count { note = "Summarised from \(parts.kept.count) of \(parts.total) parts" }
+            if parts.total > parts.kept.count {
+                note = String(localized: "Summarised from \(parts.kept.count.formatted()) of \(parts.total) parts", comment: "plural")
+            }
             var notes: [String] = []
             for (index, part) in parts.kept.enumerated() {
                 try Task.checkCancellation()
                 yield(DocumentSummary(title: titleHint ?? "", bullets: [], method: .model, isComplete: false, note: note,
-                                      status: "Reading part \(index + 1) of \(parts.kept.count)…"))
+                                      status: String(localized: "Reading part \(index + 1) of \(parts.kept.count)…")))
                 let session = LanguageModelSession(instructions: "You condense part of a longer document into notes for a later summary.")
                 let response = try await session.respond(
                     to: "Condense this part into 3 short sentences keeping names, numbers, dates and decisions:\n\n\(part)",
@@ -248,7 +252,7 @@ nonisolated enum Summarizer {
 
     private static func bestTitle(_ lines: [String], hint: String?) -> String {
         if let hint, !hint.isEmpty { return hint }
-        return lines.first.map { shorten(SemanticIndex.displayText($0), to: 80) } ?? "Untitled"
+        return lines.first.map { shorten(SemanticIndex.displayText($0), to: 80) } ?? String(localized: "Untitled", comment: "Title of a document summary when the document has none")
     }
 
     /// A short first line that reads like a heading ("Q3 Planning Offsite — Summary").
@@ -271,7 +275,7 @@ nonisolated enum SummaryError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .noText: "There’s no readable text in this file."
+        case .noText: String(localized: "There’s no readable text in this file.")
         }
     }
 }

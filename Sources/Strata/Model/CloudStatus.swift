@@ -50,11 +50,11 @@ nonisolated enum CloudStatus: Sendable, Equatable {
     var label: String {
         switch self {
         // Neutral words: the same states appear in Dropbox, OneDrive and Google Drive folders.
-        case .cloudOnly: "Only in the cloud"
-        case .downloading: "Downloading"
-        case .uploading: "Uploading"
-        case .waitingToUpload: "Waiting to upload"
-        case .downloaded: "Downloaded"
+        case .cloudOnly: String(localized: "Only in the cloud", comment: "Cloud status of an item")
+        case .downloading: String(localized: "Downloading", comment: "Cloud status of an item")
+        case .uploading: String(localized: "Uploading", comment: "Cloud status of an item")
+        case .waitingToUpload: String(localized: "Waiting to upload", comment: "Cloud status of an item")
+        case .downloaded: String(localized: "Downloaded", comment: "Cloud status of an item: here and in the cloud")
         }
     }
 

@@ -62,6 +62,33 @@ final class OperationLog {
             undone = try c.decodeIfPresent(Bool.self, forKey: .undone) ?? false
             changed = try c.decodeIfPresent(Date.self, forKey: .changed)
         }
+
+        /// `name` as History shows it, in the app's language.
+        var displayName: String { OperationLog.displayName(name) }
+    }
+
+    /// An operation's name as History and the Edit menu show it. Entries keep the English name they were recorded
+    /// with (it's saved, and History picks its icon by it); the known ones are translated here, anything else is shown
+    /// as recorded.
+    nonisolated static func displayName(_ name: String) -> String {
+        switch name {
+        case "Copy": String(localized: "Copy", comment: "Undo and History action name: a copy")
+        case "Move": String(localized: "Move", comment: "Undo and History action name: a move")
+        case "Duplicate": String(localized: "Duplicate", comment: "Undo and History action name")
+        case "Rename": String(localized: "Rename", comment: "Undo and History action name")
+        case "Move to Trash": String(localized: "Move to Trash", comment: "Undo and History action name")
+        case "New Folder": String(localized: "New Folder", comment: "Undo and History action name")
+        case "Compress": String(localized: "Compress", comment: "Undo and History action name: making a zip")
+        case "Extract": String(localized: "Extract", comment: "Undo and History action name: unpacking an archive")
+        case "Put Back": String(localized: "Put Back", comment: "Undo and History action name: items taken out of the Trash")
+        case "Sync": String(localized: "Sync", comment: "Undo and History action name: syncing two folders")
+        case "AI Rename": String(localized: "AI Rename", comment: "Undo and History action name")
+        case "AI Move": String(localized: "AI Move", comment: "Undo and History action name")
+        case "AI Organize": String(localized: "AI Organize", comment: "Undo and History action name")
+        case "AI Move to Trash": String(localized: "AI Move to Trash", comment: "Undo and History action name")
+        case "AI Changes": String(localized: "AI Changes", comment: "Undo and History action name")
+        default: name
+        }
     }
 
     static let shared = OperationLog()
@@ -190,7 +217,7 @@ final class OperationLog {
         // Checked again now: the window may have been open a while.
         guard canUndo(entry) else {
             throw CocoaError(.fileWriteUnknown, userInfo: [
-                NSLocalizedDescriptionKey: "“\(entry.name)” can’t be undone: its items have moved or changed since.",
+                NSLocalizedDescriptionKey: String(localized: "“\(entry.displayName)” can’t be undone: its items have moved or changed since."),
             ])
         }
         // Everything happens without registering undo piecemeal; one ⌘Z afterwards puts it all back (below).

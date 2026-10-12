@@ -6,10 +6,10 @@ extension AppDelegate {
         let window = NSApp.keyWindow
         guard Privacy.hasFullDiskAccess else {
             let alert = NSAlert()
-            alert.messageText = "Strata needs Full Disk Access to empty the Trash."
-            alert.informativeText = "macOS protects the Trash. Turn on Strata in Privacy & Security ▸ Full Disk Access."
-            alert.addButton(withTitle: "Open Privacy Settings")
-            alert.addButton(withTitle: "Cancel")
+            alert.messageText = String(localized: "Strata needs Full Disk Access to empty the Trash.")
+            alert.informativeText = String(localized: "macOS protects the Trash. Turn on Strata in Privacy & Security ▸ Full Disk Access.")
+            alert.addButton(withTitle: String(localized: "Open Privacy Settings"))
+            alert.addButton(withTitle: String(localized: "Cancel"))
             BrowserViewController.present(alert, in: window) { response in
                 if response == .alertFirstButtonReturn { NSWorkspace.shared.open(Privacy.settingsURL) }
             }
@@ -20,22 +20,25 @@ extension AppDelegate {
             let count = contents.reduce(0) { $0 + $1.count }
             let alert = NSAlert()
             guard count > 0 else {
-                alert.messageText = "The Trash is empty."
+                alert.messageText = String(localized: "The Trash is empty.")
                 BrowserViewController.present(alert, in: window) { _ in }
                 return
             }
             alert.messageText = count == 1
-                ? "Permanently erase the item in the Trash?"
-                : "Permanently erase the \(count.formatted()) items in the Trash?"
+                ? String(localized: "Permanently erase the item in the Trash?")
+                : String(localized: "Permanently erase the \(count) items in the Trash?", comment: "plural")
             // Other disks keep their own Trash; say what's on which.
-            var info = ""
             if contents.count > 1 {
-                info = ListFormatter.localizedString(byJoining: contents.map { "\($0.count.formatted()) on “\($0.disk)”" }) + ". "
+                let disks = ListFormatter.localizedString(byJoining: contents.map {
+                    String(localized: "\($0.count) on “\($0.disk)”", comment: "plural")
+                })
+                alert.informativeText = String(localized: "\(disks). You can’t undo this action.", comment: "A list of how many items each disk’s Trash holds, e.g. 3 on “Macintosh HD” and 2 on “Backup”")
+            } else {
+                alert.informativeText = String(localized: "You can’t undo this action.")
             }
-            alert.informativeText = info + "You can’t undo this action."
             alert.alertStyle = .critical
-            alert.addButton(withTitle: "Empty Trash")
-            alert.addButton(withTitle: "Cancel")
+            alert.addButton(withTitle: String(localized: "Empty Trash"))
+            alert.addButton(withTitle: String(localized: "Cancel"))
             alert.buttons[0].hasDestructiveAction = true
             alert.buttons[0].keyEquivalent = ""
             alert.buttons[1].keyEquivalent = "\r"
@@ -48,7 +51,7 @@ extension AppDelegate {
                         Trash.emptySound?.play()
                     }
                     NotificationCenter.default.post(name: .trashChanged, object: nil)
-                    if !failures.isEmpty { BrowserViewController.report(failures, title: "couldn’t be deleted", in: window) }
+                    if !failures.isEmpty { BrowserViewController.report(failures, .delete, in: window) }
                 }
             }
         }

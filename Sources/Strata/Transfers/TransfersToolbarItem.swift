@@ -12,6 +12,11 @@ final class TransfersToolbarItem: NSToolbarItem, NSPopoverDelegate {
         didSet { controller.onReveal = onReveal }
     }
 
+    /// "Transfers": the item's label and the popover's title.
+    static var localizedLabel: String {
+        String(localized: "Transfers", comment: "Toolbar item and popover title: copies, moves and archives in progress")
+    }
+
     private let queue: TransferQueue
     private let controller: TransfersViewController
     private let popover = NSPopover()
@@ -21,8 +26,8 @@ final class TransfersToolbarItem: NSToolbarItem, NSPopoverDelegate {
         self.queue = queue
         controller = TransfersViewController(queue: queue)
         super.init(itemIdentifier: itemIdentifier)
-        label = "Transfers"
-        paletteLabel = "Transfers"
+        label = Self.localizedLabel
+        paletteLabel = Self.localizedLabel
         isBordered = true
         target = self
         action = #selector(togglePopover(_:))
@@ -47,9 +52,10 @@ final class TransfersToolbarItem: NSToolbarItem, NSPopoverDelegate {
         }
         let active = queue.jobs.filter { $0.state.isActive }
         if let job = active.first {
-            toolTip = active.count == 1 ? "\(job.title)\n\(job.statusText)" : "\(active.count) jobs in progress"
+            toolTip = active.count == 1 ? "\(job.title)\n\(job.statusText)"
+                : String(localized: "\(active.count) jobs in progress", comment: "plural")
         } else {
-            toolTip = queue.hasFailures ? "Transfers — some items failed" : "Transfers"
+            toolTip = queue.hasFailures ? String(localized: "Transfers — some items failed") : Self.localizedLabel
         }
         let empty = queue.jobs.isEmpty
         if isHidden != empty {
@@ -113,7 +119,7 @@ enum TransferRing {
             }
             return true
         }
-        image.accessibilityDescription = "Transfers"
+        image.accessibilityDescription = TransfersToolbarItem.localizedLabel
         return image
     }
 

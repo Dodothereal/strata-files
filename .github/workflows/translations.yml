@@ -1,0 +1,47 @@
+name: Translations
+
+# Every language file must be valid (keys, placeholders, plural forms), and en.json must list exactly the strings the
+# code has: a change that adds or removes text has to run `scripts/localize.py extract` too.
+on:
+  push:
+    branches: [main]
+    paths: ["Localization/**", "Sources/**", "scripts/localize.py", ".github/workflows/translations.yml"]
+  pull_request:
+    paths: ["Localization/**", "Sources/**", "scripts/localize.py", ".github/workflows/translations.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: translations-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  XCODE_VERSION: "26.6"
+
+jobs:
+  check:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check every language
+        run: |
+          python3 scripts/localize.py check --all
+          python3 scripts/localize.py stats
+
+      - name: Select Xcode ${{ env.XCODE_VERSION }}
+        run: sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app"
+
+      - name: en.json matches the code
+        run: |
+          set -euo pipefail
+          python3 scripts/localize.py extract
+          if ! git diff --exit-code -- Localization/en.json; then
+            echo "::error::Localization/en.json is out of date: run scripts/localize.py extract and commit it."
+            exit 1
+          fi

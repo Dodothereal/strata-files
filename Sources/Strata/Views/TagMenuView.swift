@@ -32,7 +32,7 @@ final class TagMenuView: NSView {
         updateCaption()
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
-        setAccessibilityLabel("Tags")
+        setAccessibilityLabel(String(localized: "Tags", comment: "Finder tags (accessibility label or caption)"))
         setAccessibilityChildren(tags.indices.map { index in
             let element = CircleElement { [weak self] in self?.pick(index) }
             element.setAccessibilityRole(.button)
@@ -97,11 +97,12 @@ final class TagMenuView: NSView {
     }
 
     private func actionTitle(_ index: Int) -> String {
-        applied[index] ? "Remove Tag “\(tags[index].name)”" : "Tag “\(tags[index].name)”"
+        applied[index] ? String(localized: "Remove Tag “\(tags[index].shownName)”", comment: "Placeholder: a tag name, e.g. Red")
+            : String(localized: "Tag “\(tags[index].shownName)”", comment: "Command: add this tag; placeholder: a tag name, e.g. Red")
     }
 
     private func updateCaption() {
-        caption.stringValue = hovered.map(actionTitle) ?? "Tags"
+        caption.stringValue = hovered.map(actionTitle) ?? String(localized: "Tags", comment: "Finder tags (accessibility label or caption)")
     }
 }
 

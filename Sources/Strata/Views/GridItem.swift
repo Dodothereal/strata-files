@@ -89,7 +89,10 @@ final class GridItemView: NSView {
     /// Name, tags and detail, for VoiceOver.
     private var accessibilityText: String {
         let cloud = cloudBadge.status.flatMap { $0 == .downloaded ? nil : $0.label }
-        return [name, tags.isEmpty ? nil : "tags " + tags.map(\.name).joined(separator: ", "), cloud, detail].compactMap { $0 }
+        let tagList = tags.isEmpty ? nil
+            : String(localized: "tags \(tags.map(\.shownName).joined(separator: ", "))",
+                     comment: "Accessibility, after an item's name; the placeholder is a list of tag names")
+        return [name, tagList, cloud, detail].compactMap { $0 }
             .joined(separator: ", ")
     }
 

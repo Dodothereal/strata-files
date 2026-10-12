@@ -14,7 +14,9 @@ enum PlanExecutor {
         var results: [URL] = []
     }
 
-    static func apply(_ plan: Plan, actionName: String, undo: UndoManager?) async -> Outcome {
+    /// `actionName` is the English name History records (and translates when it shows it); the Edit menu shows
+    /// `undoName` when given ("Rename 3 Items"), else that translation.
+    static func apply(_ plan: Plan, actionName: String, undoName: String? = nil, undo: UndoManager?) async -> Outcome {
         // Nothing inside an archive opened as a folder changes (a temporary copy).
         let touched = plan.steps.flatMap { [$0.source, $0.destination].compactMap { $0 } }
         guard !touched.contains(where: ArchiveCache.contains) else {
@@ -25,13 +27,14 @@ enum PlanExecutor {
         // One History entry for the whole plan, named like its undo action.
         let entry = transaction.hasChanges ? transaction.record(actionName) : nil
         if let undo, transaction.hasChanges {
-            transaction.registerUndo(undo, actionName: actionName)
+            transaction.registerUndo(undo, actionName: undoName ?? OperationLog.displayName(actionName))
             if let entry { FileOps.registerLogMark(entry, undone: true, undo) }
         }
         return outcome
     }
 
-    /// "AI Rename", "AI Move", "AI Organize", "AI Trash".
+    /// "AI Rename", "AI Move", "AI Organize", "AI Trash". English identifiers: History saves them and picks icons by
+    /// them; `OperationLog.displayName` translates them for display.
     static func actionName(for plan: Plan) -> String {
         let kinds = Set(plan.enabledSteps.map(\.kind)).subtracting([.createFolder])
         if kinds == [.rename] { return "AI Rename" }
@@ -85,14 +88,14 @@ final class PlanTransaction {
                 try fm.createDirectory(at: folder, withIntermediateDirectories: false)
                 created.append(folder)
             } catch {
-                outcome.failures.append("Couldn’t create “\(folder.lastPathComponent)”: \(error.localizedDescription)")
+                outcome.failures.append(String(localized: "Couldn’t create “\(folder.lastPathComponent)”: \(error.localizedDescription)"))
             }
         }
         // Trash first: a plan may rename something into a name it frees ("trash X, rename Y to X").
         for url in trashItems {
             // Already in a Trash: trashing it again would lose where it came from.
             if Trash.isInTrash(url) || Trash.isInTrash(url.resolvingSymlinksInPath()) {
-                outcome.failures.append("“\(url.lastPathComponent)” is already in the Trash.")
+                outcome.failures.append(String(localized: "“\(url.lastPathComponent)” is already in the Trash."))
                 continue
             }
             do {
@@ -100,7 +103,7 @@ final class PlanTransaction {
                 try fm.trashItem(at: url, resultingItemURL: &result)
                 if let result { trashed.append((url, result as URL)) }
             } catch {
-                outcome.failures.append("“\(url.lastPathComponent)” couldn’t be moved to the Trash: \(error.localizedDescription)")
+                outcome.failures.append(String(localized: "“\(url.lastPathComponent)” couldn’t be moved to the Trash: \(error.localizedDescription)"))
             }
         }
         if FileOps.isChain(moves.map { (from: $0.from, to: $0.to) }) {
@@ -116,7 +119,8 @@ final class PlanTransaction {
                     done.append(pair)
                     outcome.results.append(pair.to)
                 } catch {
-                    outcome.failures.append("“\(pair.from.lastPathComponent)”: \(error.localizedDescription)")
+                    outcome.failures.append(String(localized: "“\(pair.from.lastPathComponent)”: \(error.localizedDescription)",
+                                                   comment: "An item’s name, then why it couldn’t be renamed or moved"))
                 }
             }
         }

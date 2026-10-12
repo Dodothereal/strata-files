@@ -331,7 +331,9 @@ nonisolated final class MarkdownRenderer {
         let configuration = NSImage.SymbolConfiguration(pointSize: bodySize, weight: .regular)
             .applying(.init(paletteColors: colors))
         let attachment = NSTextAttachment()
-        attachment.image = NSImage(systemSymbolName: name, accessibilityDescription: checked ? "Done" : "To do")?
+        attachment.image = NSImage(systemSymbolName: name, accessibilityDescription: checked
+            ? String(localized: "Done", comment: "Accessibility: a checked task-list item in a Markdown preview")
+            : String(localized: "To do", comment: "Accessibility: an unchecked task-list item in a Markdown preview"))?
             .withSymbolConfiguration(configuration)
         if let size = attachment.image?.size { attachment.bounds = CGRect(x: 0, y: -2, width: size.width, height: size.height) }
         let result = NSMutableAttributedString(attachment: attachment)

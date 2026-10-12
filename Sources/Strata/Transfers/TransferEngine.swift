@@ -242,9 +242,9 @@ nonisolated enum TransferEngine {
         if operation == .copyThenDelete {
             // Anything saved into the original while it was being copied isn't in the copy: keep the original then.
             if let change = changedSinceCopy(item.source, copy: item.destination) {
+                let message = String(localized: "Copied, but the original was kept because it changed during the move (\(change))")
                 result.failures.append(TransferFailure(item: index, stage: .removeSource, source: item.source,
-                                                       destination: item.destination,
-                                                       message: "Copied, but the original was kept because it changed during the move (\(change))"))
+                                                       destination: item.destination, message: message))
                 result.outcome = .partial
                 return result
             }
@@ -302,9 +302,9 @@ nonisolated enum TransferEngine {
         if item.operation != .copy {
             // The original may hold edits the copy lacks (that's why it was kept): never delete it then.
             if let change = changedSinceCopy(item.source, copy: item.destination) {
+                let message = String(localized: "The original was kept because it changed during the move (\(change)). Move it again to copy the changes.")
                 result.failures.append(TransferFailure(item: index, stage: .removeSource, source: item.source,
-                                                       destination: item.destination,
-                                                       message: "The original was kept because it changed during the move (\(change)). Move it again to copy the changes."))
+                                                       destination: item.destination, message: message))
                 result.outcome = .partial
                 return result
             }
@@ -463,14 +463,15 @@ nonisolated enum TransferEngine {
                 let copy = sha256(target, buffer: buffers.1, control: control) { _ in }
                 if control.isCancelled { outcome.cancelled = true; return outcome }
                 if original == nil || copy == nil || original != copy {
-                    let reason = copy == nil ? "The copy can’t be read back" : "The copy doesn’t match the original"
+                    let reason = copy == nil ? String(localized: "The copy can’t be read back")
+                        : String(localized: "The copy doesn’t match the original")
                     outcome.mismatches.append(EntryError(source: path, destination: target,
-                                                         message: original == nil ? "The original can’t be read" : reason))
+                                                         message: original == nil ? String(localized: "The original can’t be read") : reason))
                 }
             case FTS_SL, FTS_SLNONE:
                 if readLink(path) != readLink(target) {
                     outcome.mismatches.append(EntryError(source: path, destination: target,
-                                                         message: "The copied alias points somewhere else"))
+                                                         message: String(localized: "The copied alias points somewhere else")))
                 }
             default:
                 break
@@ -534,10 +535,11 @@ nonisolated enum TransferEngine {
     /// changed after it was copied), or nil when the copy has everything the original has.
     static func changedSinceCopy(_ source: URL, copy: URL) -> String? {
         let root = source.path
-        guard let cpath = strdup(root) else { return "it couldn’t be checked" }
+        let unchecked = String(localized: "it couldn’t be checked", comment: "Why a moved item’s original was kept, in parentheses")
+        guard let cpath = strdup(root) else { return unchecked }
         defer { free(cpath) }
         var paths: [UnsafeMutablePointer<CChar>?] = [cpath, nil]
-        guard let fts = fts_open(&paths, FTS_PHYSICAL | FTS_NOCHDIR, nil) else { return "it couldn’t be checked" }
+        guard let fts = fts_open(&paths, FTS_PHYSICAL | FTS_NOCHDIR, nil) else { return unchecked }
         defer { fts_close(fts) }
         while let entry = fts_read(fts) {
             let info = Int32(entry.pointee.fts_info)
@@ -548,12 +550,14 @@ nonisolated enum TransferEngine {
             var original = stat(), copied = stat()
             guard lstat(path, &original) == 0 else { continue }   // Removed meanwhile: nothing to lose.
             guard lstat(copy.path + relative, &copied) == 0,
-                  original.st_mode & S_IFMT == copied.st_mode & S_IFMT else { return "“\(name)” is new" }
+                  original.st_mode & S_IFMT == copied.st_mode & S_IFMT else {
+                return String(localized: "“\(name)” is new", comment: "Why a moved item’s original was kept, in parentheses")
+            }
             // An edit after the copy makes the original newer. Some disks keep coarser dates (FAT: 2 seconds, nothing
             // before 1980), so only a clearly newer original, or a different size, counts.
             if original.st_mode & S_IFMT == S_IFREG,
                original.st_size != copied.st_size || original.st_mtimespec.tv_sec > copied.st_mtimespec.tv_sec + 2 {
-                return "“\(name)” was modified"
+                return String(localized: "“\(name)” was modified", comment: "Why a moved item’s original was kept, in parentheses")
             }
         }
         return nil
@@ -566,7 +570,7 @@ nonisolated enum TransferEngine {
             return nil
         } catch {
             let reason = (error as NSError).localizedFailureReason ?? error.localizedDescription
-            return "Copied, but the original couldn’t be removed: \(reason)"
+            return String(localized: "Copied, but the original couldn’t be removed: \(reason)")
         }
     }
 
@@ -630,19 +634,19 @@ nonisolated enum TransferEngine {
 
     static func describe(_ code: Int32) -> String {
         switch code {
-        case EACCES, EPERM: "You don’t have permission"
-        case ENOENT: "The item couldn’t be found"
-        case ENOSPC: "The disk is full"
-        case EEXIST: "An item with the same name already exists"
-        case EROFS: "The disk is read-only"
-        case ENAMETOOLONG: "The name is too long"
-        case EXDEV: "It’s on a different disk"
+        case EACCES, EPERM: String(localized: "You don’t have permission")
+        case ENOENT: String(localized: "The item couldn’t be found")
+        case ENOSPC: String(localized: "The disk is full")
+        case EEXIST: String(localized: "An item with the same name already exists")
+        case EROFS: String(localized: "The disk is read-only")
+        case ENAMETOOLONG: String(localized: "The name is too long")
+        case EXDEV: String(localized: "It’s on a different disk")
         default: String(cString: strerror(code))
         }
     }
 
     private static func trashMessage(_ url: URL, _ error: Error) -> String {
-        "“\(url.lastPathComponent)” couldn’t be moved to the Trash, so it wasn’t replaced"
+        String(localized: "“\(url.lastPathComponent)” couldn’t be moved to the Trash, so it wasn’t replaced")
     }
 }
 

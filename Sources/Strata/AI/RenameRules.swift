@@ -8,10 +8,10 @@ nonisolated struct RenameRules: Sendable, Equatable {
 
         var title: String {
             switch self {
-            case .replace: "Replace Text"
-            case .add: "Add Text"
-            case .format: "Format"
-            case .changeCase: "Change Case"
+            case .replace: String(localized: "Replace Text", comment: "Batch rename rule")
+            case .add: String(localized: "Add Text", comment: "Batch rename rule")
+            case .format: String(localized: "Format", comment: "Batch rename rule: name items from a pattern like “{name} {n}”")
+            case .changeCase: String(localized: "Change Case", comment: "Batch rename rule")
             }
         }
     }
@@ -55,7 +55,7 @@ nonisolated struct RenameRules: Sendable, Equatable {
             do {
                 regex = try NSRegularExpression(pattern: find, options: matchCase ? [] : [.caseInsensitive])
             } catch {
-                return .failure(Problem(message: "That regular expression isn’t valid."))
+                return .failure(Problem(message: String(localized: "That regular expression isn’t valid.")))
             }
         }
         let last = startNumber + max(items.count - 1, 0)
@@ -71,7 +71,7 @@ nonisolated struct RenameRules: Sendable, Equatable {
                     changed = target
                 } else if let regex {
                     guard let replaced = Self.replace(regex, in: target, with: replacement, before: deadline) else {
-                        return .failure(Problem(message: "That regular expression takes too long on these names."))
+                        return .failure(Problem(message: String(localized: "That regular expression takes too long on these names.")))
                     }
                     changed = replaced
                 } else {

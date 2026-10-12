@@ -49,7 +49,7 @@ extension BrowserViewController {
             }
             let unknown = items.filter { locations[$0] == nil }
             if !unknown.isEmpty { self?.explainUnknownOrigin(unknown) }
-            if !failures.isEmpty { Self.report(failures, title: "couldn’t be put back", in: window) }
+            if !failures.isEmpty { Self.report(failures, .putBack, in: window) }
         }
     }
 
@@ -76,30 +76,30 @@ extension BrowserViewController {
         guard let first = candidates.first else {
             if let item = refused.first {
                 let alert = NSAlert()
-                alert.messageText = refused.count == 1 ? "“\(item.lastPathComponent)” can’t be deleted."
-                                                       : "These \(refused.count.formatted()) items can’t be deleted."
-                alert.informativeText = "Disks, and items in folders you don’t have permission to change, can’t be deleted here."
+                alert.messageText = refused.count == 1 ? String(localized: "“\(item.lastPathComponent)” can’t be deleted.")
+                                                       : String(localized: "These \(refused.count) items can’t be deleted.", comment: "plural")
+                alert.informativeText = String(localized: "Disks, and items in folders you don’t have permission to change, can’t be deleted here.")
                 present(alert, in: window) { _ in }
             }
             return
         }
         let alert = NSAlert()
         if noTrash {
-            alert.messageText = candidates.count == 1 ? "“\(first.lastPathComponent)” will be deleted immediately."
-                                                      : "These \(candidates.count.formatted()) items will be deleted immediately."
-            alert.informativeText = (candidates.count == 1 ? "Its disk has no Trash." : "Their disk has no Trash.")
-                + " You can’t undo this action."
+            alert.messageText = candidates.count == 1 ? String(localized: "“\(first.lastPathComponent)” will be deleted immediately.")
+                                                      : String(localized: "These \(candidates.count) items will be deleted immediately.", comment: "plural")
+            alert.informativeText = candidates.count == 1 ? String(localized: "Its disk has no Trash. You can’t undo this action.")
+                                                          : String(localized: "Their disk has no Trash. You can’t undo this action.")
         } else {
-            alert.messageText = candidates.count == 1 ? "Delete “\(first.lastPathComponent)” immediately?"
-                                                      : "Delete these \(candidates.count.formatted()) items immediately?"
-            alert.informativeText = "You can’t undo this action."
+            alert.messageText = candidates.count == 1 ? String(localized: "Delete “\(first.lastPathComponent)” immediately?")
+                                                      : String(localized: "Delete these \(candidates.count) items immediately?", comment: "plural")
+            alert.informativeText = String(localized: "You can’t undo this action.")
         }
         if !refused.isEmpty {
-            alert.informativeText += " \(Format.count(refused.count, "item", "items")) can’t be deleted and will stay."
+            alert.informativeText += " " + String(localized: "\(refused.count) items can’t be deleted and will stay.", comment: "plural")
         }
         alert.alertStyle = .critical
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: String(localized: "Delete", comment: "Alert button: delete the items for good, skipping the Trash"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
         alert.buttons[0].hasDestructiveAction = true
         alert.buttons[0].keyEquivalent = ""
         alert.buttons[1].keyEquivalent = "\r"
@@ -109,18 +109,48 @@ extension BrowserViewController {
                 let failures = await deleteAll(candidates)
                 if candidates.contains(where: Trash.isInTrash) { NotificationCenter.default.post(name: .trashChanged, object: nil) }
                 done()
-                if !failures.isEmpty { report(failures, title: "couldn’t be deleted", in: window) }
+                if !failures.isEmpty { report(failures, .delete, in: window) }
+            }
+        }
+    }
+
+    /// What couldn't be done, for `report`: a whole sentence for one item (by name) and one for several (a count).
+    enum FailedAction {
+        case delete, putBack, open, download, removeDownload
+
+        /// "“Photo.jpg” couldn’t be deleted."
+        func message(name: String) -> String {
+            switch self {
+            case .delete: String(localized: "“\(name)” couldn’t be deleted.")
+            case .putBack: String(localized: "“\(name)” couldn’t be put back.")
+            case .open: String(localized: "“\(name)” couldn’t be opened.")
+            case .download: String(localized: "“\(name)” couldn’t be downloaded.")
+            case .removeDownload: String(localized: "“\(name)” couldn’t have its download removed.")
+            }
+        }
+
+        /// "3 items couldn’t be deleted."
+        func message(count: Int) -> String {
+            switch self {
+            case .delete: String(localized: "\(count) items couldn’t be deleted.", comment: "plural")
+            case .putBack: String(localized: "\(count) items couldn’t be put back.", comment: "plural")
+            case .open: String(localized: "\(count) items couldn’t be opened.", comment: "plural")
+            case .download: String(localized: "\(count) items couldn’t be downloaded.", comment: "plural")
+            case .removeDownload: String(localized: "\(count) items couldn’t have their downloads removed.", comment: "plural")
             }
         }
     }
 
     /// Lists items that failed: the first few, each with why.
-    static func report(_ failures: [(url: URL, error: Error)], title: String, in window: NSWindow?) {
+    static func report(_ failures: [(url: URL, error: Error)], _ action: FailedAction, in window: NSWindow?) {
         let alert = NSAlert()
-        alert.messageText = failures.count == 1 ? "“\(failures[0].url.lastPathComponent)” \(title)."
-                                                : "\(failures.count.formatted()) items \(title)."
-        var lines = failures.prefix(5).map { "\($0.url.lastPathComponent): \($0.error.localizedDescription)" }
-        if failures.count > 5 { lines.append("and \((failures.count - 5).formatted()) more") }
+        alert.messageText = failures.count == 1 ? action.message(name: failures[0].url.lastPathComponent)
+                                                : action.message(count: failures.count)
+        var lines = failures.prefix(5).map {
+            String(localized: "\($0.url.lastPathComponent): \($0.error.localizedDescription)",
+                   comment: "A line in a list of items that failed: the item’s name, then why")
+        }
+        if failures.count > 5 { lines.append(String(localized: "and \(failures.count - 5) more", comment: "plural")) }
         alert.informativeText = lines.joined(separator: "\n")
         present(alert, in: window) { _ in }
     }
@@ -141,13 +171,11 @@ extension BrowserViewController {
         let alert = NSAlert()
         // Finder notes where things came from only a while later, so anything it trashed moments ago isn't known yet.
         if items.count == 1 {
-            alert.messageText = "Strata doesn’t know where “\(first.lastPathComponent)” came from."
-            alert.informativeText = "Where it was isn’t recorded. If Finder moved it to the Trash moments ago, use Put Back "
-                + "in Finder, or try again in a few minutes. You can also drag it where you want."
+            alert.messageText = String(localized: "Strata doesn’t know where “\(first.lastPathComponent)” came from.")
+            alert.informativeText = String(localized: "Where it was isn’t recorded. If Finder moved it to the Trash moments ago, use Put Back in Finder, or try again in a few minutes. You can also drag it where you want.")
         } else {
-            alert.messageText = "Strata doesn’t know where \(items.count.formatted()) of these items came from."
-            alert.informativeText = "Where they were isn’t recorded. If Finder moved them to the Trash moments ago, use Put "
-                + "Back in Finder, or try again in a few minutes. You can also drag them where you want."
+            alert.messageText = String(localized: "Strata doesn’t know where \(items.count) of these items came from.", comment: "plural")
+            alert.informativeText = String(localized: "Where they were isn’t recorded. If Finder moved them to the Trash moments ago, use Put Back in Finder, or try again in a few minutes. You can also drag them where you want.")
         }
         Self.present(alert, in: view.window) { _ in }
     }

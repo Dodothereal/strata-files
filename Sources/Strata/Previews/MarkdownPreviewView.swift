@@ -50,8 +50,9 @@ final class MarkdownPreviewView: PreviewView, NSTextViewDelegate {
     private func show(_ document: MarkdownDocument) {
         textView.setFrameSize(NSSize(width: scrollView.contentSize.width, height: textView.frame.height))
         layoutManager.replaceTextStorage(document.storage.value)
-        let words = document.wordCount == 1 ? "1 word" : "\(document.wordCount.formatted()) words"
-        footer.show(["Markdown", words], note: document.isTruncated ? "Showing first \(TextFile.limitDescription)" : nil)
+        let words = String(localized: "\(document.wordCount) words", comment: "plural")
+        footer.show(["Markdown", words], note: document.isTruncated
+            ? String(localized: "Showing first \(TextFile.limitDescription)", comment: "Preview footer note: only the first part is shown (a count or a size)") : nil)
     }
 
     /// Markdown comes from untrusted files, so links never launch anything: web and mail links open, links to
