@@ -153,12 +153,29 @@ nonisolated final class IndexScanner: @unchecked Sendable {
     }
 
     /// Scans each folder's subtree (the folder itself must already be in the store). Blocks until done.
-    func scan(_ folders: [(id: Int32, path: String)], threads: Int = ProcessInfo.processInfo.activeProcessorCount) {
+    func scan(_ folders: [(id: Int32, path: String)], threads: Int = IndexScanner.performanceCores) {
         condition.lock()
         jobs.append(contentsOf: folders.map { Job(id: $0.id, path: $0.path) })
         condition.unlock()
         DispatchQueue.concurrentPerform(iterations: max(1, threads)) { _ in work() }
     }
+
+    /// How many threads should read `path`'s volume. Measured on a 10+4-core Mac: a writable volume peaked at one
+    /// thread per performance core (402k items/s with 10 threads, 357k with 16, where they mostly wait on each other in
+    /// the kernel's path lookups); the sealed, read-only system volume peaked at 3 (252k items/s, against 48k with 16).
+    static func threadCount(for path: String) -> Int {
+        var info = statfs()
+        if statfs(path, &info) == 0, info.f_flags & UInt32(MNT_RDONLY) != 0 { return min(3, performanceCores) }
+        return performanceCores
+    }
+
+    /// Performance cores (all cores on Macs that don't tell them apart).
+    static let performanceCores: Int = {
+        var count: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        if sysctlbyname("hw.perflevel0.physicalcpu", &count, &size, nil, 0) == 0, count > 0 { return Int(count) }
+        return ProcessInfo.processInfo.activeProcessorCount
+    }()
 
     private func work() {
         let buffer = UnsafeMutableRawBufferPointer.allocate(byteCount: 256 * 1024, alignment: 16)

@@ -251,6 +251,11 @@ nonisolated struct IndexHit: Sendable {
     let files: UInt32
     let mtime: UInt32
     let score: Int
+
+    /// The same hit with another score (results merged from several stores).
+    func scored(_ score: Int) -> IndexHit {
+        IndexHit(path: path, isDirectory: isDirectory, isPackage: isPackage, size: size, files: files, mtime: mtime, score: score)
+    }
 }
 
 /// Per-chunk results collected from `concurrentPerform` workers.
@@ -284,12 +289,59 @@ nonisolated enum IndexSearch {
     }
 
     /// Runs `query` over the whole store in parallel and returns the best `limit` hits plus the total match count.
+    ///
+    /// Only matching holds the store's read lock. Ranking happens outside it, because a folder search's scanner waits
+    /// on that lock and "e" can match a million entries; the lock is taken again just to build the `limit` hits. Ids stay
+    /// valid in between: a store only grows (compaction makes a new one).
     static func run(_ query: IndexQuery, in store: IndexStore, limit: Int) -> (hits: [IndexHit], total: Int) {
+        let matched = matches(query, in: store)
+        let best = top(matched, limit)
+        let hits = store.read {
+            best.map { item -> IndexHit in
+                let id = Int(item.id)
+                return IndexHit(path: store.path(of: item.id), isDirectory: store.flags[id] & IndexStore.Flag.directory != 0,
+                                isPackage: store.flags[id] & IndexStore.Flag.package != 0, size: store.size[id],
+                                files: store.fileCount[id], mtime: store.mtime[id], score: Int(item.score))
+            }
+        }
+        return (hits, matched.count)
+    }
+
+    /// The best `limit` of `all`, by score then id (ties in id order stay put while a folder search's store grows, so
+    /// live results don't reshuffle). Beyond a few thousand it doesn't sort everything: it counts scores to find the one
+    /// that cuts at `limit` and sorts only what's above it.
+    static func top(_ all: [(id: Int32, score: Int32)], _ limit: Int) -> [(id: Int32, score: Int32)] {
+        let ordered: ((id: Int32, score: Int32), (id: Int32, score: Int32)) -> Bool = {
+            $0.score != $1.score ? $0.score > $1.score : $0.id < $1.id
+        }
+        guard limit > 0, all.count > limit * 4 else { return Array(all.sorted(by: ordered).prefix(limit)) }
+        var low = Int32.max, high = Int32.min
+        for item in all {
+            low = min(low, item.score)
+            high = max(high, item.score)
+        }
+        let span = Int(high) - Int(low) + 1
+        guard span <= 1 << 16 else { return Array(all.sorted(by: ordered).prefix(limit)) }
+        var counts = [Int](repeating: 0, count: span)
+        for item in all { counts[Int(item.score - low)] += 1 }
+        // Walk down from the best score until at least `limit` are at or above it.
+        var cut = span - 1
+        var above = 0
+        while cut > 0 && above + counts[cut] < limit {
+            above += counts[cut]
+            cut -= 1
+        }
+        let threshold = low + Int32(cut)
+        return Array(all.filter { $0.score >= threshold }.sorted(by: ordered).prefix(limit))
+    }
+
+    /// Every entry matching `query`, with its score (under the read lock).
+    private static func matches(_ query: IndexQuery, in store: IndexStore) -> [(id: Int32, score: Int32)] {
         store.read {
             let count = store.count
-            guard count > 0, !query.isEmpty else { return ([], 0) }
+            guard count > 0, !query.isEmpty else { return [] }
             let scopeID: Int32? = query.scopePath.flatMap { store.lookup($0) }
-            if query.scopePath != nil && scopeID == nil { return ([], 0) }
+            if query.scopePath != nil && scopeID == nil { return [] }
             // Searching inside a cache or build folder (in:, or the scope bar while browsing it) includes its contents.
             var scoped = query
             if let scopeID, store.flags[Int(scopeID)] & IndexStore.Flag.noise != 0 { scoped.includeNoise = true }
@@ -300,7 +352,7 @@ nonisolated enum IndexSearch {
                 ?? query.extensions
             let wantedExtensions = extensions.compactMap { ext in Array(ext.utf8).withUnsafeBufferPointer { packExtension($0) } }
             // Only extensions longer than any real one were asked for: nothing can match (not everything).
-            if !extensions.isEmpty && wantedExtensions.isEmpty { return ([], 0) }
+            if !extensions.isEmpty && wantedExtensions.isEmpty { return [] }
             let now = Int(Date().timeIntervalSince1970)
 
             let chunks = max(1, min(64, count / 50_000))
@@ -323,21 +375,7 @@ nonisolated enum IndexSearch {
                     partials.set(chunk, found)
                 }
             }
-            var all = partials.all
-            let total = all.count
-            if all.count > limit {
-                all.sort { $0.score > $1.score }
-                all.removeSubrange(limit...)
-            } else {
-                all.sort { $0.score > $1.score }
-            }
-            let hits = all.map { item -> IndexHit in
-                let id = Int(item.id)
-                return IndexHit(path: store.path(of: item.id), isDirectory: store.flags[id] & IndexStore.Flag.directory != 0,
-                                isPackage: store.flags[id] & IndexStore.Flag.package != 0, size: store.size[id],
-                                files: store.fileCount[id], mtime: store.mtime[id], score: Int(item.score))
-            }
-            return (hits, total)
+            return partials.all
         }
     }
 

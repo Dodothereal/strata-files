@@ -44,3 +44,88 @@ nonisolated enum NaturalQuery {
         return (query, filter)
     }
 }
+
+extension IndexSearch {
+    /// Where a search looks: a store, the folder in it to search (nil: all of it), and how many levels below the
+    /// searched folder the store's root sits. Scores count depth, so the offset lines results from different stores up.
+    nonisolated struct Source: Sendable {
+        let store: IndexStore
+        let scopePath: String?
+        let depth: Int
+        /// Keeps this source's results per query (the index's part of a folder search doesn't change while the folder
+        /// is read, so it isn't searched again on every refresh).
+        var cache: ResultCache? = nil
+    }
+
+    /// Results by query, for a source that doesn't change while it's searched repeatedly.
+    nonisolated final class ResultCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var results: [String: (hits: [IndexHit], total: Int)] = [:]
+
+        func value(_ key: String, _ make: () -> (hits: [IndexHit], total: Int)) -> (hits: [IndexHit], total: Int) {
+            if let cached = lock.withLock({ results[key] }) { return cached }
+            let made = make()
+            lock.withLock {
+                if results.count > 64 { results.removeAll() }
+                results[key] = made
+            }
+            return made
+        }
+    }
+
+    /// A search as typed: plain English when it reads as such (name matches first, then what the reading found), the
+    /// search syntax otherwise. The index and folder searches (`FolderSearch`) both run it, over their own stores.
+    static func understand(_ text: String, scopePath: String?, in store: IndexStore,
+                           limit: Int) async -> (hits: [IndexHit], total: Int, interpretation: SearchFilter?) {
+        await understand(text, sources: [Source(store: store, scopePath: scopePath, depth: 0)], limit: limit)
+    }
+
+    /// `understand` over several stores at once, merged by score: a folder search reads the parts of a folder the
+    /// index doesn't have and takes the rest from the index.
+    @concurrent
+    static func understand(_ text: String, sources: [Source],
+                           limit: Int) async -> (hits: [IndexHit], total: Int, interpretation: SearchFilter?) {
+        func runAll(_ query: IndexQuery, limit: Int, tag: String) -> (hits: [IndexHit], total: Int) {
+            var hits: [IndexHit] = []
+            var total = 0
+            for (index, source) in sources.enumerated() {
+                var scoped = query
+                if let root = source.scopePath {
+                    if source.depth > 0, let asked = query.scopePath {
+                        // An index folder inside a folder search, with `in:` naming a path: search where they overlap.
+                        if asked == root || asked.hasPrefix(root + "/") {
+                            scoped.scopePath = asked
+                        } else if root.hasPrefix(asked == "/" ? "/" : asked + "/") {
+                            scoped.scopePath = root
+                        } else {
+                            continue
+                        }
+                    } else {
+                        scoped.scopePath = root
+                    }
+                }
+                let search = { run(scoped, in: source.store, limit: limit) }
+                let result = source.cache?.value("\(tag)|\(index)|\(limit)|\(text)", search) ?? search()
+                total += result.total
+                hits += source.depth == 0 ? result.hits : result.hits.map { $0.scored($0.score - 2 * source.depth) }
+            }
+            guard sources.count > 1 else { return (hits, total) }
+            hits.sort { $0.score != $1.score ? $0.score > $1.score : $0.path < $1.path }
+            return (Array(hits.prefix(limit)), total)
+        }
+        guard let interpreted = NaturalQuery.interpret(text) else {
+            let query = IndexQuery.parse(text)
+            guard !query.isEmpty else { return ([], 0, nil) }
+            let result = runAll(query, limit: limit, tag: "syntax")
+            return (result.hits, result.total, nil)
+        }
+        // The words may also be a name ("Code", "Pictures", "notes.txt"): those matches come first, then what the
+        // plain-English reading found.
+        let plain = IndexQuery.parse(text)
+        let named: (hits: [IndexHit], total: Int) = plain.isEmpty ? ([], 0) : runAll(plain, limit: 50, tag: "named")
+        let result = runAll(interpreted.query, limit: limit, tag: "reading")
+        let namedPaths = Set(named.hits.map(\.path))
+        let rest = result.hits.filter { !namedPaths.contains($0.path) }
+        return (named.hits + rest, named.hits.count + result.total - (result.hits.count - rest.count), interpreted.filter)
+    }
+}

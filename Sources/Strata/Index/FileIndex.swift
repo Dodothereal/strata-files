@@ -106,21 +106,54 @@ final class FileIndex {
     /// Like `search`, but plain English is understood too; returns how it was interpreted when it was.
     func understand(_ text: String, in scope: URL? = nil, limit: Int = 500) async -> (hits: [IndexHit], total: Int, interpretation: SearchFilter?)? {
         guard let store else { return nil }
-        guard let interpreted = NaturalQuery.interpret(text) else {
-            return await search(text, in: scope, limit: limit).map { ($0.hits, $0.total, nil) }
-        }
-        var query = interpreted.query
-        if let scope { query.scopePath = scope.standardizedFileURL.path }
-        // The words may also be a name ("Code", "Pictures", "notes.txt"): those matches come first, then what the
-        // plain-English reading found.
-        var plain = IndexQuery.parse(text)
-        if let scope { plain.scopePath = scope.standardizedFileURL.path }
-        let named: (hits: [IndexHit], total: Int) = plain.isEmpty ? ([], 0) : await Self.run(plain, store, 50)
-        let result = await Self.run(query, store, limit)
-        let namedPaths = Set(named.hits.map(\.path))
-        let rest = result.hits.filter { !namedPaths.contains($0.path) }
-        return (named.hits + rest, named.hits.count + result.total - (result.hits.count - rest.count), interpreted.filter)
+        return await IndexSearch.understand(text, scopePath: scope?.standardizedFileURL.path, in: store, limit: limit)
     }
+
+    /// The index's roots inside `folder` (your home folder and Applications, when searching `/` or `/Users`): a folder
+    /// search skips reading those and takes them from the index instead.
+    func indexedParts(inside folder: URL) -> FolderSearch.IndexedParts? {
+        guard let store else { return nil }
+        let base = folder.resolvingSymlinksInPath().standardizedFileURL.path
+        let prefix = base == "/" ? "/" : base + "/"
+        let roots = store.read { store.roots.map(\.path) }
+            .filter { $0.hasPrefix(prefix) }
+            .map { FolderSearch.IndexedParts.Root(path: $0, depth: $0.dropFirst(prefix.count).split(separator: "/").count) }
+        return roots.isEmpty ? nil : FolderSearch.IndexedParts(store: store, roots: roots)
+    }
+
+    /// Whether a search in `folder` can use the index: the folder is in it and wasn't left out (folders kept out for
+    /// privacy are listed but not read). Anything else — outside your home folder and Applications, other disks,
+    /// a folder too new to be indexed yet — is searched directly (`FolderSearch`).
+    func covers(_ folder: URL) -> Bool {
+        guard let store else { return false }
+        let path = folder.resolvingSymlinksInPath().standardizedFileURL.path
+        if excludedPaths.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return false }
+        // A disk mounted inside an indexed folder isn't in the index: the scanner stops at mount points.
+        guard let root = store.read({ store.roots.first { path == $0.path || path.hasPrefix($0.path + "/") } }),
+              Self.sameVolume(path, root.path) else { return false }
+        // A folder, not a symlink that happens to share its name (those aren't followed into).
+        return store.read {
+            guard let id = store.lookup(path) else { return false }
+            return store.flags[Int(id)] & (IndexStore.Flag.directory | IndexStore.Flag.symlink) == IndexStore.Flag.directory
+        }
+    }
+
+    /// Whether `folder` is inside the index's folders or contains one. Until the first index is built, searches there
+    /// wait for it rather than reading your home folder (and the folders macOS guards in it) directly.
+    func overlapsIndexedFolders(_ folder: URL) -> Bool {
+        let path = folder.resolvingSymlinksInPath().standardizedFileURL.path
+        return Self.rootPaths.contains { root in
+            path == root || path.hasPrefix(root + "/") || root.hasPrefix(path == "/" ? "/" : path + "/")
+        }
+    }
+
+    private static func sameVolume(_ a: String, _ b: String) -> Bool {
+        var first = stat(), second = stat()
+        return stat(a, &first) == 0 && stat(b, &second) == 0 && first.st_dev == second.st_dev
+    }
+
+    /// The folders the index covers.
+    static var rootPaths: [String] { [realPath(Places.home.path), "/Applications"] }
 
     func recentFiles(days: Int = 7, limit: Int = 400) async -> [IndexHit]? {
         guard let store else { return nil }
@@ -170,7 +203,7 @@ final class FileIndex {
         }
         // The encrypted index replaces the plain index.bin of earlier builds.
         SecureStorage.removeLegacy(SecureStorage.url("index.bin"))
-        let config = IndexConfig(roots: [home, "/Applications"], excluded: excluded,
+        let config = IndexConfig(roots: rootPaths, excluded: excluded,
                                  noise: [home + "/Library"], file: SecureStorage.url("index.sealed"))
         shared.excludedPaths = excluded
         return config

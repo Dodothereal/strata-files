@@ -121,6 +121,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     func toggleDualPane(at url: URL?) {
         if isDualPane {
             let closing = panes.first { $0 !== pane }!
+            closing.stopBackgroundWork()
             split.panes.remove(closing.host)
             panes.removeAll { $0 === closing }
         } else {
@@ -193,6 +194,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         let p = targetPane ?? pane
         p.columnLocation = nil
         if target != .duplicates { p.duplicateSearch?.set() }
+        // Leaving a folder search stops its scan; a finished one stays a minute, so Back shows the results at once.
+        if case .search(_, let scope?) = target, p.folderSearch?.canServe(scope) == true {} else if p.folderSearch?.isFinished == false {
+            p.folderSearch?.cancel()
+            p.folderSearch = nil
+        }
         if recordHistory, target != p.destination {
             p.backStack.append(p.destination)
             p.forwardStack.removeAll()
@@ -242,6 +248,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             window?.representedURL = nil
             split.scopeBar.configure(folderName: FileManager.default.displayName(atPath: (scope ?? location).path),
                                      everywhere: scope == nil)
+            split.scopeBar.setSummary(pane.searchSummary)
             split.scopeBar.isHidden = false
         case .duplicates:
             setSearchField("")
@@ -420,6 +427,27 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         Task {
             switch target {
             case .search(let text, let scope):
+                if let scope, !FileIndex.shared.covers(scope) {
+                    if !FileIndex.shared.isReady, FileIndex.shared.overlapsIndexedFolders(scope) {
+                        // Reading your home folder now would duplicate the first index (and ask for the folders macOS
+                        // guards in it).
+                        p.browser.showMessage(symbol: "hourglass", title: "Indexing…", message: "Search works as soon as the first index is built.")
+                        showSummary("", for: p)
+                        return
+                    }
+                    if Privacy.measuringWouldPrompt(scope, browsing: p.location) {
+                        // A link or saved search pointing into a guarded folder you haven't opened: macOS would ask.
+                        let name = FileManager.default.displayName(atPath: scope.path)
+                        p.browser.showMessage(symbol: "lock", title: "Open “\(name)” to search it",
+                                              message: "macOS asks before apps read this folder. Open it in Strata once, then search it.")
+                        showSummary("", for: p)
+                        return
+                    }
+                    await searchDirectly(text, in: scope, pane: p, generation: generation, target: target)
+                    return
+                }
+                p.folderSearch?.cancel()
+                p.folderSearch = nil
                 guard let result = await FileIndex.shared.understand(text, in: scope) else {
                     p.browser.showMessage(symbol: "hourglass", title: "Indexing…", message: "Search works as soon as the first index is built.")
                     return
@@ -444,13 +472,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                     .filter { entry in structural.map { $0.matches(entry) } ?? true }
                 entries += byContent
                 p.browser.showResults(entries, total: result.total + byContent.count)
-                guard p === pane else { return }
                 let place = scope.map { "in “\(FileManager.default.displayName(atPath: $0.path))”" } ?? "everywhere"
                 var summary = result.total + byContent.count == 0 ? "No results \(place)"
                     : "\(Format.count(result.total + byContent.count, "result", "results")) \(place)"
                 if !byContent.isEmpty { summary += " · \(byContent.count) by content" }
                 if let filter = result.interpretation { summary += " · " + filter.summary }
-                split.scopeBar.setSummary(summary)
+                showSummary(summary, for: p)
             case .recents:
                 guard let hits = await FileIndex.shared.recentFiles() else {
                     p.browser.showResults([], total: 0)
@@ -461,6 +488,64 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             case .folder, .duplicates:
                 break
             }
+        }
+    }
+
+    /// Keeps `p`'s scope-bar line and shows it when `p` is the active pane (the other pane's shows when you switch).
+    private func showSummary(_ summary: String, for p: Pane) {
+        p.searchSummary = summary
+        if p === pane { split.scopeBar.setSummary(summary) }
+    }
+
+    /// Searches a folder the index doesn't cover by reading it (`FolderSearch`): matches fill in while it reads, the
+    /// scope bar counts what's been read, and the summary says the folder was searched directly. Typing more in the same
+    /// folder reuses the scan.
+    private func searchDirectly(_ text: String, in scope: URL, pane p: Pane, generation: Int, target: Destination) async {
+        let search: FolderSearch
+        if let current = p.folderSearch, current.canServe(scope) {
+            search = current
+        } else {
+            p.folderSearch?.cancel()
+            search = FolderSearch(folder: scope, indexed: FileIndex.shared.indexedParts(inside: scope))
+            p.folderSearch = search
+            search.start()
+        }
+        let place = "“\(FileManager.default.displayName(atPath: scope.path))”"
+        let isCurrent = { generation == p.searchGeneration && p.destination == target }
+        // Small folders are done almost at once: give them a moment so they don't flash "Searching…".
+        if !search.isFinished { try? await Task.sleep(for: .milliseconds(120)) }
+        var shown = -1
+        while isCurrent() {
+            let finished = search.isFinished
+            let found = await search.search(text)
+            guard isCurrent() else { return }
+            if finished || found.total > 0, finished || found.total != shown {
+                shown = found.total
+                p.browser.showResults(found.hits.map(FileEntry.init(hit:)), total: found.total)
+            } else if shown < 0 {
+                shown = 0
+                p.browser.showMessage(symbol: "magnifyingglass", title: "Searching…",
+                                      message: "\(place) isn’t in the index, so Strata is reading it directly.")
+            }
+            if finished {
+                var summary = found.total == 0 ? "No results in \(place)"
+                    : "\(Format.count(found.total, "result", "results")) in \(place)"
+                if let filter = found.interpretation { summary += " · " + filter.summary }
+                showSummary(summary + (search.usesIndex ? " · searched directly, indexed folders from the index"
+                                                        : " · not indexed, searched directly"), for: p)
+            } else {
+                showSummary("Searching \(place) directly… \(Format.count(search.scannedCount, "item", "items"))", for: p)
+            }
+            if finished {
+                // The scan answers more searches here for a minute (`canServe`); after that its memory goes.
+                Task { [weak p] in
+                    try? await Task.sleep(for: .seconds(61))
+                    if let p, p.folderSearch === search { p.folderSearch = nil }
+                }
+                return
+            }
+            // Searching the store takes its read lock, which pauses the scan: check less often once it's big.
+            try? await Task.sleep(for: .milliseconds(search.scannedCount > 200_000 ? 1000 : 400))
         }
     }
 
@@ -517,6 +602,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - Window
 
     func windowWillClose(_ notification: Notification) {
+        panes.forEach { $0.stopBackgroundWork() }
         onClose?()
     }
 

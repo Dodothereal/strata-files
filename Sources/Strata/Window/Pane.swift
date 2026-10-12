@@ -21,12 +21,25 @@ final class Pane {
     var columnLocation: URL?
     var searchGeneration = 0
     var duplicateSearch: CancelFlag?
+    /// The scan behind a search in a folder the index doesn't cover, kept while you keep searching that folder.
+    var folderSearch: FolderSearch?
+    /// The scope bar's line for this pane's search, kept so switching panes shows the right one.
+    var searchSummary = ""
     let host: PaneHostViewController
 
     init(location: URL) {
         self.location = location.standardizedFileURL
         destination = .folder(self.location)
         host = PaneHostViewController(browser: browser)
+    }
+
+    /// Stops what the pane is doing in the background (duplicate hashing, a folder scan): its window or the pane is
+    /// closing.
+    func stopBackgroundWork() {
+        duplicateSearch?.set()
+        duplicateSearch = nil
+        folderSearch?.cancel()
+        folderSearch = nil
     }
 
     /// Short description for the pane header.
