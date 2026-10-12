@@ -148,9 +148,25 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
         panel.contentView = effect
         panel.setFrameAutosaveName("StrataShortcuts")
         rebuild(filter: "")
+        NotificationCenter.default.addObserver(self, selector: #selector(shortcutsChanged), name: .shortcutsChanged, object: nil)
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    @objc private func shortcutsChanged() {
+        rebuild(filter: search.stringValue)
+    }
+
+    /// A shortcut's keys as currently set (Settings ▸ Shortcuts may have changed a menu command's): "—" when removed.
+    private static func liveKeys(_ keys: [String]) -> [String] {
+        // Shown with a typographic minus ("⌘−"); menus spell it "-".
+        let builtIn = keys.joined().replacingOccurrences(of: "−", with: "-")
+        let current = ShortcutStore.shared.live(builtIn)
+        guard current != builtIn else { return keys }
+        guard !current.isEmpty else { return ["—"] }
+        let modifiers = current.prefix { "⌃⌥⇧⌘".contains($0) }
+        return modifiers.map(String.init) + [String(current.dropFirst(modifiers.count))]
+    }
 
     func show() {
         if window?.isVisible != true { window?.center() }
@@ -179,7 +195,7 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
                 content.setCustomSpacing(22, after: previous)
             }
             for item in items {
-                let row = ShortcutRow(keys: item.keys, action: item.action)
+                let row = ShortcutRow(keys: Self.liveKeys(item.keys), action: item.action)
                 content.addArrangedSubview(row)
                 row.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -44).isActive = true
             }

@@ -87,7 +87,7 @@ enum MainMenu {
             item("Back", #selector(BrowserWindowController.goBack(_:)), "["),
             item("Forward", #selector(BrowserWindowController.goForward(_:)), "]"),
             item("Enclosing Folder", #selector(BrowserWindowController.goToEnclosingFolder(_:)), arrow(NSUpArrowFunctionKey)),
-            item("Open Selection", #selector(BrowserViewController.openSelection(_:)), arrow(NSDownArrowFunctionKey)),
+            item("Open Selection", #selector(BrowserViewController.openSelection(_:)), arrow(NSDownArrowFunctionKey), id: "go.openSelection"),
             .separator(),
             item("Recents", #selector(BrowserWindowController.goRecents(_:)), "f", [.command, .shift]),
             item("Home", #selector(BrowserWindowController.goHome(_:)), "h", [.command, .shift]),
@@ -98,7 +98,7 @@ enum MainMenu {
             item("Trash", #selector(BrowserWindowController.goTrash(_:))),
             .separator(),
             item("Go to Folder…", #selector(BrowserWindowController.goToFolder(_:)), "g", [.command, .shift]),
-            item("Edit Location", #selector(BrowserWindowController.goToFolder(_:)), "l"),
+            item("Edit Location", #selector(BrowserWindowController.goToFolder(_:)), "l", id: "go.editLocation"),
             item("Connect to Server…", #selector(BrowserWindowController.connectToServer(_:)), "k", [.command, .option]),
         ]))
         let workspaces = NSMenuItem(title: "Workspaces", action: nil, keyEquivalent: "")
@@ -124,10 +124,12 @@ enum MainMenu {
         return main
     }
 
+    /// `id`: a name for Settings ▸ Shortcuts when another command shares the action (otherwise the action names it).
     private static func item(_ title: String, _ action: Selector, _ key: String = "",
-                             _ modifiers: NSEvent.ModifierFlags = .command) -> NSMenuItem {
+                             _ modifiers: NSEvent.ModifierFlags = .command, id: String? = nil) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.keyEquivalentModifierMask = modifiers
+        if let id { item.identifier = NSUserInterfaceItemIdentifier(id) }
         return item
     }
 

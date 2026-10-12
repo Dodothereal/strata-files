@@ -72,7 +72,9 @@ extension BrowserWindowController {
         let sparkles = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
         let subtitle = browser.selectedURLs.isEmpty ? "Rename, move or organize everything here" : "Rename, move or organize the selection"
-        return [PaletteItem(title: "Ask Strata…", subtitle: subtitle, icon: sparkles, kind: .action, shortcut: "⌥⌘A") { [weak self] in
+        let shortcut = ShortcutStore.shared.live("⌥⌘A")
+        return [PaletteItem(title: "Ask Strata…", subtitle: subtitle, icon: sparkles, kind: .action,
+                            shortcut: shortcut.isEmpty ? nil : shortcut) { [weak self] in
             self?.askStrata(nil)
         }]
     }

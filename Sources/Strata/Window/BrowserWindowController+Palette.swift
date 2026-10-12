@@ -85,7 +85,9 @@ extension BrowserWindowController {
                      _ run: @escaping () -> Void) -> PaletteItem {
             let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
-            return PaletteItem(title: title, subtitle: "", icon: image, kind: .action, shortcut: shortcut, keywords: keywords, run: run)
+            // The shortcut as currently set (Settings ▸ Shortcuts can change or remove it).
+            let live = shortcut.map { ShortcutStore.shared.live($0) }.flatMap { $0.isEmpty ? nil : $0 }
+            return PaletteItem(title: title, subtitle: "", icon: image, kind: .action, shortcut: live, keywords: keywords, run: run)
         }
         var commands = [
             command("New Folder", "folder.badge.plus", "⇧⌘N") { [weak self] in self?.browser.newFolder(nil) },

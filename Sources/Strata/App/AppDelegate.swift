@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Prefs.register()
         registerRevealHandler()
         NSApp.mainMenu = MainMenu.build()
+        // Your own shortcuts (Settings ▸ Shortcuts) over the built-in ones.
+        if let menu = NSApp.mainMenu { ShortcutStore.shared.install(menu) }
     }
 
     private var welcome: WelcomeSheetController?
