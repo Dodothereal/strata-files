@@ -13,6 +13,8 @@ final class InspectorViewController: NSViewController {
     private let grid = NSGridView()
     /// The shown items' Finder tags, editable.
     private let tagField = TagField()
+    /// Comments, Open With, Locked and permissions, for one item.
+    private let infoEditor = InfoEditorView()
     private var shownURLs: [URL] = []
     private var previewWork: DispatchWorkItem?
     private let projectView = ProjectInspectorView()
@@ -68,7 +70,9 @@ final class InspectorViewController: NSViewController {
         projectView.onDidClean = { [weak self] _ in self?.reloadProject() }
         tagField.isHidden = true
         NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged(_:)), name: .tagsChanged, object: nil)
-        let stack = NSStackView(views: [previewBox, titleLabel, subtitleLabel, separator, grid, tagField, summary, projectView])
+        infoEditor.isHidden = true
+        let stack = NSStackView(views: [previewBox, titleLabel, subtitleLabel, separator, grid, tagField, infoEditor, summary,
+                                        projectView])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 6
@@ -77,6 +81,7 @@ final class InspectorViewController: NSViewController {
         stack.setCustomSpacing(14, after: separator)
         stack.setCustomSpacing(12, after: grid)
         stack.setCustomSpacing(18, after: tagField)
+        stack.setCustomSpacing(18, after: infoEditor)
         stack.setCustomSpacing(22, after: summary)
         stack.edgeInsets = NSEdgeInsets(top: 16, left: 18, bottom: 18, right: 18)
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -115,6 +120,7 @@ final class InspectorViewController: NSViewController {
             separator.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
             grid.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
             tagField.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
+            infoEditor.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
             projectView.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
             summary.widthAnchor.constraint(equalTo: previewBox.widthAnchor),
         ])
@@ -154,6 +160,11 @@ final class InspectorViewController: NSViewController {
         } else if tagField.currentEditor() == nil {
             tagField.reload()
         }
+
+        // Get Info's settings: one real item (not a disk, a link, or a temporary copy inside an archive).
+        let editable = items.count == 1 && !items[0].isVolume && !items[0].isSymlink && !ArchiveCache.contains(items[0].url)
+        infoEditor.isHidden = !editable
+        if editable { infoEditor.show(items[0]) }
 
         guard let first = items.first else {
             titleLabel.stringValue = ""
