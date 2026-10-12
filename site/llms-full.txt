@@ -1,13 +1,14 @@
 # Strata Files
 
-> Strata is a free, open-source (MIT) file manager for macOS, built natively in Swift and AppKit. It keeps what people know from Finder (the look, the shortcuts, drag and drop, Quick Look, tabs) and adds instant search, live folder sizes, a disk-usage map, a command palette, dual pane, a copy queue, undoable history, developer features and on-device summaries. Everything runs on the Mac.
+> Strata is a free, open-source (MIT) file manager for macOS, built natively in Swift and AppKit. It keeps what people know from Finder (the look, the shortcuts, drag and drop, Quick Look, tabs) and adds instant search, live folder sizes, a disk-usage map, a command palette, dual pane with folder compare and sync, a copy queue, undoable history, Finder tags, archives you can browse like folders, batch rename, developer features and on-device summaries. It comes in 21 languages and runs entirely on the Mac.
 
 - Website: https://stratafiles.app
 - Download: https://github.com/cristipufu/strata-files/releases/latest (Strata.dmg or Strata.zip, signed with a Developer ID and notarized by Apple; SHA256SUMS.txt lists checksums)
 - Source: https://github.com/cristipufu/strata-files
 - Requirements: macOS 26 Tahoe on a Mac with Apple silicon. Apple Intelligence is optional; without it, summaries use a document's key sentences and Ask Strata uses built-in rules.
 - Price: free. License: MIT.
-- Status: early development. Strata doesn't check for updates on its own; new versions are published on GitHub Releases.
+- Updates: Strata updates itself (Strata ▸ Check for Updates…, or automatically if allowed in Settings ▸ General). Updates and the update feed are signed with Strata's key and verified before anything is installed. New versions are published on GitHub Releases.
+- Languages: English, German, French, Spanish, Italian, Portuguese (Brazil and Portugal), Dutch, Swedish, Danish, Norwegian, Polish, Czech, Hungarian, Romanian, Ukrainian, Turkish, Japanese, Korean, Chinese (Simplified and Traditional). It follows the Mac's language or the one picked in Settings ▸ General; translations are plain JSON files, one per language, open to contributions.
 
 ## Search
 
@@ -24,6 +25,9 @@ Filters can be combined with words:
 - `in:~/Documents` or `in:projects`: limit to a folder (by path or by folder name)
 - `-draft` or `!draft`: exclude a word
 - `src/app`: match parts of a path
+- `regex:` matches names with a regular expression; `case:` (or Match Case in the search bar) makes the match exact-case
+- `tag:Red`: items with a Finder tag
+- Through Spotlight, file metadata: `camera:iphone`, `width:>1920`, `height:`, `duration:>10m`, `pages:>20`, `author:`, `artist:`, and plain English such as "photos taken with iPhone" or "videos longer than 10 minutes"
 - Accents and Unicode normalization are ignored, so "cafe" finds "café".
 
 ## Navigation
@@ -31,10 +35,13 @@ Filters can be combined with words:
 - Command palette (⌘K): the most-used folders first, files from the index, and every command by name. Typing a path such as `acme-web/` lists that folder's contents.
 - Type a path (⌘L) with Tab completion; Go to Folder (⇧⌘G).
 - Type in any folder to filter it (fuzzy); Return opens the top match, Esc clears the filter.
-- Four views, one keystroke apart like Finder: Icons (⌘1), List (⌘2), Columns (⌘3), Disk Usage (⌘4).
-- Dual Pane (⌘\): two folders side by side; copy or move between them with a keystroke.
+- Five views, one keystroke apart like Finder: Icons (⌘1), List (⌘2), Columns (⌘3), Gallery (⌘4), Disk Usage (⌘5).
+- Dual Pane (⌘\): two folders side by side; copy or move between them with a keystroke. Compare with Other Pane lists what's only on one side, newer or different, then syncs both ways, one way or as a mirror (verified and undoable).
+- Spring-loaded folders: hold a drag over a folder and it opens.
+- Connect to Server (⌥⌘K): SMB, AFP, NFS and WebDAV shares, with macOS's own login and the Keychain.
+- iCloud Drive and cloud folders (Dropbox, OneDrive, Google Drive…): see what's only in the cloud or still syncing, with Download Now and Remove Download.
 - Tabs, Workspaces (a saved set of tabs and panes), and windows that reopen where you left them.
-- Sidebar: Favorites you can drag in and reorder, frequent folders, Large Files, Duplicates, disks with Eject.
+- Sidebar: Favorites you can drag in and reorder, frequent folders, Large Files, Duplicates, disks with Eject, the Trash and Finder tags.
 - Recents: files changed in the last 7 days across the home folder.
 - Shelf: collect files from anywhere, then drop them all at once.
 - Settings ▸ "Open Reveal in Finder in Strata": apps that show files in Finder open Strata instead.
@@ -52,6 +59,12 @@ Filters can be combined with words:
 - Settings ▸ Verify copies reads every copied file back and compares it with the original.
 - Moves between disks keep the original if it changed while copying.
 - History records renames, moves, copies and deletions; they can be undone later, even after a restart, as long as the items are where they were left.
+- Trash: Put Back (also for items Finder trashed), Delete Immediately and Empty Trash.
+- Archives: compress the selection to zip; extract zip, tar, 7z, rar and more safely (nothing is written outside the folder, links can't escape, archive bombs stop early, downloads stay quarantined); or double-click a zip to browse it like a folder and copy things out.
+- Batch rename: replace text or a regular expression, add text, number with a format, or change case, with a live preview and one undo.
+- Finder tags: colored dots in every view, the seven colors in the context menu, a tag picker that finds or creates tags as you type, and a Tags section in the sidebar. Strata and Finder share the same tags.
+- Get Info in the inspector: Spotlight comments, the app a file opens with (or all like it), Locked, and permissions.
+- Share: AirDrop, Messages, Mail and more from the selection.
 
 ## For developers
 
@@ -67,7 +80,7 @@ Filters can be combined with words:
 
 ## Privacy and security
 
-- No accounts, no analytics, no servers. Strata's code makes no network requests; files and searches never leave the Mac.
+- No accounts, no analytics, no servers. Files and searches never leave the Mac. The only network request is the update check (GitHub Releases), and only if allowed.
 - The file index, content index and history are encrypted on disk (AES-GCM) with a key kept in the login keychain.
 - Browsing a folder can't run code from it: Strata switches off the git features a downloaded repository could use for that (fsmonitor, hooks, filters, lazy fetches).
 - Full Disk Access is optional; it lets Strata search and measure everything without macOS asking folder by folder.
@@ -76,7 +89,8 @@ Filters can be combined with words:
 
 - ⌘K command palette · ⌘L type a path · ⇧⌘G go to folder
 - ⌘[ back · ⌘] forward · ⌘↑ enclosing folder · ⌘↓ open
-- ⌘1 to ⌘4 views · ⌘\ dual pane · ⌘I inspector · Space Quick Look
+- ⌘1 to ⌘5 views · ⌘\ dual pane · ⌘I inspector · Space Quick Look · ⌥⌘K connect to server
+- Every menu shortcut can be changed in Settings ▸ Shortcuts; Settings ▸ Appearance sets light or dark, row density and the file name size.
 - ⇧⌘N new folder · ⇧⌘F Recents · ⇧⌘H Home · ⇧⌘D Desktop · ⇧⌘O Documents · ⌥⌘L Downloads · ⇧⌘A Applications
 - ⌘/ the searchable list of every shortcut
 
@@ -84,6 +98,6 @@ Filters can be combined with words:
 
 - Does it replace Finder? It works alongside Finder. Turning on "Open Reveal in Finder in Strata" makes other apps open Strata.
 - Is it safe to download? Releases are signed with a Developer ID and notarized by Apple, and each release lists SHA-256 checksums.
-- Does it collect data? No.
-- How do I update? Download the latest release and replace the app in Applications.
+- Does it collect data? No. It only checks GitHub for a new version, if allowed.
+- How do I update? Strata ▸ Check for Updates…, or automatically if allowed in Settings ▸ General.
 - Can I build it myself? Yes: `git clone https://github.com/cristipufu/strata-files.git && cd strata-files && scripts/build.sh release --open` (needs the Swift toolchain).
