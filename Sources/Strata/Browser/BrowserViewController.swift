@@ -52,6 +52,27 @@ final class BrowserViewController: NSViewController {
     var onTab: (() -> Bool)?
     /// A different folder is being read; the rows still showing belong to the previous one, so file commands wait.
     private(set) var isLoadingFolder = false
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        fitColumnsToWidth()
+    }
+
+    /// In a narrow list (a dual-pane side, a small window) Kind, then Date and Where, give up width down to their
+    /// minimums before the columns run off the edge; Name keeps the rest.
+    private func fitColumnsToWidth() {
+        let visible = outlineView.tableColumns.filter { !$0.isHidden }
+        let spacing = outlineView.intercellSpacing.width * CGFloat(visible.count + 1)
+        var excess = visible.reduce(0) { $0 + $1.width } + spacing - scrollView.contentView.bounds.width
+        guard excess > 1 else { return }
+        for id in [NSUserInterfaceItemIdentifier.kind, .location, .modified, .name] {
+            guard excess > 0, let column = outlineView.tableColumn(withIdentifier: id), !column.isHidden else { continue }
+            let give = min(excess, column.width - column.minWidth)
+            guard give > 0 else { continue }
+            column.width -= give
+            excess -= give
+        }
+    }
+
     /// Name gets whatever the other visible columns leave (it's the column that absorbs width changes).
     private func fitNameColumn() {
         guard let name = outlineView.tableColumn(withIdentifier: .name) else { return }

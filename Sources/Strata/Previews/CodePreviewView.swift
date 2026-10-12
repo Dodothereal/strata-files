@@ -11,6 +11,8 @@ final class CodePreviewView: PreviewView {
     private let scrollView = NSScrollView()
     private var pendingScrollLine: Int?
     private var lineStarts: [Int] = []
+    /// The ruler inset the text was last moved clear of.
+    private var rulerInset: CGFloat = 0
     // TextKit 1: non-contiguous layout keeps half-megabyte files fast, and line fragments map 1:1 to lines.
     private let textView = NSTextView(usingTextLayoutManager: false)
 
@@ -68,6 +70,7 @@ final class CodePreviewView: PreviewView {
         scrollView.hasVerticalRuler = true
         scrollView.rulersVisible = true
         scrollView.tile()
+        keepTextClearOfRuler()
         lineStarts = document.lineStarts
 
         let lines = document.lineStarts.count
@@ -83,11 +86,24 @@ final class CodePreviewView: PreviewView {
 
     override func layout() {
         super.layout()
+        keepTextClearOfRuler()
         // Centering a line needs the final size, so it waits for the first real layout.
         if let line = pendingScrollLine, scrollView.contentSize.height > 0 {
             pendingScrollLine = nil
             center(line: line)
         }
+    }
+
+    /// The ruler floats over the text: the clip view gets a left inset for it, but its scroll position isn't moved to
+    /// match, so the first columns would sit under the line numbers. Moves the text clear whenever that inset changes
+    /// (it arrives with the first real size); scrolling left then stops at the gutter.
+    private func keepTextClearOfRuler() {
+        let clip = scrollView.contentView
+        let inset = clip.contentInsets.left
+        guard inset != rulerInset else { return }
+        rulerInset = inset
+        clip.scroll(to: NSPoint(x: -inset, y: clip.bounds.origin.y))
+        scrollView.reflectScrolledClipView(clip)
     }
 
     private func center(line index: Int) {
@@ -98,7 +114,7 @@ final class CodePreviewView: PreviewView {
         let rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: container)
         let clip = scrollView.contentView
         var target = clip.bounds
-        target.origin = NSPoint(x: 0, y: rect.midY + textView.textContainerOrigin.y - target.height / 2)
+        target.origin = NSPoint(x: -clip.contentInsets.left, y: rect.midY + textView.textContainerOrigin.y - target.height / 2)
         clip.scroll(to: clip.constrainBoundsRect(target).origin)
         scrollView.reflectScrolledClipView(clip)
     }
