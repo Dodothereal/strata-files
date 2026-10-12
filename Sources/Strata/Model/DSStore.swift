@@ -19,11 +19,26 @@ nonisolated enum DSStore {
     /// Larger files aren't read: a Trash's `.DS_Store` stays well under this.
     static let maxFileSize = 16 << 20
 
-    /// Put Back records by the item's name in the Trash.
+    /// Put Back records by the item's name in the Trash. Only a regular file is read (never through a symlink, which
+    /// could point at something huge), and never more than `maxFileSize`.
     static func putBackRecords(at url: URL) -> [String: PutBack] {
-        guard let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size <= maxFileSize,
-              let data = try? Data(contentsOf: url) else { return [:] }
-        return putBackRecords(data)
+        let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard fd >= 0 else { return [:] }
+        defer { close(fd) }
+        var info = stat()
+        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size <= maxFileSize else { return [:] }
+        var data = Data(count: Int(info.st_size))
+        var total = 0
+        let ok = data.withUnsafeMutableBytes { buffer -> Bool in
+            while total < buffer.count {
+                let n = read(fd, buffer.baseAddress! + total, buffer.count - total)
+                if n <= 0 { return n == 0 }
+                total += n
+            }
+            return true
+        }
+        guard ok else { return [:] }
+        return putBackRecords(data.prefix(total))
     }
 
     static func putBackRecords(_ data: Data) -> [String: PutBack] {

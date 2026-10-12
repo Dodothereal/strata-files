@@ -85,6 +85,11 @@ final class PlanTransaction {
         }
         // Trash first: a plan may rename something into a name it frees ("trash X, rename Y to X").
         for url in trashItems {
+            // Already in a Trash: trashing it again would lose where it came from.
+            if Trash.isInTrash(url) || Trash.isInTrash(url.resolvingSymlinksInPath()) {
+                outcome.failures.append("“\(url.lastPathComponent)” is already in the Trash.")
+                continue
+            }
             do {
                 var result: NSURL?
                 try fm.trashItem(at: url, resultingItemURL: &result)

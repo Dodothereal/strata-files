@@ -63,6 +63,19 @@ enum FileOps {
         return moved
     }
 
+    /// Removes each folder only if it's empty (a Finder `.DS_Store` aside), innermost first. `rmdir` refuses a folder
+    /// that isn't empty, so nothing put there in the meantime is ever deleted.
+    nonisolated static func removeEmptyFolders(_ folders: [URL]) {
+        for folder in folders.sorted(by: { $0.path.count > $1.path.count }) {
+            let store = folder.appending(path: ".DS_Store").path
+            // Only once the folder holds nothing else: the records file alone doesn't keep it.
+            if let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path), names == [".DS_Store"] {
+                unlink(store)
+            }
+            rmdir(folder.path)
+        }
+    }
+
     /// Items that couldn't go to the Trash because their disk has none (network shares, some external disks).
     struct NoTrash: Error {
         let urls: [URL]
@@ -86,8 +99,8 @@ enum FileOps {
     private static func trashItems(_ urls: [URL]) async -> (moved: [Move], noTrash: [URL], failure: Error?) {
         var moved: [Move] = []
         var noTrash: [URL] = []
-        // Trashing what's already in a Trash again would lose where it came from.
-        for url in urls where !Trash.isInTrash(url) {
+        // Trashing what's already in a Trash again would lose where it came from (however its path is spelled).
+        for url in urls where !Trash.isInTrash(url) && !Trash.isInTrash(url.resolvingSymlinksInPath()) {
             var result: NSURL?
             do {
                 try FileManager.default.trashItem(at: url, resultingItemURL: &result)

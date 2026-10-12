@@ -430,7 +430,7 @@ extension SidebarViewController: NSMenuDelegate {
     private static var trashSymbol: String { Trash.isHomeEmpty ? "trash" : "trash.fill" }
 
     @objc private func trashMayHaveChanged() {
-        guard let section = sections.last, let item = section.items.last, item.url == Trash.home,
+        guard let item = sections.lazy.flatMap(\.items).first(where: { $0.url == Trash.home }),
               item.symbol != Self.trashSymbol else { return }
         item.symbol = Self.trashSymbol
         outline.reloadItem(item)

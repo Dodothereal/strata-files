@@ -31,6 +31,8 @@ final class OperationLog {
         /// same files, never something else that took their place since.
         var identities: [String: String] = [:]
         var undone = false
+        /// When it was last undone or redone (nil: never since it was done, at `date`).
+        var changed: Date?
 
         init(name: String, kind: Kind, pairs: [[String]] = [], created: [String] = [], replaced: [[String]] = [],
              containers: [String] = []) {
@@ -58,6 +60,7 @@ final class OperationLog {
             containers = try c.decodeIfPresent([String].self, forKey: .containers) ?? []
             identities = try c.decodeIfPresent([String: String].self, forKey: .identities) ?? [:]
             undone = try c.decodeIfPresent(Bool.self, forKey: .undone) ?? false
+            changed = try c.decodeIfPresent(Date.self, forKey: .changed)
         }
     }
 
@@ -109,6 +112,7 @@ final class OperationLog {
     func setUndone(_ id: UUID, _ undone: Bool) {
         guard let index = entries.firstIndex(where: { $0.id == id }), entries[index].undone != undone else { return }
         entries[index].undone = undone
+        entries[index].changed = Date()
         save()
     }
 
@@ -134,17 +138,22 @@ final class OperationLog {
         return recorded == "\(info.st_dev):\(info.st_ino)"
     }
 
-    /// Where Strata last moved each of `urls` from (to the Trash, say), with when, for those still holding the file it
-    /// moved there. Keyed by standardized path. One pass over History, newest first.
+    /// For each of `urls`: where it was before Strata last put it where it is, and when that happened. Two kinds of
+    /// event put an item somewhere: an operation that moved it there (or its redo), and the undo of one that had moved
+    /// it away (undoing a Put Back returns the item to the Trash). The latest wins, and only while the file there is
+    /// still the one that was moved. Keyed by standardized path; one pass over History.
     func movedFrom(_ urls: [URL]) -> [String: (from: URL, date: Date)] {
-        var wanted = Set(urls.map { $0.standardizedFileURL.path })
+        let wanted = Set(urls.map { $0.standardizedFileURL.path })
         var found: [String: (from: URL, date: Date)] = [:]
-        for entry in entries.reversed() where !entry.undone {
-            guard !wanted.isEmpty else { break }
-            for pair in entry.pairs.reversed() where pair.count == 2 {
-                let path = URL(fileURLWithPath: pair[1]).standardizedFileURL.path
-                guard wanted.remove(path) != nil else { continue }
-                if holdsOriginal(entry, pair[1]) { found[path] = (URL(fileURLWithPath: pair[0]), entry.date) }
+        for entry in entries {
+            let when = entry.changed ?? entry.date
+            for pair in entry.pairs where pair.count == 2 {
+                let here = URL(fileURLWithPath: entry.undone ? pair[0] : pair[1]).standardizedFileURL.path
+                guard wanted.contains(here), found[here].map({ $0.date <= when }) ?? true else { continue }
+                // The identity was recorded where the operation left the file, at `pair[1]`.
+                let same = entry.identities[pair[1]].map { Self.sameIdentity($0, here) } ?? TransferEngine.exists(URL(fileURLWithPath: here))
+                guard same else { continue }
+                found[here] = (URL(fileURLWithPath: entry.undone ? pair[1] : pair[0]), when)
             }
         }
         return found
@@ -184,7 +193,6 @@ final class OperationLog {
                 NSLocalizedDescriptionKey: "“\(entry.name)” can’t be undone: its items have moved or changed since.",
             ])
         }
-        let fm = FileManager.default
         // Everything happens without registering undo piecemeal; one ⌘Z afterwards puts it all back (below).
         var done: [FileOps.Move] = []
         let existing = entry.created.filter { holdsOriginal(entry, $0) }.map { URL(fileURLWithPath: $0) }
@@ -203,11 +211,8 @@ final class OperationLog {
                 throw error
             }
         }
-        for folder in entry.containers.reversed() {
-            // Only what is (still) empty: never remove something put there since.
-            let contents = (try? fm.contentsOfDirectory(atPath: folder)) ?? ["?"]
-            if contents.allSatisfy({ $0 == ".DS_Store" }) { try? fm.removeItem(atPath: folder) }
-        }
+        // Only what is (still) empty: never remove something put there since.
+        FileOps.removeEmptyFolders(entry.containers.map { URL(fileURLWithPath: $0) })
         setUndone(entry.id, true)
         registerRedo(entry, done, undoManager)
     }

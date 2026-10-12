@@ -45,7 +45,7 @@ extension BrowserViewController {
                 let job = TransferQueue.shared.enqueue(moves: moves, mode: .move, undo: undo, conflicts: .sheet(for: window),
                                                        actionName: "Put Back", containers: made)
                 // Stopped or skipped at the conflict sheet: folders made for nothing go again.
-                job.onFinish = { _ in Self.removeIfEmpty(made) }
+                job.onFinish = { _ in FileOps.removeEmptyFolders(made) }
             }
             let unknown = items.filter { locations[$0] == nil }
             if !unknown.isEmpty { self?.explainUnknownOrigin(unknown) }
@@ -170,13 +170,6 @@ extension BrowserViewController {
             current.deleteLastPathComponent()
         }
         return missing
-    }
-
-    private static func removeIfEmpty(_ folders: [URL]) {
-        for folder in folders.reversed() {
-            let contents = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? ["?"]
-            if contents.allSatisfy({ $0 == ".DS_Store" }) { try? FileManager.default.removeItem(at: folder) }
-        }
     }
 
     @concurrent

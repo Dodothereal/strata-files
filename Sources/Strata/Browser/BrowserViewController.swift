@@ -777,7 +777,8 @@ final class BrowserViewController: NSViewController {
 
     @objc func duplicate(_ sender: Any?) {
         let urls = selectedURLs
-        guard !urls.isEmpty else { return }
+        // The menus are off in the Trash; this also covers ⌘K.
+        guard !urls.isEmpty, !isShowingTrash else { return }
         // Copying onto itself with "keep both" gives Finder's "name copy" naming, with progress for big items.
         let job = TransferQueue.shared.enqueue(moves: urls.map { TransferMove(from: $0, to: $0) }, mode: .copy,
                                                undo: undoManager, conflicts: .keepBoth)
@@ -788,8 +789,14 @@ final class BrowserViewController: NSViewController {
         }
     }
 
+    /// Selects `urls` once the folder shows them (after the reload a change brings).
+    func selectWhenShown(_ urls: [URL]) {
+        pendingSelection = urls
+        refresh()
+    }
+
     @objc func newFolder(_ sender: Any?) {
-        guard let directory = targetDirectory else { return }
+        guard let directory = targetDirectory, !isShowingTrash else { return }
         perform {
             let url = try FileOps.newFolder(in: directory, undo: self.undoManager)
             if self.mode == .columns, directory != self.directory {

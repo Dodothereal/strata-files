@@ -11,7 +11,14 @@ enum Trash {
     nonisolated static let home = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: ".Trash", directoryHint: .isDirectory).standardizedFileURL
     nonisolated private static let homePath = home.path
+    /// Lowercased, for comparing paths the way the (case-insensitive) startup disk does.
+    nonisolated private static let homePathLower = home.path.lowercased()
     nonisolated private static let uid = String(getuid())
+    /// The home Trash's identity, so another spelling of its path (`~/.trash`, a link to it) is still the Trash.
+    nonisolated private static let homeIdentity: (dev: dev_t, ino: ino_t)? = {
+        var info = stat()
+        return stat(homePath, &info) == 0 ? (info.st_dev, info.st_ino) : nil
+    }()
 
     /// One disk's Trash and what's in it.
     struct Contents: Sendable {
@@ -38,12 +45,18 @@ enum Trash {
         return result
     }
 
-    /// Whether `folder` is one of your Trash folders (judged by where it is, without listing the disks).
+    /// Whether `folder` is one of your Trash folders (judged by where it is, without listing the disks). Spellings
+    /// differ only in case on most Mac disks, so names compare without it; a folder named like the home Trash is
+    /// checked by identity.
     nonisolated static func isTrash(_ folder: URL) -> Bool {
         let folder = folder.standardizedFileURL
-        if folder.path == homePath { return true }
+        let lower = folder.path.lowercased()
+        if lower == homePathLower {
+            var info = stat()
+            return stat(folder.path, &info) == 0 && homeIdentity.map { $0.dev == info.st_dev && $0.ino == info.st_ino } ?? true
+        }
         let trashes = folder.deletingLastPathComponent()
-        guard folder.lastPathComponent == uid, trashes.lastPathComponent == ".Trashes" else { return false }
+        guard folder.lastPathComponent == uid, trashes.lastPathComponent.lowercased() == ".trashes" else { return false }
         let volume = trashes.deletingLastPathComponent()
         return (try? volume.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
     }
@@ -53,12 +66,12 @@ enum Trash {
         isTrash(item.deletingLastPathComponent())
     }
 
-    /// Whether `url` is in a Trash at any depth.
+    /// Whether `url` is in a Trash at any depth (any spelling of its path's case).
     nonisolated static func isInTrash(_ url: URL) -> Bool {
-        let path = url.standardizedFileURL.path
-        if path.hasPrefix(homePath + "/") { return true }
+        let path = url.standardizedFileURL.path.lowercased()
+        if path.hasPrefix(homePathLower + "/") { return true }
         // Other disks' Trashes: `/Volumes/<disk>/.Trashes/<uid>/…`.
-        guard path.contains("/.Trashes/") else { return false }
+        guard path.contains("/.trashes/") else { return false }
         var folder = url.standardizedFileURL.deletingLastPathComponent()
         while folder.path != "/" {
             if isTrash(folder) { return true }
@@ -101,9 +114,9 @@ enum Trash {
         var result: [URL: URL] = [:]
         var needRecords: [URL] = []
         for item in items {
-            // History wins unless the item was put in the Trash again after Strata last moved it (by Finder, say).
+            // History wins unless the item was put in the Trash again after Strata last put it there (by Finder, say).
             if let hit = moved[item.standardizedFileURL.path], !isInTrash(hit.from),
-               hit.date.timeIntervalSince(added(item) ?? .distantPast) > -5 {
+               hit.date.timeIntervalSince(arrived(item) ?? .distantPast) > -5 {
                 result[item] = hit.from
             } else {
                 needRecords.append(item)
@@ -112,9 +125,10 @@ enum Trash {
         for (trash, inTrash) in Dictionary(grouping: needRecords, by: { $0.deletingLastPathComponent().standardizedFileURL }) {
             let (records, written) = await finderRecords(trash)
             for item in inTrash {
-                // A record older than the item is about something else that once had its name.
-                guard let record = records[item.lastPathComponent], let added = added(item),
-                      written.timeIntervalSince(added) > -2,
+                // A record older than the item is about something else that once had its name. (Disks that keep no
+                // such dates, like most USB sticks, can't tell: the record is taken.)
+                guard let record = records[item.lastPathComponent],
+                      arrived(item).map({ written.timeIntervalSince($0) > -2 }) ?? true,
                       let location = location(record, of: item, onDiskOf: trash) else { continue }
                 result[item] = location
             }
@@ -147,7 +161,23 @@ enum Trash {
             guard info.st_mode & S_IFMT == S_IFDIR, info.st_dev == device else { return nil }
         }
         url.append(path: record.name)
-        return isInTrash(url) ? nil : url
+        // Judged on the real path, so another spelling of a Trash's name ("Users/me/.TRASH/") can't slip through.
+        return isInTrash(url) || isInTrash(canonical(url)) ? nil : url
+    }
+
+    /// `url` with its deepest existing folder resolved by the system (real case, no links), the rest appended.
+    nonisolated private static func canonical(_ url: URL) -> URL {
+        var existing = url.deletingLastPathComponent()
+        var rest = [url.lastPathComponent]
+        while existing.path != "/", access(existing.path, F_OK) != 0 {
+            rest.insert(existing.lastPathComponent, at: 0)
+            existing.deleteLastPathComponent()
+        }
+        guard let real = realpath(existing.path, nil) else { return url }
+        defer { free(real) }
+        var result = URL(fileURLWithPath: String(cString: real), isDirectory: true)
+        for part in rest { result.append(path: part) }
+        return result
     }
 
     // MARK: - Emptying
@@ -159,29 +189,54 @@ enum Trash {
         empty(folders())
     }
 
-    /// Deletes everything in `trashes`, which must be Trash folders (see `folders()`). Before each deletion the Trash
-    /// folder must still be the same real folder it was when listed.
+    /// Deletes everything in `trashes`, which must be Trash folders (see `folders()`). Each Trash is opened once, never
+    /// through a link, and everything is deleted relative to that open folder: swapping a folder for a link while it
+    /// runs can't redirect the deletion anywhere else.
     nonisolated static func empty(_ trashes: [URL]) -> [(url: URL, error: Error)] {
         var failures: [(url: URL, error: Error)] = []
         for folder in trashes {
-            var before = stat()
-            guard lstat(folder.path, &before) == 0, before.st_mode & S_IFMT == S_IFDIR else { continue }
-            let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
-            for name in names {
-                var now = stat()
-                guard lstat(folder.path, &now) == 0, now.st_mode & S_IFMT == S_IFDIR,
-                      now.st_dev == before.st_dev, now.st_ino == before.st_ino else { break }
-                // Listed from the Trash itself, so each is directly inside it. removeItem deletes a symlink, not what
-                // it points to, and doesn't follow links inside folders.
-                let item = folder.appending(path: name)
-                do {
-                    try FileManager.default.removeItem(at: item)
-                } catch {
-                    if name != ".DS_Store" { failures.append((item, error)) }
+            let fd = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard fd >= 0 else { continue }
+            defer { close(fd) }
+            for name in entries(fd) {
+                let error = removeTree(in: fd, name)
+                if error != 0, name != ".DS_Store" {
+                    failures.append((folder.appending(path: name), POSIXError(POSIXErrorCode(rawValue: error) ?? .EIO)))
                 }
             }
         }
         return failures
+    }
+
+    /// The names in an open folder.
+    nonisolated private static func entries(_ fd: Int32) -> [String] {
+        let copy = dup(fd)
+        guard copy >= 0, let dir = fdopendir(copy) else { return [] }
+        defer { closedir(dir) }
+        var names: [String] = []
+        while let entry = readdir(dir) {
+            let name = withUnsafeBytes(of: entry.pointee.d_name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+            if name != ".", name != ".." { names.append(name) }
+        }
+        return names
+    }
+
+    /// Deletes `name` in the open folder `parent`: a file or link directly, a folder after its contents (opened without
+    /// following links). Returns 0, or the first error (a locked file, say).
+    nonisolated private static func removeTree(in parent: Int32, _ name: String) -> Int32 {
+        if unlinkat(parent, name, 0) == 0 { return 0 }
+        let unlinkError = errno
+        let fd = openat(parent, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        // Not a folder: why the file itself couldn't be deleted (locked, say).
+        guard fd >= 0 else { return errno == ENOTDIR || errno == ELOOP ? unlinkError : errno }
+        var firstError: Int32 = 0
+        for child in entries(fd) {
+            let error = removeTree(in: fd, child)
+            if firstError == 0 { firstError = error }
+        }
+        close(fd)
+        if unlinkat(parent, name, AT_REMOVEDIR) != 0, firstError == 0 { firstError = errno }
+        return firstError
     }
 
     // MARK: - Private
@@ -191,8 +246,11 @@ enum Trash {
         return lstat(url.path, &info) == 0 && (info.st_mode & S_IFMT) == S_IFDIR
     }
 
-    nonisolated private static func added(_ item: URL) -> Date? {
-        (try? item.resourceValues(forKeys: [.addedToDirectoryDateKey]))?.addedToDirectoryDate
+    /// When `item` arrived where it is: the date it was added to its folder, or, on disks that don't keep that (FAT,
+    /// exFAT), when its attributes last changed (a move updates it).
+    nonisolated private static func arrived(_ item: URL) -> Date? {
+        let values = try? item.resourceValues(forKeys: [.addedToDirectoryDateKey, .attributeModificationDateKey])
+        return values?.addedToDirectoryDate ?? values?.attributeModificationDate
     }
 
     /// Put Back records for one Trash and when they were written, read again only when the records file changes.
