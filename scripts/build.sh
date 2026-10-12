@@ -8,10 +8,22 @@
 #   scripts/build.sh            # release
 #   scripts/build.sh debug
 #   scripts/build.sh release --open
+#
+# Release builds (.github/workflows/release.yml) also set:
+#   STRATA_VERSION, STRATA_BUILD_NUMBER   stamped into Info.plist (version like 1.2.3, build number digits)
+#   STRATA_KEYCHAIN                       the keychain holding the signing identity
+#   STRATA_TIMESTAMP=1                    a secure timestamp on the signature, which notarization requires
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 config="${1:-release}"
+# Checked before anything is built or removed.
+if [[ -n "${STRATA_VERSION:-}" && ! "$STRATA_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]; then
+  echo "STRATA_VERSION must look like 1.2.3" >&2; exit 1
+fi
+if [[ -n "${STRATA_BUILD_NUMBER:-}" && ! "$STRATA_BUILD_NUMBER" =~ ^[0-9]+$ ]]; then
+  echo "STRATA_BUILD_NUMBER must be digits" >&2; exit 1
+fi
 swift build -c "$config" --arch arm64 --product Strata
 swift build -c "$config" --arch arm64 --product StrataCLI
 bins="$(swift build -c "$config" --arch arm64 --show-bin-path)"
@@ -23,14 +35,24 @@ cp "$bins/Strata" "$app/Contents/MacOS/Strata"
 # The command-line tool lives in Helpers: "strata" would clash with "Strata" in MacOS on a case-insensitive disk.
 cp "$bins/StrataCLI" "$app/Contents/Helpers/strata"
 cp Resources/Info.plist "$app/Contents/Info.plist"
+if [[ -n "${STRATA_VERSION:-}" ]]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $STRATA_VERSION" "$app/Contents/Info.plist"
+fi
+if [[ -n "${STRATA_BUILD_NUMBER:-}" ]]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $STRATA_BUILD_NUMBER" "$app/Contents/Info.plist"
+fi
 if [[ -f Resources/AppIcon.icns ]]; then cp Resources/AppIcon.icns "$app/Contents/Resources/"; fi
 
 identity="${STRATA_SIGNING_IDENTITY:-}"
 if [[ -z "$identity" ]]; then
   identity=$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)
 fi
-codesign --force --options runtime --sign "${identity:--}" "$app/Contents/Helpers/strata" >/dev/null
-codesign --force --options runtime --sign "${identity:--}" "$app" >/dev/null
+sign=(--force --options runtime --sign "${identity:--}")
+if [[ -n "${STRATA_KEYCHAIN:-}" ]]; then sign+=(--keychain "$STRATA_KEYCHAIN"); fi
+if [[ "${STRATA_TIMESTAMP:-}" == 1 && -n "$identity" ]]; then sign+=(--timestamp); fi
+# Inside out: the helper first, then the bundle that seals it.
+codesign "${sign[@]}" "$app/Contents/Helpers/strata" >/dev/null
+codesign "${sign[@]}" "$app" >/dev/null
 if [[ -n "$identity" ]]; then signer="Developer ID"; else signer="ad-hoc"; fi
 echo "Built $app ($config, signed $signer)"
 

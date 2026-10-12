@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Strata Files: the file manager your Mac deserves</title>
+  <meta name="description" content="Strata is a fast, native, keyboard-first file manager for macOS. Find anything in milliseconds, see exactly where your space went, and move files without fear. Free and open source.">
+  <link rel="canonical" href="https://stratafiles.app/">
+  <meta name="theme-color" content="#07060d">
+  <meta name="color-scheme" content="dark">
+
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://stratafiles.app/">
+  <meta property="og:site_name" content="Strata Files">
+  <meta property="og:title" content="Strata: the file manager your Mac deserves">
+  <meta property="og:description" content="Find anything in milliseconds, see where your space went, and fly through your files from the keyboard. Native, private, free.">
+  <meta property="og:image" content="https://stratafiles.app/assets/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Strata's window showing a folder with live sizes and a document summary">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="preload" as="image" href="screenshots/hero.png">
+  <link rel="stylesheet" href="styles.css">
+  <script>document.documentElement.classList.add('js')</script>
+  <script src="main.js" defer></script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Strata",
+    "alternateName": "Strata Files",
+    "operatingSystem": "macOS 26",
+    "applicationCategory": "UtilitiesApplication",
+    "url": "https://stratafiles.app/",
+    "downloadUrl": "https://github.com/cristipufu/strata/releases/latest",
+    "license": "https://opensource.org/licenses/MIT",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav" data-nav>
+    <div class="wrap nav__inner">
+      <a class="brand" href="#top" aria-label="Strata Files, back to top">
+        <img src="assets/icon-192.png" width="30" height="30" alt="">
+        <span>Strata <em>Files</em></span>
+      </a>
+      <nav class="nav__links" aria-label="Sections">
+        <a href="#features">Features</a>
+        <a href="#developers">Developers</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="nav__actions">
+        <a class="btn btn--ghost btn--sm nav__github" href="https://github.com/cristipufu/strata" aria-label="Strata on GitHub">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+          <span data-stars>GitHub</span>
+        </a>
+        <a class="btn btn--primary btn--sm" href="https://github.com/cristipufu/strata/releases/latest" data-download>Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- Hero -->
+    <section class="hero" id="top">
+      <div class="hero__bg" aria-hidden="true">
+        <div class="aurora aurora--1"></div>
+        <div class="aurora aurora--2"></div>
+        <div class="aurora aurora--3"></div>
+        <div class="contours"></div>
+      </div>
+      <div class="wrap hero__inner">
+        <a class="pill reveal" href="#summaries">
+          <span class="pill__badge">New</span>
+          Document summaries by Apple Intelligence, right on your Mac
+          <span aria-hidden="true" class="pill__arrow">→</span>
+        </a>
+        <h1 class="hero__title reveal">The file manager<br><span class="gradient-text">your Mac deserves.</span></h1>
+        <p class="hero__lede reveal">Strata finds anything in milliseconds, shows exactly where your space went, and lets you fly through your files from the keyboard. Native, private, and free.</p>
+        <div class="hero__cta reveal">
+          <a class="btn btn--primary btn--lg" href="https://github.com/cristipufu/strata/releases/latest" data-download>
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M10 3v10m0 0-4-4m4 4 4-4M4 16h12"/></svg>
+            Download for Mac
+          </a>
+          <a class="btn btn--ghost btn--lg" href="https://github.com/cristipufu/strata">View the source</a>
+        </div>
+        <p class="hero__meta reveal"><span data-version>Free and open source</span> <span class="dot">·</span> macOS 26 Tahoe <span class="dot">·</span> Apple silicon</p>
+      </div>
+      <div class="wrap hero__shot reveal">
+        <div class="hero__glow" aria-hidden="true"></div>
+        <img class="shot" src="screenshots/hero.png" width="1400" height="1006"
+             alt="Strata showing a folder with live sizes, a Markdown preview and an on-device summary in the inspector">
+      </div>
+    </section>
+
+    <!-- At a glance -->
+    <section class="facts wrap" aria-label="At a glance">
+      <div class="fact reveal"><strong>Milliseconds</strong><span>to search every file in your home folder, as you type</span></div>
+      <div class="fact reveal"><strong>100% native</strong><span>AppKit and Swift. No Electron, no web views</span></div>
+      <div class="fact reveal"><strong>Zero servers</strong><span>No accounts, no tracking, no cloud. Your files stay yours</span></div>
+      <div class="fact reveal"><strong>MIT licensed</strong><span>Free to use, and every line is open to read</span></div>
+    </section>
+
+    <!-- Why -->
+    <section class="section" id="features">
+      <div class="wrap">
+        <header class="section__head reveal">
+          <p class="eyebrow">Why Strata</p>
+          <h2>Everything you know from Finder.<br><span class="muted">Everything you wished it did.</span></h2>
+          <p class="lede">Strata keeps the look, the shortcuts, drag and drop, Quick Look and tabs. Then it adds the things Finder has been missing for years.</p>
+        </header>
+
+        <div class="bento">
+          <article class="tile tile--wide reveal" data-spotlight>
+            <div class="demo-search" aria-hidden="true">
+              <div class="demo-search__field">
+                <svg viewBox="0 0 20 20" width="18" height="18"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m13 13 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                <span class="demo-search__query" data-typewriter>videos bigger than 500 MB</span><span class="caret"></span>
+              </div>
+              <div class="demo-search__chips" data-chips><span>Movies</span><span>Over 500 MB</span></div>
+              <ul class="demo-search__results" data-results>
+                <li><span class="ficon ficon--video"></span>Launch Film (master).mov<em>3.57 GB</em></li>
+                <li><span class="ficon ficon--video"></span>Launch Film 1080p.mp4<em>1.26 GB</em></li>
+                <li><span class="ficon ficon--video"></span>Product Demo.mp4<em>671.1 MB</em></li>
+              </ul>
+            </div>
+            <h3>Search that keeps up with you</h3>
+            <p>Every file in your home folder and Applications, indexed and searchable as you type. Once the index is built, results land in milliseconds, even across millions of files.</p>
+          </article>
+
+          <article class="tile reveal" data-spotlight>
+            <ul class="demo-sizes" aria-hidden="true">
+              <li><span>Videos</span><i style="--w:100%"></i><em>5.71 GB</em></li>
+              <li><span>Design</span><i style="--w:58%"></i><em>3.33 GB</em></li>
+              <li><span>Backups</span><i style="--w:40%"></i><em>2.31 GB</em></li>
+              <li><span>Photos</span><i style="--w:29%"></i><em>1.65 GB</em></li>
+              <li><span>Audio</span><i style="--w:26%"></i><em>1.49 GB</em></li>
+            </ul>
+            <h3>Sizes you can trust</h3>
+            <p>Folders show their real size the moment you open them, and stay current as files change. No more “Calculating…”.</p>
+          </article>
+
+          <article class="tile reveal" data-spotlight>
+            <div class="demo-keys" aria-hidden="true">
+              <kbd class="key key--xl">⌘</kbd><kbd class="key key--xl">K</kbd>
+            </div>
+            <h3>Keyboard first</h3>
+            <p>Jump anywhere with ⌘K, type to filter any folder, and switch views with ⌘1 to ⌘4. The Finder shortcuts you know still work.</p>
+          </article>
+
+          <article class="tile tile--wide reveal" data-spotlight>
+            <div class="demo-copy" aria-hidden="true">
+              <div class="demo-copy__row">
+                <span class="demo-copy__title">Copying 1,204 items to <b>Backup</b></span>
+                <span class="demo-copy__btns"><span>Pause</span><span>Cancel</span></span>
+              </div>
+              <div class="demo-copy__bar"><i></i></div>
+              <div class="demo-copy__meta">2.1 GB of 3.3 GB <span class="dot">·</span> about 40 seconds left</div>
+              <div class="demo-copy__conflict">
+                <span class="ficon ficon--doc"></span>
+                <span>“Q3 Roadmap.md” already exists</span>
+                <span class="chip chip--add">+3</span><span class="chip chip--del">−1</span>
+                <span class="demo-copy__choice">Keep Both</span>
+              </div>
+            </div>
+            <h3>File operations without fear</h3>
+            <p>Pause and resume big copies. See conflicts side by side, with a diff for text files, before anything is replaced. Undo past operations, even after you quit.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Search -->
+    <section class="section section--tight" id="search">
+      <div class="wrap">
+        <header class="section__head reveal">
+          <p class="eyebrow">Search</p>
+          <h2>Find anything, instantly.</h2>
+          <p class="lede">Type a name, use precise filters, or just say what you mean. Strata understands plain English, shows you how it read your search, and answers before you finish typing.</p>
+          <ul class="tags">
+            <li>“pdfs from last month”</li>
+            <li><code>ext:swift modified:&lt;7d</code></li>
+            <li><code>size:&gt;1gb kind:movie</code></li>
+            <li>Saved searches stay live</li>
+          </ul>
+        </header>
+        <figure class="figure reveal">
+          <img class="shot" src="screenshots/search.png" width="1400" height="1006" loading="lazy"
+               alt="A plain-English search for videos bigger than 500 MB, with the results and how Strata read the query">
+        </figure>
+      </div>
+    </section>
+
+    <!-- Palette -->
+    <section class="section section--tight">
+      <div class="wrap split">
+        <div class="split__text reveal">
+          <p class="eyebrow">Command palette</p>
+          <h2>Jump anywhere with <kbd class="key key--inline">⌘</kbd><kbd class="key key--inline">K</kbd></h2>
+          <p class="lede">One shortcut opens a palette that knows your most-used folders, every file in the index, and all of Strata's commands. Type <code>acme-web/</code> to list a project's contents without opening a single window.</p>
+          <ul class="checks">
+            <li>The folders you use most come first</li>
+            <li>Type a path to list a folder's contents</li>
+            <li>Every command, searchable by name</li>
+          </ul>
+        </div>
+        <figure class="split__media reveal">
+          <img class="shot" src="screenshots/palette.png" width="1400" height="1006" loading="lazy"
+               alt="The command palette listing the contents of a project folder">
+        </figure>
+      </div>
+    </section>
+
+    <!-- Disk usage -->
+    <section class="section section--tight">
+      <div class="wrap">
+        <header class="section__head reveal">
+          <p class="eyebrow">Disk usage</p>
+          <h2>See where your space went.</h2>
+          <p class="lede">Switch any folder to <b>Disk Usage</b> and see it as a map, sized by what's inside. Then use <b>Large Files</b> and <b>Duplicates</b> in the sidebar to reclaim gigabytes in minutes.</p>
+        </header>
+        <figure class="figure reveal">
+          <img class="shot" src="screenshots/treemap.png" width="1400" height="1006" loading="lazy"
+               alt="The disk usage map of a folder, with Videos taking the largest share">
+        </figure>
+      </div>
+    </section>
+
+    <!-- Views -->
+    <section class="section section--tight">
+      <div class="wrap">
+        <header class="section__head reveal">
+          <p class="eyebrow">Views</p>
+          <h2>Four views. Two panes.</h2>
+          <p class="lede">Icons, List, Columns and Disk Usage, one keystroke apart, just like Finder. Turn on <b>Dual Pane</b> to work with two folders side by side and copy or move between them with a keystroke.</p>
+        </header>
+        <div class="tabs reveal" data-tabs>
+          <div class="tabs__list" role="tablist" aria-label="Views">
+            <button role="tab" id="tab-icons" aria-controls="panel-icons" aria-selected="true">Icons <kbd>⌘1</kbd></button>
+            <button role="tab" id="tab-list" aria-controls="panel-list" aria-selected="false" tabindex="-1">List <kbd>⌘2</kbd></button>
+            <button role="tab" id="tab-dual" aria-controls="panel-dual" aria-selected="false" tabindex="-1">Dual Pane</button>
+          </div>
+          <div class="tabs__panels">
+            <figure role="tabpanel" id="panel-icons" aria-labelledby="tab-icons">
+              <img class="shot" src="screenshots/grid.png" width="1400" height="1006" loading="lazy" alt="Icon view with image thumbnails">
+            </figure>
+            <figure role="tabpanel" id="panel-list" aria-labelledby="tab-list" hidden>
+              <img class="shot" src="screenshots/hero.png" width="1400" height="1006" loading="lazy" alt="List view with folder sizes">
+            </figure>
+            <figure role="tabpanel" id="panel-dual" aria-labelledby="tab-dual" hidden>
+              <img class="shot" src="screenshots/dual.png" width="1400" height="1006" loading="lazy" alt="Dual pane with a project and a folder of images">
+            </figure>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Developers -->
+    <section class="section" id="developers">
+      <div class="wrap">
+        <header class="section__head reveal">
+          <p class="eyebrow">For developers</p>
+          <h2>It knows your projects.</h2>
+          <p class="lede">Every file shows its git status, and the current branch sits in the path bar. The inspector recognizes Node, Rust, Swift, .NET, Python, Go and more, lists a project's scripts, and frees the space taken by build folders like <code>node_modules</code> in a click. They go to the Trash, so nothing is lost.</p>
+        </header>
+        <div class="tabs reveal" data-tabs>
+          <div class="tabs__list" role="tablist" aria-label="Developer features">
+            <button role="tab" id="tab-git" aria-controls="panel-git" aria-selected="true">Git &amp; previews</button>
+            <button role="tab" id="tab-project" aria-controls="panel-project" aria-selected="false" tabindex="-1">Project inspector</button>
+          </div>
+          <div class="tabs__panels">
+            <figure role="tabpanel" id="panel-git" aria-labelledby="tab-git">
+              <img class="shot" src="screenshots/devmode.png" width="1400" height="1006" loading="lazy" alt="Git badges on files, the branch in the path bar and a syntax-highlighted code preview">
+              <figcaption>Git status on every file, and previews for code, Markdown, JSON, CSV, SQLite and archives.</figcaption>
+            </figure>
+            <figure role="tabpanel" id="panel-project" aria-labelledby="tab-project" hidden>
+              <img class="shot" src="screenshots/project.png" width="1400" height="1006" loading="lazy" alt="The project inspector with the branch, changes, build artifacts and scripts">
+              <figcaption>The project inspector: branch, changes, build artifacts to clean and scripts to run.</figcaption>
+            </figure>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Everything else -->
+    <section class="section section--tight" id="summaries">
+      <div class="wrap">
+        <header class="section__head reveal">
+          <p class="eyebrow">And more</p>
+          <h2>Everything else you'd expect, done right.</h2>
+        </header>
+        <div class="cards">
+          <article class="card reveal" data-spotlight>
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="12" height="13" rx="2.5"/><path d="M9 4h9.5A2.5 2.5 0 0 1 21 6.5V16"/><path d="M9 13.5h4m-2-2 2 2-2 2"/></svg>
+            <h3>Copy queue</h3>
+            <p>Big copies run in the background with progress you can pause, resume or cancel. Turn on <b>Verify copies</b> to check every byte arrived.</p>
+          </article>
+          <article class="card reveal" data-spotlight>
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3 4v4h4"/><path d="M12 8v4.5l3 2"/></svg>
+            <h3>History</h3>
+            <p>Renames, moves, copies and deletions are recorded. Undo them later, even days later and after a restart.</p>
+          </article>
+          <article class="card reveal" data-spotlight>
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3.5 2"/></svg>
+            <h3>Recents</h3>
+            <p>Files you changed in the last 7 days, across your home folder, in one place.</p>
+          </article>
+          <article class="card reveal" data-spotlight>
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 13.5 6 5.5h12l2.5 8"/><path d="M3.5 13.5v4A2.5 2.5 0 0 0 6 20h12a2.5 2.5 0 0 0 2.5-2.5v-4h-5a3.5 3.5 0 0 1-7 0z"/></svg>
+            <h3>Shelf</h3>
+            <p>Collect files from anywhere, then drop them all at once wherever they need to go.</p>
+          </article>
+          <article class="card reveal" data-spotlight>
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M9 4.5v15M5.5 8.5h1.5m-1.5 3h1.5"/></svg>
+            <h3>Your sidebar</h3>
+            <p>Drag folders into Favorites, reorder them, eject disks. Windows and tabs come back where you left them.</p>
+          </article>
+          <article class="card reveal" data-spotlight>
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/></svg>
+            <h3>Workspaces</h3>
+            <p>Save a set of tabs and panes, and reopen them together with one click.</p>
+          </article>
+          <article class="card reveal" data-spotlight>
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5c.6 3.9 2.6 5.9 6.5 6.5-3.9.6-5.9 2.6-6.5 6.5-.6-3.9-2.6-5.9-6.5-6.5 3.9-.6 5.9-2.6 6.5-6.5Z"/><path d="M18.5 15.5c.3 1.6 1 2.3 2.5 2.5-1.5.3-2.2 1-2.5 2.5-.3-1.5-1-2.2-2.5-2.5 1.5-.2 2.2-.9 2.5-2.5Z"/></svg>
+            <h3>Ask Strata</h3>
+            <p>Describe a bulk change, like “rename these photos by date taken”, and review the plan before anything happens.</p>
+          </article>
+          <article class="card reveal" data-spotlight>
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8l4.5 4.5v10A2.5 2.5 0 0 1 16 20.5H6A2.5 2.5 0 0 1 3.5 18V6A2.5 2.5 0 0 1 6 3.5Z"/><path d="M14 3.5V8h4.5M7.5 12.5h7m-7 3.5h4.5"/></svg>
+            <h3>Summaries</h3>
+            <p>The gist of a PDF or document in the inspector, written by Apple Intelligence, or its key sentences without it.</p>
+          </article>
+          <article class="card reveal" data-spotlight>
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="m7 9.5 3 2.5-3 2.5M12.5 15h4.5"/></svg>
+            <h3>Command line</h3>
+            <p><code>strata .</code> opens the current folder, and <code>strata -s "invoice pdf"</code> searches, right from your terminal.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Keyboard -->
+    <section class="section section--tight">
+      <div class="wrap split split--reverse">
+        <div class="split__text reveal">
+          <p class="eyebrow">Keyboard first</p>
+          <h2>Hands on the keys.</h2>
+          <p class="lede">Most actions have a shortcut, and the ones you know from Finder work the same way. Can't remember one? Press <kbd class="key key--inline">⌘</kbd><kbd class="key key--inline">/</kbd> and search them.</p>
+          <div class="keygrid" aria-label="A few shortcuts">
+            <div><span><kbd>⌘</kbd><kbd>K</kbd></span>Command palette</div>
+            <div><span><kbd>⌘</kbd><kbd>L</kbd></span>Type a path</div>
+            <div><span><kbd>⌘</kbd><kbd>1</kbd>–<kbd>4</kbd></span>Switch views</div>
+            <div><span><kbd>Space</kbd></span>Quick Look</div>
+            <div><span><kbd>a–z</kbd></span>Filter this folder</div>
+            <div><span><kbd>⇧</kbd><kbd>⌘</kbd><kbd>F</kbd></span>Recents</div>
+          </div>
+        </div>
+        <figure class="split__media split__media--narrow reveal">
+          <img class="shot" src="screenshots/shortcuts.png" width="804" height="900" loading="lazy" alt="The keyboard shortcuts window">
+        </figure>
+      </div>
+    </section>
+
+    <!-- Privacy -->
+    <section class="section" id="privacy">
+      <div class="wrap">
+        <header class="section__head reveal">
+          <p class="eyebrow">Privacy</p>
+          <h2>Private by design.</h2>
+          <p class="lede">Strata runs entirely on your Mac. There's no account to create, nothing to sign in to, and nothing phoning home.</p>
+        </header>
+        <div class="trio">
+          <article class="card card--tall reveal" data-spotlight>
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12.5" rx="2.5"/><path d="M8.5 20h7M12 16.5V20"/></svg>
+            <h3>On your Mac, only</h3>
+            <p>Search, summaries and AI features run locally. No accounts, no tracking, no cloud. Your files and your searches never leave the machine.</p>
+          </article>
+          <article class="card card--tall reveal" data-spotlight>
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3M12 14.5v2.5"/></svg>
+            <h3>Encrypted at rest</h3>
+            <p>Strata's file index, content index and history are encrypted on disk, with a key kept in your keychain.</p>
+          </article>
+          <article class="card card--tall reveal" data-spotlight>
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.5 3.1 8 7.5 9.5 4.4-1.5 7.5-5 7.5-9.5V6z"/><path d="m8.8 12 2.2 2.2 4.2-4.4"/></svg>
+            <h3>Safe with code you didn't write</h3>
+            <p>A folder can't run its own code just because you looked at it. Strata switches off the git features a downloaded repository could use to do that.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Free -->
+    <section class="section section--tight">
+      <div class="wrap">
+        <div class="offer reveal">
+          <div class="offer__text">
+            <p class="eyebrow">Pricing</p>
+            <h2>Free. Open source.<br><span class="gradient-text">Made for the Mac.</span></h2>
+            <p class="lede">Strata is MIT licensed. Download it, use it every day, read every line of it, and help shape what comes next.</p>
+          </div>
+          <div class="offer__card">
+            <div class="offer__price"><span class="offer__amount">$0</span><span class="offer__per">every feature included</span></div>
+            <ul class="checks">
+              <li>Search, sizes, Disk Usage and Duplicates</li>
+              <li>Four views, dual pane, workspaces and tabs</li>
+              <li>Copy queue, History and undo</li>
+              <li>Git, project inspector and rich previews</li>
+              <li>On-device summaries and Ask Strata</li>
+              <li>Signed and notarized by Apple</li>
+            </ul>
+            <a class="btn btn--primary btn--lg btn--block" href="https://github.com/cristipufu/strata/releases/latest" data-download>Download for Mac</a>
+            <a class="btn btn--ghost btn--lg btn--block" href="https://github.com/cristipufu/strata">Star on GitHub</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section section--tight" id="faq">
+      <div class="wrap faq">
+        <header class="section__head section__head--left reveal">
+          <p class="eyebrow">FAQ</p>
+          <h2>Questions, answered.</h2>
+        </header>
+        <div class="faq__list">
+          <details class="reveal">
+            <summary>What do I need to run Strata?</summary>
+            <p>A Mac with Apple silicon running macOS 26 Tahoe. Apple Intelligence is optional: without it, summaries fall back to a document's key sentences and Ask Strata to its built-in rules.</p>
+          </details>
+          <details class="reveal">
+            <summary>Does it replace Finder?</summary>
+            <p>It works alongside Finder, so you can try it without giving anything up. If you like it, turn on <b>Open “Reveal in Finder” in Strata</b> in Settings, and apps that show files in Finder open Strata instead.</p>
+          </details>
+          <details class="reveal">
+            <summary>Why does it ask for Full Disk Access?</summary>
+            <p>So it can search and measure everything without macOS asking you folder by folder. It's optional, and Strata walks you through it on first launch. Without it, Strata still works with the folders you open.</p>
+          </details>
+          <details class="reveal">
+            <summary>Is it safe to download?</summary>
+            <p>Every release is signed with a Developer ID and notarized by Apple, so macOS opens it without warnings. The source is public, and each release lists SHA-256 checksums.</p>
+          </details>
+          <details class="reveal">
+            <summary>Does Strata collect any data?</summary>
+            <p>No. There are no accounts, no analytics and no servers. The search index and history stay on your Mac, encrypted.</p>
+          </details>
+          <details class="reveal">
+            <summary>How do I update?</summary>
+            <p>Download the latest version from this page or from GitHub Releases and replace the app in your Applications folder. Strata doesn't check for updates on its own, because it doesn't connect to anything.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta">
+      <div class="cta__bg" aria-hidden="true"><div class="contours"></div></div>
+      <div class="wrap cta__inner reveal">
+        <img class="cta__icon" src="assets/icon-512.png" width="128" height="128" alt="">
+        <h2>Give your files<br><span class="gradient-text">a better home.</span></h2>
+        <div class="hero__cta">
+          <a class="btn btn--primary btn--lg" href="https://github.com/cristipufu/strata/releases/latest" data-download>
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M10 3v10m0 0-4-4m4 4 4-4M4 16h12"/></svg>
+            Download for Mac
+          </a>
+        </div>
+        <p class="hero__meta"><span data-version>Free and open source</span> <span class="dot">·</span> macOS 26 Tahoe <span class="dot">·</span> Apple silicon</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer__inner">
+      <a class="brand" href="#top"><img src="assets/icon-192.png" width="24" height="24" alt=""><span>Strata <em>Files</em></span></a>
+      <nav class="footer__links" aria-label="Links">
+        <a href="https://github.com/cristipufu/strata">GitHub</a>
+        <a href="https://github.com/cristipufu/strata/releases">Releases</a>
+        <a href="https://github.com/cristipufu/strata/issues">Report an issue</a>
+        <a href="https://github.com/cristipufu/strata/blob/main/LICENSE">MIT License</a>
+      </nav>
+      <p class="footer__fine">© 2026 Cristian Pufu. Strata is not affiliated with Apple Inc. Mac, macOS, Finder and Apple Intelligence are trademarks of Apple Inc.</p>
+    </div>
+  </footer>
+</body>
+</html>

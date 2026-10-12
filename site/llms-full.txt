@@ -1,0 +1,89 @@
+# Strata Files
+
+> Strata is a free, open-source (MIT) file manager for macOS, built natively in Swift and AppKit. It keeps what people know from Finder (the look, the shortcuts, drag and drop, Quick Look, tabs) and adds instant search, live folder sizes, a disk-usage map, a command palette, dual pane, a copy queue, undoable history, developer features and on-device summaries. Everything runs on the Mac.
+
+- Website: https://stratafiles.app
+- Download: https://github.com/cristipufu/strata/releases/latest (Strata.dmg or Strata.zip, signed with a Developer ID and notarized by Apple; SHA256SUMS.txt lists checksums)
+- Source: https://github.com/cristipufu/strata
+- Requirements: macOS 26 Tahoe on a Mac with Apple silicon. Apple Intelligence is optional; without it, summaries use a document's key sentences and Ask Strata uses built-in rules.
+- Price: free. License: MIT. Made by Cristian Pufu.
+- Status: early development. Strata doesn't check for updates on its own; new versions are published on GitHub Releases.
+
+## Search
+
+Strata indexes every file in the home folder and Applications. Once the index is built, results arrive in milliseconds as you type, even across millions of files. Searches can be saved to the sidebar and stay live as files change.
+
+Plain English works: "videos bigger than 500 MB", "pdfs from last month". Strata shows how it read the query (for example "Movies · Over 500 MB").
+
+Filters can be combined with words:
+
+- `ext:pdf` or `*.pdf`: by extension (several with commas: `ext:jpg,png`)
+- `kind:` (also `type:`, `is:`): folder, file, image, video, audio, document, code, archive, app
+- `size:`: `>10mb`, `<1gb`, `10mb..1gb`, or empty, tiny, small, medium, large, huge
+- `modified:`: `<7d` (changed in the last 7 days), `>30d` (older than 30 days), today, yesterday, week, month
+- `in:~/Documents` or `in:projects`: limit to a folder (by path or by folder name)
+- `-draft` or `!draft`: exclude a word
+- `src/app`: match parts of a path
+- Accents and Unicode normalization are ignored, so "cafe" finds "café".
+
+## Navigation
+
+- Command palette (⌘K): the most-used folders first, files from the index, and every command by name. Typing a path such as `acme-web/` lists that folder's contents.
+- Type a path (⌘L) with Tab completion; Go to Folder (⇧⌘G).
+- Type in any folder to filter it (fuzzy); Return opens the top match, Esc clears the filter.
+- Four views, one keystroke apart like Finder: Icons (⌘1), List (⌘2), Columns (⌘3), Disk Usage (⌘4).
+- Dual Pane (⌘\): two folders side by side; copy or move between them with a keystroke.
+- Tabs, Workspaces (a saved set of tabs and panes), and windows that reopen where you left them.
+- Sidebar: Favorites you can drag in and reorder, frequent folders, Large Files, Duplicates, disks with Eject.
+- Recents: files changed in the last 7 days across the home folder.
+- Shelf: collect files from anywhere, then drop them all at once.
+- Settings ▸ "Open Reveal in Finder in Strata": apps that show files in Finder open Strata instead.
+
+## Space
+
+- Folder sizes appear as soon as a folder opens and stay current as files change.
+- Disk Usage shows a folder as a map sized by its contents, with a legend by kind.
+- Large Files and Duplicates find what to clean up.
+
+## File operations
+
+- A copy queue runs big copies in the background with pause, resume and cancel.
+- Conflicts are asked up front, with a side-by-side comparison and a diff for text files: Skip, Keep Both, Replace, or Merge for folders.
+- Settings ▸ Verify copies reads every copied file back and compares it with the original.
+- Moves between disks keep the original if it changed while copying.
+- History records renames, moves, copies and deletions; they can be undone later, even after a restart, as long as the items are where they were left.
+
+## For developers
+
+- Git status on every file in every view, and the current branch in the path bar.
+- The project inspector recognizes Node, Rust, Swift, .NET, Python, Go and more, lists the project's scripts, and cleans build folders such as node_modules (they go to the Trash).
+- Previews for code (syntax highlighted, with line numbers), Markdown, JSON, CSV, SQLite databases and archives.
+- Command line: install from Settings, then `strata .` opens the current folder and `strata -s "invoice pdf"` searches. URL scheme: `strata://open?path=…`, `strata://search?q=…&in=…`, `strata://recents`, `strata://duplicates`.
+
+## On-device intelligence
+
+- Summaries: the gist of a PDF or document in the inspector, written by Apple Intelligence on the Mac, or its key sentences without it.
+- Ask Strata: describe a bulk change ("rename these photos by date taken") and review the plan before anything happens.
+
+## Privacy and security
+
+- No accounts, no analytics, no servers. Strata's code makes no network requests; files and searches never leave the Mac.
+- The file index, content index and history are encrypted on disk (AES-GCM) with a key kept in the login keychain.
+- Browsing a folder can't run code from it: Strata switches off the git features a downloaded repository could use for that (fsmonitor, hooks, filters, lazy fetches).
+- Full Disk Access is optional; it lets Strata search and measure everything without macOS asking folder by folder.
+
+## Keyboard shortcuts (a selection)
+
+- ⌘K command palette · ⌘L type a path · ⇧⌘G go to folder
+- ⌘[ back · ⌘] forward · ⌘↑ enclosing folder · ⌘↓ open
+- ⌘1 to ⌘4 views · ⌘\ dual pane · ⌘I inspector · Space Quick Look
+- ⇧⌘N new folder · ⇧⌘F Recents · ⇧⌘H Home · ⇧⌘D Desktop · ⇧⌘O Documents · ⌥⌘L Downloads · ⇧⌘A Applications
+- ⌘/ the searchable list of every shortcut
+
+## FAQ
+
+- Does it replace Finder? It works alongside Finder. Turning on "Open Reveal in Finder in Strata" makes other apps open Strata.
+- Is it safe to download? Releases are signed with a Developer ID and notarized by Apple, and each release lists SHA-256 checksums.
+- Does it collect data? No.
+- How do I update? Download the latest release and replace the app in Applications.
+- Can I build it myself? Yes: `git clone https://github.com/cristipufu/strata.git && cd strata && scripts/build.sh release --open` (needs the Swift toolchain).
