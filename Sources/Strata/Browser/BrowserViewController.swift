@@ -137,6 +137,7 @@ final class BrowserViewController: NSViewController {
     var gridController: GridViewController?
     var columnController: ColumnBrowserViewController?
     var treemapController: TreemapViewController?
+    var galleryController: GalleryViewController?
 
     func setStoredMode(_ newMode: BrowserViewMode) { mode = newMode }
     var outlineScrollView: NSScrollView { scrollView }
@@ -426,7 +427,7 @@ final class BrowserViewController: NSViewController {
         rows = []
         nodesByPath = [:]
         outlineView.reloadData()
-        // Icons, Columns and Disk Usage keep their own copy of the items: clear it too.
+        // Icons, Columns, Gallery and Disk Usage keep their own copy of the items: clear it too.
         pushContent()
         updateEmptyState()
         delegate?.browserContentDidChange(self)
@@ -667,7 +668,7 @@ final class BrowserViewController: NSViewController {
         nodes = sorted
         rows = sorted
         outlineView.endUpdates()
-        if mode == .grid || mode == .columns { pushContent() }
+        if mode == .grid || mode == .columns || mode == .gallery { pushContent() }
     }
 
     private func folderSizeArrived(_ url: URL) {
@@ -1023,6 +1024,7 @@ final class BrowserViewController: NSViewController {
         clipboardChanged()
         gridController?.refreshVisibleItems(reconfigure: true)
         columnController?.refreshVisibleRows()
+        galleryController?.refreshVisibleItems()
     }
 
     @objc private func clipboardChanged() {

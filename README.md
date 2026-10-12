@@ -54,10 +54,10 @@ your folders as a map, then use **Large Files** and **Duplicates** in the sideba
 
 <p align="center"><img src="docs/screenshots/treemap.png" alt="The disk usage map of a folder" width="820"></p>
 
-## Four views. Two panes.
+## Five views. Two panes.
 
-Icons, List, Columns and Disk Usage, one keystroke apart (⌘1–⌘4, like Finder). Turn on **Dual Pane** to work with
-two folders side by side and copy or move between them with a keystroke.
+Icons, List, Columns, Gallery and Disk Usage, one keystroke apart (⌘1–⌘5, in Finder's order). Turn on **Dual Pane**
+to work with two folders side by side and copy or move between them with a keystroke.
 
 <table>
   <tr>

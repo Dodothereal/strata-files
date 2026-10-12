@@ -383,7 +383,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         viewModeItem?.selectedIndex = browser.mode.position
     }
 
-    /// Keeps the toolbar's view switcher in sync when ⌘1–⌘4 change the mode.
+    /// Keeps the toolbar's view switcher in sync when ⌘1–⌘5 change the mode.
     @objc func syncViewMode(_ sender: Any?) {
         browser.setViewMode(sender)
         viewModeItem?.selectedIndex = browser.mode.position

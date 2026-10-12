@@ -107,7 +107,11 @@ extension BrowserWindowController {
             command("View as Icons", "square.grid.2x2", "⌘1") { [weak self] in self?.browser.setMode(.grid); self?.syncViewModeItem() },
             command("View as List", "list.bullet", "⌘2") { [weak self] in self?.browser.setMode(.list); self?.syncViewModeItem() },
             command("View as Columns", "rectangle.split.3x1", "⌘3") { [weak self] in self?.browser.setMode(.columns); self?.syncViewModeItem() },
-            command("View as Disk Usage", "square.split.bottomrightquarter", "⌘4") { [weak self] in
+            command("View as Gallery", "squares.below.rectangle", "⌘4") { [weak self] in
+                self?.browser.setMode(.gallery)
+                self?.syncViewModeItem()
+            },
+            command("View as Disk Usage", "square.split.bottomrightquarter", "⌘5") { [weak self] in
                 self?.browser.setMode(.treemap)
                 self?.syncViewModeItem()
             },

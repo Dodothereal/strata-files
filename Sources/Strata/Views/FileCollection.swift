@@ -67,12 +67,12 @@ extension URL {
     }
 }
 
-/// The browser's presentations. Raw values are what Prefs stores; `ordered` is the toolbar and ⌘1–⌘4 order, which
-/// matches Finder (⌘1 Icons, ⌘2 List, ⌘3 Columns).
+/// The browser's presentations. Raw values are what Prefs stores (new ones go at the end); `ordered` is the toolbar and
+/// ⌘1–⌘5 order, which matches Finder (⌘1 Icons, ⌘2 List, ⌘3 Columns, ⌘4 Gallery), then Disk Usage.
 enum BrowserViewMode: Int, CaseIterable {
-    case list, grid, columns, treemap
+    case list, grid, columns, treemap, gallery
 
-    static let ordered: [BrowserViewMode] = [.grid, .list, .columns, .treemap]
+    static let ordered: [BrowserViewMode] = [.grid, .list, .columns, .gallery, .treemap]
     /// Index in `ordered` (toolbar segment, and ⌘ number minus one).
     var position: Int { Self.ordered.firstIndex(of: self) ?? 0 }
 
@@ -81,6 +81,7 @@ enum BrowserViewMode: Int, CaseIterable {
         case .list: "List"
         case .grid: "Icons"
         case .columns: "Columns"
+        case .gallery: "Gallery"
         case .treemap: "Disk Usage"
         }
     }
@@ -92,6 +93,7 @@ enum BrowserViewMode: Int, CaseIterable {
         case .list: "list.bullet"
         case .grid: "square.grid.2x2"
         case .columns: "rectangle.split.3x1"
+        case .gallery: "squares.below.rectangle"
         case .treemap: "square.split.bottomrightquarter"
         }
     }
@@ -109,14 +111,14 @@ enum BrowserViewMode: Int, CaseIterable {
                                        labels: modes.map(\.title), target: target, action: action)
         group.label = "View"
         group.paletteLabel = "View Mode"
-        group.toolTip = "Change how items are shown (⌘1–⌘4)"
+        group.toolTip = "Change how items are shown (⌘1–⌘5)"
         group.controlRepresentation = .expanded
         for (item, mode) in zip(group.subitems, modes) { item.toolTip = "\(mode.menuTitle) (⌘\(mode.keyEquivalent))" }
         group.selectedIndex = 0
         return group
     }
 
-    /// View menu items "as Icons" … "as Disk Usage" with ⌘1–⌘4; each item's tag is the mode's raw value.
+    /// View menu items "as Icons" … "as Disk Usage" with ⌘1–⌘5; each item's tag is the mode's raw value.
     static func menuItems(action: Selector) -> [NSMenuItem] {
         ordered.map { mode in
             let item = NSMenuItem(title: mode.menuTitle, action: action, keyEquivalent: mode.keyEquivalent)

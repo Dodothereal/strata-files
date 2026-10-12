@@ -1,7 +1,7 @@
 import AppKit
 import Quartz
 
-/// List, icons, columns and disk usage: the other presentations are child view controllers fed the same rows.
+/// List, icons, columns, gallery and disk usage: the other presentations are child view controllers fed the same rows.
 extension BrowserViewController {
     /// Results (search, Recents, Duplicates) have no single folder, so they always use the list.
     var effectiveMode: BrowserViewMode { isShowingResults ? .list : mode }
@@ -11,6 +11,7 @@ extension BrowserViewController {
         case .list: nil
         case .grid: grid
         case .columns: columns
+        case .gallery: gallery
         case .treemap: treemap
         }
     }
@@ -59,7 +60,7 @@ extension BrowserViewController {
     /// Shows the active presentation's view on top of the list (the list's scroll view hides).
     func installActiveView() {
         let active = activeView
-        for controller in [gridController, columnController, treemapController] as [NSViewController?] {
+        for controller in [gridController, columnController, galleryController, treemapController] as [NSViewController?] {
             guard let controller, controller !== active, controller.isViewLoaded else { continue }
             controller.view.removeFromSuperview()
         }
@@ -98,6 +99,9 @@ extension BrowserViewController {
         case .columns:
             columns.sortComparator = { [weak self] a, b in self?.ordered(a, b) ?? (a.name.localizedStandardCompare(b.name) == .orderedAscending) }
             columns.setRoot(directory, entries: shown.map(\.entry), matches: matches)
+        case .gallery:
+            gallery.directory = directory
+            gallery.setEntries(shown.map(\.entry))
         case .treemap:
             // Folders that can't be measured without Full Disk Access would silently shrink the total: say so.
             treemap.unmeasured = shown.filter {
@@ -131,6 +135,14 @@ extension BrowserViewController {
             delegate?.browser(self, columnLocationChanged: url)
         }
         columnController = controller
+        return controller
+    }
+
+    var gallery: GalleryViewController {
+        if let galleryController { return galleryController }
+        let controller = GalleryViewController()
+        controller.fileDelegate = self
+        galleryController = controller
         return controller
     }
 
