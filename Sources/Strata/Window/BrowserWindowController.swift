@@ -79,6 +79,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         pathBar.onFinishEditing = { [weak self] in self?.focusList() }
         split.scopeBar.onScopeChange = { [weak self] everywhere in self?.changeSearchScope(everywhere: everywhere) }
         split.scopeBar.onSave = { [weak self] in self?.saveSearch() }
+        split.scopeBar.onMatchCase = { [weak self] on in self?.setSearchCase(on) }
         NotificationCenter.default.addObserver(self, selector: #selector(indexPhaseChanged), name: .indexPhaseDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
@@ -261,7 +262,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             window?.title = Self.searchTitle(text)
             window?.representedURL = nil
             split.scopeBar.configure(folderName: Places.displayName((scope ?? location)),
-                                     everywhere: scope == nil)
+                                     everywhere: scope == nil, matchCase: IndexQuery.isCaseSensitive(text),
+                                     caseApplies: Self.caseApplies(text))
             split.scopeBar.setSummary(pane.searchSummary)
             split.scopeBar.isHidden = false
             split.noticeBar.hide()
@@ -410,6 +412,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         if case .search(_, let scope) = destination {
             destination = .search(query, scope: scope)
             window?.title = Self.searchTitle(query)
+            // Typing or deleting case: shows on the checkbox.
+            split.scopeBar.setMatchCase(IndexQuery.isCaseSensitive(query), applies: Self.caseApplies(query))
             updateHeaders()
             runSearch(in: pane)
         } else {
@@ -429,6 +433,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private func changeSearchScope(everywhere: Bool) {
         guard case .search(let text, _) = destination else { return }
         destination = .search(text, scope: everywhere ? nil : location)
+        runSearch(in: pane)
+    }
+
+    /// Whether Match Case means anything for `text`: not for Spotlight's searches or plain-English readings.
+    private static func caseApplies(_ text: String) -> Bool {
+        SpotlightQuery.parse(text) == nil && NaturalQuery.interpret(text) == nil
+    }
+
+    /// Match Case: the same search with `case:` added or taken out (so a saved search keeps it).
+    private func setSearchCase(_ on: Bool) {
+        guard case .search(let text, let scope) = destination else { return }
+        let updated = IndexQuery.settingCase(on, in: text)
+        guard updated != text, !updated.isEmpty else { return }
+        destination = .search(updated, scope: scope)
+        updateChrome()
         runSearch(in: pane)
     }
 
@@ -477,6 +496,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                 }
                 p.folderSearch?.cancel()
                 p.folderSearch = nil
+                let givenUpBefore = NameRegex.namesGivenUp
                 guard let result = await FileIndex.shared.understand(text, in: scope) else {
                     p.browser.showMessage(symbol: "hourglass", title: "Indexing…", message: "Search works as soon as the first index is built.")
                     return
@@ -506,6 +526,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                     : "\(Format.count(result.total + byContent.count, "result", "results")) \(place)"
                 if !byContent.isEmpty { summary += " · \(byContent.count) by content" }
                 if let filter = result.interpretation { summary += " · " + filter.summary }
+                if NameRegex.namesGivenUp > givenUpBefore { summary += " · the pattern took too long on some names, so they’re left out" }
                 showSummary(summary, for: p)
             case .recents:
                 guard let hits = await FileIndex.shared.recentFiles() else {

@@ -7,7 +7,8 @@ nonisolated enum NaturalQuery {
         let syntax = IndexQuery.parse(text)
         guard syntax.extensions.isEmpty, syntax.kind == nil, syntax.minSize == nil, syntax.maxSize == nil,
               syntax.modifiedAfter == nil, syntax.modifiedBefore == nil, syntax.scopePath == nil,
-              syntax.scopeNames.isEmpty, syntax.pathTerms.isEmpty, syntax.excludedTerms.isEmpty else { return nil }
+              syntax.scopeNames.isEmpty, syntax.pathTerms.isEmpty, syntax.excludedTerms.isEmpty,
+              syntax.regex == nil, !syntax.invalidRegex, !syntax.caseSensitive else { return nil }
         let filter = QueryInterpreter.parse(text).filter
         guard !filter.kinds.isEmpty || !filter.extensions.isEmpty || filter.minSize != nil || filter.maxSize != nil
                 || filter.modifiedAfter != nil || filter.modifiedBefore != nil else { return nil }

@@ -42,16 +42,39 @@ nonisolated struct IndexQuery: Sendable {
     var scopeNames: [[UInt8]] = []
     var includeNoise = false
     var includeHidden = false
+    /// `regex:pattern`: names must match it (ignoring case unless `case:` is on). An invalid pattern matches nothing.
+    var regex: NameRegex?
+    var invalidRegex = false
+    /// `case:` (the scope bar's Match Case): name words and the pattern compare letters exactly, case and accents.
+    var caseSensitive = false
 
-    /// Anything beyond plain name words (extensions, kind, size, dates, exclusions, folder parts).
+    /// Anything beyond plain name words (extensions, kind, size, dates, exclusions, folder parts, a pattern).
     var hasFilters: Bool {
         !extensions.isEmpty || kind != nil || minSize != nil || maxSize != nil || modifiedAfter != nil
             || modifiedBefore != nil || !excludedTerms.isEmpty || !scopeNames.isEmpty || !pathTerms.isEmpty
+            || regex != nil || invalidRegex || caseSensitive
     }
 
     var isEmpty: Bool {
         terms.isEmpty && pathTerms.isEmpty && extensions.isEmpty && kind == nil && minSize == nil && maxSize == nil
-            && modifiedAfter == nil && modifiedBefore == nil && scopeNames.isEmpty
+            && modifiedAfter == nil && modifiedBefore == nil && scopeNames.isEmpty && regex == nil && !invalidRegex
+    }
+
+    static let caseWords: Set<String> = ["case:", "case:yes", "case:on", "case:match", "case:sensitive"]
+    /// Spelled out, the default: they're understood and set nothing.
+    static let noCaseWords: Set<String> = ["case:off", "case:no", "case:ignore"]
+
+    /// Whether `text` asks for exact case (`case:`).
+    static func isCaseSensitive(_ text: String) -> Bool {
+        tokenize(text).contains { caseWords.contains($0.lowercased()) }
+    }
+
+    /// `text` with `case:` added or taken out (the scope bar's Match Case), everything else as typed.
+    static func settingCase(_ on: Bool, in text: String) -> String {
+        let words = text.split(separator: " ", omittingEmptySubsequences: true).filter {
+            !caseWords.contains($0.lowercased()) && !noCaseWords.contains($0.lowercased())
+        }
+        return (words.map(String.init) + (on ? ["case:"] : [])).joined(separator: " ")
     }
 
     /// How names and terms are compared: composed Unicode, without case or accents ("Café", "cafe" and a decomposed
@@ -62,10 +85,19 @@ nonisolated struct IndexQuery: Sendable {
 
     static func parse(_ text: String, now: Date = .now) -> IndexQuery {
         var query = IndexQuery()
-        for token in tokenize(text) {
+        let tokens = tokenize(text)
+        query.caseSensitive = tokens.contains { caseWords.contains($0.lowercased()) }
+        var pattern: String?
+        for token in tokens {
             let lower = token.lowercased()
-            let folded = foldText(token)
-            if let value = value(of: lower, keys: ["ext:", "extension:"]) {
+            // With case on, words keep their letters (composed the same way names are compared).
+            let folded = query.caseSensitive ? token.precomposedStringWithCanonicalMapping : foldText(token)
+            if caseWords.contains(lower) || noCaseWords.contains(lower) {
+                continue
+            } else if lower.hasPrefix("regex:") || lower.hasPrefix("re:") {
+                let value = String(token.drop(while: { $0 != ":" }).dropFirst())
+                if !value.isEmpty { pattern = value }
+            } else if let value = value(of: lower, keys: ["ext:", "extension:"]) {
                 query.extensions.formUnion(value.split(whereSeparator: { ";,|".contains($0) }).map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ".")) })
             } else if lower.hasPrefix("*."), lower.count > 2, !lower.dropFirst(2).contains("*") {
                 // "*.tar.gz": the last extension, plus the whole suffix as part of the name.
@@ -86,6 +118,7 @@ nonisolated struct IndexQuery: Sendable {
             } else if let value = value(of: lower, keys: ["modified:", "mod:", "date:", "dm:"]) {
                 (query.modifiedAfter, query.modifiedBefore) = dateRange(value, now: now)
             } else if let value = value(of: token, keys: ["in:", "In:", "IN:"]) {
+                // (Folder names below are matched without case either way.)
                 if value.hasPrefix("/") || value.hasPrefix("~") {
                     query.scopePath = (value as NSString).expandingTildeInPath
                 } else {
@@ -96,13 +129,20 @@ nonisolated struct IndexQuery: Sendable {
             } else if lower == "!" || lower == "-" {
                 continue   // Half-typed exclusion: not a term yet.
             } else if lower.contains("/") {
-                let parts = folded.split(separator: "/").map { Array($0.utf8) }
+                // Folder parts are matched without case either way; the name (the last part) follows `case:`.
+                var parts = foldText(token).split(separator: "/").map { Array($0.utf8) }
+                if query.caseSensitive, parts.count > 1, let name = folded.split(separator: "/").last {
+                    parts[parts.count - 1] = Array(name.utf8)
+                }
                 if parts.count == 1 { query.terms.append(parts[0]) } else if parts.count > 1 { query.pathTerms.append(parts) }
             } else if !lower.isEmpty {
                 query.terms.append(Array(folded.utf8))
             }
         }
-        let mentioned = (query.terms + query.pathTerms.flatMap { $0 } + query.scopeNames).map { String(decoding: $0, as: UTF8.self) }
+        if let pattern {
+            if let regex = NameRegex(pattern, caseSensitive: query.caseSensitive) { query.regex = regex } else { query.invalidRegex = true }
+        }
+        let mentioned = (query.terms + query.pathTerms.flatMap { $0 } + query.scopeNames).map { String(decoding: $0, as: UTF8.self).lowercased() }
         // `in:target` (or another build/cache folder name) means you want to look inside such folders.
         let scopes = query.scopeNames.map { String(decoding: $0, as: UTF8.self) }
         query.includeHidden = mentioned.contains { $0.hasPrefix(".") } || scopes.contains { noiseWords.contains($0) }
@@ -120,7 +160,7 @@ nonisolated struct IndexQuery: Sendable {
     private static let noiseWords: Set<String> = ["library", "node_modules", "caches", "deriveddata", "pods", ".git"]
     private static let buildFolderWords: Set<String> = ["target", "dist", "build", "bin", "obj", "out", "coverage"]
 
-    private static func tokenize(_ text: String) -> [String] {
+    static func tokenize(_ text: String) -> [String] {
         var tokens: [String] = []
         var current = ""
         var quoted = false
@@ -418,9 +458,16 @@ nonisolated enum IndexSearch {
         if let before = query.modifiedBefore, c.mtime[i] >= before { return nil }
 
         let name = c.name(i)
-        // Names with non-ASCII bytes are compared Unicode-aware (folded once); ASCII names take the byte search alone.
-        let foldedName: [UInt8]? = flags & IndexStore.Flag.unicodeName != 0 ? folded(name) : nil
+        // Names with non-ASCII bytes are compared Unicode-aware (folded once, or just composed with case on); ASCII
+        // names take the byte search alone.
+        let unicode = flags & IndexStore.Flag.unicodeName != 0
+        let foldedName: [UInt8]? = unicode && !query.caseSensitive ? folded(name) : nil
+        let composedName: [UInt8]? = unicode && query.caseSensitive ? composed(name) : nil
         @inline(__always) func locate(_ term: [UInt8]) -> Int? {
+            if query.caseSensitive {
+                if let composedName { return composedName.withUnsafeBufferPointer { findExact(term, in: $0) } }
+                return findExact(term, in: name)
+            }
             if let foldedName { return foldedName.withUnsafeBufferPointer { find(term, in: $0) } }
             return find(term, in: name)
         }
@@ -436,6 +483,8 @@ nonisolated enum IndexSearch {
             score += index == 0 ? positionScore(min(position, name.count - 1), term.count, name) : 10
         }
         for term in query.excludedTerms where locate(term) != nil { return nil }
+        if query.invalidRegex { return nil }
+        if let regex = query.regex, !regex.matches(String(decoding: name, as: UTF8.self)) { return nil }
         let parent = Int(c.parent[i])
         for (index, parts) in query.pathTerms.enumerated() {
             guard let last = parts.last, let position = locate(last) else { return nil }
@@ -504,6 +553,27 @@ nonisolated enum IndexSearch {
         return progress
     }
 
+    /// `name` in composed form, for exact (case-sensitive) comparison.
+    private static func composed(_ name: UnsafeBufferPointer<UInt8>) -> [UInt8] {
+        Array(String(decoding: name, as: UTF8.self).precomposedStringWithCanonicalMapping.utf8)
+    }
+
+    /// Exact substring search.
+    private static func findExact(_ term: [UInt8], in name: UnsafeBufferPointer<UInt8>) -> Int? {
+        let n = name.count, m = term.count
+        guard m > 0, m <= n else { return m == 0 ? 0 : nil }
+        var i = 0
+        while i <= n - m {
+            if name[i] == term[0] {
+                var j = 1
+                while j < m && name[i + j] == term[j] { j += 1 }
+                if j == m { return i }
+            }
+            i += 1
+        }
+        return nil
+    }
+
     /// `name` folded with `foldText`, or nil when it's plain ASCII (the byte search already covers it).
     private static func folded(_ name: UnsafeBufferPointer<UInt8>) -> [UInt8]? {
         guard name.contains(where: { $0 >= 0x80 }) else { return nil }
@@ -541,5 +611,53 @@ nonisolated enum IndexSearch {
     private static func hasSuffix(_ name: UnsafeBufferPointer<UInt8>, _ suffix: [UInt8]) -> Bool {
         guard name.count >= suffix.count else { return false }
         return equalsFolded(UnsafeBufferPointer(rebasing: name[(name.count - suffix.count)...]), suffix)
+    }
+}
+
+/// A `regex:` pattern, compiled once and shared by the threads searching. Some patterns take exponentially long on
+/// some names: a name gets a moment, then counts as not matching (and is counted, so the summary can say so); a
+/// search's total time on the pattern is limited too.
+nonisolated final class NameRegex: @unchecked Sendable {
+    let pattern: String
+    private let expression: NSRegularExpression
+    private let deadline: Date
+    private static let perName: TimeInterval = 0.02
+
+    /// Names a pattern gave up on, since launch (the search summary compares before and after).
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var givenUp = 0
+    static var namesGivenUp: Int { lock.withLock { givenUp } }
+
+    init?(_ pattern: String, caseSensitive: Bool, budget: TimeInterval = 4) {
+        // Composed like the names it's matched against ("é" typed or pasted either way).
+        let composed = pattern.precomposedStringWithCanonicalMapping
+        guard composed.count <= 500,
+              let expression = try? NSRegularExpression(pattern: composed, options: caseSensitive ? [] : [.caseInsensitive])
+        else { return nil }
+        self.pattern = composed
+        self.expression = expression
+        deadline = Date().addingTimeInterval(budget)
+    }
+
+    func matches(_ name: String) -> Bool {
+        let start = Date()
+        guard start <= deadline else {
+            Self.lock.withLock { Self.givenUp += 1 }
+            return false
+        }
+        var found = false
+        var gaveUp = false
+        let text = name.precomposedStringWithCanonicalMapping
+        expression.enumerateMatches(in: text, options: [.reportProgress], range: NSRange(location: 0, length: (text as NSString).length)) { match, _, stop in
+            if match != nil {
+                found = true
+                stop.pointee = true
+            } else if Date().timeIntervalSince(start) > Self.perName {
+                gaveUp = true
+                stop.pointee = true
+            }
+        }
+        if gaveUp { Self.lock.withLock { Self.givenUp += 1 } }
+        return found
     }
 }

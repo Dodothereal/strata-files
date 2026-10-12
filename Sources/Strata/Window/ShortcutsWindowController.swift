@@ -37,6 +37,12 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
             Shortcut(keys: ["modified:<7d"], action: "By date (today, yesterday, 2026, >30d)"),
             Shortcut(keys: ["in:github"], action: "Inside a folder (name or ~/path)"),
             Shortcut(keys: ["github/acme"], action: "Folder, then name (also in ⌘K)"),
+            Shortcut(keys: ["regex:^IMG_\\d+"], action: "Names matching a regular expression"),
+            Shortcut(keys: ["case:"], action: "Match case exactly (also Match Case under the toolbar)"),
+            Shortcut(keys: ["tag:Red"], action: "Finder tags (via Spotlight)"),
+            Shortcut(keys: ["camera:iphone"], action: "Photo metadata: also width:>1920, height:<1000 (via Spotlight)"),
+            Shortcut(keys: ["duration:>10m"], action: "Video and audio length; pages:>20 for PDFs (via Spotlight)"),
+            Shortcut(keys: ["author:ana"], action: "Document author; artist: for music (via Spotlight)"),
         ]),
         ("Files", [
             Shortcut(keys: ["↩"], action: "Rename (or open — see Settings)"),
