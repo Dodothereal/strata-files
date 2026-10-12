@@ -119,6 +119,9 @@ extension BrowserWindowController {
                 (NSApp.delegate as? AppDelegate)?.emptyTrash(nil)
             },
             command("Go to Folder…", "folder.badge.questionmark", "⇧⌘G") { [weak self] in self?.goToFolder(nil) },
+            command("Connect to Server…", "network", "⌥⌘K", keywords: ["SMB", "Network", "Share", "Mount", "NAS", "WebDAV"]) { [weak self] in
+                self?.connectToServer(nil)
+            },
             command("Undo", "arrow.uturn.backward", "⌘Z") { [weak self] in self?.window?.undoManager?.undo() },
             command("History…", "clock.arrow.circlepath", "⌥⌘Z") { (NSApp.delegate as? AppDelegate)?.showHistory(nil) },
             command("Shelf", "tray", "⌥⌘S") { (NSApp.delegate as? AppDelegate)?.toggleShelf(nil) },

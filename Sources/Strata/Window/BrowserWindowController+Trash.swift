@@ -5,6 +5,14 @@ extension BrowserWindowController {
     @objc func goTrash(_ sender: Any?) {
         navigate(to: Trash.home)
     }
+
+    /// Go ▸ Connect to Server…: mounts a share (macOS asks for the login), then shows it.
+    @objc func connectToServer(_ sender: Any?) {
+        guard let window, window.attachedSheet == nil else { return }
+        let controller = ConnectToServerController()
+        controller.onConnected = { [weak self] mounted in self?.navigate(to: mounted) }
+        contentViewController?.presentAsSheet(controller)
+    }
 }
 
 extension BrowserWindowController {

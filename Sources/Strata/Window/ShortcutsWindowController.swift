@@ -24,6 +24,7 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
             Shortcut(keys: ["⇧", "⌘", "O"], action: "Documents"),
             Shortcut(keys: ["⌥", "⌘", "L"], action: "Downloads"),
             Shortcut(keys: ["⇧", "⌘", "A"], action: "Applications"),
+            Shortcut(keys: ["⌥", "⌘", "K"], action: "Connect to a server (SMB, AFP, NFS, WebDAV)"),
         ]),
         ("Find", [
             Shortcut(keys: ["a–z"], action: "Type in the list to filter this folder (fuzzy)"),

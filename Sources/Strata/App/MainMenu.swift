@@ -98,6 +98,7 @@ enum MainMenu {
             .separator(),
             item("Go to Folder…", #selector(BrowserWindowController.goToFolder(_:)), "g", [.command, .shift]),
             item("Edit Location", #selector(BrowserWindowController.goToFolder(_:)), "l"),
+            item("Connect to Server…", #selector(BrowserWindowController.connectToServer(_:)), "k", [.command, .option]),
         ]))
         let workspaces = NSMenuItem(title: "Workspaces", action: nil, keyEquivalent: "")
         let workspacesMenu = NSMenu(title: "Workspaces")
