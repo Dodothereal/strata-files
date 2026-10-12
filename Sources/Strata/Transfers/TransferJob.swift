@@ -429,16 +429,26 @@ final class TransferJob {
         return "Not enough space on “\(volume)”: \(Format.bytes(needed)) needed, \(Format.bytes(available)) available"
     }
 
-    /// Whether `folder` is `item` or inside it, comparing real paths (a symlink can make a folder look like it's
-    /// elsewhere, and copying a folder into itself recurses until names get too long).
+    /// Whether `folder` is `item` or inside it, comparing real paths: a symlink can make a folder look like it's
+    /// elsewhere, and copying a folder into itself recurses until names get too long. The item itself isn't
+    /// resolved (moving or copying a symlink moves or copies the link, not what it points to).
     static func isInside(_ folder: String, _ item: String) -> Bool {
-        func real(_ path: String) -> String {
-            guard let resolved = realpath(path, nil) else { return URL(fileURLWithPath: path).standardizedFileURL.path }
-            defer { free(resolved) }
-            return String(cString: resolved)
-        }
-        let (folder, item) = (real(folder), real(item))
-        return folder == item || folder.hasPrefix(item == "/" ? "/" : item + "/")
+        isInside(resolvedFolder: realPath(folder), item)
+    }
+
+    /// `isInside` with `folder` already resolved by `realPath` (resolve it once when testing many items).
+    static func isInside(resolvedFolder folder: String, _ item: String) -> Bool {
+        let parent = (item as NSString).deletingLastPathComponent
+        let name = (item as NSString).lastPathComponent
+        let resolved = parent == item ? item : (realPath(parent) as NSString).appendingPathComponent(name)
+        return folder == resolved || folder.hasPrefix(resolved == "/" ? "/" : resolved + "/")
+    }
+
+    /// The path with symlinks resolved (or standardized, if it doesn't exist).
+    static func realPath(_ path: String) -> String {
+        guard let resolved = realpath(path, nil) else { return URL(fileURLWithPath: path).standardizedFileURL.path }
+        defer { free(resolved) }
+        return String(cString: resolved)
     }
 
     // MARK: - Results

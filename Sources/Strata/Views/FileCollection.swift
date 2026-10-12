@@ -134,9 +134,17 @@ enum FileDrop {
     static func operation(_ urls: [URL], into target: URL, info: NSDraggingInfo) -> NSDragOperation {
         guard let first = urls.first else { return [] }
         let targetPath = target.standardizedFileURL.path
-        if urls.contains(where: { TransferJob.isInside(targetPath, $0.path) }) {
-            return []
+        // Resolved once per drag update; items usually share a parent, so theirs are cached too.
+        let resolvedTarget = TransferJob.realPath(targetPath)
+        var parents: [String: String] = [:]
+        let inside = urls.contains { url in
+            let parent = url.deletingLastPathComponent().path
+            let real = parents[parent] ?? TransferJob.realPath(parent)
+            parents[parent] = real
+            let item = (real as NSString).appendingPathComponent(url.lastPathComponent)
+            return resolvedTarget == item || resolvedTarget.hasPrefix(item == "/" ? "/" : item + "/")
         }
+        if inside { return [] }
         let mask = info.draggingSourceOperationMask
         let wantsCopy = NSEvent.modifierFlags.contains(.option) || !sameVolume(first, target)
         let operation: NSDragOperation

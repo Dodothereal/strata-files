@@ -117,24 +117,39 @@ final class OperationLog {
     }
 
     /// The file at `path` as "device:inode", or nil when nothing is there.
+    /// The file at `path` as "<volume UUID>/<inode>" (a disk's device number changes when it's plugged in again, its
+    /// UUID doesn't), or nil when nothing is there.
     nonisolated static func identity(_ path: String) -> String? {
         var info = stat()
         guard lstat(path, &info) == 0 else { return nil }
-        return "\(info.st_dev):\(info.st_ino)"
+        let volume = (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.volumeUUIDStringKey]))?.volumeUUIDString
+        return "\(volume ?? String(info.st_dev))/\(info.st_ino)"
+    }
+
+    /// Identities recorded before volume UUIDs were used ("device:inode") compare by those two.
+    private nonisolated static func sameIdentity(_ recorded: String, _ path: String) -> Bool {
+        guard recorded.contains(":"), !recorded.contains("/") else { return identity(path) == recorded }
+        var info = stat()
+        guard lstat(path, &info) == 0 else { return false }
+        return recorded == "\(info.st_dev):\(info.st_ino)"
     }
 
     /// `path` still holds the file the operation left there (entries from before identities were kept: it exists).
     private func holdsOriginal(_ entry: Entry, _ path: String) -> Bool {
-        guard let current = Self.identity(path) else { return false }
-        return entry.identities[path].map { $0 == current } ?? true
+        guard let recorded = entry.identities[path] else { return TransferEngine.exists(URL(fileURLWithPath: path)) }
+        return Self.sameIdentity(recorded, path)
     }
 
     /// Whether undoing `entry` can still work: the very items the operation left are still where it left them, and
     /// nothing else occupies the places they'd go back to (a case-only rename's old spelling is the item itself).
     func canUndo(_ entry: Entry) -> Bool {
         guard !entry.undone else { return false }
+        // A place counts as free when nothing is there, it's the item itself (a case-only rename), or another move in
+        // the same entry will vacate it first ("trash X, rename Y to X").
+        let destinations = Set(entry.pairs.map { $0[1] })
         let movesBack = !entry.pairs.isEmpty && entry.pairs.allSatisfy { pair in
-            holdsOriginal(entry, pair[1]) && (Self.identity(pair[0]) == nil || Self.identity(pair[0]) == Self.identity(pair[1]))
+            holdsOriginal(entry, pair[1])
+                && (Self.identity(pair[0]) == nil || Self.identity(pair[0]) == Self.identity(pair[1]) || destinations.contains(pair[0]))
         }
         switch entry.kind {
         case .move:
@@ -154,20 +169,38 @@ final class OperationLog {
             ])
         }
         let fm = FileManager.default
+        // Everything happens without registering undo piecemeal; one ⌘Z afterwards puts it all back (below).
+        var done: [FileOps.Move] = []
         let existing = entry.created.filter { holdsOriginal(entry, $0) }.map { URL(fileURLWithPath: $0) }
-        if !existing.isEmpty { try FileOps.trash(existing, undo: undoManager, record: false) }
+        if !existing.isEmpty { done += try FileOps.trash(existing, undo: nil, record: false) }
         let back = (entry.pairs.reversed() + entry.replaced.reversed().filter { holdsOriginal(entry, $0[1]) }).map {
             (from: URL(fileURLWithPath: $0[1]), to: URL(fileURLWithPath: $0[0]))
         }
-        if !back.isEmpty { try await FileOps.move(back, actionName: "Undo \(entry.name)", undo: undoManager, record: false) }
+        if !back.isEmpty {
+            do {
+                try await FileOps.move(back, actionName: "Undo \(entry.name)", undo: nil, record: false)
+                done += back
+            } catch {
+                // Part of it may have moved: keep ⌘Z able to put back what did.
+                registerRedo(entry, done + back.filter { !TransferEngine.exists($0.from) && TransferEngine.exists($0.to) },
+                             undoManager)
+                throw error
+            }
+        }
         for folder in entry.containers.reversed() {
             // Only what is (still) empty: never remove something put there since.
             let contents = (try? fm.contentsOfDirectory(atPath: folder)) ?? ["?"]
             if contents.allSatisfy({ $0 == ".DS_Store" }) { try? fm.removeItem(atPath: folder) }
         }
         setUndone(entry.id, true)
-        // ⌘Z right after puts the operation back, so the entry is live again.
-        if let undoManager { FileOps.registerLogMark(entry.id, undone: false, undoManager) }
+        registerRedo(entry, done, undoManager)
+    }
+
+    /// ⌘Z right after a History undo redoes the whole operation in one step (recreating any folders it had made)
+    /// and marks the entry live again once that has worked.
+    private func registerRedo(_ entry: Entry, _ done: [FileOps.Move], _ undoManager: UndoManager?) {
+        FileOps.registerMoveUndo(done, entry.name, undoManager, entry: entry.id, marksUndone: false,
+                                 recreating: entry.containers.map { URL(fileURLWithPath: $0) })
     }
 
     func clear() {

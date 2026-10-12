@@ -323,9 +323,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// Volumes ⌘E would eject: selected volume roots, else the volume whose top level is showing.
     private var ejectTargets: [URL] {
-        let selected = browser.selectedURLs.filter(Places.isEjectableVolume)
+        // Volumes are listed once, then matched by path (a big selection mustn't list them per item).
+        let ejectable = Set(Places.volumes().filter(\.isEjectable).map { $0.url.standardizedFileURL.path })
+        guard !ejectable.isEmpty else { return [] }
+        let selected = browser.selectedURLs.filter { ejectable.contains($0.standardizedFileURL.path) }
         if !selected.isEmpty { return selected }
-        if case .folder = destination, Places.isEjectableVolume(location) { return [location] }
+        if case .folder = destination, ejectable.contains(location.standardizedFileURL.path) { return [location] }
         return []
     }
 

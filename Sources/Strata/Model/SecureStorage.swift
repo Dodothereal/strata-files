@@ -118,6 +118,13 @@ nonisolated enum SecureStorage {
         return data
     }
 
+    /// Format 1: the chunk's index and whether it's the last one.
+    private static func legacyAssociatedData(_ index: UInt64, final: Bool) -> Data {
+        var data = withUnsafeBytes(of: index.littleEndian) { Data($0) }
+        data.append(final ? 1 : 0)
+        return data
+    }
+
     /// Temporary files a crash left behind (`<name>.<uuid>.tmp`), once they're clearly not a save in progress.
     private static func sweepStaleTemporaries(of url: URL) {
         let folder = url.deletingLastPathComponent()
@@ -230,6 +237,9 @@ nonisolated enum SecureStorage {
         private var sawFinal = false
         private let salt: Data
         private let name: Data
+        /// Files written by the first format (no salt or store name in the associated data) are still read, so an
+        /// upgrade keeps history and the content index; they're rewritten in the current format at the next save.
+        private let isLegacy: Bool
         /// Upper bound on the plaintext, for sanity-checking lengths before allocating.
         let maximumLength: Int
 
@@ -245,11 +255,21 @@ nonisolated enum SecureStorage {
             handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
             self.key = key
             maximumLength = Int(info.st_size)
-            guard let header = try handle.read(upToCount: 8 + saltSize), header.count == 8 + saltSize,
-                  header.withUnsafeBytes({ UInt32(littleEndian: $0.loadUnaligned(as: UInt32.self)) }) == magic,
-                  header.withUnsafeBytes({ UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: 4, as: UInt32.self)) }) == formatVersion
+            guard let header = try handle.read(upToCount: 8), header.count == 8,
+                  header.withUnsafeBytes({ UInt32(littleEndian: $0.loadUnaligned(as: UInt32.self)) }) == magic
             else { throw Failure() }
-            salt = header.subdata(in: 8..<(8 + saltSize))
+            let version = header.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: 4, as: UInt32.self)) }
+            switch version {
+            case formatVersion:
+                guard let salt = try handle.read(upToCount: saltSize), salt.count == saltSize else { throw Failure() }
+                self.salt = salt
+                isLegacy = false
+            case 1:
+                salt = Data()
+                isLegacy = true
+            default:
+                throw Failure()
+            }
             name = storeName(url)
         }
 
@@ -294,12 +314,14 @@ nonisolated enum SecureStorage {
                   let combined = try handle.read(upToCount: length), combined.count == length else { throw Failure() }
             let box = try AES.GCM.SealedBox(combined: combined)
             // The last chunk is the only one sealed as final; try that only when a full-size chunk didn't open.
-            if let plain = try? AES.GCM.open(box, using: key, authenticating: associatedData(salt: salt, name: name,
-                                                                                             index: chunkIndex, final: false)) {
+            func data(final: Bool) -> Data {
+                isLegacy ? legacyAssociatedData(chunkIndex, final: final)
+                    : associatedData(salt: salt, name: name, index: chunkIndex, final: final)
+            }
+            if let plain = try? AES.GCM.open(box, using: key, authenticating: data(final: false)) {
                 chunk = plain
             } else {
-                chunk = try AES.GCM.open(box, using: key, authenticating: associatedData(salt: salt, name: name,
-                                                                                         index: chunkIndex, final: true))
+                chunk = try AES.GCM.open(box, using: key, authenticating: data(final: true))
                 sawFinal = true
             }
             position = 0

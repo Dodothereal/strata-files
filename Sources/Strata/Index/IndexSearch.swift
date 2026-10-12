@@ -73,8 +73,14 @@ nonisolated struct IndexQuery: Sendable {
                 query.extensions.insert(String(suffix.split(separator: ".").last ?? Substring(suffix)))
                 if suffix.contains(".") { query.terms.append(Array(suffix.utf8)) }
             } else if let value = value(of: lower, keys: ["kind:", "type:", "is:"]) {
-                // "kind:pdf" names an extension rather than a kind.
-                if let kind = kind(value) { query.kind = kind } else { query.extensions.insert(value) }
+                // "kind:pdf" names an extension; "kind:spreadsheet" a group of them.
+                if let kind = kind(value) {
+                    query.kind = kind
+                } else if let group = extensionGroups[value] {
+                    query.extensions.formUnion(group)
+                } else {
+                    query.extensions.insert(value)
+                }
             } else if let value = value(of: lower, keys: ["size:"]) {
                 (query.minSize, query.maxSize) = sizeRange(value)
             } else if let value = value(of: lower, keys: ["modified:", "mod:", "date:", "dm:"]) {
@@ -104,6 +110,12 @@ nonisolated struct IndexQuery: Sendable {
             || scopes.contains { buildFolderWords.contains($0) }
         return query
     }
+
+    private static let extensionGroups: [String: Set<String>] = [
+        "spreadsheet": ["xls", "xlsx", "numbers", "csv", "ods", "tsv"], "spreadsheets": ["xls", "xlsx", "numbers", "csv", "ods", "tsv"],
+        "presentation": ["key", "ppt", "pptx", "odp"], "presentations": ["key", "ppt", "pptx", "odp"], "slides": ["key", "ppt", "pptx", "odp"],
+        "diskimage": ["dmg", "iso", "img", "sparseimage"], "pdfs": ["pdf"],
+    ]
 
     private static let noiseWords: Set<String> = ["library", "node_modules", "caches", "deriveddata", "pods", ".git"]
     private static let buildFolderWords: Set<String> = ["target", "dist", "build", "bin", "obj", "out", "coverage"]
@@ -287,6 +299,8 @@ nonisolated enum IndexSearch {
             let extensions = query.kind.flatMap { extensionsByKind[$0] }.map { query.extensions.isEmpty ? $0 : $0.intersection(query.extensions) }
                 ?? query.extensions
             let wantedExtensions = extensions.compactMap { ext in Array(ext.utf8).withUnsafeBufferPointer { packExtension($0) } }
+            // Only extensions longer than any real one were asked for: nothing can match (not everything).
+            if !extensions.isEmpty && wantedExtensions.isEmpty { return ([], 0) }
             let now = Int(Date().timeIntervalSince1970)
 
             let chunks = max(1, min(64, count / 50_000))

@@ -121,6 +121,10 @@ scripts/build.sh release --open
 For the best experience, give Strata **Full Disk Access** in System Settings ▸ Privacy & Security, so it can search
 and measure everything without asking folder by folder. Strata walks you through it on first launch.
 
+## License
+
+Strata is open source under the [MIT License](LICENSE).
+
 ---
 
 <p align="center">

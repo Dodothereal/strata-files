@@ -65,7 +65,8 @@ final class PlanTransaction {
     var hasChanges: Bool { !created.isEmpty || !done.isEmpty || !trashed.isEmpty }
 
     func record(_ name: String) -> UUID? {
-        OperationLog.shared.recordPlan(name, moved: (done + trashed).map { (from: $0.from, to: $0.to) }, containers: created)
+        // In the order `perform` did them (Trash first), so undoing from History reverses them correctly.
+        OperationLog.shared.recordPlan(name, moved: (trashed + done).map { (from: $0.from, to: $0.to) }, containers: created)
     }
 
     func perform() async -> PlanExecutor.Outcome {

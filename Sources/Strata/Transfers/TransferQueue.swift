@@ -202,7 +202,7 @@ enum TransferUndo {
         undo.registerUndo(withTarget: undo) { undo in
             MainActor.assumeIsolated {
                 let existing = created.filter { TransferEngine.exists($0) }
-                if !existing.isEmpty { try? FileOps.trash(existing, undo: undo, record: false) }
+                if !existing.isEmpty { _ = try? FileOps.trash(existing, undo: undo, record: false) }
                 // Moved items go back first, then whatever they replaced comes out of the Trash into the freed spots.
                 let back = moved.reversed().map(\.reversed) + replaced.reversed().map(\.reversed)
                 perform(back, actionName: actionName, undo: undo)

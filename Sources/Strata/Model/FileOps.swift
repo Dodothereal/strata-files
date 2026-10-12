@@ -27,8 +27,7 @@ enum FileOps {
         var done: [Move] = []
         defer {
             let entry = record ? OperationLog.shared.recordMove(actionName, done) : nil
-            registerMoveUndo(done, actionName, undo)
-            if let entry, let undo { registerLogMark(entry, undone: true, undo) }
+            registerMoveUndo(done, actionName, undo, entry: entry)
         }
         for pair in pairs {
             try await moveItem(pair.from, pair.to)
@@ -40,17 +39,19 @@ enum FileOps {
         let url = available(directory.appending(path: "untitled folder"), copyStyle: false)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
         let entry = OperationLog.shared.recordCreate("New Folder", [url])
-        registerTrashUndo([url], "New Folder", undo)
-        if let entry, let undo { registerLogMark(entry, undone: true, undo) }
+        registerTrashUndo([url], "New Folder", undo, entry: entry)
         return url
     }
 
-    static func trash(_ urls: [URL], undo: UndoManager?, record: Bool = true) throws {
+    /// With `record: false` the trashing is part of another operation (undoing a copy, say): its undo then marks
+    /// History entry `entry` as `marksUndone` once it has worked. Returns where the items went.
+    @discardableResult
+    static func trash(_ urls: [URL], undo: UndoManager?, record: Bool = true, entry: UUID? = nil,
+                      marksUndone: Bool = true) throws -> [Move] {
         var moved: [Move] = []
         defer {
-            let entry = record ? OperationLog.shared.recordMove("Move to Trash", moved) : nil
-            registerMoveUndo(moved, "Move to Trash", undo)
-            if let entry, let undo { registerLogMark(entry, undone: true, undo) }
+            let logged = record ? OperationLog.shared.recordMove("Move to Trash", moved) : entry
+            registerMoveUndo(moved, "Move to Trash", undo, entry: logged, marksUndone: record ? true : marksUndone)
         }
         for url in urls {
             var result: NSURL?
@@ -59,6 +60,7 @@ enum FileOps {
         }
         trashSound?.stop()
         trashSound?.play()
+        return moved
     }
 
     /// Items that couldn't go to the Trash because their disk has none (network shares, some external disks).
@@ -71,8 +73,7 @@ enum FileOps {
     static func trashInBackground(_ urls: [URL], undo: UndoManager?) async throws {
         let (moved, noTrash, failure) = await trashItems(urls)
         let entry = OperationLog.shared.recordMove("Move to Trash", moved)
-        registerMoveUndo(moved, "Move to Trash", undo)
-        if let entry, let undo { registerLogMark(entry, undone: true, undo) }
+        registerMoveUndo(moved, "Move to Trash", undo, entry: entry)
         if !moved.isEmpty {
             trashSound?.stop()
             trashSound?.play()
@@ -132,9 +133,17 @@ enum FileOps {
         contentsOfFile: "/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/finder/move to trash.aif",
         byReference: true)
 
-    private static func registerTrashUndo(_ created: [URL], _ actionName: String, _ undo: UndoManager?) {
+    /// Undo for something just made: it goes to the Trash; redoing brings it back. History follows both.
+    private static func registerTrashUndo(_ created: [URL], _ actionName: String, _ undo: UndoManager?, entry: UUID?) {
         guard !created.isEmpty else { return }
-        register(actionName, undo) { undo in try? trash(created, undo: undo, record: false) }
+        register(actionName, undo) { undo in
+            do {
+                try trash(created, undo: undo, record: false, entry: entry, marksUndone: false)
+                if let entry { OperationLog.shared.setUndone(entry, true) }
+            } catch {
+                reportUndoFailure(actionName, error)
+            }
+        }
     }
 
     /// ⌘Z couldn't put things back (something now sits where an item would return, say): say so rather than fail
@@ -167,14 +176,21 @@ enum FileOps {
 
     /// Undo for completed moves: move everything back. The inverse is registered right away, inside the undo
     /// handler, so it lands on the redo stack (registering it later from a task would put it back on the undo stack).
-    private static func registerMoveUndo(_ moves: [Move], _ actionName: String, _ undo: UndoManager?) {
+    /// History entry `entry` is marked `marksUndone` only once the moves have worked (the inverse flips it back);
+    /// `folders` are recreated first if they've gone (the folders an AI plan made, removed by undoing it).
+    static func registerMoveUndo(_ moves: [Move], _ actionName: String, _ undo: UndoManager?, entry: UUID? = nil,
+                                 marksUndone: Bool = true, recreating folders: [URL] = []) {
         guard !moves.isEmpty else { return }
         register(actionName, undo) { undo in
             let back = moves.reversed().map { (from: $0.to, to: $0.from) }
-            registerMoveUndo(back, actionName, undo)
+            registerMoveUndo(back, actionName, undo, entry: entry, marksUndone: !marksUndone)
             Task {
                 do {
+                    for folder in folders where !FileManager.default.fileExists(atPath: folder.path) {
+                        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                    }
                     try await move(back, actionName: actionName, undo: nil, record: false)
+                    if let entry { OperationLog.shared.setUndone(entry, marksUndone) }
                 } catch {
                     reportUndoFailure(actionName, error)
                 }

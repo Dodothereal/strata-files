@@ -300,6 +300,14 @@ nonisolated enum TransferEngine {
         }
         guard result.failures.isEmpty else { result.outcome = .partial; return result }
         if item.operation != .copy {
+            // The original may hold edits the copy lacks (that's why it was kept): never delete it then.
+            if let change = changedSinceCopy(item.source, copy: item.destination) {
+                result.failures.append(TransferFailure(item: index, stage: .removeSource, source: item.source,
+                                                       destination: item.destination,
+                                                       message: "The original was kept because it changed during the move (\(change)). Move it again to copy the changes."))
+                result.outcome = .partial
+                return result
+            }
             if let message = removeSource(item.source) {
                 result.failures.append(TransferFailure(item: index, stage: .removeSource, source: item.source,
                                                        destination: item.destination, message: message))
@@ -355,20 +363,37 @@ nonisolated enum TransferEngine {
             // copyfile would copy *into* an existing folder; the planner guarantees this never happens.
             return CopyOutcome(fatal: describe(EEXIST), destinationExisted: true)
         }
-        if clone {
-            // One clone of the whole tree: instant on APFS, and unlike copyfile's per-file cloning it copes with
-            // read-only folders. Another volume (or no clone support) falls through to a regular copy.
-            if clonefile(source.path, destination.path, UInt32(CLONE_NOFOLLOW)) == 0 { return CopyOutcome(cloned: true) }
-            if errno == EEXIST { return CopyOutcome(fatal: describe(EEXIST), destinationExisted: true) }
+        let start = progress.snapshot
+        let first = copyfile(source, to: destination, clone: clone, control: control, progress: progress)
+        // copyfile's per-file cloning keeps every ACL and xattr, but fails inside folders without write permission
+        // (it clones a read-only folder before filling it). For a folder that hit errors, start over with one clone of
+        // the whole tree, then with a plain copy, which both cope with that.
+        var isDirectory: ObjCBool = false
+        guard clone, !first.errors.isEmpty, !first.cancelled, first.fatal == nil,
+              FileManager.default.fileExists(atPath: source.path, isDirectory: &isDirectory), isDirectory.boolValue
+        else { return first }
+        removeIfPresent(destination)   // Ours: COPYFILE_EXCL guaranteed nothing was there.
+        progress.update {
+            $0.files = start.files
+            $0.bytes = start.bytes
         }
+        if clonefile(source.path, destination.path, UInt32(CLONE_NOFOLLOW | CLONE_ACL)) == 0 { return CopyOutcome(cloned: true) }
+        if errno == EEXIST { return CopyOutcome(fatal: describe(EEXIST), destinationExisted: true) }
+        return copyfile(source, to: destination, clone: false, control: control, progress: progress)
+    }
+
+    /// One recursive `copyfile` pass (see `copy`).
+    private static func copyfile(_ source: URL, to destination: URL, clone: Bool, control: TransferControl,
+                                 progress: TransferProgress) -> CopyOutcome {
         let session = CopySession(control: control, progress: progress, throttle: hooks.throttleBytesPerSecond)
         guard let state = copyfile_state_alloc() else { return CopyOutcome(fatal: describe(ENOMEM)) }
         defer { copyfile_state_free(state) }
         let callback: copyfile_callback_t = copyCallback
         copyfile_state_set(state, UInt32(COPYFILE_STATE_STATUS_CB), unsafeBitCast(callback, to: UnsafeRawPointer.self))
         copyfile_state_set(state, UInt32(COPYFILE_STATE_STATUS_CTX), Unmanaged.passUnretained(session).toOpaque())
-        let flags = COPYFILE_ALL | COPYFILE_RECURSIVE | COPYFILE_NOFOLLOW_SRC | COPYFILE_EXCL
-        let status = copyfile(source.path, destination.path, state, copyfile_flags_t(flags))
+        var flags = COPYFILE_ALL | COPYFILE_RECURSIVE | COPYFILE_NOFOLLOW_SRC | COPYFILE_EXCL
+        if clone { flags |= COPYFILE_CLONE }
+        let status = Darwin.copyfile(source.path, destination.path, state, copyfile_flags_t(flags))
         let code = errno
         withExtendedLifetime(session) {}
 
@@ -524,8 +549,10 @@ nonisolated enum TransferEngine {
             guard lstat(path, &original) == 0 else { continue }   // Removed meanwhile: nothing to lose.
             guard lstat(copy.path + relative, &copied) == 0,
                   original.st_mode & S_IFMT == copied.st_mode & S_IFMT else { return "“\(name)” is new" }
+            // An edit after the copy makes the original newer. Some disks keep coarser dates (FAT: 2 seconds, nothing
+            // before 1980), so only a clearly newer original, or a different size, counts.
             if original.st_mode & S_IFMT == S_IFREG,
-               original.st_size != copied.st_size || original.st_mtimespec.tv_sec != copied.st_mtimespec.tv_sec {
+               original.st_size != copied.st_size || original.st_mtimespec.tv_sec > copied.st_mtimespec.tv_sec + 2 {
                 return "“\(name)” was modified"
             }
         }

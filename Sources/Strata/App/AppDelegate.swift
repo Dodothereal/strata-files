@@ -178,3 +178,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openWindow(at: Prefs.newWindowsAtHome ? Places.home : current ?? Places.home)
     }
 }
+
+// Makes `validateMenuItem` reachable (it shows the Shelf's state in the Window menu).
+extension AppDelegate: NSMenuItemValidation {}
