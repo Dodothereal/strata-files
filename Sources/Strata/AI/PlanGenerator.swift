@@ -128,6 +128,8 @@ nonisolated enum PlanError: LocalizedError {
             case .available: break
             case .appleIntelligenceNotEnabled:
                 return "Strata’s built-in rules don’t cover this request. Turn on Apple Intelligence to plan anything you can describe."
+            case .deviceNotEligible:
+                return "Strata’s built-in rules don’t cover this request. Try describing it like “rename these photos by date taken” or “move PDFs into a folder named Invoices”."
             default:
                 return "Strata’s built-in rules don’t cover this request. \(AIModel.explanation ?? "")"
             }

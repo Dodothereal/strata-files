@@ -245,7 +245,8 @@ final class PlanSheetController: NSViewController {
             rows = []
             badge.set(nil)
             summary.stringValue = AIModel.isAvailable ? "Plans are made on this Mac and shown before anything changes."
-                : "\(AIModel.shortStatus) — Strata’s built-in rules handle common requests."
+                : AIModel.isSupported ? "\(AIModel.shortStatus) — Strata’s built-in rules handle common requests."
+                : "Strata’s built-in rules make the plan, and it’s shown before anything changes."
             showSuggestions(PlanGenerator.suggestions(for: items), title: items.isEmpty ? nil : "Try one of these")
             applyButton.title = "Apply"
             applyButton.isEnabled = false

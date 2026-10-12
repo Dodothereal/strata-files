@@ -14,8 +14,19 @@ nonisolated enum AIModel {
         case disabled
     }
 
+    /// Apple Intelligence runs only natively on Apple silicon. An Intel build (or one running under Rosetta) never
+    /// asks for the model: every AI feature takes its built-in path and says nothing about Apple Intelligence.
+    static var isAppleSilicon: Bool {
+        #if arch(arm64)
+        true
+        #else
+        false
+        #endif
+    }
+
     static var status: Status {
         if ProcessInfo.processInfo.environment["STRATA_AI_DISABLED"] == "1" { return .disabled }
+        guard isAppleSilicon else { return .deviceNotEligible }
         let model = SystemLanguageModel.default
         switch model.availability {
         case .available: return model.supportsLocale() ? .available : .unsupportedLanguage
@@ -28,8 +39,12 @@ nonisolated enum AIModel {
 
     static var isAvailable: Bool { status == .available }
 
+    /// This Mac can run Apple Intelligence at all (it may still be off or downloading). When it can't, the app never
+    /// mentions it: no "turn it on" hints, no status captions, just the built-in behaviour.
+    static var isSupported: Bool { status != .deviceNotEligible }
+
     /// Tokens the model can see at once (instructions, prompt and response together).
-    static var contextSize: Int { SystemLanguageModel.default.contextSize }
+    static var contextSize: Int { isAvailable ? SystemLanguageModel.default.contextSize : 0 }
 
     /// One sentence for UI, or nil when the model is available.
     static var explanation: String? {

@@ -203,7 +203,8 @@ final class SummaryView: NSView {
             row.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
         }
         guard !streaming else { return }
-        let source = summary.method == .model ? "Apple Intelligence · On this Mac" : "Key sentences · \(AIModel.shortStatus)"
+        let source = summary.method == .model ? "Apple Intelligence · On this Mac"
+            : AIModel.isSupported ? "Key sentences · \(AIModel.shortStatus)" : "Key sentences"
         let footer = caption([source, summary.note].compactMap { $0 }.joined(separator: "\n"))
         if let last = body.arrangedSubviews.last { body.setCustomSpacing(10, after: last) }
         body.addArrangedSubview(footer)

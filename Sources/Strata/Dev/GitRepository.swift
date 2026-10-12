@@ -171,8 +171,9 @@ nonisolated enum GitRunner {
         return execute(hardening + overrides + arguments, in: directory, timeout: timeout, start: start)
     }
 
-    /// `-c` arguments that blank the commands of every filter driver the repository's own config defines (directly or
-    /// through an include). Drivers from your global config, like Git LFS, are yours and keep working. Nil when the
+    /// `-c` arguments that blank the commands of every filter driver not defined in your own (global or system)
+    /// config: the repository's, directly or through an include. Drivers from your global config, like Git LFS, keep
+    /// working. Nil when the
     /// config can't be read or names a driver that can't be overridden safely.
     private static func repositoryFilterOverrides(in directory: URL, timeout: TimeInterval) -> [String]? {
         let run = execute(hardening + ["config", "--includes", "--show-scope", "--name-only", "-z", "--get-regexp",
@@ -187,7 +188,9 @@ nonisolated enum GitRunner {
         while index + 1 < fields.count {
             let (scope, key) = (fields[index], fields[index + 1])
             index += 2
-            guard scope == "local" || scope == "worktree" else { continue }
+            // Only your own config keeps its drivers (Git LFS…). Anything else, including a scope a future git might
+            // add, is treated as the repository's and blanked: an unknown source fails safe.
+            guard !["global", "system", "command"].contains(scope) else { continue }
             // `-c` splits at the first "=", so a driver name containing one couldn't be overridden.
             guard !key.contains("="), !key.contains("\n"), let dot = key.lastIndex(of: ".") else { return nil }
             drivers.insert(String(key[..<dot]))
