@@ -59,6 +59,13 @@ nonisolated enum Archiver {
         min(1 << 30, max(0, free) / 10)
     }
 
+    /// Space actually free on `url`'s disk right now (not counting what the system could purge), for the watchdog.
+    static func freeSpace(onDiskOf url: URL) -> Int64? {
+        var info = statfs()
+        guard statfs(url.path, &info) == 0 else { return nil }
+        return Int64(info.f_bavail) * Int64(info.f_bsize)
+    }
+
     /// Free space on `url`'s disk, read fresh each time (a URL caches what it was first told).
     static func availableSpace(onDiskOf url: URL) -> Int64? {
         let fresh = URL(fileURLWithPath: url.path)
@@ -137,7 +144,10 @@ nonisolated enum Archiver {
                 continue
             }
             result.entries += 1
-            result.bytes += size
+            // A crafted listing can claim sizes that overflow: such an archive can't fit anyway.
+            let (sum, overflow) = result.bytes.addingReportingOverflow(max(0, size))
+            result.bytes = overflow ? .max : sum
+            if overflow { result.needsSecureTool = true }
             var name = fields[8]
             if kind == .tar, let arrow = name.range(of: " -> ") { name = name[..<arrow.lowerBound] }
             // Entries from MS-DOS and Windows zips have no Unix type ("?rw-------", os "fat"): they can't be links, so
@@ -195,12 +205,16 @@ nonisolated enum Archiver {
                                 control: Control) throws {
         let fm = FileManager.default
         let parent = destination.deletingLastPathComponent()
+        try requireWritable(parent)
         let work = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: parent, create: true)
         defer { removeTree(work) }
         let root = work.appending(path: "contents", directoryHint: .isDirectory)
         try unpack(archive, kind: kind, inspection: inspection, into: root, control: control)
         try check(root, control: control, quarantine: quarantine(of: archive))
-        try fm.moveItem(at: root, to: destination)
+        // The copy's place is new: never replace what's there.
+        guard renamex_np(root.path, destination.path, UInt32(RENAME_EXCL)) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
     }
 
     /// The archive's name without its archive extensions ("Photos.tar.gz" → "Photos").
@@ -222,7 +236,7 @@ nonisolated enum Archiver {
         if inspection.complete, let free = availableSpace(onDiskOf: disk), inspection.bytes > free - reserve(free: free) {
             let format = { (bytes: Int64) in ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
             throw Failure(message: "There isn’t enough space to extract “\(archive.lastPathComponent)”: it needs "
-                + "\(format(inspection.bytes)), and \(format(free)) is available.")
+                + "\(format(inspection.bytes)), and \(format(max(0, free - reserve(free: free)))) can be used.")
         }
         // `root`'s parent is a private folder; `root` itself becomes the extracted folder, so it gets usual permissions.
         try fm.createDirectory(at: root, withIntermediateDirectories: false)
@@ -250,22 +264,31 @@ nonisolated enum Archiver {
         Failure(message: "“\(archive.lastPathComponent)” is password-protected. Open it with Archive Utility to enter the password.")
     }
 
-    /// Everything in `boundary` must stay inside it: a link may only point within it. Special files (pipes, devices,
-    /// sockets) are dropped and setuid/setgid bits cleared. Folders are made readable as they're walked, so none can
-    /// hide anything; whatever can't be checked (an unreadable entry, a path too long) stops the extraction. Paths are
-    /// compared in their real form (`realpath`), never through Foundation's shortened spellings of /private/….
+    /// Everything in `boundary` (a folder, or a single file) must stay inside it: a link may only point within it,
+    /// resolved step by step from where the link sits (a ".." that would leave the boundary refuses it, through other
+    /// links too). Special files (pipes, devices, sockets) are dropped, setuid/setgid bits and access lists cleared.
+    /// Folders are made readable as they're walked, so none can hide anything; whatever can't be checked stops the
+    /// extraction.
     ///
     /// `quarantine`: the archive's own quarantine mark (it was downloaded). Every extracted item gets exactly that mark,
     /// replacing any the archive itself carried (a crafted one could claim an app was already approved), so Gatekeeper
     /// checks whatever came inside. If an item can't be marked, nothing is extracted.
     static func check(_ boundary: URL, control: Control? = nil, quarantine: Data? = nil) throws {
-        let fm = FileManager.default
-        guard let rootPath = realPath(boundary.path) else { throw Failure(message: "The extracted files couldn’t be checked.") }
-        func inside(_ path: String) -> Bool { path == rootPath || path.hasPrefix(rootPath + "/") }
+        let rootPath = boundary.path
         var info = stat()
         guard lstat(rootPath, &info) == 0 else { throw Failure(message: "The extracted files couldn’t be checked.") }
-        if info.st_mode & S_IFMT == S_IFDIR { chmod(rootPath, (info.st_mode & 0o7777) | S_IRWXU) }
+        clearAccessList(rootPath)
         if let quarantine { try markQuarantined(rootPath, quarantine) }
+        switch info.st_mode & S_IFMT {
+        case S_IFREG:
+            if info.st_mode & (S_ISUID | S_ISGID) != 0 { chmod(rootPath, info.st_mode & ~(S_ISUID | S_ISGID) & 0o7777) }
+            return
+        case S_IFDIR:
+            chmod(rootPath, (info.st_mode & 0o7777 & ~(S_ISUID | S_ISGID)) | S_IRWXU)
+        default:
+            throw Failure(message: "The archive holds nothing that can be extracted safely.")
+        }
+        let fm = FileManager.default
         var walkError: Error?
         let base = URL(fileURLWithPath: rootPath, isDirectory: true)
         guard let walker = fm.enumerator(at: base, includingPropertiesForKeys: nil, options: [.producesRelativePathURLs],
@@ -282,14 +305,13 @@ nonisolated enum Archiver {
             guard lstat(path, &info) == 0 else {
                 throw Failure(message: "“\(relative)” in the archive couldn’t be checked, so nothing was extracted.")
             }
+            clearAccessList(path)
             if let quarantine { try markQuarantined(path, quarantine) }
             switch info.st_mode & S_IFMT {
             case S_IFLNK:
-                let target = try fm.destinationOfSymbolicLink(atPath: path)
-                let lexical = normalized((path as NSString).deletingLastPathComponent + "/" + target)
-                // Where it really leads, through any links on the way; a dangling one by its deepest existing folder.
-                let real = realPath(path) ?? realPath(lexical) ?? lexical
-                guard !target.hasPrefix("/"), inside(lexical), inside(real) else {
+                let parent = relative.split(separator: "/").dropLast().map(String.init)
+                guard let target = try? fm.destinationOfSymbolicLink(atPath: path),
+                      resolve(target, from: parent, in: rootPath, hops: 0) != nil else {
                     throw Failure(message: "This archive contains a link that points outside it (“\(relative)”), so it wasn’t extracted.")
                 }
             case S_IFDIR:
@@ -304,6 +326,39 @@ nonisolated enum Archiver {
         if let walkError {
             throw Failure(message: "The extracted files couldn’t all be checked (\(walkError.localizedDescription)), so nothing was extracted.")
         }
+    }
+
+    /// Where a link's `target` leads, as path components inside `root`, following links on the way; nil when it would
+    /// leave `root` (an absolute target, a ".." past the top) or loops. `parent`: the link's folder inside `root`.
+    private static func resolve(_ target: String, from parent: [String], in root: String, hops: Int) -> [String]? {
+        guard hops < 32, !target.hasPrefix("/") else { return nil }
+        var stack = parent
+        for part in target.split(separator: "/") {
+            if part == "." { continue }
+            if part == ".." {
+                guard !stack.isEmpty else { return nil }
+                stack.removeLast()
+                continue
+            }
+            stack.append(String(part))
+            // A link on the way leads somewhere else: follow it from its own folder.
+            var info = stat()
+            let path = root + "/" + stack.joined(separator: "/")
+            if lstat(path, &info) == 0, info.st_mode & S_IFMT == S_IFLNK {
+                guard let next = try? FileManager.default.destinationOfSymbolicLink(atPath: path),
+                      let resolved = resolve(next, from: Array(stack.dropLast()), in: root, hops: hops + 1) else { return nil }
+                stack = resolved
+            }
+        }
+        return stack
+    }
+
+    /// Drops an access list the archive restored (one that denies deleting would make the items impossible to undo or
+    /// clean up). Never through a link.
+    private static func clearAccessList(_ path: String) {
+        guard let empty = acl_init(0) else { return }
+        defer { acl_free(UnsafeMutableRawPointer(empty)) }
+        _ = acl_set_link_np(path, ACL_TYPE_EXTENDED, empty)
     }
 
     private static let quarantineAttribute = "com.apple.quarantine"
@@ -325,41 +380,40 @@ nonisolated enum Archiver {
         throw Failure(message: "“\((path as NSString).lastPathComponent)” couldn’t be marked as downloaded, so nothing was extracted.")
     }
 
-    /// `path` as the system resolves it (links followed, real case, /private kept); for a path that doesn't exist, its
-    /// deepest existing folder resolved and the rest appended.
-    private static func realPath(_ path: String) -> String? {
-        if let resolved = realpath(path, nil) {
-            defer { free(resolved) }
-            return String(cString: resolved)
-        }
-        let parent = (path as NSString).deletingLastPathComponent
-        guard parent != path, parent != "/", !parent.isEmpty, let resolvedParent = realPath(parent) else { return nil }
-        return resolvedParent + "/" + (path as NSString).lastPathComponent
-    }
-
-    /// "." and ".." resolved by hand (Foundation's standardizing also rewrites /private/… spellings).
-    private static func normalized(_ path: String) -> String {
-        var parts: [Substring] = []
-        for part in path.split(separator: "/") {
-            if part == "." { continue }
-            if part == ".." { if !parts.isEmpty { parts.removeLast() } } else { parts.append(part) }
-        }
-        return "/" + parts.joined(separator: "/")
-    }
-
     // MARK: - Placing results
 
     /// Moves `item` into `folder` as `name`, or `name 2`, `name 3`… when taken, claiming the name atomically (nothing
-    /// that appears meanwhile is ever replaced).
+    /// that appears meanwhile is ever replaced). Disks without exclusive renames (exFAT) claim the name first with an
+    /// empty placeholder.
     private static func place(_ item: URL, in folder: URL, as name: String) throws -> URL {
         let isFolder = (try? item.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true && !isSymlink(item)
-        let ext = isFolder ? "" : (name as NSString).pathExtension
+        // Folders have no extension to keep, except packages ("Foo.app" → "Foo 2.app").
+        let ext = !isFolder || (try? item.resourceValues(forKeys: [.isPackageKey]))?.isPackage == true ? (name as NSString).pathExtension : ""
         let base = ext.isEmpty ? name : (name as NSString).deletingPathExtension
         for n in 1...10_000 {
             let candidate = n == 1 ? name : ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)"
             let destination = folder.appending(path: candidate, directoryHint: isFolder ? .isDirectory : .notDirectory)
             if renamex_np(item.path, destination.path, UInt32(RENAME_EXCL)) == 0 { return destination }
-            guard errno == EEXIST else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            if errno == EEXIST { continue }
+            guard errno == ENOTSUP else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            // The placeholder takes the name or fails because it's taken; then the item replaces only that.
+            if isFolder {
+                if mkdir(destination.path, 0o700) != 0 {
+                    if errno == EEXIST { continue }
+                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                }
+            } else {
+                let fd = open(destination.path, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW, 0o600)
+                if fd < 0 {
+                    if errno == EEXIST { continue }
+                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                }
+                close(fd)
+            }
+            if rename(item.path, destination.path) == 0 { return destination }
+            let error = errno
+            if isFolder { rmdir(destination.path) } else { unlink(destination.path) }
+            throw POSIXError(POSIXErrorCode(rawValue: error) ?? .EIO)
         }
         throw Failure(message: "No free name for “\(name)”.")
     }
@@ -395,20 +449,57 @@ nonisolated enum Archiver {
         return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT == S_IFLNK
     }
 
-    /// Removes `url` even when the archive left folders without write or read permission.
+    /// Removes `url` even when the archive left folders without permissions or with access lists, and however deep the
+    /// tree goes: everything is reached through open folders, never long paths, and never through links.
     static func removeTree(_ url: URL) {
+        let parent = open(url.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+        guard parent >= 0 else { return }
+        defer { close(parent) }
+        removeEntry(in: parent, url.lastPathComponent)
+    }
+
+    private static func removeEntry(in parent: Int32, _ name: String) {
         var info = stat()
-        guard lstat(url.path, &info) == 0 else { return }
+        guard fstatat(parent, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else { return }
+        // Owner rights first: a folder must be readable and changeable to empty it; any entry may carry an access list
+        // that denies deleting it.
+        if info.st_mode & S_IFMT != S_IFLNK { fchmodat(parent, name, (info.st_mode & 0o7777) | S_IRWXU, 0) }
         if info.st_mode & S_IFMT == S_IFDIR {
-            chmod(url.path, (info.st_mode & 0o7777) | S_IRWXU)
-            if let walker = FileManager.default.enumerator(atPath: url.path) {
-                while let relative = walker.nextObject() as? String {
-                    let path = url.path + "/" + relative
-                    if lstat(path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR { chmod(path, (info.st_mode & 0o7777) | S_IRWXU) }
+            let fd = openat(parent, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard fd >= 0 else { return }
+            if let empty = acl_init(0) {
+                acl_set_fd_np(fd, empty, ACL_TYPE_EXTENDED)
+                acl_free(UnsafeMutableRawPointer(empty))
+            }
+            for child in entries(fd) { removeEntry(in: fd, child) }
+            close(fd)
+            unlinkat(parent, name, AT_REMOVEDIR)
+        } else {
+            if info.st_mode & S_IFMT == S_IFREG {
+                let fd = openat(parent, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+                if fd >= 0 {
+                    if let empty = acl_init(0) {
+                        acl_set_fd_np(fd, empty, ACL_TYPE_EXTENDED)
+                        acl_free(UnsafeMutableRawPointer(empty))
+                    }
+                    close(fd)
                 }
             }
+            unlinkat(parent, name, 0)
         }
-        try? FileManager.default.removeItem(at: url)
+    }
+
+    /// The names in an open folder.
+    private static func entries(_ fd: Int32) -> [String] {
+        let copy = dup(fd)
+        guard copy >= 0, let dir = fdopendir(copy) else { return [] }
+        defer { closedir(dir) }
+        var names: [String] = []
+        while let entry = readdir(dir) {
+            let name = withUnsafeBytes(of: entry.pointee.d_name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+            if name != ".", name != ".." { names.append(name) }
+        }
+        return names
     }
 
     // MARK: - Running the tools
@@ -434,12 +525,13 @@ nonisolated enum Archiver {
 
         let lowSpace = LockedFlag()
         var watchdog: DispatchSourceTimer?
-        if let folder, let free = availableSpace(onDiskOf: folder) {
+        if let folder, let free = freeSpace(onDiskOf: folder) {
             let reserve = reserve(free: free)
             let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-            timer.schedule(deadline: .now() + 0.5, repeating: 0.5)
+            // Often: a fast tool writes hundreds of megabytes a second.
+            timer.schedule(deadline: .now() + 0.1, repeating: 0.1)
             timer.setEventHandler {
-                if let free = availableSpace(onDiskOf: folder), free < reserve {
+                if let free = freeSpace(onDiskOf: folder), free < reserve {
                     lowSpace.set()
                     process.terminate()
                 }
@@ -462,7 +554,7 @@ nonisolated enum Archiver {
                 if counts(line) { count += 1 }
                 // Kept for the error message: the last lines that aren't progress.
                 if !isProgress(line) {
-                    tail.append(line.prefix(300))
+                    tail.append(line.suffix(300))
                     if tail.count > 20 { tail.removeFirst() }
                 }
             }
@@ -474,7 +566,7 @@ nonisolated enum Archiver {
             throw Failure(message: "Stopped: the disk was running out of space.")
         }
         guard process.terminationStatus == 0 else {
-            if tail.contains(where: { $0.contains("passphrase") || $0.contains("password") }) {
+            if tail.contains(where: { $0.contains("Incorrect passphrase") || $0.contains("Passphrase required") }) {
                 throw Failure(message: passwordMarker)
             }
             throw Failure(message: reason(tail) ?? "It stopped with an error (\(process.terminationStatus)).")
@@ -491,7 +583,15 @@ nonisolated enum Archiver {
     /// The tool's last real error, in plain words. bsdtar reports refusals on the entry's own line
     /// ("x ../../a: Path contains '..'"); its closing "Error exit delayed" line says nothing.
     private static func reason(_ lines: [Substring]) -> String? {
-        for line in lines.reversed() where !line.contains("Error exit delayed") {
+        // A refusal to write outside the folder explains everything else, wherever it appears.
+        let refusals = ["Path contains '..'", "Cannot extract through symlink", "Absolute path"]
+        if let refusal = lines.first(where: { line in refusals.contains { line.contains($0) } }) {
+            var text = refusal[...]
+            for prefix in ["x ", "tar: "] where text.hasPrefix(prefix) { text = text.dropFirst(prefix.count) }
+            let entry = text.range(of: ": ").map { text[..<$0.lowerBound] } ?? text
+            return "This archive tries to write outside its folder (“\(entry)”), so it wasn’t extracted."
+        }
+        for line in lines.reversed() where !line.contains("Error exit delayed") && !line.contains("Removing leading '/'") {
             var text = line[...]
             for prefix in ["x ", "tar: ", "ditto: "] where text.hasPrefix(prefix) { text = text.dropFirst(prefix.count) }
             if text.contains("Path contains '..'") || text.contains("Cannot extract through symlink") || text.contains("Absolute path") {
@@ -503,7 +603,7 @@ nonisolated enum Archiver {
                 if let range = text.range(of: noise) { text = text[..<range.lowerBound] }
             }
             let message = text.trimmingCharacters(in: .whitespaces)
-            if !message.isEmpty { return String(message.prefix(300)) }
+            if !message.isEmpty { return String(message.suffix(300)) }
         }
         return nil
     }

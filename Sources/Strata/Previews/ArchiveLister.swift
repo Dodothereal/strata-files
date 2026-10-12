@@ -113,7 +113,8 @@ nonisolated enum ArchiveLister {
             } else {
                 parent.children.append(ArchiveNode(name: String(last), isDirectory: false, size: entry.size, modified: entry.date))
                 files += 1
-                bytes += entry.size
+                // A crafted listing can claim sizes that overflow.
+                bytes = bytes.addingReportingOverflow(max(0, entry.size)).overflow ? .max : bytes + max(0, entry.size)
             }
         }
         sortAndTotal(root)
