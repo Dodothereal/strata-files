@@ -27,7 +27,7 @@ enum SidebarTarget: Equatable {
 final class SidebarItem {
     let title: String
     let target: SidebarTarget
-    let symbol: String
+    var symbol: String
     var isEjectable = false
 
     init(_ place: Place) {
@@ -75,6 +75,8 @@ final class SidebarViewController: NSViewController {
     private var sections: [SidebarSection] = []
     private var suppressSelection = false
     private var current: SidebarTarget?
+    /// Whether the current drag may go on the Trash, worked out once per drag.
+    private var trashVerdict: (drag: Int, operation: NSDragOperation)?
 
     override func loadView() {
         let scroll = NSScrollView()
@@ -108,6 +110,9 @@ final class SidebarViewController: NSViewController {
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .savedSearchesChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .favoritesChanged, object: nil)
+        for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(trashMayHaveChanged), name: name, object: nil)
+        }
     }
 
     func reload() {
@@ -115,7 +120,7 @@ final class SidebarViewController: NSViewController {
         let pinned = Set(favorites.compactMap(\.url?.path))
         let home = Places.home.path
         let frequent = Frecency.shared.ranked()
-            .filter { !pinned.contains($0.path) && $0.path != home && $0.path != "/" }
+            .filter { !pinned.contains($0.path) && $0.path != home && $0.path != "/" && !Trash.isTrash($0) }
             .prefix(5)
             .map { SidebarItem(Place(title: FileManager.default.displayName(atPath: $0.path), url: $0, symbol: "folder")) }
         sections = [SidebarSection(title: "Favorites", items: favorites)]
@@ -126,7 +131,8 @@ final class SidebarViewController: NSViewController {
             SidebarItem(title: "Large Files", target: .largeFiles, symbol: "externaldrive.badge.exclamationmark"),
             SidebarItem(title: "Duplicates", target: .duplicates, symbol: "square.on.square"),
         ]))
-        sections.append(SidebarSection(title: "Locations", items: Places.volumes().map(SidebarItem.init)))
+        sections.append(SidebarSection(title: "Locations", items: Places.volumes().map(SidebarItem.init)
+            + [SidebarItem(title: "Trash", target: .folder(Trash.home), symbol: Self.trashSymbol)]))
         outline.reloadData()
         outline.expandItem(nil, expandChildren: true)
         if let current { highlight(current) }
@@ -260,9 +266,9 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         let urls = isReorder ? [] : FileDrop.urls(info)
         let resting = index == NSOutlineViewDropOnItemIndex ? (item as? SidebarItem)?.url : nil
         springLoader.hover(resting.flatMap { folder in
-            // A favorite can be a package (an app): springing would open its insides.
+            // A favorite can be a package (an app): springing would open its insides. Dropping on the Trash trashes.
             urls.isEmpty || FileDrop.isInside(urls, folder) || NSWorkspace.shared.isFilePackage(atPath: folder.path)
-                || !SpringLoader.canOpen(folder, browsing: nil) ? nil : folder
+                || Trash.isTrash(folder) || !SpringLoader.canOpen(folder, browsing: nil) ? nil : folder
         }, drag: info.draggingSequenceNumber)
         if isReorder {
             if favoriteIndex(item, index) != nil { return .move }
@@ -279,6 +285,15 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             return folders.isEmpty ? [] : .link
         }
         guard let target = (item as? SidebarItem)?.url, index == NSOutlineViewDropOnItemIndex else { return [] }
+        if Trash.isTrash(target) {
+            if let verdict = trashVerdict, verdict.drag == info.draggingSequenceNumber { return verdict.operation }
+            // Not what's already in a Trash, a Trash itself, or a whole disk.
+            let refused = urls.isEmpty || urls.contains { url in
+                Trash.isInTrash(url) || Trash.isTrash(url) || (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
+            }
+            trashVerdict = (info.draggingSequenceNumber, refused ? [] : .delete)
+            return refused ? [] : .delete
+        }
         return FileDrop.operation(urls, into: target, info: info)
     }
 
@@ -294,6 +309,10 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         }
         guard let target = (item as? SidebarItem)?.url else { return false }
         let urls = FileDrop.urls(info)
+        if Trash.isTrash(target) {
+            moveToTrash(urls)
+            return !urls.isEmpty
+        }
         let operation = FileDrop.operation(urls, into: target, info: info)
         guard !urls.isEmpty, !operation.isEmpty else { return false }
         TransferQueue.shared.enqueue(urls, to: target, mode: operation == .move ? .move : .copy,
@@ -378,24 +397,57 @@ extension SidebarViewController: NSMenuDelegate {
             return
         }
         guard let url = item.url else { return }
-        let favorite = isFavorite(item)
-        func add(_ title: String, _ action: Selector) {
-            let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            entry.target = self
-            entry.representedObject = url
-            menu.addItem(entry)
+        if Trash.isTrash(url) {
+            add("Open in New Tab", #selector(openInNewTab(_:)), url)
+            menu.addItem(.separator())
+            let empty = NSMenuItem(title: "Empty Trash…", action: #selector(AppDelegate.emptyTrash(_:)), keyEquivalent: "")
+            menu.addItem(empty)
+            return
         }
-        add("Open in New Tab", #selector(openInNewTab(_:)))
-        add("Copy Path", #selector(copyItemPath(_:)))
+        let favorite = isFavorite(item)
+        add("Open in New Tab", #selector(openInNewTab(_:)), url)
+        add("Copy Path", #selector(copyItemPath(_:)), url)
         menu.addItem(.separator())
         if favorite {
-            add("Remove from Sidebar", #selector(removeFavorite(_:)))
+            add("Remove from Sidebar", #selector(removeFavorite(_:)), url)
         } else if !item.isEjectable {
-            add("Add to Favorites", #selector(addFavorite(_:)))
+            add("Add to Favorites", #selector(addFavorite(_:)), url)
         }
         if item.isEjectable {
             menu.addItem(.separator())
-            add("Eject “\(item.title)”", #selector(ejectItem(_:)))
+            add("Eject “\(item.title)”", #selector(ejectItem(_:)), url)
+        }
+    }
+
+    private func add(_ title: String, _ action: Selector, _ url: URL) {
+        let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        entry.target = self
+        entry.representedObject = url
+        outline.menu?.addItem(entry)
+    }
+
+    /// Full or empty, like the Dock's (empty when Strata can't look: that needs Full Disk Access).
+    private static var trashSymbol: String { Trash.isHomeEmpty ? "trash" : "trash.fill" }
+
+    @objc private func trashMayHaveChanged() {
+        guard let section = sections.last, let item = section.items.last, item.url == Trash.home,
+              item.symbol != Self.trashSymbol else { return }
+        item.symbol = Self.trashSymbol
+        outline.reloadItem(item)
+    }
+
+    /// Files dropped on the Trash go there like ⌘⌫: undoable, in History, and Put Back knows where they came from.
+    private func moveToTrash(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        let window = view.window
+        Task { @MainActor in
+            do {
+                try await FileOps.trashInBackground(urls, undo: window?.undoManager)
+            } catch let noTrash as FileOps.NoTrash {
+                BrowserViewController.confirmDelete(noTrash.urls, in: window, noTrash: true) {}
+            } catch {
+                if let window { NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil) }
+            }
         }
     }
 

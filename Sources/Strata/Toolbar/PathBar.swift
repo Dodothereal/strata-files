@@ -152,7 +152,13 @@ final class PathBar: NSView, NSTextFieldDelegate {
         var current = URL(fileURLWithPath: root)
         for component in path.dropFirst(root.count).split(separator: "/") {
             current = current.appending(path: String(component))
-            parts.append((String(component), current, nil))
+            // Another disk's Trash is `.Trashes/<uid>`: shown as one "Trash" step.
+            if component == ".Trashes", Trash.isTrash(current.appending(path: String(getuid()))) { continue }
+            if Trash.isTrash(current) {
+                parts.append(("Trash", current, "trash"))
+            } else {
+                parts.append((String(component), current, nil))
+            }
         }
         return parts
     }

@@ -8,6 +8,8 @@ enum MainMenu {
             .separator(),
             item("Settings…", #selector(AppDelegate.showSettings(_:)), ","),
             .separator(),
+            item("Empty Trash…", #selector(AppDelegate.emptyTrash(_:)), "\u{8}", [.command, .shift]),
+            .separator(),
             servicesItem(),
             .separator(),
             item("Hide Strata", #selector(NSApplication.hide(_:)), "h"),
@@ -36,6 +38,7 @@ enum MainMenu {
             item("Share…", #selector(BrowserViewController.share(_:))),
             .separator(),
             item("Move to Trash", #selector(BrowserViewController.moveToTrash(_:)), "\u{8}"),
+            alternate(item("Delete Immediately…", #selector(BrowserViewController.deleteImmediately(_:)), "\u{8}", [.command, .option])),
             item("Eject", #selector(BrowserWindowController.ejectVolume(_:)), "e"),
             .separator(),
             item("Close Window", #selector(NSWindow.performClose(_:)), "w"),
@@ -88,6 +91,7 @@ enum MainMenu {
             item("Documents", #selector(BrowserWindowController.goDocuments(_:)), "o", [.command, .shift]),
             item("Downloads", #selector(BrowserWindowController.goDownloads(_:)), "l", [.command, .option]),
             item("Applications", #selector(BrowserWindowController.goApplications(_:)), "a", [.command, .shift]),
+            item("Trash", #selector(BrowserWindowController.goTrash(_:))),
             .separator(),
             item("Go to Folder…", #selector(BrowserWindowController.goToFolder(_:)), "g", [.command, .shift]),
             item("Edit Location", #selector(BrowserWindowController.goToFolder(_:)), "l"),
@@ -153,6 +157,12 @@ enum MainMenu {
         NSApp.servicesMenu = services
         let item = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
         item.submenu = services
+        return item
+    }
+
+    /// Shown in place of the item above it while Option is held (Move to Trash → Delete Immediately…).
+    private static func alternate(_ item: NSMenuItem) -> NSMenuItem {
+        item.isAlternate = true
         return item
     }
 

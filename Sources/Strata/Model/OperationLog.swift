@@ -92,10 +92,10 @@ final class OperationLog {
     /// One entry for a whole copy or move job, including what it replaced.
     @discardableResult
     func recordTransfer(_ name: String, created: [URL], moved: [(from: URL, to: URL)],
-                        replaced: [(from: URL, to: URL)]) -> UUID? {
+                        replaced: [(from: URL, to: URL)], containers: [URL] = []) -> UUID? {
         guard !(created.isEmpty && moved.isEmpty) else { return nil }
         return append(Entry(name: name, kind: created.isEmpty ? .move : .create, pairs: Self.paths(moved),
-                            created: created.map(\.path), replaced: Self.paths(replaced)))
+                            created: created.map(\.path), replaced: Self.paths(replaced), containers: containers.map(\.path)))
     }
 
     /// One entry for an applied Ask Strata plan: its moves (Trash included) and the folders it made for them.
@@ -132,6 +132,22 @@ final class OperationLog {
         var info = stat()
         guard lstat(path, &info) == 0 else { return false }
         return recorded == "\(info.st_dev):\(info.st_ino)"
+    }
+
+    /// Where Strata last moved each of `urls` from (to the Trash, say), with when, for those still holding the file it
+    /// moved there. Keyed by standardized path. One pass over History, newest first.
+    func movedFrom(_ urls: [URL]) -> [String: (from: URL, date: Date)] {
+        var wanted = Set(urls.map { $0.standardizedFileURL.path })
+        var found: [String: (from: URL, date: Date)] = [:]
+        for entry in entries.reversed() where !entry.undone {
+            guard !wanted.isEmpty else { break }
+            for pair in entry.pairs.reversed() where pair.count == 2 {
+                let path = URL(fileURLWithPath: pair[1]).standardizedFileURL.path
+                guard wanted.remove(path) != nil else { continue }
+                if holdsOriginal(entry, pair[1]) { found[path] = (URL(fileURLWithPath: pair[0]), entry.date) }
+            }
+        }
+        return found
     }
 
     /// `path` still holds the file the operation left there (entries from before identities were kept: it exists).

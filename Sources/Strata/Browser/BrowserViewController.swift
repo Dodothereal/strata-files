@@ -753,6 +753,10 @@ final class BrowserViewController: NSViewController {
     @objc func moveToTrash(_ sender: Any?) {
         let urls = selectedURLs
         guard !urls.isEmpty else { return }
+        // In the Trash, ⌘⌫ puts things back (Finder does the same). Trashing what's already in a Trash again would lose
+        // where it came from.
+        if urls.allSatisfy(Trash.contains) { return putBack(sender) }
+        guard !urls.contains(where: Trash.isInTrash) else { return NSSound.beep() }
         // Keep the cursor where it was: select the row that slides into the first removed one's place.
         let removed = Set(urls.map(Self.key))
         let survivors = rows.filter { !removed.contains(Self.key($0.url)) }
@@ -763,34 +767,11 @@ final class BrowserViewController: NSViewController {
             do {
                 try await FileOps.trashInBackground(urls, undo: undoManager)
             } catch let noTrash as FileOps.NoTrash {
-                confirmDeleteImmediately(noTrash.urls)
+                Self.confirmDelete(noTrash.urls, in: view.window, noTrash: true) { [weak self] in self?.refresh() }
             } catch {
                 presentFileError(error)
             }
             refresh()
-        }
-    }
-
-    /// Finder's fallback for disks without a Trash: ask, then delete for good.
-    private func confirmDeleteImmediately(_ urls: [URL]) {
-        guard let window = view.window, let first = urls.first else { return }
-        let alert = NSAlert()
-        alert.messageText = urls.count == 1
-            ? "“\(first.lastPathComponent)” will be deleted immediately."
-            : "These \(urls.count) items will be deleted immediately."
-        alert.informativeText = "Their disk has no Trash. You can’t undo this."
-        alert.alertStyle = .critical
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
-        alert.buttons[0].hasDestructiveAction = true
-        alert.buttons[0].keyEquivalent = ""
-        alert.buttons[1].keyEquivalent = "\r"
-        alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn else { return }
-            self?.performAsync { [weak self] in
-                try await FileOps.deleteImmediately(urls)
-                self?.refresh()
-            }
         }
     }
 
@@ -1135,7 +1116,24 @@ final class BrowserViewController: NSViewController {
             add("Show in Finder", #selector(showInFinder(_:)), "macwindow")
             menu.addItem(.separator())
             add(Prefs.showHidden ? "Hide Hidden Files" : "Show Hidden Files", #selector(toggleHiddenFiles(_:)), "eye")
+            if isShowingTrash {
+                menu.addItem(.separator())
+                addEmptyTrash()
+            }
             return menu
+        }
+        func addEmptyTrash() {
+            let empty = NSMenuItem(title: "Empty Trash…", action: #selector(AppDelegate.emptyTrash(_:)), keyEquivalent: "")
+            empty.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
+            menu.addItem(empty)
+        }
+        // In the Trash, Finder leads with Put Back and Delete Immediately.
+        let inTrash = selected.allSatisfy { Trash.contains($0.url) }
+        let reachesIntoTrash = !inTrash && selected.contains { Trash.isInTrash($0.url) }
+        if inTrash {
+            add("Put Back", #selector(putBack(_:)), "tray.and.arrow.up")
+            add("Delete Immediately…", #selector(deleteImmediately(_:)), "xmark.bin")
+            menu.addItem(.separator())
         }
         add("Open", #selector(openSelection(_:)), "arrow.up.forward.app")
         if let first = selected.first, !first.isFolder {
@@ -1165,8 +1163,12 @@ final class BrowserViewController: NSViewController {
         menu.addItem(NSSharingServicePicker(items: selected.map(\.url)).standardShareMenuItem)
         menu.addItem(.separator())
         if selected.count == 1 { add("Rename", #selector(renameSelection(_:)), "pencil") }
-        add("Duplicate", #selector(duplicate(_:)), "plus.square.on.square")
-        add("Move to Trash", #selector(moveToTrash(_:)), "trash")
+        if inTrash {
+            addEmptyTrash()
+        } else {
+            add("Duplicate", #selector(duplicate(_:)), "plus.square.on.square")
+            if !reachesIntoTrash { add("Move to Trash", #selector(moveToTrash(_:)), "trash") }
+        }
         menu.addItem(.separator())
         add("Copy", #selector(copy(_:)), "doc.on.doc")
         add("Cut", #selector(cut(_:)), "scissors")
@@ -1408,6 +1410,7 @@ extension BrowserViewController: NSMenuItemValidation {
             #selector(openSelection(_:)), #selector(moveToTrash(_:)), #selector(duplicate(_:)), #selector(newFolder(_:)),
             #selector(renameSelection(_:)), #selector(toggleQuickLook(_:)), #selector(pasteAndMove(_:)),
             #selector(copy(_:)), #selector(cut(_:)), #selector(paste(_:)), #selector(share(_:)),
+            #selector(putBack(_:)), #selector(deleteImmediately(_:)),
         ]
         // While a name is being edited, ⌘⌫, ⌘D and ⇧⌘N belong to the text, not the file. While another folder loads,
         // the rows on screen are the previous folder's.
@@ -1418,16 +1421,25 @@ extension BrowserViewController: NSMenuItemValidation {
         let selectionCount = selectedEntries.count
         let hasSelection = selectionCount > 0
         switch item.action {
-        case #selector(openSelection(_:)), #selector(moveToTrash(_:)), #selector(duplicate(_:)),
+        case #selector(moveToTrash(_:)):
+            // Finder's File menu says Put Back for things in the Trash, and won't trash what's inside a trashed folder.
+            let inTrash = hasSelection && selectedEntries.allSatisfy { Trash.contains($0.url) }
+            item.title = inTrash ? "Put Back" : "Move to Trash"
+            return hasSelection && (inTrash || !selectedEntries.contains { Trash.isInTrash($0.url) })
+        case #selector(putBack(_:)):
+            return hasSelection && selectedEntries.allSatisfy { Trash.contains($0.url) }
+        case #selector(duplicate(_:)):
+            return hasSelection && !isShowingTrash
+        case #selector(openSelection(_:)), #selector(deleteImmediately(_:)),
              #selector(copy(_:)), #selector(cut(_:)), #selector(toggleQuickLook(_:)), #selector(share(_:)):
             return hasSelection
         case #selector(renameSelection(_:)):
             return selectionCount == 1 && effectiveMode != .treemap
         case #selector(paste(_:)), #selector(pasteAndMove(_:)):
-            return directory != nil && !isShowingResults && Clipboard.hasFiles
+            return directory != nil && !isShowingResults && Clipboard.hasFiles && !isShowingTrash
         case #selector(newFolder(_:)):
             // Disk Usage can't show an empty folder, so a new one would seem to vanish.
-            return directory != nil && !isShowingResults && loadError == nil && effectiveMode != .treemap
+            return directory != nil && !isShowingResults && loadError == nil && effectiveMode != .treemap && !isShowingTrash
         case #selector(toggleHiddenFiles(_:)):
             item.state = Prefs.showHidden ? .on : .off
             return true

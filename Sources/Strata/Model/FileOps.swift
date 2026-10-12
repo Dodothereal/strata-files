@@ -86,7 +86,8 @@ enum FileOps {
     private static func trashItems(_ urls: [URL]) async -> (moved: [Move], noTrash: [URL], failure: Error?) {
         var moved: [Move] = []
         var noTrash: [URL] = []
-        for url in urls {
+        // Trashing what's already in a Trash again would lose where it came from.
+        for url in urls where !Trash.isInTrash(url) {
             var result: NSURL?
             do {
                 try FileManager.default.trashItem(at: url, resultingItemURL: &result)
@@ -98,12 +99,6 @@ enum FileOps {
             }
         }
         return (moved, noTrash, nil)
-    }
-
-    /// Deletes for good, off the main thread. Only after the user confirmed (there's no undo).
-    @concurrent
-    static func deleteImmediately(_ urls: [URL]) async throws {
-        for url in urls { try FileManager.default.removeItem(at: url) }
     }
 
     /// `name 2.txt`, `name 3.txt`… or Finder's `name copy.txt`, `name copy 2.txt`… for copies next to the original.

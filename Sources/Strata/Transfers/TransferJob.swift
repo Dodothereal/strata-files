@@ -45,6 +45,10 @@ final class TransferJob {
     private weak var undoManager: UndoManager?
     /// False for jobs that are an undo or redo of something History already records.
     var logsHistory = true
+    /// What History and the Edit menu call the job, when not "Copy" or "Move" ("Put Back").
+    var actionName: String?
+    /// Folders made for the job's items beforehand: undo removes them once they're empty again.
+    var containers: [URL] = []
     /// Items moved so far, with where they actually landed (a clash may have renamed them).
     private(set) var completedMoves: [TransferMove] = []
     private weak var queue: TransferQueue?
@@ -573,8 +577,8 @@ final class TransferJob {
         // Items a retry finished moving were journaled as copies first; they're moves now.
         let movedDestinations = Set(moved.map(\.to))
         TransferUndo.register(created: created.filter { !movedDestinations.contains($0) }, moved: moved,
-                              replaced: replaced, actionName: mode == .copy ? "Copy" : "Move", undo: undoManager,
-                              logHistory: logsHistory)
+                              replaced: replaced, actionName: actionName ?? (mode == .copy ? "Copy" : "Move"), undo: undoManager,
+                              logHistory: logsHistory, containers: containers)
     }
 
     // MARK: - Progress

@@ -92,6 +92,11 @@ enum Places {
         return places
     }
 
+    /// A folder's name as Finder shows it ("Trash" for `~/.Trash`).
+    static func displayName(_ url: URL) -> String {
+        Trash.isTrash(url) ? "Trash" : FileManager.default.displayName(atPath: url.path)
+    }
+
     static func volumes() -> [Place] {
         let keys: [URLResourceKey] = [
             .volumeLocalizedNameKey, .volumeIsRemovableKey, .volumeIsEjectableKey, .volumeIsLocalKey,

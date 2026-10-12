@@ -25,7 +25,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private(set) var pane: Pane
     var onClose: (() -> Void)?
 
-    private let split: MainSplitViewController
+    let split: MainSplitViewController
     private let pathBar = PathBar()
     private var searchItem: NSSearchToolbarItem?
     private var viewModeItem: NSToolbarItemGroup?
@@ -37,7 +37,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     var splitController: NSSplitViewController { split }
     var isDualPane: Bool { panes.count > 1 }
 
-    private var destination: Destination {
+    var destination: Destination {
         get { pane.destination }
         set { pane.destination = newValue }
     }
@@ -234,10 +234,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             pathBar.url = url
             updateGitChrome()
             split.sidebar.highlight(.folder(url))
-            window?.title = FileManager.default.displayName(atPath: url.path)
+            window?.title = Places.displayName(url)
             window?.representedURL = url
             setSearchField("")
             split.scopeBar.isHidden = true
+            updateNotice(for: url)
         case .search(let text, let scope):
             setSearchField(text)
             // The query itself, so a search shows what was asked (Large Files by name).
@@ -249,10 +250,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             }
             window?.title = Self.searchTitle(text)
             window?.representedURL = nil
-            split.scopeBar.configure(folderName: FileManager.default.displayName(atPath: (scope ?? location).path),
+            split.scopeBar.configure(folderName: Places.displayName((scope ?? location)),
                                      everywhere: scope == nil)
             split.scopeBar.setSummary(pane.searchSummary)
             split.scopeBar.isHidden = false
+            split.noticeBar.hide()
         case .duplicates:
             setSearchField("")
             pathBar.showTitle("Duplicates", symbol: "square.on.square")
@@ -260,6 +262,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             window?.title = "Duplicates"
             window?.representedURL = nil
             split.scopeBar.isHidden = true
+            split.noticeBar.hide()
         case .recents:
             setSearchField("")
             pathBar.showTitle("Recents", symbol: "clock")
@@ -267,6 +270,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             window?.title = "Recents"
             window?.representedURL = nil
             split.scopeBar.isHidden = true
+            split.noticeBar.hide()
         }
         viewModeItem?.selectedIndex = browser.mode.position
         window?.toolbar?.validateVisibleItems()
@@ -440,7 +444,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                     }
                     if Privacy.measuringWouldPrompt(scope, browsing: p.location) {
                         // A link or saved search pointing into a guarded folder you haven't opened: macOS would ask.
-                        let name = FileManager.default.displayName(atPath: scope.path)
+                        let name = Places.displayName(scope)
                         p.browser.showMessage(symbol: "lock", title: "Open “\(name)” to search it",
                                               message: "macOS asks before apps read this folder. Open it in Strata once, then search it.")
                         showSummary("", for: p)
@@ -475,7 +479,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                     .filter { entry in structural.map { $0.matches(entry) } ?? true }
                 entries += byContent
                 p.browser.showResults(entries, total: result.total + byContent.count)
-                let place = scope.map { "in “\(FileManager.default.displayName(atPath: $0.path))”" } ?? "everywhere"
+                let place = scope.map { "in “\(Places.displayName($0))”" } ?? "everywhere"
                 var summary = result.total + byContent.count == 0 ? "No results \(place)"
                     : "\(Format.count(result.total + byContent.count, "result", "results")) \(place)"
                 if !byContent.isEmpty { summary += " · \(byContent.count) by content" }
@@ -513,7 +517,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             p.folderSearch = search
             search.start()
         }
-        let place = "“\(FileManager.default.displayName(atPath: scope.path))”"
+        let place = "“\(Places.displayName(scope))”"
         let isCurrent = { generation == p.searchGeneration && p.destination == target }
         // Small folders are done almost at once: give them a moment so they don't flash "Searching…".
         if !search.isFinished { try? await Task.sleep(for: .milliseconds(120)) }
@@ -703,7 +707,7 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
         guard browser === pane.browser, case .folder = destination else { return }
         pane.columnLocation = url
         pathBar.url = url
-        window?.title = FileManager.default.displayName(atPath: url.path)
+        window?.title = Places.displayName(url)
         pane.folderEntry = FileEntry(url: url)
         refreshPanels()
     }

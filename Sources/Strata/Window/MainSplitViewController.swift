@@ -7,6 +7,7 @@ final class MainSplitViewController: NSSplitViewController {
     let inspector = InspectorViewController()
     let status = StatusBarController()
     let scopeBar = SearchScopeBar()
+    let noticeBar = NoticeBar()
     let inspectorItem: NSSplitViewItem
 
     init(firstPane: PaneHostViewController) {
@@ -24,6 +25,8 @@ final class MainSplitViewController: NSSplitViewController {
         contentItem.addBottomAlignedAccessoryViewController(status)
         scopeBar.isHidden = true
         contentItem.addTopAlignedAccessoryViewController(scopeBar)
+        noticeBar.isHidden = true
+        contentItem.addTopAlignedAccessoryViewController(noticeBar)
 
         inspectorItem.minimumThickness = 260
         inspectorItem.maximumThickness = 440

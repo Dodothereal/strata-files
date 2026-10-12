@@ -5,13 +5,14 @@ extension TransferJob {
     /// "Copying 1,204 items to Downloads", "Moved “Report.pdf” to Archive".
     var title: String {
         let done = state == .finished
+        let what = sources.count == 1 ? "“\(sources[0].lastPathComponent)”" : Format.count(sources.count, "item", "items")
+        if actionName == "Put Back" { return "\(done ? "Put back" : "Putting back") \(what)" }
         let verb = switch (mode, done) {
         case (.copy, false): "Copying"
         case (.copy, true): "Copied"
         case (.move, false): "Moving"
         case (.move, true): "Moved"
         }
-        let what = sources.count == 1 ? "“\(sources[0].lastPathComponent)”" : Format.count(sources.count, "item", "items")
         return "\(verb) \(what) to \(destinationName)"
     }
 

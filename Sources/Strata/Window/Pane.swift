@@ -47,7 +47,7 @@ final class Pane {
     /// Short description for the pane header.
     var title: (text: String, symbol: String) {
         switch destination {
-        case .folder(let url): (FileManager.default.displayName(atPath: url.path), "folder")
+        case .folder(let url): (Places.displayName(url), Trash.isTrash(url) ? "trash" : "folder")
         case .search(let text, _): (BrowserWindowController.searchTitle(text), "magnifyingglass")
         case .recents: ("Recents", "clock")
         case .duplicates: ("Duplicates", "square.on.square")

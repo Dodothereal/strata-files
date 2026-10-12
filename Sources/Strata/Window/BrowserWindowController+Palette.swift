@@ -68,7 +68,7 @@ extension BrowserWindowController {
             if entry.isFolder { seen.insert(entry.url.path) }
         }
         for (rank, url) in Frecency.shared.ranked().prefix(400).enumerated() where seen.insert(url.path).inserted {
-            items.append(PaletteItem(title: FileManager.default.displayName(atPath: url.path),
+            items.append(PaletteItem(title: Places.displayName(url),
                                      subtitle: Format.tildePath(url.deletingLastPathComponent()), icon: folderIcon,
                                      kind: .folder, boost: max(0, 24 - rank / 2), url: url) { [weak self] in self?.navigate(to: url) })
         }
@@ -114,6 +114,10 @@ extension BrowserWindowController {
             command("Back", "chevron.left", "⌘[") { [weak self] in self?.goBack(nil) },
             command("Forward", "chevron.right", "⌘]") { [weak self] in self?.goForward(nil) },
             command("Recents", "clock", "⇧⌘F") { [weak self] in self?.goRecents(nil) },
+            command("Trash", "trash", nil) { [weak self] in self?.goTrash(nil) },
+            command("Empty Trash…", "trash", "⇧⌘⌫", keywords: ["Delete", "Erase"]) {
+                (NSApp.delegate as? AppDelegate)?.emptyTrash(nil)
+            },
             command("Go to Folder…", "folder.badge.questionmark", "⇧⌘G") { [weak self] in self?.goToFolder(nil) },
             command("Undo", "arrow.uturn.backward", "⌘Z") { [weak self] in self?.window?.undoManager?.undo() },
             command("History…", "clock.arrow.circlepath", "⌥⌘Z") { (NSApp.delegate as? AppDelegate)?.showHistory(nil) },
@@ -135,8 +139,18 @@ extension BrowserWindowController {
                 },
                 command("Duplicate", "plus.square.on.square", "⌘D") { [weak self] in self?.browser.duplicate(nil) },
                 command("Rename", "pencil", "↩") { [weak self] in self?.browser.renameSelection(nil) },
-                command("Move to Trash", "trash", "⌘⌫") { [weak self] in self?.browser.moveToTrash(nil) },
+
+                command("Delete Immediately…", "xmark.bin", "⌥⌘⌫", keywords: ["Remove", "Erase"]) { [weak self] in
+                    self?.browser.deleteImmediately(nil)
+                },
             ], at: 0)
+        }
+        // In the Trash: Put Back. Never offered for something inside a trashed folder.
+        let selected = browser.selectedURLs
+        if !selected.isEmpty, selected.allSatisfy(Trash.contains) {
+            commands.insert(command("Put Back", "tray.and.arrow.up", "⌘⌫") { [weak self] in self?.browser.putBack(nil) }, at: 0)
+        } else if !selected.isEmpty, !selected.contains(where: Trash.isInTrash) {
+            commands.insert(command("Move to Trash", "trash", "⌘⌫") { [weak self] in self?.browser.moveToTrash(nil) }, at: 0)
         }
         commands.append(contentsOf: aiPaletteItems())
         if !Privacy.hasFullDiskAccess {
