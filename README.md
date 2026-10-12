@@ -11,11 +11,6 @@
 </p>
 
 <p align="center">
-  <a href="https://stratafiles.app"><b>stratafiles.app</b></a> ·
-  <a href="https://github.com/cristipufu/strata/releases/latest">Download</a>
-</p>
-
-<p align="center">
   <img src="docs/screenshots/hero.png" alt="Strata showing a folder with live sizes, and a Markdown preview with an on-device summary in the inspector" width="900">
 </p>
 
@@ -115,10 +110,10 @@ downloaded repository could use to do that.
 
 ## Get Strata
 
-Download the latest version from [stratafiles.app](https://stratafiles.app) or
-[GitHub Releases](https://github.com/cristipufu/strata/releases/latest), open the disk image and drag Strata to
-Applications. It needs an Apple silicon Mac running **macOS 26**. Releases are signed and notarized by Apple, so Strata
-opens like any other app. Strata is in early development and doesn't update itself yet: check back for new versions.
+Download the latest version from [GitHub Releases](https://github.com/cristipufu/strata/releases/latest), open the disk
+image and drag Strata to Applications. It needs an Apple silicon Mac running **macOS 26**. Releases are signed and
+notarized by Apple, so Strata opens like any other app. Strata is in early development and doesn't update itself yet:
+check back for new versions.
 
 Or build it yourself with the Swift toolchain (Xcode or the Command Line Tools):
 
@@ -135,15 +130,11 @@ and measure everything without asking folder by folder. Strata walks you through
 
 Push a version tag and the [Release workflow](.github/workflows/release.yml) builds Strata on a Mac, signs it with the
 Developer ID certificate, has Apple notarize it, and publishes a GitHub Release with `Strata.dmg`, `Strata.zip` and
-their checksums. The website's Download button picks up the newest release on its own.
+their checksums.
 
 ```sh
 git tag v0.2.0 && git push origin v0.2.0
 ```
-
-The website lives in `site/` (`scripts/site.sh --serve` previews it; it needs `cwebp` from `brew install webp`) and is
-published by the
-[Website workflow](.github/workflows/pages.yml).
 
 ## License
 
