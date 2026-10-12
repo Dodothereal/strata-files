@@ -672,6 +672,11 @@
     "Indexing… %lld items so far": {
       "other": "인덱싱 중… 지금까지 %lld개 항목"
     },
+    "infoplist.NSDesktopFolderUsageDescription": "Strata는 데스크탑에 있는 파일을 표시합니다.",
+    "infoplist.NSDocumentsFolderUsageDescription": "Strata는 문서 폴더에 있는 파일을 표시합니다.",
+    "infoplist.NSDownloadsFolderUsageDescription": "Strata는 다운로드 폴더에 있는 파일을 표시합니다.",
+    "infoplist.NSNetworkVolumesUsageDescription": "Strata는 네트워크 볼륨에 있는 파일을 표시합니다.",
+    "infoplist.NSRemovableVolumesUsageDescription": "Strata는 외장 드라이브에 있는 파일을 표시합니다.",
     "Information": "정보",
     "Inside a folder (name or ~/path)": "폴더 안(이름 또는 ~/경로)",
     "inside a folder (path or name)": "폴더 안(경로 또는 이름)",

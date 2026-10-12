@@ -759,6 +759,11 @@
       "one": "Indexieren … bisher %lld Objekt",
       "other": "Indexieren … bisher %lld Objekte"
     },
+    "infoplist.NSDesktopFolderUsageDescription": "Strata zeigt die Dateien auf deinem Schreibtisch.",
+    "infoplist.NSDocumentsFolderUsageDescription": "Strata zeigt die Dateien in deinem Ordner „Dokumente“.",
+    "infoplist.NSDownloadsFolderUsageDescription": "Strata zeigt die Dateien in deinem Ordner „Downloads“.",
+    "infoplist.NSNetworkVolumesUsageDescription": "Strata zeigt die Dateien auf Netzwerkvolumes.",
+    "infoplist.NSRemovableVolumesUsageDescription": "Strata zeigt die Dateien auf externen Laufwerken.",
     "Information": "Informationen",
     "Inside a folder (name or ~/path)": "In einem Ordner (Name oder ~/Pfad)",
     "inside a folder (path or name)": "in einem Ordner (Pfad oder Name)",

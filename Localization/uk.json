@@ -933,6 +933,11 @@
       "many": "Індексування… поки що %lld елементів",
       "other": "Індексування… поки що %lld елемента"
     },
+    "infoplist.NSDesktopFolderUsageDescription": "Strata показує файли на Робочому столі.",
+    "infoplist.NSDocumentsFolderUsageDescription": "Strata показує файли в папці «Документи».",
+    "infoplist.NSDownloadsFolderUsageDescription": "Strata показує файли в папці «Викачане».",
+    "infoplist.NSNetworkVolumesUsageDescription": "Strata показує файли на мережевих томах.",
+    "infoplist.NSRemovableVolumesUsageDescription": "Strata показує файли на зовнішніх дисках.",
     "Information": "Інформація",
     "Inside a folder (name or ~/path)": "У папці (назва або ~/шлях)",
     "inside a folder (path or name)": "у папці (шлях або назва)",

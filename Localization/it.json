@@ -759,6 +759,11 @@
       "one": "Indicizzazione… %lld elemento finora",
       "other": "Indicizzazione… %lld elementi finora"
     },
+    "infoplist.NSDesktopFolderUsageDescription": "Strata mostra i file sulla tua scrivania.",
+    "infoplist.NSDocumentsFolderUsageDescription": "Strata mostra i file nella tua cartella Documenti.",
+    "infoplist.NSDownloadsFolderUsageDescription": "Strata mostra i file nella tua cartella Download.",
+    "infoplist.NSNetworkVolumesUsageDescription": "Strata mostra i file sui volumi di rete.",
+    "infoplist.NSRemovableVolumesUsageDescription": "Strata mostra i file sulle unità esterne.",
     "Information": "Informazioni",
     "Inside a folder (name or ~/path)": "In una cartella (nome o ~/percorso)",
     "inside a folder (path or name)": "in una cartella (percorso o nome)",

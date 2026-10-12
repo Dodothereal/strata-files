@@ -759,6 +759,11 @@
       "one": "Indexelés… eddig %lld elem",
       "other": "Indexelés… eddig %lld elem"
     },
+    "infoplist.NSDesktopFolderUsageDescription": "A Strata megjeleníti az Íróasztalon lévő fájlokat.",
+    "infoplist.NSDocumentsFolderUsageDescription": "A Strata megjeleníti a Dokumentumok mappában lévő fájlokat.",
+    "infoplist.NSDownloadsFolderUsageDescription": "A Strata megjeleníti a Letöltések mappában lévő fájlokat.",
+    "infoplist.NSNetworkVolumesUsageDescription": "A Strata megjeleníti a hálózati kötetek fájljait.",
+    "infoplist.NSRemovableVolumesUsageDescription": "A Strata megjeleníti a külső meghajtók fájljait.",
     "Information": "Információk",
     "Inside a folder (name or ~/path)": "Mappán belül (név vagy ~/útvonal)",
     "inside a folder (path or name)": "mappán belül (útvonal vagy név)",

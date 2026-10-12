@@ -933,6 +933,11 @@
       "many": "Indeksuję… dotąd %lld rzeczy",
       "other": "Indeksuję… dotąd %lld rzeczy"
     },
+    "infoplist.NSDesktopFolderUsageDescription": "Strata pokazuje pliki na biurku.",
+    "infoplist.NSDocumentsFolderUsageDescription": "Strata pokazuje pliki w folderze Dokumenty.",
+    "infoplist.NSDownloadsFolderUsageDescription": "Strata pokazuje pliki w folderze Pobrane rzeczy.",
+    "infoplist.NSNetworkVolumesUsageDescription": "Strata pokazuje pliki na woluminach sieciowych.",
+    "infoplist.NSRemovableVolumesUsageDescription": "Strata pokazuje pliki na dyskach zewnętrznych.",
     "Information": "Informacje",
     "Inside a folder (name or ~/path)": "W folderze (nazwa lub ~/ścieżka)",
     "inside a folder (path or name)": "w folderze (ścieżka lub nazwa)",

@@ -759,6 +759,11 @@
       "one": "Indexando… %lld ítem hasta ahora",
       "other": "Indexando… %lld ítems hasta ahora"
     },
+    "infoplist.NSDesktopFolderUsageDescription": "Strata muestra los archivos de tu escritorio.",
+    "infoplist.NSDocumentsFolderUsageDescription": "Strata muestra los archivos de tu carpeta Documentos.",
+    "infoplist.NSDownloadsFolderUsageDescription": "Strata muestra los archivos de tu carpeta Descargas.",
+    "infoplist.NSNetworkVolumesUsageDescription": "Strata muestra los archivos de los volúmenes de red.",
+    "infoplist.NSRemovableVolumesUsageDescription": "Strata muestra los archivos de los discos externos.",
     "Information": "Información",
     "Inside a folder (name or ~/path)": "Dentro de una carpeta (nombre o ~/ruta)",
     "inside a folder (path or name)": "dentro de una carpeta (ruta o nombre)",

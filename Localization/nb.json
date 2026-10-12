@@ -759,6 +759,11 @@
       "one": "Indekserer… %lld objekt så langt",
       "other": "Indekserer… %lld objekter så langt"
     },
+    "infoplist.NSDesktopFolderUsageDescription": "Strata viser filene på skrivebordet ditt.",
+    "infoplist.NSDocumentsFolderUsageDescription": "Strata viser filene i Dokumenter-mappen din.",
+    "infoplist.NSDownloadsFolderUsageDescription": "Strata viser filene i Nedlastinger-mappen din.",
+    "infoplist.NSNetworkVolumesUsageDescription": "Strata viser filene på nettverksvolumer.",
+    "infoplist.NSRemovableVolumesUsageDescription": "Strata viser filene på eksterne disker.",
     "Information": "Informasjon",
     "Inside a folder (name or ~/path)": "I en mappe (navn eller ~/bane)",
     "inside a folder (path or name)": "i en mappe (bane eller navn)",

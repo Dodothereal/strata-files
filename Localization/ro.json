@@ -846,6 +846,11 @@
       "few": "Se indexează… %lld articole până acum",
       "other": "Se indexează… %lld de articole până acum"
     },
+    "infoplist.NSDesktopFolderUsageDescription": "Strata afișează fișierele de pe biroul tău.",
+    "infoplist.NSDocumentsFolderUsageDescription": "Strata afișează fișierele din dosarul tău Documente.",
+    "infoplist.NSDownloadsFolderUsageDescription": "Strata afișează fișierele din dosarul tău Descărcări.",
+    "infoplist.NSNetworkVolumesUsageDescription": "Strata afișează fișierele de pe volumele de rețea.",
+    "infoplist.NSRemovableVolumesUsageDescription": "Strata afișează fișierele de pe unitățile externe.",
     "Information": "Informații",
     "Inside a folder (name or ~/path)": "Într-un dosar (nume sau ~/cale)",
     "inside a folder (path or name)": "într-un dosar (cale sau nume)",

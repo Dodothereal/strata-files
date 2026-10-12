@@ -759,6 +759,11 @@
       "one": "Indexeren… tot nu toe %lld onderdeel",
       "other": "Indexeren… tot nu toe %lld onderdelen"
     },
+    "infoplist.NSDesktopFolderUsageDescription": "Strata toont de bestanden op je bureaublad.",
+    "infoplist.NSDocumentsFolderUsageDescription": "Strata toont de bestanden in je map “Documenten”.",
+    "infoplist.NSDownloadsFolderUsageDescription": "Strata toont de bestanden in je map “Downloads”.",
+    "infoplist.NSNetworkVolumesUsageDescription": "Strata toont de bestanden op netwerkvolumes.",
+    "infoplist.NSRemovableVolumesUsageDescription": "Strata toont de bestanden op externe schijven.",
     "Information": "Informatie",
     "Inside a folder (name or ~/path)": "In een map (naam of ~/pad)",
     "inside a folder (path or name)": "in een map (pad of naam)",

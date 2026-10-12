@@ -759,6 +759,11 @@
       "one": "Dizinleniyor… şu ana kadar %lld öğe",
       "other": "Dizinleniyor… şu ana kadar %lld öğe"
     },
+    "infoplist.NSDesktopFolderUsageDescription": "Strata, Masaüstünüzdeki dosyaları gösterir.",
+    "infoplist.NSDocumentsFolderUsageDescription": "Strata, Belgeler klasörünüzdeki dosyaları gösterir.",
+    "infoplist.NSDownloadsFolderUsageDescription": "Strata, İndirilenler klasörünüzdeki dosyaları gösterir.",
+    "infoplist.NSNetworkVolumesUsageDescription": "Strata, ağ birimlerindeki dosyaları gösterir.",
+    "infoplist.NSRemovableVolumesUsageDescription": "Strata, harici sürücülerdeki dosyaları gösterir.",
     "Information": "Bilgiler",
     "Inside a folder (name or ~/path)": "Bir klasörün içinde (ad veya ~/yol)",
     "inside a folder (path or name)": "bir klasörün içinde (yol veya ad)",

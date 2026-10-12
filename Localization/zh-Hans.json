@@ -672,6 +672,11 @@
     "Indexing… %lld items so far": {
       "other": "正在索引…目前已有%lld个项目"
     },
+    "infoplist.NSDesktopFolderUsageDescription": "Strata会显示你桌面上的文件。",
+    "infoplist.NSDocumentsFolderUsageDescription": "Strata会显示你“文稿”文件夹中的文件。",
+    "infoplist.NSDownloadsFolderUsageDescription": "Strata会显示你“下载”文件夹中的文件。",
+    "infoplist.NSNetworkVolumesUsageDescription": "Strata会显示网络宗卷上的文件。",
+    "infoplist.NSRemovableVolumesUsageDescription": "Strata会显示外置驱动器上的文件。",
     "Information": "信息",
     "Inside a folder (name or ~/path)": "在文件夹中（名称或~/路径）",
     "inside a folder (path or name)": "在文件夹中（路径或名称）",

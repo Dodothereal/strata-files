@@ -759,6 +759,11 @@
       "one": "Indexando… %lld item até agora",
       "other": "Indexando… %lld itens até agora"
     },
+    "infoplist.NSDesktopFolderUsageDescription": "O Strata mostra os arquivos da sua Mesa.",
+    "infoplist.NSDocumentsFolderUsageDescription": "O Strata mostra os arquivos da sua pasta Documentos.",
+    "infoplist.NSDownloadsFolderUsageDescription": "O Strata mostra os arquivos da sua pasta Downloads.",
+    "infoplist.NSNetworkVolumesUsageDescription": "O Strata mostra os arquivos dos volumes de rede.",
+    "infoplist.NSRemovableVolumesUsageDescription": "O Strata mostra os arquivos dos discos externos.",
     "Information": "Informações",
     "Inside a folder (name or ~/path)": "Dentro de uma pasta (nome ou ~/caminho)",
     "inside a folder (path or name)": "dentro de uma pasta (caminho ou nome)",

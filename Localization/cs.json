@@ -846,6 +846,11 @@
       "few": "Indexování… zatím %lld položky",
       "other": "Indexování… zatím %lld položek"
     },
+    "infoplist.NSDesktopFolderUsageDescription": "Strata zobrazuje soubory na ploše.",
+    "infoplist.NSDocumentsFolderUsageDescription": "Strata zobrazuje soubory ve složce Dokumenty.",
+    "infoplist.NSDownloadsFolderUsageDescription": "Strata zobrazuje soubory ve složce Stahování.",
+    "infoplist.NSNetworkVolumesUsageDescription": "Strata zobrazuje soubory na síťových svazcích.",
+    "infoplist.NSRemovableVolumesUsageDescription": "Strata zobrazuje soubory na externích discích.",
     "Information": "Informace",
     "Inside a folder (name or ~/path)": "Ve složce (název nebo ~/cesta)",
     "inside a folder (path or name)": "ve složce (cesta nebo název)",

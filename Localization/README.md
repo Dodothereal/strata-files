@@ -41,7 +41,8 @@ System Settings ▸ General ▸ Language & Region ▸ Applications).
 
 - **Keys** are the English text exactly as the app has it. Don't change them; `en.json` lists every one, with a note
   on where it appears. A few keys are names instead (`git.status.modified`), for an English word used with two
-  meanings; `en.json` has their English.
+  meanings; `en.json` has their English. Keys starting with `infoplist.` are the texts macOS shows when Strata first
+  asks to open your Desktop, Documents, Downloads, network volumes or external drives.
 - **Placeholders** stand for what the app fills in: `%@` text (a file name, say), `%lld` a whole number, `%lf` a
   number. Keep each one. To put them in a different order, number them: `%2$@ … %1$@`.
 - **Plural forms**: a string that depends on a number is an object with one form per plural category your language

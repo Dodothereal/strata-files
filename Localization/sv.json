@@ -759,6 +759,11 @@
       "one": "Indexerar… %lld objekt hittills",
       "other": "Indexerar… %lld objekt hittills"
     },
+    "infoplist.NSDesktopFolderUsageDescription": "Strata visar filerna på ditt skrivbord.",
+    "infoplist.NSDocumentsFolderUsageDescription": "Strata visar filerna i din mapp Dokument.",
+    "infoplist.NSDownloadsFolderUsageDescription": "Strata visar filerna i din mapp Hämtade filer.",
+    "infoplist.NSNetworkVolumesUsageDescription": "Strata visar filerna på nätverksvolymer.",
+    "infoplist.NSRemovableVolumesUsageDescription": "Strata visar filerna på externa enheter.",
     "Information": "Information",
     "Inside a folder (name or ~/path)": "I en mapp (namn eller ~/sökväg)",
     "inside a folder (path or name)": "i en mapp (sökväg eller namn)",

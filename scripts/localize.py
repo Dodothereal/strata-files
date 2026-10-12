@@ -128,6 +128,21 @@ def plural_rules(code, data=None):
     return required, []
 
 
+# macOS's permission prompts are the Info.plist's *UsageDescription texts: they're in en.json under named keys
+# ("infoplist.NSDesktopFolderUsageDescription"), translated like any string, and built into InfoPlist.strings.
+INFO_PLIST = ROOT / "Resources" / "Info.plist"
+PLIST_PREFIX = "infoplist."
+
+
+def info_plist_strings():
+    import plistlib
+    if not INFO_PLIST.exists():
+        return {}
+    with open(INFO_PLIST, "rb") as file:
+        info = plistlib.load(file)
+    return {name: text for name, text in info.items() if name.endswith("UsageDescription") and isinstance(text, str)}
+
+
 def language_files():
     return sorted(path for path in FOLDER.glob("*.json") if path.name != "en.json")
 
@@ -161,6 +176,9 @@ def extract():
                 if entry.get("value"):
                     note["value"] = entry["value"]
                 note["places"].append(where)
+    for name, text in info_plist_strings().items():
+        found[PLIST_PREFIX + name] = {"comments": {"macOS permission prompt (Info.plist), shown the first time Strata opens that place"},
+                                      "places": [f"Info.plist {name}"], "value": text}
     old = load(SOURCE) if SOURCE.exists() else {"language": "English", "english": "English", "code": "en", "maintainers": []}
     strings = {}
     notes = {}
@@ -329,10 +347,16 @@ def build(out):
             shutil.rmtree(folder)
         folder.mkdir(parents=True)
         lines = []
+        info_lines = []
         plurals = {}
         for key, source in english.items():
             value = strings.get(key)
             text = english_text(key, source)
+            if key.startswith(PLIST_PREFIX):
+                # Untranslated, macOS shows the Info.plist's English.
+                if code != "en" and isinstance(value, str) and value and not placeholder_problem(text, value):
+                    info_lines.append(f'"{escape(key[len(PLIST_PREFIX):])}" = "{escape(value)}";')
+                continue
             if isinstance(source, dict):
                 forms = value if isinstance(value, dict) and is_translated(value) else source
                 # A form whose placeholders don't match would crash the app when shown: English instead.
@@ -355,6 +379,8 @@ def build(out):
                 # A named key nobody has translated yet: its English, rather than the key.
                 lines.append(f'"{escape(key)}" = "{escape(text)}";')
         (folder / "Localizable.strings").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        if info_lines:
+            (folder / "InfoPlist.strings").write_text("\n".join(info_lines) + "\n", encoding="utf-8")
         if plurals:
             with open(folder / "Localizable.stringsdict", "wb") as file:
                 plistlib.dump(plurals, file)

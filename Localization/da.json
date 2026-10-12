@@ -759,6 +759,11 @@
       "one": "Indekserer… %lld emne indtil videre",
       "other": "Indekserer… %lld emner indtil videre"
     },
+    "infoplist.NSDesktopFolderUsageDescription": "Strata viser filerne på dit skrivebord.",
+    "infoplist.NSDocumentsFolderUsageDescription": "Strata viser filerne i din mappe »Dokumenter«.",
+    "infoplist.NSDownloadsFolderUsageDescription": "Strata viser filerne i din mappe »Overførsler«.",
+    "infoplist.NSNetworkVolumesUsageDescription": "Strata viser filerne på netværksenheder.",
+    "infoplist.NSRemovableVolumesUsageDescription": "Strata viser filerne på eksterne drev.",
     "Information": "Oplysninger",
     "Inside a folder (name or ~/path)": "I en mappe (navn eller ~/sti)",
     "inside a folder (path or name)": "i en mappe (sti eller navn)",
