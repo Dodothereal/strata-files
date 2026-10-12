@@ -82,6 +82,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(indexPhaseChanged), name: .indexPhaseDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
+        // The Inspector's Cloud row follows downloads and uploads.
+        NotificationCenter.default.addObserver(self, selector: #selector(cloudStatusChanged), name: .cloudStatusChanged, object: nil)
         // Clicking into a pane gives it focus.
         responderObservation = window.observe(\.firstResponder, options: [.new]) { [weak self] window, _ in
             MainActor.assumeIsolated {
@@ -694,6 +696,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         panes.map { $0.location.path }
     }
 
+    @objc private func cloudStatusChanged() {
+        guard split.splitViewItems.last?.isCollapsed == false else { return }
+        refreshPanels()
+    }
+
     private func refreshPanels() {
         var status = browser.statusText
         if case .scanning(let items) = FileIndex.shared.phase {
@@ -742,6 +749,17 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
         guard let owner = panes.first(where: { $0.browser === browser }) else { return }
         activate(owner)
         navigate(to: url.deletingLastPathComponent(), select: url)
+    }
+
+    /// The folders every window's panes show.
+    static func foldersShown() -> Set<String> {
+        var shown: Set<String> = []
+        for case let controller as BrowserWindowController in NSApp.windows.compactMap(\.windowController) {
+            for pane in controller.panes {
+                if let folder = pane.browser.directory { shown.insert(folder.standardizedFileURL.path) }
+            }
+        }
+        return shown
     }
 
     /// Archive copies shown in any window's panes (their top folders), which pruning must leave alone.

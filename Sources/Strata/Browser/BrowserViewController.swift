@@ -183,6 +183,8 @@ final class BrowserViewController: NSViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsLoaded, object: nil)
+        // Cloud badges redraw the same way.
+        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .cloudStatusChanged, object: nil)
     }
 
     private func configureOutline() {
@@ -315,6 +317,7 @@ final class BrowserViewController: NSViewController {
                 let entries = try await DirectoryLoader.load(url, showHidden: showHidden)
                 guard gen == generation else { return }
                 TagStore.shared.load(entries, in: url)
+                CloudStore.shared.load(entries.map(\.url), in: url)
                 loadError = nil
                 isLoadingFolder = false
                 Privacy.markAccessible(url)
@@ -380,6 +383,7 @@ final class BrowserViewController: NSViewController {
         Task {
             let entries = (try? await DirectoryLoader.load(url, showHidden: showHidden)) ?? []
             TagStore.shared.load(entries, in: url)
+            CloudStore.shared.load(entries.map(\.url), in: url)
             node.isLoadingChildren = false
             guard gen == generation else { return }
             let old = Dictionary((node.children ?? []).map { ($0.url, $0) }, uniquingKeysWith: { a, _ in a })
@@ -1011,6 +1015,7 @@ final class BrowserViewController: NSViewController {
         guard let directory, !isShowingResults else { return }
         TagStore.shared.invalidate(directory)
         TagStore.shared.load(nodes.map(\.entry), in: directory)
+        CloudStore.shared.load(nodes.map(\.url), in: directory)
     }
 
     /// Tags changed (here or in another window) or were read: redraw what's shown.
@@ -1243,6 +1248,10 @@ final class BrowserViewController: NSViewController {
                 menu.addItem(openWith)
             }
         }
+        // iCloud Drive and File Provider folders: bring items here, or free their space.
+        let cloud = selectedCloudStatuses
+        if !inTrash, cloud.contains(.cloudOnly) { add("Download Now", #selector(downloadNow(_:)), "icloud.and.arrow.down") }
+        if !inTrash, cloud.contains(.downloaded) { add("Remove Download", #selector(removeDownload(_:)), "icloud.slash") }
         add("Quick Look", #selector(toggleQuickLook(_:)), "eye")
         // The system's own item: it keeps its picker alive and shows the share sheet next to the menu.
         menu.addItem(NSSharingServicePicker(items: selected.map(\.url)).standardShareMenuItem)
@@ -1351,7 +1360,8 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
                 return cell
             }()
             cell.configure(name: entry.name, icon: IconCache.shared.icon(for: entry), matches: node.matchIndices, dimmed: dimmed,
-                           git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url))
+                           git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
+                           cloud: CloudStore.shared.status(for: entry.url))
             return cell
         }
         let cell = outlineView.makeView(withIdentifier: .textCell, owner: nil) as? TextCellView ?? {

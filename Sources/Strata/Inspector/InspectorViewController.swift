@@ -192,6 +192,7 @@ final class InspectorViewController: NSViewController {
             rows.append(("Modified", Format.longDate(entry.modified)))
             if let added = entry.added { rows.append(("Added", Format.longDate(added))) }
             rows.append(("Where", Format.tildePath((apparent ?? entry.url).deletingLastPathComponent())))
+            if let cloud = CloudStore.shared.status(for: entry.url) { rows.append(("Cloud", cloud.label)) }
             setRows(rows)
             if !sameItems { schedulePreview(entry) }
         } else {

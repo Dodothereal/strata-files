@@ -6,6 +6,7 @@ final class NameCellView: NSTableCellView {
     private let label = NSTextField(labelWithString: "")
     private let gitBadge = GitStatusBadge()
     private let tagDots = TagDotsView()
+    private let cloudBadge = CloudBadge()
     private var name = ""
     private var matches: [Int] = []
     private var dimmed = false
@@ -22,9 +23,11 @@ final class NameCellView: NSTableCellView {
         // The name hugs its text so tag dots follow it, like Finder.
         label.setContentHuggingPriority(.defaultHigh, for: .horizontal)
         tagDots.translatesAutoresizingMaskIntoConstraints = false
+        cloudBadge.translatesAutoresizingMaskIntoConstraints = false
         addSubview(icon)
         addSubview(label)
         addSubview(tagDots)
+        addSubview(cloudBadge)
         addSubview(gitBadge)
         imageView = icon
         textField = label
@@ -35,7 +38,9 @@ final class NameCellView: NSTableCellView {
             icon.heightAnchor.constraint(equalToConstant: 18),
             label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 7),
             tagDots.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 4),
-            tagDots.trailingAnchor.constraint(lessThanOrEqualTo: gitBadge.leadingAnchor, constant: -2),
+            tagDots.trailingAnchor.constraint(lessThanOrEqualTo: cloudBadge.leadingAnchor, constant: -2),
+            cloudBadge.trailingAnchor.constraint(equalTo: gitBadge.leadingAnchor),
+            cloudBadge.centerYAnchor.constraint(equalTo: centerYAnchor),
             tagDots.centerYAnchor.constraint(equalTo: centerYAnchor),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
             gitBadge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
@@ -46,11 +51,12 @@ final class NameCellView: NSTableCellView {
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(name: String, icon image: NSImage, matches: [Int], dimmed: Bool, git: GitBadge? = nil,
-                   tags: [FinderTag] = []) {
+                   tags: [FinderTag] = [], cloud: CloudStatus? = nil) {
         self.name = name
         self.matches = matches
         self.dimmed = dimmed
         gitBadge.badge = git
+        cloudBadge.status = cloud
         tagDots.tags = tags
         tagDots.alphaValue = dimmed ? 0.45 : 1
         icon.image = image
@@ -62,6 +68,7 @@ final class NameCellView: NSTableCellView {
         didSet {
             gitBadge.backgroundStyle = backgroundStyle
             tagDots.backgroundStyle = backgroundStyle
+            cloudBadge.backgroundStyle = backgroundStyle
             render()
         }
     }

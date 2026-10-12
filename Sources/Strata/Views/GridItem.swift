@@ -16,6 +16,7 @@ final class GridItemView: NSView {
     let imageView = NSImageView()
     /// Git status, at the icon's top-right corner.
     let gitBadge = GitStatusBadge()
+    let cloudBadge = CloudBadge()
     private(set) var metrics = GridMetrics(iconSize: 64)
     private var name = ""
     private var matches: [Int] = []
@@ -45,6 +46,8 @@ final class GridItemView: NSView {
         addSubview(imageView)
         gitBadge.drawsBacking = true
         addSubview(gitBadge)
+        cloudBadge.drawsBacking = true
+        addSubview(cloudBadge)
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
     }
@@ -85,7 +88,9 @@ final class GridItemView: NSView {
 
     /// Name, tags and detail, for VoiceOver.
     private var accessibilityText: String {
-        [name, tags.isEmpty ? nil : "tags " + tags.map(\.name).joined(separator: ", "), detail].compactMap { $0 }.joined(separator: ", ")
+        let cloud = cloudBadge.status.flatMap { $0 == .downloaded ? nil : $0.label }
+        return [name, tags.isEmpty ? nil : "tags " + tags.map(\.name).joined(separator: ", "), cloud, detail].compactMap { $0 }
+            .joined(separator: ", ")
     }
 
     private static let dotDiameter: CGFloat = 8
@@ -161,6 +166,8 @@ final class GridItemView: NSView {
         imageView.frame = iconRect
         let size = NSSize(width: GitStatusBadge.tileSize.width + 4, height: GitStatusBadge.tileSize.height + 4)
         gitBadge.frame = NSRect(x: iconRect.maxX - size.width + 3, y: iconRect.minY - 3, width: size.width, height: size.height)
+        // The cloud state sits in the other corner.
+        cloudBadge.frame = NSRect(x: iconRect.minX - 3, y: iconRect.minY - 3, width: size.width + 3, height: size.height)
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -369,8 +376,9 @@ final class GridItem: NSCollectionViewItem {
     }
 
     func configure(_ entry: FileEntry, matches: [Int], metrics: GridMetrics, showsInfo: Bool, dimmed: Bool, scale: CGFloat,
-                   git: GitBadge? = nil, tags: [FinderTag] = []) {
+                   git: GitBadge? = nil, tags: [FinderTag] = [], cloud: CloudStatus? = nil) {
         itemView.gitBadge.badge = git
+        itemView.cloudBadge.status = cloud
         itemView.setTags(tags)
         let sameFile = self.entry == entry
         self.entry = entry
