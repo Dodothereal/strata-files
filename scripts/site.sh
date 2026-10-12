@@ -17,8 +17,8 @@ mkdir -p "$out/screenshots"
 cp -R site/. "$out/"
 
 # The screenshots as WebP (about a fifth of the PNG's size, transparent shadow kept), under names that say what they
-# show. Wide shots also get an 800 px version for phones; index.html and sitemap.xml use these names.
-#   source:name:widths   ("1400,800" adds the phone version)
+# show. Wide shots also get 800 and 1100 px versions (phones, 1x screens); index.html and sitemap.xml use these names.
+#   source:name:widths   ("1400,800" adds the smaller versions)
 shots=(
   "hero:strata-mac-file-manager-list-view:1400,800"
   "search:strata-plain-english-file-search:1400,800"
@@ -35,9 +35,21 @@ for shot in "${shots[@]}"; do
   IFS=: read -r source name widths <<< "$shot"
   cwebp "${webp[@]}" "docs/screenshots/$source.png" -o "$out/screenshots/$name.webp"
   if [[ "$widths" == *800* ]]; then
-    cwebp "${webp[@]}" -resize 800 0 "docs/screenshots/$source.png" -o "$out/screenshots/$name-800.webp"
+    for width in 800 1100; do
+      cwebp "${webp[@]}" -resize "$width" 0 "docs/screenshots/$source.png" -o "$out/screenshots/$name-$width.webp"
+    done
   fi
 done
+
+# The stylesheet goes inline so the first paint doesn't wait for another request (404.html still links it).
+python3 - "$out/index.html" "$out/styles.css" <<'PY'
+import sys
+page, css = sys.argv[1], open(sys.argv[2]).read()
+html = open(page).read()
+link = '<link rel="stylesheet" href="styles.css">'
+assert html.count(link) == 1, "index.html should link styles.css exactly once"
+open(page, "w").write(html.replace(link, "<style>\n" + css + "</style>"))
+PY
 echo "Built $out ($(du -sh "$out" | cut -f1))"
 
 if [[ "${1:-}" == "--serve" ]]; then
