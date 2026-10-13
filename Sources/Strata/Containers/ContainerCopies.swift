@@ -257,8 +257,12 @@ nonisolated enum ContainerCopies {
     static func isPlaceholder(_ url: URL) -> Bool {
         guard contains(url) else { return false }
         var info = stat()
-        return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT == S_IFREG && info.st_mode & 0o777 == 0
+        return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT == S_IFREG && isPlaceholderMode(info.st_mode)
     }
+
+    /// A placeholder can't be read or written; it keeps only the container's execute bits, so a program shows as a
+    /// Unix executable before it's fetched. A fetched file is always readable.
+    static func isPlaceholderMode(_ mode: mode_t) -> Bool { mode & 0o666 == 0 }
 
     /// Removes a Containers folder or a container's folder (`Containers/<engine>` or `Containers/<engine>/<name>`),
     /// never the cache itself or anything outside it.

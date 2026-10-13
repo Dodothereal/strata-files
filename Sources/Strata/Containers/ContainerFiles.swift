@@ -639,7 +639,11 @@ nonisolated enum CopyWriter {
             case .file:
                 let same = exists && type == S_IFREG && Int64(info.st_size) == entry.size
                     && Int(info.st_mtimespec.tv_sec) == ContainerTime.seconds(entry.modified)
-                let placeholder = same && info.st_mode & 0o777 == 0
+                let placeholder = same && ContainerCopies.isPlaceholderMode(info.st_mode)
+                // A placeholder follows the container's execute bits (`chmod +x` changes neither size nor date).
+                if placeholder, info.st_mode & 0o111 != mode_t(entry.mode & 0o111) {
+                    fchmodat(fd, name, mode_t(entry.mode & 0o111), AT_SYMLINK_NOFOLLOW)
+                }
                 if let data = contents[name] {
                     if same, !placeholder { continue }
                     if exists, type != S_IFREG { removeAt(fd, name) }
@@ -648,7 +652,7 @@ nonisolated enum CopyWriter {
                 }
                 if !same {
                     if exists { removeAt(fd, name) }
-                    try makePlaceholder(name, fd: fd, size: entry.size, modified: entry.modified)
+                    try makePlaceholder(name, fd: fd, size: entry.size, mode: entry.mode, modified: entry.modified)
                 }
                 if !same || placeholder, fetchesEagerly(size: entry.size, mode: entry.mode, bytes: eagerBytes, count: eager.count) {
                     eagerBytes += entry.size
@@ -855,7 +859,7 @@ nonisolated enum CopyWriter {
                         hardlinks.append((parts, streamName(entry.linkTarget)))
                     case .file:
                         var info = stat()
-                        if fstatat(parent, last, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_mode & 0o777 != 0,
+                        if fstatat(parent, last, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFREG, !ContainerCopies.isPlaceholderMode(info.st_mode),
                            Int64(info.st_size) == entry.size, Int(info.st_mtimespec.tv_sec) == ContainerTime.seconds(entry.modified) {
                             return  // Already here.
                         }
@@ -905,7 +909,7 @@ nonisolated enum CopyWriter {
                 // Its first name is outside this folder: fetch it on its own.
                 removeAt(linkDir, name)
                 let path = base + "/" + link.parts.joined(separator: "/")
-                if (try? makePlaceholder(name, fd: linkDir, size: 0, modified: nil)) != nil {
+                if (try? makePlaceholder(name, fd: linkDir, size: 0, mode: 0, modified: nil)) != nil {
                     try fetchFile(engine, id: id, containerPath: path, into: linkDir, name: name, stop: stop)
                 }
             }
@@ -972,14 +976,15 @@ nonisolated enum CopyWriter {
         }
     }
 
-    private static func makePlaceholder(_ name: String, fd: Int32, size: Int64, modified: Date?) throws {
+    private static func makePlaceholder(_ name: String, fd: Int32, size: Int64, mode: UInt32, modified: Date?) throws {
         let out = openat(fd, name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard out >= 0 else { throw CocoaError(.fileWriteNoPermission) }
         defer { close(out) }
         // Sparse: the right size, without taking the space.
         ftruncate(out, off_t(max(size, 0)))
         setTimes(out, modified)
-        fchmod(out, 0)
+        // Unreadable until fetched; a program keeps its execute bits, so it shows as one (its kind and icon).
+        fchmod(out, mode_t(mode & 0o111))
     }
 
     /// Fetched files are readable by you whatever the container said, and read-only (an edit saved into a copy would

@@ -59,6 +59,9 @@ final class BrowserViewController: NSViewController {
     var onTab: (() -> Bool)?
     /// A different folder is being read; the rows still showing belong to the previous one, so file commands wait.
     private(set) var isLoadingFolder = false
+    /// A folder just opened shows from its top, even when a refresh overtakes its first load (a container's listing
+    /// writing into it, say): that refresh keeps the scroll position, which was still the previous folder's.
+    private var opensAtTop = false
     override func viewDidLayout() {
         super.viewDidLayout()
         fitColumnsToWidth()
@@ -277,6 +280,7 @@ final class BrowserViewController: NSViewController {
             watcher = DirectoryWatcher(url: url) { [weak self] in self?.refresh() }
             gitObservation = GitStatusStore.shared.observe(url)
             pendingSelection = select.map { [$0] } ?? []
+            opensAtTop = select == nil
             isLoadingFolder = true
             // Most folders load within a frame; a slow one (a network share, a huge folder) clears the old rows and
             // says so instead of leaving the previous folder's files on screen under the new location.
@@ -327,8 +331,10 @@ final class BrowserViewController: NSViewController {
                 loadError = nil
                 isLoadingFolder = false
                 Privacy.markAccessible(url)
-                apply(entries, preservingState: !scrollToTop)
-                if scrollToTop, outlineView.selectedRow < 0 { self.scrollToTop() }
+                let toTop = scrollToTop || opensAtTop
+                opensAtTop = false
+                apply(entries, preservingState: !toTop)
+                if toTop, outlineView.selectedRow < 0 { self.scrollToTop() }
             } catch {
                 guard gen == generation else { return }
                 showError(error)

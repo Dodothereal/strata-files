@@ -302,6 +302,7 @@ struct ContainerTests {
             ListedEntry(name: "hosts", kind: .file, size: 9, mode: 0o644, modified: date, linkTarget: ""),
             ListedEntry(name: "big.db", kind: .file, size: 5 << 20, mode: 0o600, modified: date, linkTarget: ""),
             ListedEntry(name: "small.conf", kind: .file, size: 10, mode: 0o4755, modified: date, linkTarget: ""),
+            ListedEntry(name: "server", kind: .file, size: 50 << 20, mode: 0o755, modified: date, linkTarget: ""),
             ListedEntry(name: "apt", kind: .directory, size: 0, mode: 0o755, modified: date, linkTarget: ""),
             ListedEntry(name: "localtime", kind: .symlink, size: 0, mode: 0o777, modified: date, linkTarget: "/usr/share/zoneinfo/UTC"),
             ListedEntry(name: "../escape", kind: .file, size: 1, mode: 0o644, modified: date, linkTarget: ""),
@@ -312,6 +313,14 @@ struct ContainerTests {
         #expect(try String(contentsOf: folder.appending(path: "hosts"), encoding: .utf8) == "127.0.0.1")
         let big = try FileManager.default.attributesOfItem(atPath: folder.appending(path: "big.db").path)
         #expect((big[.size] as? Int) == 5 << 20 && (big[.posixPermissions] as? Int) == 0)
+        // A program not fetched yet keeps only its execute bits: unreadable, but it shows as a Unix executable.
+        let server = try FileManager.default.attributesOfItem(atPath: folder.appending(path: "server").path)
+        #expect((server[.posixPermissions] as? Int) == 0o111)
+        #expect(ContainerCopies.isPlaceholderMode(0o111) && ContainerCopies.isPlaceholderMode(0) && !ContainerCopies.isPlaceholderMode(0o555))
+        // Made executable in the container (same size and date): the placeholder follows.
+        let plain = entries.map { $0.name == "server" ? ListedEntry(name: "server", kind: .file, size: 50 << 20, mode: 0o644, modified: date, linkTarget: "") : $0 }
+        _ = try CopyWriter.apply(plain, contents: [:], to: folder, containerPath: "/etc")
+        #expect((try FileManager.default.attributesOfItem(atPath: folder.appending(path: "server").path)[.posixPermissions] as? Int) == 0)
         #expect(eager.map(\.lastPathComponent) == ["small.conf"])
         #expect(try FileManager.default.destinationOfSymbolicLink(atPath: folder.appending(path: "localtime").path) == "../usr/share/zoneinfo/UTC")
         #expect(!FileManager.default.fileExists(atPath: folder.appending(path: "gone.conf").path))

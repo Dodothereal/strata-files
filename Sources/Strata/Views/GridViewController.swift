@@ -4,7 +4,11 @@ import AppKit
 final class GridViewController: NSViewController, FileCollectionController {
     weak var fileDelegate: FileCollectionViewDelegate?
     /// The folder shown; background drops and same-folder checks use it.
-    var directory: URL?
+    var directory: URL? {
+        didSet { if directory != oldValue { opensAtTop = true } }
+    }
+    /// A new folder shows from its top, not where the previous one was scrolled.
+    private var opensAtTop = false
     /// Item info under the name: folder item counts, image dimensions, file sizes.
     var showsItemInfo = true {
         didSet { if showsItemInfo != oldValue { refreshVisibleItems(reconfigure: true) } }
@@ -104,6 +108,12 @@ final class GridViewController: NSViewController, FileCollectionController {
         for (i, entry) in entries.enumerated() { indexByKey[entry.url.fileViewKey] = i }
         if directory == nil { directory = entries.first?.url.deletingLastPathComponent() }
         collectionView.reloadData()
+        if opensAtTop {
+            opensAtTop = false
+            let clip = scrollView.contentView
+            clip.scroll(to: NSPoint(x: 0, y: -clip.contentInsets.top))
+            scrollView.reflectScrolledClipView(clip)
+        }
         let kept = selection.compactMap { indexByKey[$0.fileViewKey] }
         collectionView.selectionIndexPaths = Set(kept.map { IndexPath(item: $0, section: 0) })
         lead = leadURL.flatMap { indexByKey[$0.fileViewKey] } ?? kept.min()
