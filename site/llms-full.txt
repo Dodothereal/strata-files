@@ -72,6 +72,7 @@ Filters can be combined with words:
 - Git status on every file in every view, and the current branch in the path bar.
 - The project inspector recognizes Node, Rust, Swift, .NET, Python, Go and more, lists the project's scripts, and cleans build folders such as node_modules (they go to the Trash).
 - Previews for code (syntax highlighted, with line numbers), Markdown, JSON, CSV, SQLite databases and archives.
+- Containers: with Docker Desktop, OrbStack, Colima, Podman, Rancher Desktop or Lima running, Containers in the sidebar shows the containers as folders. Each one's files can be browsed from `/` (read-only copies, read from the container as you browse, cleared when Strata quits), previewed, and copied or dragged out. Containers can be started, stopped, restarted, paused and resumed, and Open in Terminal opens a shell in one. The inspector shows a container's image, ports and mounts, and a project's Compose services with Start All and Stop All.
 - Command line: install from Settings, then `strata .` opens the current folder and `strata -s "invoice pdf"` searches. URL scheme: `strata://open?path=…`, `strata://search?q=…&in=…`, `strata://recents`, `strata://duplicates`.
 
 ## On-device intelligence
@@ -81,7 +82,7 @@ Filters can be combined with words:
 
 ## Privacy and security
 
-- No accounts, no analytics, no servers. Files and searches never leave the Mac. The only network requests are update checks: Strata's own (GitHub Releases), if allowed, and, when you choose Check for Updates on apps, those apps' own update feeds or the App Store's lookup. Nothing about your files is sent.
+- No accounts, no analytics, no servers. Files and searches never leave the Mac. The only network requests are update checks: Strata's own (GitHub Releases), if allowed, and, when you choose Check for Updates on apps, those apps' own update feeds or the App Store's lookup. Nothing about your files is sent. Containers are reached through the container engine's socket on the Mac, never over the network.
 - The file index, content index and history are encrypted on disk (AES-GCM) with a key kept in the login keychain.
 - Browsing a folder can't run code from it: Strata switches off the git features a downloaded repository could use for that (fsmonitor, hooks, filters, lazy fetches).
 - Full Disk Access is optional; it lets Strata search and measure everything without macOS asking folder by folder.
