@@ -27,11 +27,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Starts Sparkle (in a release build): background checks if allowed, and Check for Updates….
         _ = Updates.shared
         FileIndex.shared.start()
+        ContainerStore.shared.start()
         StrataAI.startIndexing()
         // Loads history now, so a plain copy left by an earlier build is removed right away.
         _ = OperationLog.shared
-        // Archives opened as folders and not looked at for a day.
-        DispatchQueue.global(qos: .utility).async { ArchiveCache.prune() }
+        // Archives opened as folders and not looked at for a day; containers' files left by a crash.
+        ContainerCopies.setAsideForRemoval()
+        DispatchQueue.global(qos: .utility).async {
+            ArchiveCache.prune()
+            ContainerCopies.removeSetAside()
+        }
         if windowControllers.isEmpty, !restoreSession() { openWindow(at: startLocation) }
         if !Privacy.hasFullDiskAccess, !UserDefaults.standard.bool(forKey: "welcomeShown"),
            let window = windowControllers.first?.window {
@@ -142,6 +147,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         saveSession()
         FileIndex.shared.saveNow()
+        // Containers' files don't outlive Strata: removed now, as far as two seconds allow (the rest at next launch).
+        ContainerCopies.setAsideForRemoval()
+        let removed = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .userInitiated).async {
+            ContainerCopies.removeSetAside()
+            removed.signal()
+        }
+        _ = removed.wait(timeout: .now() + 2)
     }
 
     // MARK: - Reopening windows

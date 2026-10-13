@@ -52,7 +52,7 @@ final class GridViewController: NSViewController, FileCollectionController {
         cv.allowsEmptySelection = true
         cv.backgroundColors = [.controlBackgroundColor]
         cv.register(GridItem.self, forItemWithIdentifier: GridItem.identifier)
-        cv.registerForDraggedTypes([.fileURL])
+        cv.registerForDraggedTypes(FileDrop.types)
         cv.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
         cv.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
         cv.setAccessibilityLabel(String(localized: "Icons", comment: "View mode: items as icons"))
@@ -433,7 +433,7 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
 
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
         guard indexPath.item < entries.count else { return nil }
-        return entries[indexPath.item].url as NSURL
+        return ContainerDragItem.writer(for: entries[indexPath.item].url)
     }
 
     // Dropping in

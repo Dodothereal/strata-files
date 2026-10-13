@@ -47,8 +47,8 @@ final class TransferQueue {
                  options: TransferEngine.Options = .userDefault, undo: UndoManager?, conflicts: ConflictResolver,
                  logHistory: Bool = true, actionName: String? = nil, containers: [URL] = []) -> TransferJob {
         // An archive opened as a folder is a temporary copy: nothing goes into it, and what leaves it is copied.
-        let moves = moves.filter { !ArchiveCache.contains($0.to) }
-        let mode = mode == .move && moves.contains(where: { ArchiveCache.contains($0.from) }) ? .copy : mode
+        let moves = moves.filter { !ReadOnlyCopies.contains($0.to) }
+        let mode = mode == .move && moves.contains(where: { ReadOnlyCopies.contains($0.from) }) ? .copy : mode
         let folder = destination ?? moves.first?.to.deletingLastPathComponent() ?? URL(fileURLWithPath: "/")
         let job = TransferJob(mode: mode, moves: moves, destination: folder, options: options, undo: undo,
                               conflicts: conflicts, queue: self)
@@ -73,6 +73,19 @@ final class TransferQueue {
             self?.notifyNow()
         }
         startNextArchiveJob()
+        notify()
+        startTicking()
+    }
+
+    /// Reading from a container: starts right away (it isn't a disk-heavy job to queue behind others).
+    func add(_ job: ContainerFetchJob) {
+        jobs.append(job)
+        job.onChange = { [weak self] _ in self?.notify() }
+        job.onFinish = { [weak self, previous = job.onFinish] job in
+            previous?(job)
+            self?.notifyNow()
+        }
+        job.start()
         notify()
         startTicking()
     }

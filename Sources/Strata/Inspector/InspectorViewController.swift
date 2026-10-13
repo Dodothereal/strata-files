@@ -24,6 +24,15 @@ final class InspectorViewController: NSViewController {
     private var permissionsCard: InspectorCard!
     /// Shows a folder in the browser (the Where row).
     var onShowFolder: ((_ folder: URL, _ select: URL) -> Void)?
+    /// Opens a folder in the browser (a container's mount).
+    var onOpenFolder: ((URL) -> Void)?
+    /// Shows a container's files (a Compose service).
+    var onOpenContainer: ((String) -> Void)?
+    /// The container these files are of, and its mounts.
+    private let containerView = ContainerInspectorView()
+    /// A Compose project's services, for a folder `docker compose` runs in.
+    private let composeView = ComposeInspectorView()
+    private var composeFolder: URL?
     private var shownURLs: [URL] = []
     private var previewWork: DispatchWorkItem?
     private let projectView = ProjectInspectorView()
@@ -71,6 +80,7 @@ final class InspectorViewController: NSViewController {
         projectView.isHidden = true
         projectView.onDidClean = { [weak self] _ in self?.reloadProject() }
         NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged(_:)), name: .tagsChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(containerFilesFetched(_:)), name: .containerFilesFetched, object: nil)
         // Every section is a card of the same kind, in Finder's Get Info order.
         infoCard = InspectorCard(id: "info", title: String(localized: "Information", comment: "Inspector section: size, dates, location"),
                                  symbol: "info.circle", content: infoRows)
@@ -83,7 +93,12 @@ final class InspectorViewController: NSViewController {
         permissionsCard = InspectorCard(id: "permissions",
                                         title: String(localized: "Sharing & Permissions", comment: "Inspector section: Locked and who may read and write"),
                                         symbol: "lock", content: infoEditor.permissionsContent)
-        let cards: [NSView] = [infoCard, tagsCard, commentsCard, openWithCard, permissionsCard, summary, projectView]
+        containerView.isHidden = true
+        containerView.onOpen = { [weak self] url in self?.onOpenFolder?(url) }
+        composeView.isHidden = true
+        composeView.onOpenContainer = { [weak self] id in self?.onOpenContainer?(id) }
+        NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: nil)
+        let cards: [NSView] = [containerView, infoCard, tagsCard, commentsCard, openWithCard, permissionsCard, summary, projectView, composeView]
         for card in [tagsCard, commentsCard, openWithCard, permissionsCard] as [NSView] { card.isHidden = true }
         let stack = NSStackView(views: [previewBox, titleLabel, subtitleLabel] + cards)
         stack.orientation = .vertical
@@ -132,6 +147,20 @@ final class InspectorViewController: NSViewController {
         view = scroll
     }
 
+    /// The file shown arrived from its container: preview it now.
+    @objc private func containerFilesFetched(_ notification: Notification) {
+        guard shownURLs.count == 1, let urls = notification.object as? [URL],
+              urls.contains(where: { $0.standardizedFileURL == shownURLs[0].standardizedFileURL }),
+              let entry = FileEntry(url: shownURLs[0]) else { return }
+        schedulePreview(entry)
+    }
+
+    /// Containers started, stopped or went away: their cards follow.
+    @objc private func containersChanged() {
+        containerView.configure(shownURLs.first.flatMap(ContainerCopies.copy(containing:)))
+        composeView.configure(composeFolder)
+    }
+
     @objc private func tagsChanged(_ notification: Notification) {
         guard tagField.currentEditor() == nil,
               let changed = notification.object as? [URL], changed.contains(where: shownURLs.contains) else { return }
@@ -141,8 +170,13 @@ final class InspectorViewController: NSViewController {
     /// Shows `entries`, or `folder` when the selection is empty. Calling again with the same items only refreshes metadata.
     func show(entries: [FileEntry], folder: FileEntry?, folderSize: (URL) -> FolderSize?, canMeasure: (FileEntry) -> Bool) {
         let items = entries.isEmpty ? [folder].compactMap { $0 } : entries
-        // The project section follows a single selected folder, or the current folder when nothing is selected.
-        loadProject(items.count == 1 && items[0].isFolder ? items[0].url : nil)
+        // The project section follows a single selected folder, or the current folder when nothing is selected; never in
+        // a read-only copy (a container's scripts are not this Mac's to run).
+        let projectFolder = items.count == 1 && items[0].isFolder && !ReadOnlyCopies.contains(items[0].url) ? items[0].url : nil
+        loadProject(projectFolder)
+        composeFolder = projectFolder
+        composeView.configure(projectFolder)
+        containerView.configure(items.first.flatMap { ContainerCopies.copy(containing: $0.url) })
         // Summaries for single documents; the card hides itself when there's no readable text.
         // Source code has its own preview; summaries are for prose (PDFs, Markdown, Word, text…).
         let isCode = items.first?.contentType.map { $0.conforms(to: .sourceCode) || $0.conforms(to: .json) || $0.conforms(to: .propertyList) } ?? false
@@ -172,7 +206,7 @@ final class InspectorViewController: NSViewController {
         }
 
         // Get Info's settings: one real item (not a disk, a link, or a temporary copy inside an archive).
-        let editable = items.count == 1 && !items[0].isVolume && !items[0].isSymlink && !ArchiveCache.contains(items[0].url)
+        let editable = items.count == 1 && !items[0].isVolume && !items[0].isSymlink && !ReadOnlyCopies.contains(items[0].url)
         if editable { infoEditor.show(items[0]) }
         commentsCard.isHidden = !editable
         openWithCard.isHidden = !editable || !infoEditor.hasOpenWith
@@ -192,7 +226,10 @@ final class InspectorViewController: NSViewController {
             let entry = first
             // Inside an archive opened as a folder, things are described where they appear: in the archive.
             let apparent = ArchiveCache.apparentURL(entry.url)
-            titleLabel.stringValue = apparent?.lastPathComponent ?? entry.name
+            let container = ContainerCopies.copy(containing: entry.url)
+            let containerPath = container.flatMap { ContainerCopies.containerPath(of: entry.url, top: $0.top) }
+            titleLabel.stringValue = containerPath == "/" ? container?.source.name ?? entry.name
+                : ContainerCopies.engineFolder(entry.url) != nil ? Places.displayName(entry.url) : apparent?.lastPathComponent ?? entry.name
             let size = entry.isDirectory ? folderSize(entry.url).map { Format.bytes($0.bytes) } : entry.size.map(Format.bytes)
             subtitleLabel.stringValue = [entry.kind, size].compactMap { $0 }.joined(separator: " · ")
             var rows: [(String, NSView)] = []
@@ -203,7 +240,7 @@ final class InspectorViewController: NSViewController {
                     rows.append((sizeTitle, InspectorRows.text("\(Format.bytes(size.bytes)) · \(files)")))
                 } else if canMeasure(entry) {
                     rows.append((sizeTitle, InspectorRows.text(String(localized: "Calculating…"))))
-                } else if entry.isVolume || entry.isSymlink {
+                } else if entry.isVolume || entry.isSymlink || ContainerCopies.contains(entry.url) {
                     rows.append((sizeTitle, InspectorRows.text("—")))
                 } else {
                     rows.append((sizeTitle, InspectorRows.text(String(localized: "Needs Full Disk Access", comment: "Inspector: a folder’s size can’t be measured without Full Disk Access"))))
@@ -216,9 +253,13 @@ final class InspectorViewController: NSViewController {
             if let dimensions = Self.imageDimensions(entry) {
                 rows.append((String(localized: "Dimensions", comment: "Inspector row: an image’s width × height in pixels"), InspectorRows.text(dimensions)))
             }
-            rows.append((String(localized: "Created", comment: "Inspector row: creation date"), InspectorRows.text(Format.longDate(entry.created))))
+            // A container's files have the container's modification dates; created and added would be the copy's.
+            let isCopy = ContainerCopies.contains(entry.url)
+            if !isCopy {
+                rows.append((String(localized: "Created", comment: "Inspector row: creation date"), InspectorRows.text(Format.longDate(entry.created))))
+            }
             rows.append((String(localized: "Modified", comment: "Inspector row: last modification date"), InspectorRows.text(Format.longDate(entry.modified))))
-            if let added = entry.added {
+            if !isCopy, let added = entry.added {
                 rows.append((String(localized: "Added", comment: "Inspector row: date the item was added to its folder"), InspectorRows.text(Format.longDate(added))))
             }
             // Where: the folder by name (and its path on one line); clicking shows it with the item selected. Inside an
@@ -231,10 +272,20 @@ final class InspectorViewController: NSViewController {
                 target = (entry.url.deletingLastPathComponent(), entry.url)
             }
             let shownFolder = (apparent ?? entry.url).deletingLastPathComponent()
-            rows.append((String(localized: "Where", comment: "Inspector row: the folder the item is in"),
-                         InspectorLocationView(folder: target.folder, shownAs: shownFolder) { [weak self] in
-                             self?.onShowFolder?(target.folder, target.item)
-                         }))
+            // In a container's files: the folder in the container ("etc", in “web:/”), not Strata's copy of it.
+            let inContainer: (name: String, location: String)? = container.flatMap { copy in
+                guard let path = containerPath, path != "/" else { return nil }
+                let folder = (path as NSString).deletingLastPathComponent
+                return folder == "/" ? (copy.source.name, copy.source.engineName)
+                    : ((folder as NSString).lastPathComponent, "\(copy.source.name):" + ((folder as NSString).deletingLastPathComponent))
+            }
+            if !isCopy || inContainer != nil {
+                rows.append((String(localized: "Where", comment: "Inspector row: the folder the item is in"),
+                             InspectorLocationView(folder: target.folder, shownAs: shownFolder, name: inContainer?.name,
+                                                   location: inContainer?.location) { [weak self] in
+                                 self?.onShowFolder?(target.folder, target.item)
+                             }))
+            }
             if let cloud = CloudStore.shared.status(for: entry.url) {
                 rows.append((String(localized: "Cloud", comment: "Inspector row: iCloud or File Provider download status"), InspectorRows.text(cloud.label)))
             }
@@ -283,6 +334,8 @@ final class InspectorViewController: NSViewController {
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.shownURLs == [entry.url] else { return }
+                // A container's file not fetched yet: its icon until it arrives.
+                if ContainerCopies.isPlaceholder(entry.url) { return }
                 if !entry.isDirectory, let rich = RichPreview.makeView(for: entry.url, contentType: entry.contentType, fallback: { [weak self] in
                     guard let self, self.shownURLs == [entry.url] else { return }
                     self.removeRichPreview()

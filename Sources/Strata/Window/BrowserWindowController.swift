@@ -89,6 +89,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
         // The Inspector's Cloud row follows downloads and uploads.
         NotificationCenter.default.addObserver(self, selector: #selector(cloudStatusChanged), name: .cloudStatusChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(containerCopyProblem(_:)), name: .containerCopyProblem, object: nil)
         // Clicking into a pane gives it focus.
         responderObservation = window.observe(\.firstResponder, options: [.new]) { [weak self] window, _ in
             MainActor.assumeIsolated {
@@ -213,8 +214,29 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         case .search(let saved): go(.search(saved.query, scope: saved.scopePath.map { URL(fileURLWithPath: $0) }))
         case .duplicates: go(.duplicates)
         case .largeFiles: go(.search(Self.largeFilesQuery, scope: nil))
+        case .containers: openContainers()
         }
     }
+
+    /// The containers of the engine Strata found, as folders.
+    func openContainers() {
+        guard let engine = ContainerStore.shared.engine, let folder = try? ContainerCopies.prepare(engine) else {
+            NSSound.beep()
+            return
+        }
+        navigate(to: folder)
+    }
+
+    /// Shows a container's files: its read-only copy, filled in from the container as you browse.
+    func openContainer(_ id: String) {
+        let store = ContainerStore.shared
+        guard let engine = store.engine, let container = store.container(id: id) else { return NSSound.beep() }
+        Task { [weak self] in
+            guard let top = try? await ContainerFiles.shared.open(container, on: engine) else { return NSSound.beep() }
+            self?.navigate(to: top)
+        }
+    }
+
 
     /// `countVisit: false` for folders only passed through (spring loading): they don't become frequent places.
     private func go(_ target: Destination, in targetPane: Pane? = nil, select: URL? = nil, recordHistory: Bool = true,
@@ -243,7 +265,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             p.folderEntry = FileEntry(url: url)
             p.browser.load(url, select: select)
             // An archive's copy is temporary: it doesn't become a frequent place or where the next window opens.
-            if !ArchiveCache.contains(url) {
+            if !ReadOnlyCopies.contains(url) {
                 if countVisit { Frecency.shared.record(url) }
                 Prefs.lastLocation = url
             }
@@ -268,7 +290,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             updateGitChrome()
             split.sidebar.highlight(.folder(url))
             window?.title = Places.displayName(url)
-            window?.representedURL = url
+            // Not a container's copy: dragging the title's icon would hand out what isn't fully read yet.
+            window?.representedURL = ContainerCopies.contains(url) ? nil : url
             setSearchField("")
             split.scopeBar.isHidden = true
             updateNotice(for: url)
@@ -354,6 +377,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             if let (archive, top) = ArchiveCache.archive(containing: current), top.standardizedFileURL == current.standardizedFileURL {
                 return navigate(to: archive.deletingLastPathComponent(), select: archive)
             }
+            // The Containers folder has nothing above it (a container's `/` goes up to it).
+            if ContainerCopies.engineFolder(current) != nil { return NSSound.beep() }
             navigate(to: current.deletingLastPathComponent(), select: current)
         } else {
             navigate(to: location)
@@ -780,7 +805,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// Where each tab and pane is, for workspaces.
     var snapshot: [String] {
-        panes.map { $0.location.path }
+        // A container's files are gone after quitting: such a pane comes back at home.
+        panes.map { ContainerCopies.contains($0.location) ? Places.home.path : $0.location.path }
     }
 
     @objc private func cloudStatusChanged() {
@@ -801,6 +827,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         let browser = browser
         let location = location
         split.inspector.onShowFolder = { [weak self] folder, item in self?.navigate(to: folder, select: item) }
+        split.inspector.onOpenFolder = { [weak self] folder in
+            guard ContainerCopies.contains(folder) else {
+                self?.navigate(to: folder)
+                return
+            }
+            // A mount's path in a container: listed on the way there first, if it hasn't been browsed yet.
+            Task { [weak self] in
+                if await ContainerFiles.shared.reveal(folder) { self?.navigate(to: folder) } else { NSSound.beep() }
+            }
+        }
+        split.inspector.onOpenContainer = { [weak self] id in self?.openContainer(id) }
         split.inspector.show(entries: browser.selectedEntries, folder: folder,
                              folderSize: { url in browser.folderSize(url, request: true) },
                              canMeasure: { entry in

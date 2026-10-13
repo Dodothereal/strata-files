@@ -462,8 +462,8 @@ nonisolated enum Archiver {
 
     /// Nothing is made inside an archive opened as a folder (a temporary copy).
     private static func requireOutsideCopies(_ folder: URL) throws {
-        guard !ArchiveCache.contains(folder) else {
-            throw Failure(message: String(localized: "Nothing can be made inside an archive opened as a folder. Copy what you need out first."))
+        guard !ReadOnlyCopies.contains(folder) else {
+            throw Failure(message: String(localized: "Nothing can be made in a read-only copy (an archive opened as a folder, or a container’s files). Copy what you need out first."))
         }
     }
 

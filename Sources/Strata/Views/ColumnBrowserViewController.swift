@@ -463,7 +463,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         tableView.delegate = self
         tableView.target = self
         tableView.doubleAction = #selector(doubleClicked(_:))
-        tableView.registerForDraggedTypes([.fileURL])
+        tableView.registerForDraggedTypes(FileDrop.types)
         tableView.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
         tableView.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
         tableView.draggingDestinationFeedbackStyle = .regular
@@ -672,7 +672,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     // Drag and drop
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        row < entries.count ? entries[row].url as NSURL : nil
+        row < entries.count ? ContainerDragItem.writer(for: entries[row].url) : nil
     }
 
     func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,

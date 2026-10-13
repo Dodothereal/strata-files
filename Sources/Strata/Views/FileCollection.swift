@@ -147,13 +147,22 @@ enum FileDrop {
     /// Out of an archive opened as a folder, things are only copied: no move, no alias to a temporary copy, and no
     /// dropping on the Dock's Trash.
     static func sourceMask(_ mask: NSDragOperation, _ session: NSDraggingSession) -> NSDragOperation {
-        let urls = (session.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
-        return urls.contains(where: ArchiveCache.contains) ? mask.intersection(.copy) : mask
+        let urls = urls(session.draggingPasteboard)
+        return urls.contains(where: ReadOnlyCopies.contains) ? mask.intersection(.copy) : mask
     }
 
     static func urls(_ info: NSDraggingInfo) -> [URL] {
-        (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        urls(info.draggingPasteboard)
     }
+
+    /// Dragged files, and items of containers' files dragged within Strata.
+    static func urls(_ pasteboard: NSPasteboard) -> [URL] {
+        ((pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? [])
+            + containerItems(pasteboard)
+    }
+
+    /// What file views accept dropped on them.
+    static let types: [NSPasteboard.PasteboardType] = [.fileURL, .strataContainerItem]
 
     /// Whether `target` is one of `urls` or inside one of them, however either is spelled (`/tmp` is `/private/tmp`).
     static func isInside(_ urls: [URL], _ target: URL) -> Bool {
@@ -174,9 +183,9 @@ enum FileDrop {
         let targetPath = target.standardizedFileURL.path
         if isInside(urls, target) { return [] }
         // An archive opened as a folder isn't changed; what's dragged out of one is copied.
-        if ArchiveCache.contains(target) { return [] }
+        if ReadOnlyCopies.contains(target) { return [] }
         let mask = info.draggingSourceOperationMask
-        let wantsCopy = NSEvent.modifierFlags.contains(.option) || !sameVolume(first, target) || urls.contains(where: ArchiveCache.contains)
+        let wantsCopy = NSEvent.modifierFlags.contains(.option) || !sameVolume(first, target) || urls.contains(where: ReadOnlyCopies.contains)
         let operation: NSDragOperation
         if wantsCopy || !mask.contains(.move) {
             operation = mask.contains(.copy) || mask.contains(.generic) ? .copy : []

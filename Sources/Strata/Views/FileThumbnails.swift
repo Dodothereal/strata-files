@@ -42,7 +42,8 @@ final class FileThumbnails {
     /// (including ones an app adds) gets one, and Quick Look's "no thumbnail" keeps the icon. Folders, apps and other
     /// bundles, archives, disk images and executables are pictured by their icon, and links keep their arrow.
     static func canThumbnail(_ entry: FileEntry) -> Bool {
-        guard !entry.isFolder, !entry.isSymlink else { return false }
+        // A container's file not fetched yet has nothing to show.
+        guard !entry.isFolder, !entry.isSymlink, !ContainerCopies.isPlaceholder(entry.url) else { return false }
         guard let type = entry.contentType else { return !entry.isPackage }
         return !(type.conforms(to: .bundle) || type.conforms(to: .application) || type.conforms(to: .archive)
             || type.conforms(to: .diskImage) || type.conforms(to: .unixExecutable) || type.conforms(to: .aliasFile)
@@ -208,6 +209,16 @@ final class ItemInfoLoader {
 
     /// The text to show right away: a file's size, or a cached count/dimension. Nil means "ask `request`".
     func immediate(_ entry: FileEntry, showHidden: Bool) -> String? {
+        // A container says whether it runs (its folder only holds what's been browsed, so no count).
+        if entry.isDirectory, let (source, top) = ContainerCopies.copy(containing: entry.url),
+           top.standardizedFileURL == entry.url.standardizedFileURL {
+            return switch ContainerStore.shared.container(id: source.id)?.state {
+            case .running?: String(localized: "Running", comment: "Container state")
+            case .paused?: String(localized: "Paused", comment: "Container state")
+            case .restarting?: String(localized: "Restarting", comment: "Container state")
+            default: String(localized: "Not Running", comment: "Container state: stopped, exited or created")
+            }
+        }
         if let cached = cache[key(entry, showHidden)] { return cached }
         if needsLoading(entry) { return nil }
         if entry.isDirectory { return nil }
@@ -215,7 +226,9 @@ final class ItemInfoLoader {
     }
 
     func needsLoading(_ entry: FileEntry) -> Bool {
-        if entry.isFolder { return !entry.isSymlink && !entry.isVolume }
+        if entry.isFolder { return !entry.isSymlink && !entry.isVolume && !ContainerCopies.contains(entry.url) }
+        // A container's image not fetched yet: its size for now, its dimensions once it's here (not cached meanwhile).
+        if ContainerCopies.isPlaceholder(entry.url) { return false }
         return entry.contentType?.conforms(to: .image) == true
     }
 

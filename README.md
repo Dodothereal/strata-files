@@ -75,6 +75,11 @@ inspector recognizes Node, Rust, Swift, .NET, Python, Go and more. It lists a pr
 space taken by build folders like `node_modules` in a click (they go to the Trash, so nothing is lost). Code,
 Markdown, JSON, CSV, SQLite databases and archives preview right in the inspector, beautifully.
 
+Containers too. With Docker Desktop, OrbStack, Colima, Podman or Rancher Desktop running, **Containers** in the sidebar
+shows your containers as folders. Open one to browse its files like any folder (read-only, read from the container as
+you go), copy things out, or open a terminal in it. Start, stop, restart or pause them from the context menu or the
+inspector, which also shows a container's image, ports and mounts, and a project's Compose services.
+
 <table>
   <tr>
     <td><img src="docs/screenshots/devmode.png" alt="Git badges, branch pill and a code preview"></td>
@@ -118,7 +123,8 @@ Strata runs entirely on your Mac. The search index, summaries and AI features ar
 no cloud. Its file index, content index and history are encrypted on disk with a key in your keychain. And a
 folder you browse can't run its own code just because you looked at it: Strata switches off the git features a
 downloaded repository could use to do that. It only goes online to check for updates: its own, if you allow it, and
-other apps' when you ask it to.
+other apps' when you ask it to. Containers' files are read through your container engine on this Mac, never changed,
+and cleared when Strata quits.
 
 ## Translations
 

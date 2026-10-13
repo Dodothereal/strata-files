@@ -102,6 +102,11 @@ enum Places {
         if let (archive, top) = ArchiveCache.archive(containing: url), top.standardizedFileURL == url.standardizedFileURL {
             return archive.lastPathComponent
         }
+        // The Containers folder; a container's `/` goes by the container's name.
+        if ContainerCopies.engineFolder(url) != nil { return String(localized: "Containers", comment: "Sidebar section title: Docker containers") }
+        if let (source, top) = ContainerCopies.copy(containing: url), top.standardizedFileURL == url.standardizedFileURL {
+            return source.name
+        }
         return FileManager.default.displayName(atPath: url.path)
     }
 

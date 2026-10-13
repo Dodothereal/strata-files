@@ -333,7 +333,7 @@ private func label(_ text: String, size: CGFloat, weight: NSFont.Weight = .regul
 }
 
 /// Lays out its subviews left to right, wrapping to new lines; height follows the width it's given.
-private final class FlowView: NSView {
+final class FlowView: NSView {
     private let spacing: CGFloat
     private let lineSpacing: CGFloat
     private var lastWidth: CGFloat = 0

@@ -11,11 +11,11 @@ enum FileOps {
 
     /// An archive opened as a folder is a temporary copy: nothing inside it is changed from Strata.
     static let insideArchiveError = CocoaError(.fileWriteNoPermission, userInfo: [
-        NSLocalizedDescriptionKey: String(localized: "Items inside an archive opened as a folder can’t be changed. Copy them out first."),
+        NSLocalizedDescriptionKey: String(localized: "Items in a read-only copy (an archive opened as a folder, or a container’s files) can’t be changed. Copy them out first."),
     ])
 
     static func rename(_ url: URL, to name: String, undo: UndoManager?) async throws -> URL {
-        guard !ArchiveCache.contains(url) else { throw insideArchiveError }
+        guard !ReadOnlyCopies.contains(url) else { throw insideArchiveError }
         let destination = url.deletingLastPathComponent().appending(path: name)
         if TransferEngine.exists(destination), destination.path.lowercased() != url.path.lowercased() {
             throw CocoaError(.fileWriteFileExists, userInfo: [
@@ -30,7 +30,7 @@ enum FileOps {
     /// `record: false` for moves that are themselves an undo or redo (or part of a larger logged operation): History
     /// keeps one entry per operation and marks it undone instead of growing a row per ⌘Z.
     static func move(_ pairs: [Move], actionName: String, undo: UndoManager?, record: Bool = true) async throws {
-        guard !pairs.contains(where: { ArchiveCache.contains($0.from) || ArchiveCache.contains($0.to) }) else {
+        guard !pairs.contains(where: { ReadOnlyCopies.contains($0.from) || ReadOnlyCopies.contains($0.to) }) else {
             throw insideArchiveError
         }
         let (done, error) = await moveAll(pairs)
@@ -160,7 +160,7 @@ enum FileOps {
     }
 
     static func newFolder(in directory: URL, undo: UndoManager?) throws -> URL {
-        guard !ArchiveCache.contains(directory) else { throw insideArchiveError }
+        guard !ReadOnlyCopies.contains(directory) else { throw insideArchiveError }
         let name = nameText(String(localized: "untitled folder", comment: "Name of a new folder, as Finder names it"),
                             english: "untitled folder")
         let url = available(directory.appending(path: name), copyStyle: false)
@@ -180,7 +180,7 @@ enum FileOps {
             let logged = record ? OperationLog.shared.recordMove("Move to Trash", moved) : entry
             registerMoveUndo(moved, "Move to Trash", undo, entry: logged, marksUndone: record ? true : marksUndone)
         }
-        for url in urls where !ArchiveCache.contains(url) {
+        for url in urls where !ReadOnlyCopies.contains(url) {
             var result: NSURL?
             try FileManager.default.trashItem(at: url, resultingItemURL: &result)
             if let result { moved.append((from: url, to: result as URL)) }
@@ -228,7 +228,7 @@ enum FileOps {
         var noTrash: [URL] = []
         // Trashing what's already in a Trash again would lose where it came from (however its path is spelled).
         // Nor is anything inside an archive opened as a folder trashed (it's a temporary copy).
-        for url in urls where !Trash.isInTrash(url) && !Trash.isInTrash(url.resolvingSymlinksInPath()) && !ArchiveCache.contains(url) {
+        for url in urls where !Trash.isInTrash(url) && !Trash.isInTrash(url.resolvingSymlinksInPath()) && !ReadOnlyCopies.contains(url) {
             var result: NSURL?
             do {
                 try FileManager.default.trashItem(at: url, resultingItemURL: &result)

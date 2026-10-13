@@ -107,6 +107,8 @@ final class BrowserViewController: NSViewController {
     /// Rows by standardized path: folder URLs from directory listings end in "/", URLs built elsewhere don't.
     private var nodesByPath: [String: FileNode] = [:]
     private var generation = 0
+    /// Fetching the selection from a container (see `fetchSelectedContainerFiles`).
+    var containerFetch: Task<Void, Never>?
     private var watcher: DirectoryWatcher?
     /// Keeps git status for the shown folder's repository fresh (FSEvents) while this folder is shown.
     private var gitObservation: GitObservation?
@@ -184,6 +186,8 @@ final class BrowserViewController: NSViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(containerFilesFetched(_:)), name: .containerFilesFetched, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsLoaded, object: nil)
         // Cloud badges redraw the same way.
         NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .cloudStatusChanged, object: nil)
@@ -207,7 +211,7 @@ final class BrowserViewController: NSViewController {
         ov.delegate = self
         ov.target = self
         ov.doubleAction = #selector(openSelection(_:))
-        ov.registerForDraggedTypes([.fileURL])
+        ov.registerForDraggedTypes(FileDrop.types)
         ov.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
         ov.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
         ov.draggingDestinationFeedbackStyle = .regular
@@ -739,6 +743,7 @@ final class BrowserViewController: NSViewController {
 
     /// Cached size of a folder; with `request`, starts measuring it when unknown and allowed.
     func folderSize(_ url: URL, request: Bool = false) -> FolderSize? {
+        if ContainerCopies.contains(url) { return nil }
         if let size = FileIndex.shared.folderSize(url) { return size }
         if let size = sizer.cached(url) { return size }
         if request, !Privacy.measuringWouldPrompt(url, browsing: directory ?? url) { sizer.request(url) }
@@ -797,6 +802,15 @@ final class BrowserViewController: NSViewController {
 
     private func open(_ entries: [FileEntry]) {
         guard !entries.isEmpty else { return }
+        // A container's files are fetched first.
+        let files = entries.filter { !$0.isFolder }.map(\.url)
+        if files.contains(where: ContainerCopies.isPlaceholder) {
+            return afterFetching(files) { [weak self] in self?.openFetched(entries) }
+        }
+        openFetched(entries)
+    }
+
+    private func openFetched(_ entries: [FileEntry]) {
         // One archive opens like a folder (Windows-style), unless that's turned off in Settings.
         if entries.count == 1, let entry = entries.first, opensAsFolder(entry) { return browseArchive(entry.url) }
         for entry in entries where !entry.isFolder {
@@ -809,7 +823,10 @@ final class BrowserViewController: NSViewController {
 
     @objc func openWithApplication(_ sender: NSMenuItem) {
         guard let app = sender.representedObject as? URL else { return }
-        NSWorkspace.shared.open(selectedURLs, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+        let urls = selectedURLs
+        afterFetching(urls) {
+            NSWorkspace.shared.open(urls, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+        }
     }
 
     @objc func moveToTrash(_ sender: Any?) {
@@ -911,7 +928,14 @@ final class BrowserViewController: NSViewController {
     }
 
     @objc func copy(_ sender: Any?) {
-        Clipboard.write(selectedURLs, cut: false)
+        let urls = selectedURLs
+        // A container's items are read first (folders with all they hold, shown in Transfers), then go on the
+        // clipboard: pasting anywhere gets all of them, never a half-read copy.
+        let fromContainers = urls.filter(ContainerCopies.contains)
+        guard fromContainers.isEmpty else {
+            return TransferQueue.shared.add(ContainerFetchJob(fromContainers) { Clipboard.write(urls, cut: false) })
+        }
+        Clipboard.write(urls, cut: false)
     }
 
     @objc func cut(_ sender: Any?) {
@@ -940,14 +964,24 @@ final class BrowserViewController: NSViewController {
         let here = (effectiveMode == .columns ? columns.activeDirectory : nil) ?? directory
         let urls = selectedURLs.isEmpty ? [here].compactMap { $0 } : selectedURLs
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(urls.map(\.path).joined(separator: "\n"), forType: .string)
+        // In a container's files, the path in the container ("/etc/hosts"); a container itself, its name. Never the
+        // path of Strata's copy, which is gone when it quits.
+        let paths = urls.compactMap { url -> String? in
+            guard ContainerCopies.contains(url) else { return url.path }
+            guard let (source, top) = ContainerCopies.copy(containing: url), let path = ContainerCopies.containerPath(of: url, top: top) else {
+                return nil
+            }
+            return top.standardizedFileURL == url.standardizedFileURL ? source.name : path
+        }
+        guard !paths.isEmpty else { return NSSound.beep() }
+        NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
     }
 
     /// Adds the selected folders (or, with nothing selected, this folder) to the sidebar's favorites.
     @objc func addToSidebar(_ sender: Any?) {
         let folders = selectedEntries.filter(\.isFolder).map(\.url)
         // A temporary copy of an archive's contents doesn't belong in the sidebar.
-        Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !ArchiveCache.contains($0) })
+        Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !ReadOnlyCopies.contains($0) })
     }
 
     @objc func addToShelf(_ sender: Any?) {
@@ -1008,6 +1042,8 @@ final class BrowserViewController: NSViewController {
     }
 
     @objc func openInTerminal(_ sender: Any?) {
+        // In a container's files: a shell in the container.
+        if openTerminalInContainer() { return }
         let selected = selectedEntries
         let folder = selected.count == 1 && selected[0].isFolder ? selected[0].url : targetDirectory
         guard let folder else { return }
@@ -1026,6 +1062,14 @@ final class BrowserViewController: NSViewController {
     @objc func reloadFolder(_ sender: Any?) {
         for node in nodes where node.entry.isDirectory { FolderSizer.invalidate(node.url) }
         if let repository = gitObservation?.repository { GitStatusStore.shared.refresh(repository, force: true) }
+        // A container's folder is read from the container again, not just from its copy.
+        if let directory, ContainerCopies.contains(directory) {
+            Task {
+                await ContainerFiles.shared.invalidate(directory)
+                refresh()
+            }
+            return
+        }
         refresh()
     }
 
@@ -1079,6 +1123,11 @@ final class BrowserViewController: NSViewController {
 
     /// Tags changed (here or in another window) or were read: redraw what's shown.
     @objc private func tagsChanged() {
+        reloadVisibleCells()
+    }
+
+    /// Every view mode's visible items configured again (icons, badges, thumbnails).
+    func reloadVisibleCells() {
         clipboardChanged()
         gridController?.refreshVisibleItems(reconfigure: true)
         columnController?.refreshVisibleRows()
@@ -1179,7 +1228,7 @@ final class BrowserViewController: NSViewController {
 
     private func beginRename(_ url: URL) {
         // An archive opened as a folder isn't changed.
-        guard !ArchiveCache.contains(url) else { return }
+        guard !ReadOnlyCopies.contains(url) else { return }
         if let activeView {
             activeView.beginRename(rowURL(url))
             return
@@ -1215,7 +1264,10 @@ final class BrowserViewController: NSViewController {
         if QLPreviewPanel.sharedPreviewPanelExists(), panel.isVisible {
             panel.orderOut(nil)
         } else {
-            panel.makeKeyAndOrderFront(nil)
+            // A container's file being fetched: show it once it's here.
+            afterFetching(selectedURLs.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory != true }) {
+                panel.makeKeyAndOrderFront(nil)
+            }
         }
     }
 
@@ -1255,8 +1307,10 @@ final class BrowserViewController: NSViewController {
         if selected.isEmpty {
             // Inside an archive opened as a folder nothing is added; Finder is shown the archive itself.
             if isInsideArchive {
-                add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
-                add("Show Archive in Finder", #selector(showArchiveInFinder(_:)), "macwindow")
+                if directory.map({ ContainerCopies.engineFolder($0) == nil }) != false {
+                    add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
+                }
+                if directory.map(ArchiveCache.contains) == true { add("Show Archive in Finder", #selector(showArchiveInFinder(_:)), "macwindow") }
                 menu.addItem(.separator())
                 addTitled(hiddenFilesTitle, #selector(toggleHiddenFiles(_:)), "eye")
                 return menu
@@ -1289,6 +1343,20 @@ final class BrowserViewController: NSViewController {
             menu.addItem(.separator())
         }
         add("Open", #selector(openSelection(_:)), "arrow.up.forward.app")
+        // Containers: what can be done to them, then a shell in one.
+        let containers = selectedContainers
+        if !containers.isEmpty {
+            menu.addItem(.separator())
+            for action in ContainerControl.actions(for: containers) {
+                let item = NSMenuItem(title: ContainerControl.title(action), action: #selector(containerAction(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = action.rawValue
+                item.image = NSImage(systemSymbolName: ContainerControl.symbol(action), accessibilityDescription: nil)
+                menu.addItem(item)
+            }
+            add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
+            menu.addItem(.separator())
+        }
         // With archives opening normally (Settings), browsing one is still a click away.
         if selected.count == 1, let entry = selected.first, !entry.isFolder, !opensAsFolder(entry),
            ArchiveKind(fileName: entry.name) != nil {
@@ -1322,17 +1390,21 @@ final class BrowserViewController: NSViewController {
         if !inTrash, cloud.contains(.cloudOnly) { add("Download Now", #selector(downloadNow(_:)), "icloud.and.arrow.down") }
         if !inTrash, cloud.contains(.downloaded) { add("Remove Download", #selector(removeDownload(_:)), "icloud.slash") }
         add("Quick Look", #selector(toggleQuickLook(_:)), "eye")
-        // The system's own item: it keeps its picker alive and shows the share sheet next to the menu.
-        menu.addItem(NSSharingServicePicker(items: selected.map(\.url)).standardShareMenuItem)
+        // The system's own item: it keeps its picker alive and shows the share sheet next to the menu. Not for a
+        // container's files: they're only read when copied out.
+        let inContainer = directory.map(ContainerCopies.contains) == true
+        if !inContainer { menu.addItem(NSSharingServicePicker(items: selected.map(\.url)).standardShareMenuItem) }
         menu.addItem(.separator())
         // Inside an archive opened as a folder nothing changes: copying out is what's offered.
         let inArchive = isInsideArchive
         if inArchive {
             add("Copy", #selector(copy(_:)), "doc.on.doc")
-            add("Add to Shelf", #selector(addToShelf(_:)), "tray.and.arrow.down")
-            menu.addItem(.separator())
-            add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
-            add("Show Archive in Finder", #selector(showArchiveInFinder(_:)), "macwindow")
+            if !inContainer { add("Add to Shelf", #selector(addToShelf(_:)), "tray.and.arrow.down") }
+            if containers.isEmpty {
+                menu.addItem(.separator())
+                add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
+            }
+            if directory.map(ArchiveCache.contains) == true { add("Show Archive in Finder", #selector(showArchiveInFinder(_:)), "macwindow") }
             return menu
         }
         addTitled(renameTitle, #selector(renameSelection(_:)), "pencil")
@@ -1450,6 +1522,8 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     private func sizeText(_ node: FileNode) -> String {
         guard node.entry.isDirectory else { return Format.bytes(node.entry.size ?? 0) }
+        // A container's folder holds only what's been browsed: its size isn't known.
+        if ContainerCopies.contains(node.url) { return "—" }
         if let size = FileIndex.shared.folderSize(node.url) ?? sizer.cached(node.url) { return Format.bytes(size.bytes) }
         guard canMeasure(node.entry) else { return "—" }
         sizer.request(node.url)
@@ -1458,7 +1532,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     /// Symlinks and volumes aren't walked, and neither are guarded folders that would trigger a consent prompt.
     func canMeasure(_ entry: FileEntry) -> Bool {
-        guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, let directory else { return false }
+        guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, !ContainerCopies.contains(entry.url), let directory else { return false }
         if FileIndex.shared.folderSize(entry.url) != nil { return true }
         return !Privacy.measuringWouldPrompt(entry.url, browsing: directory)
     }
@@ -1473,6 +1547,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
         delegate?.browserSelectionDidChange(self)
+        fetchSelectedContainerFiles()
         if QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible {
             panel.reloadData()
         }
@@ -1494,7 +1569,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
         guard let node = item as? FileNode, node.groupTitle == nil else { return nil }
-        return node.url as NSURL
+        return ContainerDragItem.writer(for: node.url)
     }
 
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?,
@@ -1550,7 +1625,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     }
 
     private func draggedURLs(_ info: NSDraggingInfo) -> [URL]? {
-        info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
+        FileDrop.urls(info)
     }
 }
 
@@ -1618,6 +1693,17 @@ extension BrowserViewController: NSMenuItemValidation {
         case #selector(checkAppsForUpdates(_:)):
             item.title = appUpdatesTitle
             return !selectedApps.isEmpty
+        // A container's files are read only when copied out: no shelf, no share sheet, no Finder.
+        case #selector(addToShelf(_:)) where directory.map(ContainerCopies.contains) == true,
+             #selector(share(_:)) where directory.map(ContainerCopies.contains) == true,
+             #selector(showInFinder(_:)) where directory.map(ContainerCopies.contains) == true:
+            return false
+        case #selector(openInTerminal(_:)) where canOpenTerminalInContainer != nil:
+            // In a container's files it's a shell in the container, which has to be running.
+            return canOpenTerminalInContainer == true
+        case #selector(containerAction(_:)):
+            guard let raw = item.representedObject as? String, let action = ContainerAction(rawValue: raw) else { return false }
+            return selectedContainers.contains { action.applies(to: $0.state) && ContainerStore.shared.busy[$0.id] == nil }
         case #selector(duplicate(_:)):
             return hasSelection && !isShowingTrash
         case #selector(editTags(_:)):

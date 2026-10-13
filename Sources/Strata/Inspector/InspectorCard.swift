@@ -243,7 +243,8 @@ final class InspectorLocationView: NSView {
     private let folder: URL
     private let path: URL
 
-    init(folder: URL, shownAs path: URL, action: @escaping () -> Void) {
+    /// `name` and `location` replace the folder's own (a container's folder, shown as it is in the container).
+    init(folder: URL, shownAs path: URL, name shownName: String? = nil, location shownLocation: String? = nil, action: @escaping () -> Void) {
         self.action = action
         self.folder = folder
         self.path = path
@@ -251,10 +252,10 @@ final class InspectorLocationView: NSView {
         let icon = NSImageView(image: NSWorkspace.shared.icon(forFile: folder.path))
         icon.image?.size = NSSize(width: 16, height: 16)
         icon.translatesAutoresizingMaskIntoConstraints = false
-        let name = NSTextField(labelWithString: FileManager.default.displayName(atPath: path.path))
+        let name = NSTextField(labelWithString: shownName ?? FileManager.default.displayName(atPath: path.path))
         name.font = .systemFont(ofSize: 12)
         name.lineBreakMode = .byTruncatingMiddle
-        let location = NSTextField(labelWithString: Format.tildePath(path.deletingLastPathComponent()))
+        let location = NSTextField(labelWithString: shownLocation ?? Format.tildePath(path.deletingLastPathComponent()))
         location.font = .systemFont(ofSize: 11)
         location.textColor = .secondaryLabelColor
         location.lineBreakMode = .byTruncatingHead

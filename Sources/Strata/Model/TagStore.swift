@@ -110,7 +110,7 @@ final class TagStore {
     /// archive opened as a folder (a temporary copy).
     nonisolated static func canTag(_ url: URL) -> Bool {
         var info = stat()
-        return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT != S_IFLNK && !ArchiveCache.contains(url)
+        return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT != S_IFLNK && !ReadOnlyCopies.contains(url)
     }
 
     /// Adds `tag` to every item, or removes it from all of them when they all have it already (Finder's colored circles).

@@ -12,9 +12,10 @@ extension BrowserViewController {
     /// Unpacking more than this asks first.
     private static let largeArchive: Int64 = 2 << 30
 
-    /// Whether this pane shows (or the selection is) inside an archive opened as a folder: changing things there is off.
+    /// Whether this pane shows (or the selection is) inside a read-only copy (an archive opened as a folder, or a
+    /// container's files): changing things there is off.
     var isInsideArchive: Bool {
-        targetDirectory.map(ArchiveCache.contains) == true || selectedURLs.contains(where: ArchiveCache.contains)
+        targetDirectory.map(ReadOnlyCopies.contains) == true || selectedURLs.contains(where: ReadOnlyCopies.contains)
     }
 
     /// Whether opening `entry` shows its contents (zip, tar, 7z, rar, unless turned off in Settings). Disk images,
@@ -128,7 +129,8 @@ extension BrowserViewController {
     /// Context menu, when archives don't open as folders by default (or for kinds that open in their own apps).
     @objc func openArchiveAsFolder(_ sender: Any?) {
         guard let url = selectedURLs.first else { return }
-        browseArchive(url)
+        // An archive in a container's files is read from the container first.
+        afterFetching([url]) { [weak self] in self?.browseArchive(url) }
     }
 
     /// Shows the archive (not Strata's copy of it) in Finder.
@@ -141,7 +143,7 @@ extension BrowserViewController {
     /// read-only disk, the Trash, another archive's copy), then shows the result.
     func extractArchive(_ archive: URL) {
         let folder = archive.deletingLastPathComponent()
-        let usable = access(folder.path, W_OK) == 0 && !ArchiveCache.contains(folder) && !Trash.isInTrash(archive)
+        let usable = access(folder.path, W_OK) == 0 && !ReadOnlyCopies.contains(folder) && !Trash.isInTrash(archive)
         let destination = usable ? folder : FileManager.default.homeDirectoryForCurrentUser.appending(path: "Downloads", directoryHint: .isDirectory)
         let job = ArchiveJob(.extract(archive, into: destination), undo: undoManager)
         job.onFinish = { [weak self] job in

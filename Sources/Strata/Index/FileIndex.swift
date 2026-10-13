@@ -201,6 +201,8 @@ final class FileIndex {
                 if !Privacy.isKnownAccessible(path) { excluded.insert(path) }
             }
         }
+        // Containers' files aren't this Mac's: their not-yet-fetched placeholders would count as their full size.
+        excluded.insert(realPath(ContainerCopies.root.path))
         // The encrypted index replaces the plain index.bin of earlier builds.
         SecureStorage.removeLegacy(SecureStorage.url("index.bin"))
         let config = IndexConfig(roots: rootPaths, excluded: excluded,

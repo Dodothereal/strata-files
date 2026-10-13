@@ -30,6 +30,8 @@ final class TransferJob {
     private(set) var errorMessage: String?
     /// Items that exist at the destination because of this job, in order. Handy for selecting them afterwards.
     private(set) var createdItems: [URL] = []
+    /// Reading a container's items before they're copied (stopped with the job).
+    private var containerFetch: Task<Void, Error>?
     private(set) var skippedCount = 0
     /// Top-level items done (moved, copied, or copied with some failures inside).
     private(set) var completedItems = 0
@@ -158,6 +160,7 @@ final class TransferJob {
         guard canCancel else { return }
         control.cancel()
         decisionTask?.cancel()
+        containerFetch?.cancel()
         queue?.stopWaiting(self)
         if !started { finish() } else { changed() }
     }
@@ -193,6 +196,19 @@ final class TransferJob {
     private func run() async {
         state = .scanning
         changed()
+        // From a container's files: everything copied out is fetched first (folders with all they hold).
+        let fromContainers = sources.filter(ContainerCopies.contains)
+        if !fromContainers.isEmpty {
+            let fetch = Task { try await ContainerFiles.shared.prepareForCopying(fromContainers) }
+            containerFetch = fetch
+            do {
+                try await fetch.value
+            } catch {
+                errorMessage = fromContainers.first.flatMap { ContainerCopies.copy(containing: $0)?.source }
+                    .map { ContainerFiles.message(for: error, source: $0) } ?? error.localizedDescription
+                return finish()
+            }
+        }
         plan()
         await measure(items.indices.filter { items[$0].outcome == .pending })
         if !control.isCancelled { await resolveConflicts() }
@@ -542,6 +558,11 @@ final class TransferJob {
     }
 
     private func finish() {
+        // Copied out of a container: ordinary files from now on.
+        if sources.contains(where: ContainerCopies.contains) {
+            let made = createdItems
+            DispatchQueue.global(qos: .utility).async { made.forEach(ContainerCopies.finishCopyingOut) }
+        }
         if let disk = heldDisk {
             queue?.releaseDisk(disk, for: self)
             heldDisk = nil

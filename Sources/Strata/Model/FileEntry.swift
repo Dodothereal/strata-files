@@ -98,6 +98,12 @@ nonisolated struct FileEntry: Sendable, Hashable {
         contentType = values.contentType
     }
 
+    /// The same item described as another kind.
+    func with(kind: String) -> FileEntry {
+        FileEntry(url: url, name: name, isDirectory: isDirectory, isPackage: isPackage, isHidden: isHidden, isSymlink: isSymlink,
+                  isVolume: isVolume, size: size, modified: modified, created: created, added: added, kind: kind, contentType: contentType)
+    }
+
     init?(url: URL) {
         guard let values = try? url.resourceValues(forKeys: Set(Self.resourceKeys)) else { return nil }
         self.init(url: url, values: values)
@@ -107,13 +113,17 @@ nonisolated struct FileEntry: Sendable, Hashable {
 nonisolated enum DirectoryLoader {
     @concurrent
     static func load(_ directory: URL, showHidden: Bool) async throws -> [FileEntry] {
+        // A container's files: list the folder from the container first (every view loads folders here).
+        if ContainerCopies.contains(directory) { await ContainerFiles.shared.refresh(directory) }
+        let isContainersFolder = ContainerCopies.engineFolder(directory) != nil
         let keys = FileEntry.resourceKeys
         let urls = try FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: keys, options: showHidden ? [] : [.skipsHiddenFiles])
         let keySet = Set(keys)
         return urls.compactMap { url in
             guard let values = try? url.resourceValues(forKeys: keySet) else { return nil }
-            return FileEntry(url: url, values: values)
+            let entry = FileEntry(url: url, values: values)
+            return isContainersFolder ? entry.with(kind: String(localized: "Container", comment: "Kind of item: a Docker container's files")) : entry
         }
     }
 }

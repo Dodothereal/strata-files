@@ -25,6 +25,8 @@ enum SidebarTarget: Equatable {
     case search(SavedSearch)
     case duplicates
     case largeFiles
+    /// The containers of the engine Strata found.
+    case containers
 }
 
 final class SidebarItem {
@@ -36,6 +38,8 @@ final class SidebarItem {
     var tint: NSColor?
     /// A Finder tag's stored name (Tags section): `title` shows it in your language, this is what's matched and removed.
     var tagName: String?
+    /// Shown on hover and read by VoiceOver.
+    var help: String?
 
     init(_ place: Place) {
         title = place.title
@@ -101,7 +105,7 @@ final class SidebarViewController: NSViewController {
         outline.allowsEmptySelection = true
         outline.dataSource = self
         outline.delegate = self
-        outline.registerForDraggedTypes([.fileURL, .sidebarFavorite])
+        outline.registerForDraggedTypes(FileDrop.types + [.sidebarFavorite])
         outline.onDragEnd = { [weak self] in self?.springLoader.cancel() }
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
         outline.setDraggingSourceOperationMask([], forLocal: false)
@@ -119,6 +123,7 @@ final class SidebarViewController: NSViewController {
         // A tag used for the first time joins the Tags section.
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .tagsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .favoritesChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: nil)
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(trashMayHaveChanged), name: name, object: nil)
         }
@@ -146,8 +151,15 @@ final class SidebarViewController: NSViewController {
             SidebarItem(title: String(localized: "Large Files", comment: "Sidebar item"), target: .largeFiles, symbol: "externaldrive.badge.exclamationmark"),
             SidebarItem(title: String(localized: "Duplicates", comment: "Sidebar item: identical files"), target: .duplicates, symbol: "square.on.square"),
         ]))
+        // Containers, like a disk: there while an engine (Docker Desktop, OrbStack…) runs.
+        let containers = ContainerStore.shared.engine.map { engine -> SidebarItem in
+            let item = SidebarItem(title: String(localized: "Containers", comment: "Sidebar section title: Docker containers"), target: .containers,
+                                   symbol: "shippingbox")
+            item.help = engine.name
+            return item
+        }
         sections.append(SidebarSection(id: "locations", title: String(localized: "Locations", comment: "Sidebar section title: disks and the Trash"),
-                                       items: Places.volumes().map(SidebarItem.init)
+                                       items: Places.volumes().map(SidebarItem.init) + [containers].compactMap { $0 }
             + [SidebarItem(title: String(localized: "Trash", comment: "Sidebar item: the Trash"), target: .folder(Trash.home), symbol: Self.trashSymbol)]))
         // Finder's Tags: the colored ones, then others you've used here. Each shows everything with that tag (Spotlight).
         let tags = TagStore.shared.suggestions.prefix(12).map { tag in
@@ -184,11 +196,25 @@ final class SidebarViewController: NSViewController {
 
     @objc private func volumesChanged() { reload() }
 
+    /// The Containers item comes and goes with the engine; containers starting and stopping don't touch the sidebar.
+    private var showsContainers = false
+
+    @objc private func containersChanged() {
+        let engine = ContainerStore.shared.engine != nil
+        guard engine != showsContainers else { return }
+        showsContainers = engine
+        reload()
+    }
+
+
     private static func matches(_ a: SidebarTarget, _ b: SidebarTarget?) -> Bool {
         switch (a, b) {
         case (.folder(let x), .folder(let y)?): x.standardizedFileURL.path == y.standardizedFileURL.path
         case (.recents, .recents?), (.duplicates, .duplicates?), (.largeFiles, .largeFiles?): true
         case (.search(let x), .search(let y)?): x == y
+        case (.containers, .containers?): true
+        // Anywhere in the containers or their files.
+        case (.containers, .folder(let url)?): ContainerCopies.contains(url)
         default: false
         }
     }
@@ -252,7 +278,7 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             cell.identifier = id
             return cell
         }()
-        cell.configure(title: item.title, symbol: item.symbol, tint: item.tint)
+        cell.configure(title: item.title, symbol: item.symbol, tint: item.tint, help: item.help)
         return cell
     }
 
@@ -306,7 +332,8 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             return []
         }
         if favoriteIndex(item, index) != nil {
-            let folders = urls.filter { TransferEngine.isPlainFolder($0) || $0.hasDirectoryPath }
+            // Not a read-only copy's folders: they're gone when Strata quits.
+            let folders = urls.filter { !ReadOnlyCopies.contains($0) && (TransferEngine.isPlainFolder($0) || $0.hasDirectoryPath) }
             return folders.isEmpty ? [] : .link
         }
         guard let target = (item as? SidebarItem)?.url, index == NSOutlineViewDropOnItemIndex else { return [] }
@@ -314,7 +341,8 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             if let verdict = trashVerdict, verdict.drag == info.draggingSequenceNumber { return verdict.operation }
             // Not what's already in a Trash, a Trash itself, or a whole disk.
             let refused = urls.isEmpty || urls.contains { url in
-                Trash.isInTrash(url) || Trash.isTrash(url) || (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
+                Trash.isInTrash(url) || Trash.isTrash(url) || ReadOnlyCopies.contains(url)
+                    || (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
             }
             trashVerdict = (info.draggingSequenceNumber, refused ? [] : .delete)
             return refused ? [] : .delete
@@ -328,7 +356,7 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             if let path = info.draggingPasteboard.string(forType: .sidebarFavorite) {
                 Places.addFavorites([URL(fileURLWithPath: path)], at: at)
             } else {
-                Places.addFavorites(FileDrop.urls(info), at: at)
+                Places.addFavorites(FileDrop.urls(info).filter { !ReadOnlyCopies.contains($0) }, at: at)
             }
             return true
         }
@@ -395,10 +423,12 @@ final class SidebarCellView: NSTableCellView {
 
     private var tint: NSColor?
 
-    func configure(title: String, symbol: String, tint: NSColor? = nil) {
+    func configure(title: String, symbol: String, tint: NSColor? = nil, help: String? = nil) {
         label.stringValue = title
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         self.tint = tint
+        toolTip = help
+        setAccessibilityHelp(help)
         // Tag dots are smaller than the other icons, like Finder's.
         icon.symbolConfiguration = .init(pointSize: tint == nil ? 14 : 10, weight: tint == nil ? .regular : .semibold)
         applyColors()
@@ -419,6 +449,7 @@ extension SidebarViewController: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         guard let item = outline.item(atRow: outline.clickedRow) as? SidebarItem else { return }
+        if case .containers = item.target { return }
         // Tags you added can leave the sidebar; the seven colored ones stay, like Finder's.
         if item.tint != nil {
             let name = item.tagName ?? item.title

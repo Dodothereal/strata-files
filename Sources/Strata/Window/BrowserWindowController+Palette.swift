@@ -183,6 +183,17 @@ extension BrowserWindowController {
                 self?.browser.checkAppsForUpdates(nil)
             }, at: 0)
         }
+        // Containers selected in the Containers folder: what can be done to them, and a shell in one.
+        let containers = browser.selectedContainers
+        if !containers.isEmpty {
+            for action in ContainerControl.actions(for: containers).reversed() {
+                commands.insert(localizedCommand(ContainerControl.title(action), ContainerControl.symbol(action), nil,
+                                                 keywords: ["Container", "Docker", action.rawValue.capitalized]) { [weak self] in
+                    guard let self else { return }
+                    ContainerControl.run(action, on: browser.selectedContainers, in: window)
+                }, at: 0)
+            }
+        }
         if !browser.selectedArchives.isEmpty, !browser.isShowingTrash, browser.canWriteBesideSelection {
             commands.insert(localizedCommand(browser.extractTitle, "archivebox", nil, keywords: ["Unzip", "Expand", "Decompress"]) { [weak self] in
                 self?.browser.extract(nil)
@@ -198,6 +209,17 @@ extension BrowserWindowController {
         commands.append(contentsOf: aiPaletteItems())
         if !Privacy.hasFullDiskAccess {
             commands.append(command("Grant Full Disk Access…", "lock.open", nil) { NSWorkspace.shared.open(Privacy.settingsURL) })
+        }
+        // A read-only copy (an archive opened as a folder, a container's files): nothing in it changes, so commands that
+        // would do nothing aren't offered. A container's files aren't handed to Finder, the Shelf or the share sheet.
+        if browser.isInsideArchive {
+            var hidden = Set(["New Folder", "Tags…", "Duplicate", "Delete Immediately…", "Move to Trash"].map { String(localized: String.LocalizationValue($0)) })
+            hidden.insert(browser.renameTitle)
+            if browser.directory.map(ContainerCopies.contains) == true {
+                hidden.formUnion(["Add to Shelf", "Share…", "Show in Finder"].map { String(localized: String.LocalizationValue($0)) })
+            }
+            if browser.canOpenTerminalInContainer == false { hidden.insert(String(localized: "Open in Terminal")) }
+            commands.removeAll { hidden.contains($0.title) }
         }
         return commands
     }

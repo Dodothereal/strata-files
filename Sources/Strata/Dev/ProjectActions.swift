@@ -157,15 +157,24 @@ enum ProjectActions {
     /// as your interactive shell (nvm, Homebrew), which costs one rc-file load.
     @discardableResult
     static func runInTerminal(_ script: ProjectScript, projectName: String? = nil) -> Bool {
+        let project = projectName ?? script.directory.lastPathComponent
+        return openCommandFile(named: "\(project) — \(script.name)", body: commandFile(for: script))
+    }
+
+    /// Writes `body` (a `/bin/sh` script that deletes itself first) to a `.command` file and opens it in the preferred
+    /// terminal. `name` is the file's name, which the terminal shows as the window's title.
+    @discardableResult
+    static func openCommandFile(named name: String, body: String) -> Bool {
         let folder = FileManager.default.temporaryDirectory.appending(path: "Strata Scripts", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
                                                  attributes: [.posixPermissions: 0o700])
         removeStaleCommandFiles(in: folder)
-        let project = projectName ?? script.directory.lastPathComponent
-        let fileName = sanitize("\(project) — \(script.name)") + ".command"
-        let file = folder.appending(path: fileName)
+        // A folder of its own: two opened at once never overwrite each other.
+        let own = folder.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: own, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let file = own.appending(path: sanitize(name) + ".command")
         do {
-            try commandFile(for: script).write(to: file, atomically: true, encoding: .utf8)
+            try body.write(to: file, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
         } catch {
             return false
@@ -206,8 +215,18 @@ enum ProjectActions {
         return NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal")
     }
 
-    private static func sanitize(_ name: String) -> String {
-        String(name.map { "/:\\".contains($0) ? "-" : $0 }.prefix(80))
+    /// A `.command` file name every terminal can open: plain ASCII letters, digits, spaces, dots, dashes and
+    /// underscores. (Ghostty garbles other characters in the path it runs, an em dash included, and then can't find the
+    /// file.)
+    static func sanitize(_ name: String) -> String {
+        let folded = name.folding(options: [.diacriticInsensitive, .widthInsensitive], locale: nil)
+        let kept = folded.unicodeScalars.map { scalar -> Character in
+            scalar.isASCII && (CharacterSet.alphanumerics.contains(scalar) || " ._-".unicodeScalars.contains(scalar)) ? Character(scalar) : "-"
+        }
+        // Runs of replaced characters become one dash; no leading dot (a hidden file) or dash.
+        let text = String(kept).replacingOccurrences(of: "-{2,}", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: " .-"))
+        return text.isEmpty ? "Strata" : String(text.prefix(80))
     }
 
     /// The files delete themselves when they run; this catches any that never ran.

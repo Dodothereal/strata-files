@@ -59,7 +59,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         strip.allowsEmptySelection = false
         strip.backgroundColors = [.clear]
         strip.register(GalleryThumbnailItem.self, forItemWithIdentifier: GalleryThumbnailItem.identifier)
-        strip.registerForDraggedTypes([.fileURL])
+        strip.registerForDraggedTypes(FileDrop.types)
         strip.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
         strip.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
         strip.setAccessibilityLabel(String(localized: "Gallery", comment: "View mode: items in a gallery"))
@@ -153,7 +153,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         ])
         updateStripHeight()
         view = root
-        root.registerForDraggedTypes([.fileURL])
+        root.registerForDraggedTypes(FileDrop.types)
         NotificationCenter.default.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(scrollerStyleChanged), name: NSScroller.preferredScrollerStyleDidChangeNotification,
                                                object: nil)
@@ -480,7 +480,7 @@ extension GalleryViewController: NSCollectionViewDataSource, NSCollectionViewDel
     }
 
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
-        indexPath.item < entries.count ? entries[indexPath.item].url as NSURL : nil
+        indexPath.item < entries.count ? ContainerDragItem.writer(for: entries[indexPath.item].url) : nil
     }
 
     func collectionView(_ collectionView: NSCollectionView, validateDrop draggingInfo: NSDraggingInfo,

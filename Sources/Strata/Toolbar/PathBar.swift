@@ -133,6 +133,17 @@ final class PathBar: NSView, NSTextFieldDelegate {
     }
 
     private static func components(of url: URL, depth: Int = 0) -> [(title: String, url: URL, symbol: String?)] {
+        // Containers, then a container, then its folders from `/`.
+        if let folder = ContainerCopies.containersFolder(of: url) {
+            var parts: [(title: String, url: URL, symbol: String?)] = [(String(localized: "Containers", comment: "Sidebar section title: Docker containers"), folder, "shippingbox")]
+            var current = folder
+            let inner = url.standardizedFileURL.path.dropFirst(folder.standardizedFileURL.path.count).split(separator: "/")
+            for component in inner {
+                current = current.appending(path: String(component))
+                parts.append((String(component), current, nil))
+            }
+            return parts
+        }
         // Inside an archive opened as a folder: the archive's own location, the archive, then the folders inside it
         // (an archive opened from inside another one nests, a few levels at most).
         if depth < 8, let (archive, top) = ArchiveCache.archive(containing: url) {
