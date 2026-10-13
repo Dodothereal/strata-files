@@ -26,6 +26,7 @@ enum Prefs {
         static let theme = "theme"
         static let density = "density"
         static let nameTextSize = "nameTextSize"
+        static let showIconPreviews = "showIconPreviews"
     }
 
     static func register() {
@@ -101,6 +102,12 @@ enum Prefs {
     static var nameTextSize: Double {
         get { min(max(defaults.object(forKey: Key.nameTextSize) as? Double ?? 13, 11), 16) }
         set { defaults.set(newValue, forKey: Key.nameTextSize); NotificationCenter.default.post(name: .appearanceChanged, object: nil) }
+    }
+
+    /// Files show a Quick Look thumbnail of their contents in place of their icon, like Finder's "Show icon preview".
+    static var showIconPreviews: Bool {
+        get { defaults.object(forKey: Key.showIconPreviews) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.showIconPreviews); NotificationCenter.default.post(name: .appearanceChanged, object: nil) }
     }
 
     /// Read every copied file back and compare it with the original (slower; catches failing disks and cables).

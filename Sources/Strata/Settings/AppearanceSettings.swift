@@ -5,6 +5,7 @@ struct AppearanceSettings: View {
     @State private var theme = Prefs.theme
     @State private var density = Prefs.density
     @State private var size = Prefs.nameTextSize
+    @State private var previews = Prefs.showIconPreviews
 
     var body: some View {
         Form {
@@ -38,6 +39,10 @@ struct AppearanceSettings: View {
                     .font(.system(size: size))
                     .padding(.vertical, [2.0, 5.0, 9.0][min(max(density, 0), 2)])
                     .accessibilityLabel("Preview of a file name at this size")
+                Toggle(isOn: Binding(get: { previews }, set: { previews = $0; Prefs.showIconPreviews = $0 })) {
+                    Text("Show icon previews")
+                    Text("Pictures, documents and movies show a thumbnail of their contents in place of their icon.")
+                }
                 Text("Applies to the list, columns and icons in every window.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

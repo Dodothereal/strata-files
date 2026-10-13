@@ -2,6 +2,9 @@ import AppKit
 
 /// Icon + file name, with fuzzy-match characters highlighted while filtering.
 final class NameCellView: NSTableCellView {
+    /// The icon's side, in points.
+    static let iconSide: CGFloat = 18
+
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
     private let gitBadge = GitStatusBadge()
@@ -10,6 +13,10 @@ final class NameCellView: NSTableCellView {
     private var name = ""
     private var matches: [Int] = []
     private var dimmed = false
+    private var thumbnailTicket: FileThumbnails.Ticket?
+    /// The file whose thumbnail the cell wants, and the one whose thumbnail it shows.
+    private var thumbnailEntry: FileEntry?
+    private var thumbnailURL: URL?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -34,8 +41,8 @@ final class NameCellView: NSTableCellView {
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 1),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 18),
-            icon.heightAnchor.constraint(equalToConstant: 18),
+            icon.widthAnchor.constraint(equalToConstant: Self.iconSide),
+            icon.heightAnchor.constraint(equalToConstant: Self.iconSide),
             label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 7),
             tagDots.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 4),
             tagDots.trailingAnchor.constraint(lessThanOrEqualTo: cloudBadge.leadingAnchor, constant: -2),
@@ -50,8 +57,9 @@ final class NameCellView: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// `thumbnail` is the file to show a Quick Look thumbnail of in place of `image`, when Quick Look has one.
     func configure(name: String, icon image: NSImage, matches: [Int], dimmed: Bool, git: GitBadge? = nil,
-                   tags: [FinderTag] = [], cloud: CloudStatus? = nil) {
+                   tags: [FinderTag] = [], cloud: CloudStatus? = nil, thumbnail entry: FileEntry? = nil, scale: CGFloat = 2) {
         self.name = name
         self.matches = matches
         self.dimmed = dimmed
@@ -59,9 +67,40 @@ final class NameCellView: NSTableCellView {
         cloudBadge.status = cloud
         tagDots.tags = tags
         tagDots.alphaValue = dimmed ? 0.45 : 1
-        icon.image = image
+        show(image, thumbnailOf: entry, scale: scale)
         icon.alphaValue = dimmed ? 0.45 : 1
         render()
+    }
+
+    /// Shows the icon, or the file's thumbnail like Finder's icon previews: right away when it's cached, otherwise once
+    /// Quick Look makes it. A file that changed keeps its old thumbnail until the new one is ready, so rows refreshed
+    /// while a file is written don't flash back to the icon.
+    private func show(_ image: NSImage, thumbnailOf entry: FileEntry?, scale: CGFloat) {
+        FileThumbnails.shared.cancel(thumbnailTicket)
+        thumbnailTicket = nil
+        thumbnailEntry = entry
+        guard let entry, FileThumbnails.canThumbnail(entry) else {
+            icon.image = image
+            thumbnailURL = nil
+            return
+        }
+        let side = Self.iconSide
+        let failed = FileThumbnails.shared.hasFailed(entry, size: side, scale: scale)
+        if let cached = FileThumbnails.shared.cached(entry, size: side, scale: scale) {
+            icon.image = cached.image
+            thumbnailURL = entry.url
+            if cached.exact { return }
+        } else if failed || thumbnailURL != entry.url {
+            icon.image = image
+            thumbnailURL = nil
+        }
+        guard !failed else { return }
+        thumbnailTicket = FileThumbnails.shared.request(entry, size: side, scale: scale) { [weak self] thumbnail in
+            guard let self, self.thumbnailEntry == entry else { return }
+            self.thumbnailTicket = nil
+            self.icon.image = thumbnail
+            self.thumbnailURL = entry.url
+        }
     }
 
     override var backgroundStyle: NSView.BackgroundStyle {

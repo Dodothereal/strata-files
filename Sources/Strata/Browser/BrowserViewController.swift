@@ -992,7 +992,8 @@ final class BrowserViewController: NSViewController {
         let row = outlineView.row(forItem: node)
         guard row >= 0 else { return nil }
         let cell = outlineView.frameOfCell(atColumn: outlineView.column(withIdentifier: .name), row: row)
-        let iconRect = NSRect(x: cell.minX + 1, y: cell.midY - 9, width: 18, height: 18)
+        let side = NameCellView.iconSide
+        let iconRect = NSRect(x: cell.minX + 1, y: cell.midY - side / 2, width: side, height: side)
         guard outlineView.visibleRect.intersects(iconRect) else { return nil }
         return window.convertToScreen(outlineView.convert(iconRect, to: nil))
     }
@@ -1429,7 +1430,8 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             }()
             cell.configure(name: entry.name, icon: IconCache.shared.icon(for: entry), matches: node.matchIndices, dimmed: dimmed,
                            git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
-                           cloud: CloudStore.shared.status(for: entry.url))
+                           cloud: CloudStore.shared.status(for: entry.url), thumbnail: Prefs.showIconPreviews ? entry : nil,
+                           scale: outlineView.window?.backingScaleFactor ?? 2)
             return cell
         }
         let cell = outlineView.makeView(withIdentifier: .textCell, owner: nil) as? TextCellView ?? {
@@ -1681,8 +1683,11 @@ extension BrowserViewController: QLPreviewPanelDataSource, QLPreviewPanelDelegat
     func previewPanel(_ panel: QLPreviewPanel!, transitionImageFor item: (any QLPreviewItem)!,
                       contentRect: UnsafeMutablePointer<NSRect>!) -> Any! {
         guard let url = (item as? NSURL) as URL? else { return nil }
-        if let entry = selectedEntries.first(where: { Self.key($0.url) == Self.key(url) }) { return IconCache.shared.icon(for: entry) }
-        guard let node = node(for: url) else { return nil }
-        return IconCache.shared.icon(for: node.entry)
+        guard let entry = selectedEntries.first(where: { Self.key($0.url) == Self.key(url) }) ?? node(for: url)?.entry else { return nil }
+        // The thumbnail the row shows, so the zoom starts from what's on screen.
+        let scale = view.window?.backingScaleFactor ?? 2
+        if Prefs.showIconPreviews, FileThumbnails.canThumbnail(entry),
+           let thumbnail = FileThumbnails.shared.cached(entry, size: NameCellView.iconSide, scale: scale) { return thumbnail.image }
+        return IconCache.shared.icon(for: entry)
     }
 }

@@ -407,12 +407,12 @@ final class GridItem: NSCollectionViewItem {
     func loadImage(_ entry: FileEntry, size: CGFloat, scale: CGFloat, keepCurrent: Bool) {
         FileThumbnails.shared.cancel(thumbnailTicket)
         thumbnailTicket = nil
-        let canThumbnail = FileThumbnails.canThumbnail(entry)
+        let canThumbnail = Prefs.showIconPreviews && FileThumbnails.canThumbnail(entry)
         let cached = canThumbnail ? FileThumbnails.shared.cached(entry, size: size, scale: scale) : nil
         if let cached {
             itemView.setImage(cached.image, animated: false, upscale: !cached.exact)
             if cached.exact { return }
-        } else if !(keepCurrent && itemView.imageView.image != nil) {
+        } else if !canThumbnail || !(keepCurrent && itemView.imageView.image != nil) {
             itemView.setImage(IconCache.shared.icon(for: entry), animated: false)
         }
         guard canThumbnail, !FileThumbnails.shared.hasFailed(entry, size: size, scale: scale) else { return }

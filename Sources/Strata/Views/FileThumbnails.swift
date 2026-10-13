@@ -3,7 +3,7 @@ import ImageIO
 import QuickLookThumbnailing
 import UniformTypeIdentifiers
 
-/// Quick Look thumbnails for the icon grid and column preview, generated on demand and cached by path,
+/// Quick Look thumbnails for the file views and the column preview, generated on demand and cached by path,
 /// modification date and size bucket. Requests for the same thumbnail are coalesced; cancelling the last
 /// interested caller cancels the generation.
 final class FileThumbnails {
@@ -38,18 +38,15 @@ final class FileThumbnails {
         cache.totalCostLimit = 400 * 1024 * 1024
     }
 
-    /// Images, PDFs, movies and documents get thumbnails; folders, apps and opaque files keep their icon.
+    /// Whether to ask Quick Look for a thumbnail. Like Finder, every file is asked, so any type with a thumbnail
+    /// (including ones an app adds) gets one, and Quick Look's "no thumbnail" keeps the icon. Folders, apps and other
+    /// bundles, archives, disk images and executables are pictured by their icon, and links keep their arrow.
     static func canThumbnail(_ entry: FileEntry) -> Bool {
-        guard !entry.isFolder, let type = entry.contentType else { return false }
-        if entry.isPackage {
-            return type.conforms(to: .presentation) || type.conforms(to: .spreadsheet) || type.conforms(to: .compositeContent)
-        }
-        if type.conforms(to: .application) || type.conforms(to: .archive) || type.conforms(to: .diskImage)
-            || type.conforms(to: .unixExecutable) || type.conforms(to: .aliasFile) { return false }
-        return type.conforms(to: .image) || type.conforms(to: .pdf) || type.conforms(to: .audiovisualContent)
-            || type.conforms(to: .text) || type.conforms(to: .presentation) || type.conforms(to: .spreadsheet)
-            || type.conforms(to: .compositeContent) || type.conforms(to: .font) || type.conforms(to: .threeDContent)
-            || type.conforms(to: .epub)
+        guard !entry.isFolder, !entry.isSymlink else { return false }
+        guard let type = entry.contentType else { return !entry.isPackage }
+        return !(type.conforms(to: .bundle) || type.conforms(to: .application) || type.conforms(to: .archive)
+            || type.conforms(to: .diskImage) || type.conforms(to: .unixExecutable) || type.conforms(to: .aliasFile)
+            || type.conforms(to: .symbolicLink) || type.conforms(to: .volume))
     }
 
     static func bucket(for size: CGFloat) -> CGFloat {
@@ -174,7 +171,11 @@ final class FileThumbnails {
         guard let entry = pending[key], entry.generation == generation else { return }
         pending[key] = nil
         guard let cgImage else {
-            if !cancelled { failed.insert(key) }
+            if !cancelled {
+                // Every file is asked now, so most folders have some files without a thumbnail; keep this bounded.
+                if failed.count >= 50_000 { failed.removeAll(keepingCapacity: true) }
+                failed.insert(key)
+            }
             return
         }
         // Point size: the pixel size at the request's scale (the canvas was bucket × scale pixels).

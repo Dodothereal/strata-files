@@ -655,7 +655,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         cell.configure(entry, matches: matches[entry.url.fileViewKey] ?? [],
                        dimmed: entry.isHidden || Clipboard.isCut(entry.url) || git.isIgnored(entry.url),
                        git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
-                       cloud: CloudStore.shared.status(for: entry.url))
+                       cloud: CloudStore.shared.status(for: entry.url), scale: tableView.window?.backingScaleFactor ?? 2)
         return cell
     }
 
@@ -821,10 +821,10 @@ final class ColumnCellView: NSTableCellView {
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ entry: FileEntry, matches: [Int], dimmed: Bool, git: GitBadge? = nil, tags: [FinderTag] = [],
-                   cloud: CloudStatus? = nil) {
+                   cloud: CloudStatus? = nil, scale: CGFloat = 2) {
         isFolder = entry.isFolder
         nameCell.configure(name: entry.name, icon: IconCache.shared.icon(for: entry), matches: matches, dimmed: dimmed, git: git,
-                           tags: tags, cloud: cloud)
+                           tags: tags, cloud: cloud, thumbnail: Prefs.showIconPreviews ? entry : nil, scale: scale)
         applyTruncation()
         chevron.isHidden = !entry.isFolder
         setAccessibilityLabel(entry.isFolder
