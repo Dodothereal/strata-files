@@ -87,30 +87,88 @@ nonisolated struct InstalledApp: Sendable, Equatable {
 
 /// Which feed addresses are read: HTTPS on another machine. A feed is an address an app's bundle names, so Strata never
 /// sends a request to this Mac itself (localhost, loopback and link-local addresses) on its say-so.
+///
+/// Hosts are judged the way the network will see them: numbers in any form the resolver takes ("127.1", "2130706433",
+/// "0x7f.0.0.1"), with a trailing dot or an IPv6 zone, and, right before each request and redirect, every address the
+/// name resolves to (a name can point at 127.0.0.1).
 nonisolated enum FeedAddress {
+    /// The address as written: HTTPS, and not this Mac.
     static func isAllowed(_ url: URL) -> Bool {
-        guard url.scheme?.lowercased() == "https", var host = url.host(percentEncoded: false)?.lowercased(), !host.isEmpty else { return false }
-        if host.hasPrefix("["), host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
+        guard url.scheme?.lowercased() == "https", let host = host(of: url) else { return false }
         if host == "localhost" || host.hasSuffix(".localhost") { return false }
-        var v4 = in_addr()
-        if inet_pton(AF_INET, host, &v4) == 1 { return !isLocal(v4) }
-        var v6 = in6_addr()
-        if inet_pton(AF_INET6, host, &v6) == 1 {
-            let bytes = withUnsafeBytes(of: v6) { Array($0) }
-            if bytes.dropLast().allSatisfy({ $0 == 0 }) { return false }  // :: and ::1
-            if bytes[0] == 0xfe, bytes[1] & 0xc0 == 0x80 { return false }  // fe80::/10
-            // An IPv4 address written as IPv6 (::ffff:127.0.0.1).
-            if bytes[0..<10].allSatisfy({ $0 == 0 }), bytes[10] == 0xff, bytes[11] == 0xff {
-                return !isLocal(in_addr(s_addr: bytes[12..<16].withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }))
-            }
-        }
+        if let address = literal(host) { return !isLocal(address) }
         return true
     }
 
-    /// 0.0.0.0/8, 127.0.0.0/8 and 169.254.0.0/16.
-    private static func isLocal(_ address: in_addr) -> Bool {
-        let bytes = withUnsafeBytes(of: address.s_addr) { Array($0) }
-        return bytes[0] == 0 || bytes[0] == 127 || (bytes[0] == 169 && bytes[1] == 254)
+    /// `isAllowed`, and none of the addresses its name resolves to is this Mac. Resolving blocks, so it runs off the main
+    /// thread (in a check, or in URLSession's delegate queue for redirects).
+    static func isSafeToFetch(_ url: URL) -> Bool {
+        guard isAllowed(url), let host = host(of: url) else { return false }
+        return literal(host) != nil || !resolvesToThisMac(host)
+    }
+
+    /// Whether any address `host` resolves to is this Mac's.
+    static func resolvesToThisMac(_ host: String) -> Bool {
+        var hints = addrinfo()
+        hints.ai_socktype = SOCK_STREAM
+        var list: UnsafeMutablePointer<addrinfo>?
+        // A name that doesn't resolve is left to the request, which fails on its own.
+        guard getaddrinfo(host, "443", &hints, &list) == 0, let first = list else { return false }
+        defer { freeaddrinfo(list) }
+        for entry in sequence(first: first, next: { $0.pointee.ai_next }) {
+            guard let address = entry.pointee.ai_addr else { continue }
+            switch Int32(address.pointee.sa_family) {
+            case AF_INET:
+                let v4 = address.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr }
+                if isLocal(.v4(v4)) { return true }
+            case AF_INET6:
+                let v6 = address.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { $0.pointee.sin6_addr }
+                if isLocal(.v6(v6)) { return true }
+            default:
+                continue
+            }
+        }
+        return false
+    }
+
+    nonisolated enum Address {
+        case v4(in_addr)
+        case v6(in6_addr)
+    }
+
+    /// The host without brackets, an IPv6 zone or trailing dots, lowercased.
+    private static func host(of url: URL) -> String? {
+        guard var host = url.host(percentEncoded: false)?.lowercased() else { return nil }
+        if host.hasPrefix("["), host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
+        if let zone = host.firstIndex(of: "%") { host = String(host[..<zone]) }
+        while host.hasSuffix(".") { host.removeLast() }
+        return host.isEmpty ? nil : host
+    }
+
+    /// The host as a numeric address, read as leniently as the resolver reads it (inet_aton takes "127.1" and hex).
+    static func literal(_ host: String) -> Address? {
+        var v4 = in_addr()
+        if inet_aton(host, &v4) == 1 { return .v4(v4) }
+        var v6 = in6_addr()
+        if inet_pton(AF_INET6, host, &v6) == 1 { return .v6(v6) }
+        return nil
+    }
+
+    /// 0.0.0.0/8, 127.0.0.0/8 and 169.254.0.0/16; ::, ::1, fe80::/10, and those IPv4 addresses written as IPv6
+    /// (::ffff:127.0.0.1, ::127.0.0.1).
+    static func isLocal(_ address: Address) -> Bool {
+        switch address {
+        case .v4(let v4):
+            let bytes = withUnsafeBytes(of: v4.s_addr) { Array($0) }
+            return bytes[0] == 0 || bytes[0] == 127 || (bytes[0] == 169 && bytes[1] == 254)
+        case .v6(let v6):
+            let bytes = withUnsafeBytes(of: v6) { Array($0) }
+            if bytes.dropLast().allSatisfy({ $0 == 0 }) { return true }
+            if bytes[0] == 0xfe, bytes[1] & 0xc0 == 0x80 { return true }
+            let embedsV4 = bytes[0..<10].allSatisfy { $0 == 0 } && ((bytes[10] == 0xff && bytes[11] == 0xff) || (bytes[10] == 0 && bytes[11] == 0))
+            guard embedsV4 else { return false }
+            return isLocal(.v4(in_addr(s_addr: bytes[12..<16].withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) })))
+        }
     }
 }
 
@@ -290,9 +348,12 @@ nonisolated enum AppUpdateCheck {
     nonisolated enum FetchError: Error {
         case status(Int)
         case tooLarge
+        /// The address leads to this Mac.
+        case refused
     }
 
     private static func fetch(_ url: URL) async throws -> Data {
+        guard FeedAddress.isSafeToFetch(url) else { throw FetchError.refused }
         var request = URLRequest(url: url)
         request.setValue("application/rss+xml, application/xml, application/json;q=0.9, */*;q=0.5", forHTTPHeaderField: "Accept")
         let (bytes, response) = try await session.bytes(for: request)
@@ -313,6 +374,9 @@ nonisolated enum AppUpdateCheck {
             return String(localized: "Its update feed moved to an address that isn’t secure.", comment: "Checking an app for updates: a redirect to plain HTTP or to this Mac")
         case FetchError.status(let code):
             return String(localized: "Its update server answered with an error (\(code)).", comment: "Checking an app for updates; the placeholder is an HTTP status code")
+        case FetchError.refused:
+            return String(localized: "Its update feed isn’t a secure web address, so Strata doesn’t read it.",
+                          comment: "Checking an app for updates: why it wasn't checked")
         case FetchError.tooLarge:
             return String(localized: "Its update feed is too large to be one.", comment: "Checking an app for updates: the feed was suspiciously big")
         case let error as URLError where error.code == .notConnectedToInternet || error.code == .networkConnectionLost:
@@ -330,7 +394,7 @@ private nonisolated final class SafeRedirects: NSObject, URLSessionTaskDelegate 
     // The completion-handler form: the async one crashes this compiler.
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
-        completionHandler(request.url.map(FeedAddress.isAllowed) == true ? request : nil)
+        completionHandler(request.url.map(FeedAddress.isSafeToFetch) == true ? request : nil)
     }
 }
 

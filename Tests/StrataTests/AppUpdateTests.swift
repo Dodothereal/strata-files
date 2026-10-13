@@ -94,9 +94,19 @@ struct AppUpdateTests {
             #expect(FeedAddress.isAllowed(URL(string: allowed)!), "\(allowed)")
         }
         for refused in ["http://example.com/a.xml", "https://localhost/a.xml", "https://127.0.0.1/a.xml", "https://169.254.169.254/",
-                        "https://[::1]/a.xml", "https://[fe80::1]/a.xml", "https://[::ffff:127.0.0.1]/", "https://0.0.0.0/", "file:///etc/hosts"] {
+                        "https://[::1]/a.xml", "https://[fe80::1]/a.xml", "https://[::ffff:127.0.0.1]/", "https://0.0.0.0/", "file:///etc/hosts",
+                        // Spellings the resolver reads as this Mac.
+                        "https://127.1/", "https://2130706433/", "https://0x7f.0.0.1/", "https://0177.0.0.1/", "https://localhost./",
+                        "https://127.0.0.1./", "https://LOCALHOST/", "https://[fe80::1%25en0]/", "https://[::127.0.0.1]/", "https://[::ffff:7f00:1]/"] {
             #expect(!FeedAddress.isAllowed(URL(string: refused)!), "\(refused)")
         }
+    }
+
+    @Test func namesThatResolveToThisMacAreRefused() {
+        // localhost resolves from /etc/hosts, without the network.
+        #expect(FeedAddress.resolvesToThisMac("localhost"))
+        #expect(!FeedAddress.resolvesToThisMac("203.0.113.7"))
+        #expect(FeedAddress.isSafeToFetch(URL(string: "https://203.0.113.7/a.xml")!))
     }
 
     // MARK: Bundles
