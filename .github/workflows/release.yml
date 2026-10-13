@@ -204,6 +204,21 @@ jobs:
           (cd dist && shasum -a 256 Strata.dmg Strata.zip > SHA256SUMS.txt && cat SHA256SUMS.txt)
           ls -lh dist
 
+      # The update window shows these notes: HTML from GitHub's Markdown renderer, which also sanitizes it.
+      - name: Render the release notes for the update window
+        if: github.ref_type == 'tag' && env.HAS_APPLE_SIGNING == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          notes="docs/release-notes/$VERSION.md"
+          if [ -f "$notes" ]; then
+            gh api markdown -f mode=markdown -F text=@"$notes" > "$RUNNER_TEMP/notes.html"
+            # It goes inside a CDATA section; anything that could end it falls back to the link.
+            if grep -q ']]>' "$RUNNER_TEMP/notes.html"; then rm "$RUNNER_TEMP/notes.html"; fi
+          fi
+
       - name: Sign the update and write the appcast
         if: github.ref_type == 'tag' && env.HAS_APPLE_SIGNING == 'true'
         env:
@@ -229,6 +244,12 @@ jobs:
           build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' build/Strata.app/Contents/Info.plist)
           minimum=$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' build/Strata.app/Contents/Info.plist)
           date=$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')
+          # The notes in the update window, or else a link to the release page.
+          if [ -s "$RUNNER_TEMP/notes.html" ]; then
+            notes="<description><![CDATA[$(cat "$RUNNER_TEMP/notes.html")]]></description>"
+          else
+            notes="<sparkle:releaseNotesLink>https://github.com/$REPOSITORY/releases/tag/$TAG</sparkle:releaseNotesLink>"
+          fi
           cat > dist/appcast.xml <<XML
           <?xml version="1.0" encoding="utf-8"?>
           <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
@@ -240,7 +261,7 @@ jobs:
                 <sparkle:version>$build</sparkle:version>
                 <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
                 <sparkle:minimumSystemVersion>$minimum</sparkle:minimumSystemVersion>
-                <sparkle:releaseNotesLink>https://github.com/$REPOSITORY/releases/tag/$TAG</sparkle:releaseNotesLink>
+                $notes
                 <enclosure url="https://github.com/$REPOSITORY/releases/download/$TAG/Strata.zip" $attributes type="application/octet-stream"/>
               </item>
             </channel>

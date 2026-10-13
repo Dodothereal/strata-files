@@ -148,7 +148,7 @@ and measure everything without asking folder by folder. Strata walks you through
 Push a version tag and the [Release workflow](.github/workflows/release.yml) builds Strata on a Mac, signs it with the
 Developer ID certificate, has Apple notarize it, and publishes a GitHub Release with `Strata.dmg`, `Strata.zip`, their
 checksums and `appcast.xml`, the signed update feed installed copies check. The release notes come from
-`docs/release-notes/<version>.md` when there is one.
+`docs/release-notes/<version>.md` when there is one, and the update window shows them too.
 
 ```sh
 git tag v0.2.0 && git push origin v0.2.0
