@@ -479,6 +479,15 @@ final class BrowserViewController: NSViewController {
     /// Shows `entries` (search results or recent files) in place of the folder, keeping their order until a column
     /// header is clicked. `total` is how many matched before the list was capped.
     func showResults(_ entries: [FileEntry], total: Int) {
+        // A search refreshed because the index changed nearly always finds the same files: the list, its selection
+        // and the Inspector stay as they are, and only rows whose size or date moved are redrawn.
+        if isShowingResults, resultsSummary == nil, loadError == nil, updateResultsInPlace(entries) {
+            if resultsTotal != total {
+                resultsTotal = total
+                delegate?.browserContentDidChange(self)
+            }
+            return
+        }
         // Read before switching to the list: in other views the list's own selection is stale and could point at a file
         // nobody picked.
         let selection = selectedURLs
@@ -497,6 +506,36 @@ final class BrowserViewController: NSViewController {
         updateEmptyState()
         delegate?.browserContentDidChange(self)
         delegate?.browserSelectionDidChange(self)
+    }
+
+    /// When `entries` are the files already listed (in any order: a clicked column header sorts them), takes their new
+    /// sizes and dates and returns true. Otherwise changes nothing and returns false.
+    private func updateResultsInPlace(_ entries: [FileEntry]) -> Bool {
+        guard entries.count == nodes.count, nodes.allSatisfy({ $0.groupTitle == nil && $0.children == nil }) else { return false }
+        var byPath: [String: FileEntry] = [:]
+        byPath.reserveCapacity(entries.count)
+        for entry in entries { byPath[Self.key(entry.url)] = entry }
+        guard byPath.count == entries.count else { return false }
+        var changed: [(FileNode, FileEntry)] = []
+        for node in nodes {
+            guard let entry = byPath[Self.key(node.url)] else { return false }
+            if entry != node.entry { changed.append((node, entry)) }
+        }
+        // A new size or date can move a row in a sorted list: that takes the full reload.
+        if !changed.isEmpty, !outlineView.sortDescriptors.isEmpty { return false }
+        guard !changed.isEmpty else { return true }
+        var rowsToReload = IndexSet()
+        for (node, entry) in changed {
+            node.entry = entry
+            let row = outlineView.row(forItem: node)
+            if row >= 0 { rowsToReload.insert(row) }
+        }
+        outlineView.reloadData(forRowIndexes: rowsToReload, columnIndexes: IndexSet(integersIn: 0..<outlineView.numberOfColumns))
+        delegate?.browserContentDidChange(self)
+        if changed.contains(where: { outlineView.selectedRowIndexes.contains(outlineView.row(forItem: $0.0)) }) {
+            delegate?.browserSelectionDidChange(self)
+        }
+        return true
     }
 
     /// Shows groups of files under header rows, all expanded (duplicate sets).
@@ -1005,10 +1044,14 @@ final class BrowserViewController: NSViewController {
 
     /// Index totals moved: refresh visible sizes (and the order, when sorting by size).
     @objc private func indexChanged() {
+        // Folder sizes come from the index; a file's is its own.
         let column = outlineView.column(withIdentifier: .size)
         let visible = outlineView.rows(in: outlineView.visibleRect)
-        if column >= 0, visible.length > 0 {
-            outlineView.reloadData(forRowIndexes: IndexSet(integersIn: visible.location..<NSMaxRange(visible)), columnIndexes: [column])
+        let folders = IndexSet((visible.location..<NSMaxRange(visible)).filter { row in
+            (outlineView.item(atRow: row) as? FileNode)?.entry.isDirectory == true
+        })
+        if column >= 0, !folders.isEmpty {
+            outlineView.reloadData(forRowIndexes: folders, columnIndexes: [column])
         }
         if sortKey == .size, !outlineView.sortDescriptors.isEmpty { scheduleResort() }
         if effectiveMode == .treemap { pushContent(animated: true) }

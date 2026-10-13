@@ -32,6 +32,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private var viewModeItem: NSToolbarItemGroup?
     private var dualPaneItem: NSToolbarItem?
     private var responderObservation: NSKeyValueObservation?
+    /// Index changes re-run searches no more often than `indexRefreshInterval`.
+    private var indexRefreshScheduled = false
+    private var lastIndexRefresh = Date.distantPast
     let palette = CommandPalette()
     var pathQuery = PathQuery()
     var browser: BrowserViewController { pane.browser }
@@ -707,14 +710,26 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// Searches and Recents follow the index as it changes, at most every couple of seconds: something in your home
+    /// folder is always changing (caches, logs), and searching the whole index on each change kept the CPU busy.
     @objc private func indexChanged() {
-        for p in panes {
-            switch p.destination {
-            case .search, .recents: runSearch(in: p)
-            case .folder, .duplicates: break
+        guard !indexRefreshScheduled else { return }
+        indexRefreshScheduled = true
+        let wait = max(0, Self.indexRefreshInterval - Date().timeIntervalSince(lastIndexRefresh))
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+            guard let self else { return }
+            indexRefreshScheduled = false
+            lastIndexRefresh = Date()
+            for p in panes {
+                switch p.destination {
+                case .search, .recents: runSearch(in: p)
+                case .folder, .duplicates: break
+                }
             }
         }
     }
+
+    private static let indexRefreshInterval: TimeInterval = 2
 
     @objc private func indexPhaseChanged() {
         for p in panes where p.destination == .recents && FileIndex.shared.isReady { runSearch(in: p) }
