@@ -91,6 +91,11 @@ nonisolated struct InstalledApp: Sendable, Equatable {
 /// Hosts are judged the way the network will see them: numbers in any form the resolver takes ("127.1", "2130706433",
 /// "0x7f.0.0.1"), with a trailing dot or an IPv6 zone, and, right before each request and redirect, every address the
 /// name resolves to (a name can point at 127.0.0.1).
+///
+/// A name that resolves elsewhere for that check and to this Mac a moment later (DNS rebinding) still gets nowhere:
+/// requests are HTTPS only, with App Transport Security's certificate checks and no exceptions, so a service on this Mac
+/// would have to present a trusted certificate for the feed's own name. The connection fails during the TLS handshake,
+/// before any request is sent, and requests carry no cookies or credentials anyway.
 nonisolated enum FeedAddress {
     /// The address as written: HTTPS, and not this Mac.
     static func isAllowed(_ url: URL) -> Bool {
