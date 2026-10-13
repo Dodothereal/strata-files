@@ -1315,6 +1315,7 @@ final class BrowserViewController: NSViewController {
                 menu.addItem(openWith)
             }
         }
+        if !selectedApps.isEmpty { addTitled(appUpdatesTitle, #selector(checkAppsForUpdates(_:)), "arrow.down.app") }
         // iCloud Drive and File Provider folders: bring items here, or free their space.
         let cloud = selectedCloudStatuses
         if !inTrash, cloud.contains(.cloudOnly) { add("Download Now", #selector(downloadNow(_:)), "icloud.and.arrow.down") }
@@ -1612,6 +1613,9 @@ extension BrowserViewController: NSMenuItemValidation {
             return hasSelection && (inTrash || !selectedEntries.contains { Trash.isInTrash($0.url) })
         case #selector(putBack(_:)):
             return hasSelection && selectedEntries.allSatisfy { Trash.contains($0.url) }
+        case #selector(checkAppsForUpdates(_:)):
+            item.title = appUpdatesTitle
+            return !selectedApps.isEmpty
         case #selector(duplicate(_:)):
             return hasSelection && !isShowingTrash
         case #selector(editTags(_:)):

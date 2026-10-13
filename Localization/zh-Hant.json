@@ -229,6 +229,9 @@
     "%lld untracked": {
       "other": "%lld個未追蹤"
     },
+    "%lld updates available": {
+      "other": "有%lld個更新項目可用"
+    },
     "%lld views": {
       "other": "%lld個檢視表"
     },
@@ -286,6 +289,8 @@
     "and %lld more": {
       "other": "以及另外%lld個"
     },
+    "App Store": "App Store",
+    "App Updates": "App更新",
     "Appearance": "外觀",
     "Apple Intelligence couldn’t summarise this. %@": "Apple Intelligence無法為此內容生成摘要。%@",
     "Apple Intelligence doesn’t support this language yet": "Apple Intelligence尚不支援此語言",
@@ -359,6 +364,7 @@
     "Branch %@": "分支%@",
     "Bring All to Front": "將此程式所有視窗移至最前",
     "Browsing": "瀏覽",
+    "Build %@": "建置版本%@",
     "Build Artifacts": "建置產物",
     "Built-in rules": "內建規則",
     "button.done": "完成",
@@ -382,12 +388,19 @@
     "Change how items are shown (⌘1–⌘5)": "更改項目的顯示方式（⌘1–⌘5）",
     "Change to:": "更改為：",
     "Changes": "更改",
+    "Check %lld Apps for Updates…": {
+      "other": "檢查%lld個App的更新⋯"
+    },
     "Check for updates automatically": "自動檢查更新",
     "Check for Updates…": "檢查更新⋯",
     "Check Now": "立即檢查",
     "Checked %@ of %lld size groups.": {
       "other": "已檢查%@/%lld個大小群組。"
     },
+    "Checking %lld apps…": {
+      "other": "正在檢查%lld個App⋯"
+    },
+    "Checking…": "正在檢查⋯",
     "Cherry-picking": "正在揀選",
     "Clean": "清理",
     "Clean %@…": "清理%@⋯",
@@ -644,6 +657,7 @@
     "Group into folders by year (%@)": "依%@的年份分組到檔案夾",
     "Group into folders by year (%@) inside “%@”": "在「%2$@」中依%1$@的年份分組到檔案夾",
     "Group into folders by year inside “%@”": "在「%@」中依年份分組到檔案夾",
+    "Has its own updater: open it and choose Check for Updates.": "此App有自己的更新程式：請打開它並選擇「檢查更新」。",
     "Help": "輔助說明",
     "Here": "此處",
     "Hide Hidden Files": "不顯示隱藏檔案",
@@ -695,7 +709,15 @@
     "Items inside an archive opened as a folder can’t be changed. Copy them out first.": "以檔案夾方式打開的封存檔中的項目無法更改。請先將其拷貝出來。",
     "items named %@": "名稱為%@的項目",
     "Its disk has no Trash. You can’t undo this action.": "其所在的磁碟沒有垃圾桶。無法還原此動作。",
+    "Its update feed doesn’t list any versions.": "其更新來源未列出任何版本。",
+    "Its update feed is too large to be one.": "其更新來源過大，不像是真正的更新來源。",
+    "Its update feed isn’t a secure web address, so Strata doesn’t read it.": "其更新來源不是安全的網址，因此Strata不會讀取。",
+    "Its update feed moved to an address that isn’t secure.": "其更新來源已移至不安全的位址。",
+    "Its update server answered with an error (%lld).": "其更新伺服器回傳了錯誤（%lld）。",
+    "Its update server couldn’t be reached.": "無法連接其更新伺服器。",
+    "Its update server didn’t answer in time.": "其更新伺服器未及時回應。",
     "It’s on a different disk": "它位於其他磁碟上",
+    "It’s up to date.": "已是最新版本。",
     "JavaScript JSX source": "JavaScript JSX原始碼",
     "Jump to a folder (try github/acme), open a file, or run a command…": "跳到檔案夾（試試github/acme）、打開檔案或執行指令⋯",
     "Keep .%@": "保留.%@",
@@ -835,6 +857,9 @@
     "No shortcut": "沒有快速鍵",
     "No shortcuts match “%@”.": "沒有符合「%@」的快速鍵。",
     "No Transfers": "沒有傳輸",
+    "No updates for the %lld apps Strata could check.": {
+      "other": "Strata能夠檢查的%lld個App沒有可用的更新項目。"
+    },
     "No upstream branch": "沒有上游分支",
     "None": "無",
     "Not enough space on the disk: %@ needed, %@ available": "磁碟空間不足：需要%@，可用%@",
@@ -860,6 +885,7 @@
     "Only on the Right": "僅在右側",
     "Only on the right": "僅在右側",
     "Open": "打開",
+    "Open %@, then choose Check for Updates to install it": "打開%@，然後選擇「檢查更新」來安裝",
     "Open all documents like this one with this app": "使用此App來打開所有此類文件",
     "Open Apple Intelligence Settings…": "打開Apple Intelligence設定⋯",
     "Open archives like folders": "像檔案夾一樣打開封存檔",
@@ -1093,6 +1119,7 @@
     "Smaller Icons": "縮小圖像大小",
     "Smaller icons": "縮小圖像大小",
     "smb://server/share, afp://, nfs:// or a WebDAV https:// address. A server name alone connects with SMB.": "smb://server/share、afp://、nfs://或WebDAV https://位址。僅輸入伺服器名稱將使用SMB連線。",
+    "Software Update": "軟體更新",
     "Solution": "方案",
     "Some items couldn’t be moved to the Trash, so the sync stopped there.": "部分項目無法丟到垃圾桶，因此同步在此停止。",
     "Some items couldn’t be renamed.": "部分項目無法重新命名。",
@@ -1121,7 +1148,9 @@
     "Stopped: the disk was running out of space.": "已停止：磁碟空間即將用盡。",
     "Strata": "Strata",
     "Strata can do these without it": "Strata無需它也能完成以下操作",
+    "Strata can’t read this app’s information.": "Strata無法讀取此App的資訊。",
     "Strata can’t read this folder": "Strata無法讀取此檔案夾",
+    "Strata can’t tell how it’s updated.": "Strata無法判斷此App的更新方式。",
     "Strata connects to SMB, AFP, NFS and WebDAV (https://) servers, not “%@://”.": "Strata可連接SMB、AFP、NFS和WebDAV（https://）伺服器，但不支援「%@://」。",
     "Strata couldn’t turn this request into file operations. Try rephrasing it.": "Strata無法將此要求轉換為檔案操作。請嘗試換個說法。",
     "Strata doesn’t know where %lld of these items came from.": {
@@ -1239,6 +1268,7 @@
     },
     "These items couldn’t be read.": "無法讀取這些項目。",
     "These names are reserved for the system, and the item would be hidden. Please choose another name.": "這些名稱為系統專用，且項目會被隱藏。請選擇其他名稱。",
+    "They’re all up to date.": "全部已是最新版本。",
     "They’re locked, or you don’t have permission to change them.": "它們已鎖定，或者你沒有更改它們的權限。",
     "They’re rebuilt by the next install or build.": "下次安裝或建置時會重新產生。",
     "They’re rebuilt by the next install or build; virtual environments need to be recreated.": "下次安裝或建置時會重新產生；虛擬環境需要重新建立。",
@@ -1307,9 +1337,13 @@
     "untitled folder": "未命名檔案夾",
     "Untracked": "未追蹤",
     "Untracked folder": "未追蹤的檔案夾",
+    "Up to date": "已是最新版本",
+    "Updated through the App Store.": "透過App Store更新。",
+    "Updated with macOS.": "隨macOS一起更新。",
     "Updates": "更新",
     "Updates are checked in copies of Strata installed from a release.": "僅會在從發行版本安裝的Strata中檢查更新。",
     "Updates install when Strata quits.": "更新會在Strata結束時安裝。",
+    "Update…": "更新⋯",
     "Uploading": "正在上傳",
     "uppercase": "大寫",
     "Use .%@": "使用.%@",
@@ -1322,6 +1356,9 @@
       "other": "正在驗證 · %@/%lld個項目"
     },
     "Version %@": "版本%@",
+    "Version %@ is available (you have %@).": "版本%@現已可用（你的版本為%@）。",
+    "Version %@ is available.": "版本%@現已可用。",
+    "Version %@ needs macOS %@.": "版本%@需要macOS %@。",
     "Video": "影片",
     "Video and audio length; pages:>20 for PDFs (via Spotlight)": "影片和音訊長度；PDF使用pages:>20（透過Spotlight）",
     "videos": "影片",
@@ -1341,6 +1378,7 @@
     "Warning": "警告",
     "Welcome to Strata": "歡迎使用Strata",
     "Whatever a copy replaces goes to the Trash first. Copies are checked after they’re written. Edit ▸ Undo undoes the copies and the Trash step separately.": "被拷貝取代的項目會先丟到垃圾桶。拷貝寫入後會進行驗證。「編輯」▸「還原」會分別還原拷貝和丟到垃圾桶這兩個步驟。",
+    "What’s New": "新功能",
     "Where": "位置",
     "Where it was isn’t recorded. If Finder moved it to the Trash moments ago, use Put Back in Finder, or try again in a few minutes. You can also drag it where you want.": "未記錄其原始位置。若它是剛才由Finder丟到垃圾桶的，請在Finder中使用「還原」，或幾分鐘後再試一次。你也可以將它拖到想要的位置。",
     "Where they were isn’t recorded. If Finder moved them to the Trash moments ago, use Put Back in Finder, or try again in a few minutes. You can also drag them where you want.": "未記錄它們的原始位置。若它們是剛才由Finder丟到垃圾桶的，請在Finder中使用「還原」，或幾分鐘後再試一次。你也可以將它們拖到想要的位置。",
@@ -1369,6 +1407,7 @@
     "Your account on the server isn’t allowed to connect now.": "你在伺服器上的帳號目前不允許連線。",
     "Your home folder": "你的個人專屬檔案夾",
     "Your home folder and Applications": "你的個人專屬檔案夾和應用程式",
+    "You’re offline.": "你已離線。",
     "Zoom": "縮放",
     "{name} the current name · {n} a number · {date} {time} {year} {month} {day} when it was taken or made · {camera} · {kind} · {parent} its folder": "{name} 目前名稱 · {n} 編號 · {date} {time} {year} {month} {day} 拍攝或製作時間 · {camera} · {kind} · {parent} 所在檔案夾",
     "“%@”": "「%@」",

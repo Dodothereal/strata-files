@@ -229,6 +229,9 @@
     "%lld untracked": {
       "other": "%lld个未跟踪"
     },
+    "%lld updates available": {
+      "other": "有%lld个更新可用"
+    },
     "%lld views": {
       "other": "%lld个视图"
     },
@@ -286,6 +289,8 @@
     "and %lld more": {
       "other": "以及另外%lld个"
     },
+    "App Store": "App Store",
+    "App Updates": "App更新",
     "Appearance": "外观",
     "Apple Intelligence couldn’t summarise this. %@": "Apple智能无法为此内容生成摘要。%@",
     "Apple Intelligence doesn’t support this language yet": "Apple智能尚不支持此语言",
@@ -359,6 +364,7 @@
     "Branch %@": "分支%@",
     "Bring All to Front": "前置全部窗口",
     "Browsing": "浏览",
+    "Build %@": "构建版本%@",
     "Build Artifacts": "构建产物",
     "Built-in rules": "内置规则",
     "button.done": "完成",
@@ -382,12 +388,19 @@
     "Change how items are shown (⌘1–⌘5)": "更改项目的显示方式（⌘1–⌘5）",
     "Change to:": "更改为：",
     "Changes": "更改",
+    "Check %lld Apps for Updates…": {
+      "other": "检查%lld个App的更新…"
+    },
     "Check for updates automatically": "自动检查更新",
     "Check for Updates…": "检查更新…",
     "Check Now": "立即检查",
     "Checked %@ of %lld size groups.": {
       "other": "已检查%@/%lld个大小分组。"
     },
+    "Checking %lld apps…": {
+      "other": "正在检查%lld个App…"
+    },
+    "Checking…": "正在检查…",
     "Cherry-picking": "正在拣选",
     "Clean": "清理",
     "Clean %@…": "清理%@…",
@@ -644,6 +657,7 @@
     "Group into folders by year (%@)": "按%@的年份分组到文件夹",
     "Group into folders by year (%@) inside “%@”": "在“%2$@”中按%1$@的年份分组到文件夹",
     "Group into folders by year inside “%@”": "在“%@”中按年份分组到文件夹",
+    "Has its own updater: open it and choose Check for Updates.": "此App自带更新程序：请打开它并选取“检查更新”。",
     "Help": "帮助",
     "Here": "此处",
     "Hide Hidden Files": "不显示隐藏文件",
@@ -695,7 +709,15 @@
     "Items inside an archive opened as a folder can’t be changed. Copy them out first.": "以文件夹方式打开的归档中的项目无法更改。请先将其拷贝出来。",
     "items named %@": "名为%@的项目",
     "Its disk has no Trash. You can’t undo this action.": "其所在磁盘没有废纸篓。此操作无法撤销。",
+    "Its update feed doesn’t list any versions.": "其更新源未列出任何版本。",
+    "Its update feed is too large to be one.": "其更新源过大，不像是真正的更新源。",
+    "Its update feed isn’t a secure web address, so Strata doesn’t read it.": "其更新源不是安全的网址，因此Strata不会读取。",
+    "Its update feed moved to an address that isn’t secure.": "其更新源已移至不安全的地址。",
+    "Its update server answered with an error (%lld).": "其更新服务器返回了错误（%lld）。",
+    "Its update server couldn’t be reached.": "无法访问其更新服务器。",
+    "Its update server didn’t answer in time.": "其更新服务器未及时响应。",
     "It’s on a different disk": "它位于其他磁盘上",
+    "It’s up to date.": "已是最新版本。",
     "JavaScript JSX source": "JavaScript JSX源代码",
     "Jump to a folder (try github/acme), open a file, or run a command…": "跳转到文件夹（试试github/acme）、打开文件或运行命令…",
     "Keep .%@": "保留.%@",
@@ -835,6 +857,9 @@
     "No shortcut": "无快捷键",
     "No shortcuts match “%@”.": "没有与“%@”匹配的快捷键。",
     "No Transfers": "无传输",
+    "No updates for the %lld apps Strata could check.": {
+      "other": "Strata能够检查的%lld个App没有可用更新。"
+    },
     "No upstream branch": "无上游分支",
     "None": "无",
     "Not enough space on the disk: %@ needed, %@ available": "磁盘空间不足：需要%@，可用%@",
@@ -860,6 +885,7 @@
     "Only on the Right": "仅在右侧",
     "Only on the right": "仅在右侧",
     "Open": "打开",
+    "Open %@, then choose Check for Updates to install it": "打开%@，然后选取“检查更新”来安装",
     "Open all documents like this one with this app": "使用此App打开所有这种类型的文稿",
     "Open Apple Intelligence Settings…": "打开Apple智能设置…",
     "Open archives like folders": "像文件夹一样打开归档",
@@ -1093,6 +1119,7 @@
     "Smaller Icons": "缩小图标大小",
     "Smaller icons": "缩小图标大小",
     "smb://server/share, afp://, nfs:// or a WebDAV https:// address. A server name alone connects with SMB.": "smb://server/share、afp://、nfs://或WebDAV https://地址。仅输入服务器名称将使用SMB连接。",
+    "Software Update": "软件更新",
     "Solution": "解决方案",
     "Some items couldn’t be moved to the Trash, so the sync stopped there.": "部分项目无法移到废纸篓，因此同步在此停止。",
     "Some items couldn’t be renamed.": "部分项目无法重新命名。",
@@ -1121,7 +1148,9 @@
     "Stopped: the disk was running out of space.": "已停止：磁盘空间即将用尽。",
     "Strata": "Strata",
     "Strata can do these without it": "Strata无需它也能完成以下操作",
+    "Strata can’t read this app’s information.": "Strata无法读取此App的信息。",
     "Strata can’t read this folder": "Strata无法读取此文件夹",
+    "Strata can’t tell how it’s updated.": "Strata无法判断此App的更新方式。",
     "Strata connects to SMB, AFP, NFS and WebDAV (https://) servers, not “%@://”.": "Strata可连接SMB、AFP、NFS和WebDAV（https://）服务器，但不支持“%@://”。",
     "Strata couldn’t turn this request into file operations. Try rephrasing it.": "Strata无法将此请求转换为文件操作。请尝试换种说法。",
     "Strata doesn’t know where %lld of these items came from.": {
@@ -1239,6 +1268,7 @@
     },
     "These items couldn’t be read.": "无法读取这些项目。",
     "These names are reserved for the system, and the item would be hidden. Please choose another name.": "这些名称已被系统保留，且项目会被隐藏。请选取其他名称。",
+    "They’re all up to date.": "全部已是最新版本。",
     "They’re locked, or you don’t have permission to change them.": "它们已锁定，或者你没有更改它们的权限。",
     "They’re rebuilt by the next install or build.": "下次安装或构建时会重新生成。",
     "They’re rebuilt by the next install or build; virtual environments need to be recreated.": "下次安装或构建时会重新生成；虚拟环境需要重新创建。",
@@ -1307,9 +1337,13 @@
     "untitled folder": "未命名文件夹",
     "Untracked": "未跟踪",
     "Untracked folder": "未跟踪的文件夹",
+    "Up to date": "已是最新版本",
+    "Updated through the App Store.": "通过App Store更新。",
+    "Updated with macOS.": "随macOS一起更新。",
     "Updates": "更新",
     "Updates are checked in copies of Strata installed from a release.": "仅会在从发布版本安装的Strata中检查更新。",
     "Updates install when Strata quits.": "更新会在Strata退出时安装。",
+    "Update…": "更新…",
     "Uploading": "正在上传",
     "uppercase": "大写",
     "Use .%@": "使用.%@",
@@ -1322,6 +1356,9 @@
       "other": "正在验证 · %@/%lld个项目"
     },
     "Version %@": "版本%@",
+    "Version %@ is available (you have %@).": "版本%@现已可用（你的版本为%@）。",
+    "Version %@ is available.": "版本%@现已可用。",
+    "Version %@ needs macOS %@.": "版本%@需要macOS %@。",
     "Video": "视频",
     "Video and audio length; pages:>20 for PDFs (via Spotlight)": "视频和音频时长；PDF使用pages:>20（通过Spotlight）",
     "videos": "视频",
@@ -1341,6 +1378,7 @@
     "Warning": "警告",
     "Welcome to Strata": "欢迎使用Strata",
     "Whatever a copy replaces goes to the Trash first. Copies are checked after they’re written. Edit ▸ Undo undoes the copies and the Trash step separately.": "被拷贝替换的项目会先移到废纸篓。拷贝写入后会进行验证。“编辑”▸“撤销”会分别撤销拷贝和移到废纸篓这两个步骤。",
+    "What’s New": "新功能",
     "Where": "位置",
     "Where it was isn’t recorded. If Finder moved it to the Trash moments ago, use Put Back in Finder, or try again in a few minutes. You can also drag it where you want.": "未记录其原始位置。如果它是刚才由Finder移到废纸篓的，请在Finder中使用“放回原处”，或几分钟后再试。你也可以将它拖到想要的位置。",
     "Where they were isn’t recorded. If Finder moved them to the Trash moments ago, use Put Back in Finder, or try again in a few minutes. You can also drag them where you want.": "未记录它们的原始位置。如果它们是刚才由Finder移到废纸篓的，请在Finder中使用“放回原处”，或几分钟后再试。你也可以将它们拖到想要的位置。",
@@ -1369,6 +1407,7 @@
     "Your account on the server isn’t allowed to connect now.": "你在服务器上的帐户目前不允许连接。",
     "Your home folder": "你的个人文件夹",
     "Your home folder and Applications": "你的个人文件夹和应用程序",
+    "You’re offline.": "你已离线。",
     "Zoom": "缩放",
     "{name} the current name · {n} a number · {date} {time} {year} {month} {day} when it was taken or made · {camera} · {kind} · {parent} its folder": "{name} 当前名称 · {n} 编号 · {date} {time} {year} {month} {day} 拍摄或创建时间 · {camera} · {kind} · {parent} 所在文件夹",
     "“%@”": "“%@”",

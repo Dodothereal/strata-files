@@ -229,6 +229,9 @@
     "%lld untracked": {
       "other": "%lld개 추적 안 됨"
     },
+    "%lld updates available": {
+      "other": "%lld개의 업데이트 사용 가능"
+    },
     "%lld views": {
       "other": "뷰 %lld개"
     },
@@ -286,6 +289,8 @@
     "and %lld more": {
       "other": "외 %lld개"
     },
+    "App Store": "App Store",
+    "App Updates": "앱 업데이트",
     "Appearance": "모양",
     "Apple Intelligence couldn’t summarise this. %@": "Apple Intelligence가 이 내용을 요약하지 못했습니다. %@",
     "Apple Intelligence doesn’t support this language yet": "Apple Intelligence가 아직 이 언어를 지원하지 않음",
@@ -359,6 +364,7 @@
     "Branch %@": "브랜치 %@",
     "Bring All to Front": "모두 앞으로 가져오기",
     "Browsing": "탐색",
+    "Build %@": "빌드 %@",
     "Build Artifacts": "빌드 산출물",
     "Built-in rules": "내장 규칙",
     "button.done": "완료",
@@ -382,12 +388,19 @@
     "Change how items are shown (⌘1–⌘5)": "항목 표시 방식 변경(⌘1–⌘5)",
     "Change to:": "변경 형식:",
     "Changes": "변경 사항",
+    "Check %lld Apps for Updates…": {
+      "other": "%lld개 앱의 업데이트 확인…"
+    },
     "Check for updates automatically": "자동으로 업데이트 확인",
     "Check for Updates…": "업데이트 확인…",
     "Check Now": "지금 확인",
     "Checked %@ of %lld size groups.": {
       "other": "크기 그룹 %@/%lld개를 확인했습니다."
     },
+    "Checking %lld apps…": {
+      "other": "%lld개 앱 확인 중…"
+    },
+    "Checking…": "확인 중…",
     "Cherry-picking": "체리픽 중",
     "Clean": "정리",
     "Clean %@…": "%@ 정리…",
@@ -644,6 +657,7 @@
     "Group into folders by year (%@)": "%@ 기준 연도별로 폴더에 분류",
     "Group into folders by year (%@) inside “%@”": "‘%2$@’ 안에서 %1$@ 기준 연도별로 폴더에 분류",
     "Group into folders by year inside “%@”": "‘%@’ 안에서 연도별로 폴더에 분류",
+    "Has its own updater: open it and choose Check for Updates.": "자체 업데이트 기능이 있습니다. 앱을 열고 ‘업데이트 확인’을 선택하십시오.",
     "Help": "도움말",
     "Here": "여기",
     "Hide Hidden Files": "숨김 파일 가리기",
@@ -695,7 +709,15 @@
     "Items inside an archive opened as a folder can’t be changed. Copy them out first.": "폴더로 연 아카이브 내부의 항목은 변경할 수 없습니다. 먼저 밖으로 복사하십시오.",
     "items named %@": "%@(이)라는 이름의 항목",
     "Its disk has no Trash. You can’t undo this action.": "해당 디스크에 휴지통이 없습니다. 이 동작은 실행 취소할 수 없습니다.",
+    "Its update feed doesn’t list any versions.": "업데이트 피드에 나열된 버전이 없습니다.",
+    "Its update feed is too large to be one.": "업데이트 피드라고 하기에는 크기가 너무 큽니다.",
+    "Its update feed isn’t a secure web address, so Strata doesn’t read it.": "업데이트 피드가 안전한 웹 주소가 아니므로 Strata에서 읽지 않습니다.",
+    "Its update feed moved to an address that isn’t secure.": "업데이트 피드가 안전하지 않은 주소로 이동되었습니다.",
+    "Its update server answered with an error (%lld).": "업데이트 서버가 오류로 응답했습니다(%lld).",
+    "Its update server couldn’t be reached.": "업데이트 서버에 연결할 수 없습니다.",
+    "Its update server didn’t answer in time.": "업데이트 서버가 제시간에 응답하지 않았습니다.",
     "It’s on a different disk": "다른 디스크에 있음",
+    "It’s up to date.": "최신 상태입니다.",
     "JavaScript JSX source": "JavaScript JSX 소스",
     "Jump to a folder (try github/acme), open a file, or run a command…": "폴더로 이동(github/acme 입력해 보기), 파일 열기 또는 명령 실행…",
     "Keep .%@": ".%@ 유지",
@@ -835,6 +857,9 @@
     "No shortcut": "단축키 없음",
     "No shortcuts match “%@”.": "‘%@’와(과) 일치하는 단축키가 없습니다.",
     "No Transfers": "전송 없음",
+    "No updates for the %lld apps Strata could check.": {
+      "other": "Strata가 확인할 수 있었던 %lld개 앱에는 업데이트가 없습니다."
+    },
     "No upstream branch": "업스트림 브랜치 없음",
     "None": "없음",
     "Not enough space on the disk: %@ needed, %@ available": "디스크 공간 부족: %@ 필요, %@ 사용 가능",
@@ -860,6 +885,7 @@
     "Only on the Right": "오른쪽에만 있음",
     "Only on the right": "오른쪽에만 있음",
     "Open": "열기",
+    "Open %@, then choose Check for Updates to install it": "설치하려면 %@을(를) 연 다음 ‘업데이트 확인’을 선택하십시오",
     "Open all documents like this one with this app": "이와 같은 모든 문서를 이 앱으로 열기",
     "Open Apple Intelligence Settings…": "Apple Intelligence 설정 열기…",
     "Open archives like folders": "아카이브를 폴더처럼 열기",
@@ -1093,6 +1119,7 @@
     "Smaller Icons": "아이콘 크기 감소",
     "Smaller icons": "아이콘 크기 감소",
     "smb://server/share, afp://, nfs:// or a WebDAV https:// address. A server name alone connects with SMB.": "smb://server/share, afp://, nfs:// 또는 WebDAV https:// 주소. 서버 이름만 입력하면 SMB로 연결됩니다.",
+    "Software Update": "소프트웨어 업데이트",
     "Solution": "솔루션",
     "Some items couldn’t be moved to the Trash, so the sync stopped there.": "일부 항목을 휴지통으로 이동할 수 없어 동기화가 해당 지점에서 중단되었습니다.",
     "Some items couldn’t be renamed.": "일부 항목의 이름을 변경할 수 없습니다.",
@@ -1121,7 +1148,9 @@
     "Stopped: the disk was running out of space.": "중단됨: 디스크 공간이 부족합니다.",
     "Strata": "Strata",
     "Strata can do these without it": "Strata는 이 기능 없이도 다음을 할 수 있음",
+    "Strata can’t read this app’s information.": "Strata가 이 앱의 정보를 읽을 수 없습니다.",
     "Strata can’t read this folder": "Strata가 이 폴더를 읽을 수 없음",
+    "Strata can’t tell how it’s updated.": "Strata가 이 앱의 업데이트 방식을 알 수 없습니다.",
     "Strata connects to SMB, AFP, NFS and WebDAV (https://) servers, not “%@://”.": "Strata는 SMB, AFP, NFS 및 WebDAV(https://) 서버에 연결하며, ‘%@://’에는 연결하지 않습니다.",
     "Strata couldn’t turn this request into file operations. Try rephrasing it.": "Strata가 이 요청을 파일 작업으로 변환할 수 없습니다. 다르게 표현해 보십시오.",
     "Strata doesn’t know where %lld of these items came from.": {
@@ -1239,6 +1268,7 @@
     },
     "These items couldn’t be read.": "이 항목을 읽을 수 없습니다.",
     "These names are reserved for the system, and the item would be hidden. Please choose another name.": "이 이름은 시스템에서 사용하도록 예약되어 있으며 항목이 숨겨집니다. 다른 이름을 선택하십시오.",
+    "They’re all up to date.": "모두 최신 상태입니다.",
     "They’re locked, or you don’t have permission to change them.": "잠겨 있거나 변경할 수 있는 권한이 없습니다.",
     "They’re rebuilt by the next install or build.": "다음 설치 또는 빌드 시 다시 생성됩니다.",
     "They’re rebuilt by the next install or build; virtual environments need to be recreated.": "다음 설치 또는 빌드 시 다시 생성됩니다. 가상 환경은 다시 만들어야 합니다.",
@@ -1307,9 +1337,13 @@
     "untitled folder": "무제 폴더",
     "Untracked": "추적 안 됨",
     "Untracked folder": "추적 안 되는 폴더",
+    "Up to date": "최신 상태",
+    "Updated through the App Store.": "App Store를 통해 업데이트됩니다.",
+    "Updated with macOS.": "macOS와 함께 업데이트됩니다.",
     "Updates": "업데이트",
     "Updates are checked in copies of Strata installed from a release.": "업데이트는 릴리스에서 설치한 Strata에서만 확인합니다.",
     "Updates install when Strata quits.": "업데이트는 Strata를 종료할 때 설치됩니다.",
+    "Update…": "업데이트…",
     "Uploading": "업로드 중",
     "uppercase": "대문자",
     "Use .%@": ".%@ 사용",
@@ -1322,6 +1356,9 @@
       "other": "확인 중 · %@/%lld개 항목"
     },
     "Version %@": "버전 %@",
+    "Version %@ is available (you have %@).": "버전 %@을(를) 사용할 수 있습니다(현재 버전: %@).",
+    "Version %@ is available.": "버전 %@을(를) 사용할 수 있습니다.",
+    "Version %@ needs macOS %@.": "버전 %@에는 macOS %@이(가) 필요합니다.",
     "Video": "비디오",
     "Video and audio length; pages:>20 for PDFs (via Spotlight)": "비디오 및 오디오 길이. PDF는 pages:>20(Spotlight 이용)",
     "videos": "비디오",
@@ -1341,6 +1378,7 @@
     "Warning": "경고",
     "Welcome to Strata": "Strata에 오신 것을 환영합니다",
     "Whatever a copy replaces goes to the Trash first. Copies are checked after they’re written. Edit ▸ Undo undoes the copies and the Trash step separately.": "복사로 대치되는 항목은 먼저 휴지통으로 이동됩니다. 복사본은 기록된 후에 확인됩니다. 편집 ▸ 실행 취소는 복사와 휴지통 이동 단계를 각각 실행 취소합니다.",
+    "What’s New": "새로운 기능",
     "Where": "위치",
     "Where it was isn’t recorded. If Finder moved it to the Trash moments ago, use Put Back in Finder, or try again in a few minutes. You can also drag it where you want.": "원래 위치가 기록되지 않았습니다. 방금 Finder에서 휴지통으로 이동한 경우 Finder에서 ‘되돌려 놓기’를 사용하거나 몇 분 후에 다시 시도하십시오. 원하는 위치로 직접 드래그할 수도 있습니다.",
     "Where they were isn’t recorded. If Finder moved them to the Trash moments ago, use Put Back in Finder, or try again in a few minutes. You can also drag them where you want.": "원래 위치가 기록되지 않았습니다. 방금 Finder에서 휴지통으로 이동한 경우 Finder에서 ‘되돌려 놓기’를 사용하거나 몇 분 후에 다시 시도하십시오. 원하는 위치로 직접 드래그할 수도 있습니다.",
@@ -1369,6 +1407,7 @@
     "Your account on the server isn’t allowed to connect now.": "현재 서버의 계정으로 연결할 수 없습니다.",
     "Your home folder": "홈 폴더",
     "Your home folder and Applications": "홈 폴더 및 응용 프로그램",
+    "You’re offline.": "오프라인 상태입니다.",
     "Zoom": "확대/축소",
     "{name} the current name · {n} a number · {date} {time} {year} {month} {day} when it was taken or made · {camera} · {kind} · {parent} its folder": "{name} 현재 이름 · {n} 번호 · {date} {time} {year} {month} {day} 촬영 또는 생성 시점 · {camera} · {kind} · {parent} 상위 폴더",
     "“%@”": "‘%@’",

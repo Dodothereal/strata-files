@@ -91,6 +91,7 @@ Markdown, JSON, CSV, SQLite databases and archives preview right in the inspecto
 | **Tags** | Finder's tags everywhere: colored dots, the color row in the context menu, a tag field in the inspector, a Tags section in the sidebar and `tag:` in search. |
 | **Batch rename** | Replace text (or a regular expression), add text, number with a format or change case, previewed live, undone in one step. |
 | **Get Info** | Edit comments, the app a file opens with, Locked and permissions right in the inspector. |
+| **App updates** | Right-click apps and choose Check for Updates… to see which have a newer version, from their own update feed or the App Store. |
 | **Network and cloud** | Connect to SMB, AFP, NFS and WebDAV servers (⌥⌘K), and see what's only in iCloud Drive or another cloud folder, with Download Now and Remove Download. |
 | **Compare and sync** | Compare the two panes' folders and sync them both ways, one way, or as a mirror, verified and undoable. |
 | **Your shortcuts, your look** | Change any menu shortcut in Settings, and pick light or dark, row density and the size of file names. |
@@ -116,8 +117,8 @@ Click **Keyboard Shortcuts** at the bottom of the sidebar, or press ⌘/.
 Strata runs entirely on your Mac. The search index, summaries and AI features are local: no accounts, no tracking,
 no cloud. Its file index, content index and history are encrypted on disk with a key in your keychain. And a
 folder you browse can't run its own code just because you looked at it: Strata switches off the git features a
-downloaded repository could use to do that. The only thing it asks the internet is whether there's a new version,
-and only if you allow it.
+downloaded repository could use to do that. It only goes online to check for updates: its own, if you allow it, and
+other apps' when you ask it to.
 
 ## Translations
 

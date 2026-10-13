@@ -178,6 +178,11 @@ extension BrowserWindowController {
                 self?.browser.compress(nil)
             }, at: 0)
         }
+        if !browser.selectedApps.isEmpty {
+            commands.insert(localizedCommand(browser.appUpdatesTitle, "arrow.down.app", nil, keywords: ["Update", "Upgrade", "Version", "App Store"]) { [weak self] in
+                self?.browser.checkAppsForUpdates(nil)
+            }, at: 0)
+        }
         if !browser.selectedArchives.isEmpty, !browser.isShowingTrash, browser.canWriteBesideSelection {
             commands.insert(localizedCommand(browser.extractTitle, "archivebox", nil, keywords: ["Unzip", "Expand", "Decompress"]) { [weak self] in
                 self?.browser.extract(nil)
