@@ -17,6 +17,8 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
     let permissionsContent = NSStackView()
     /// Whether the item has an app to open it with (folders and packages open as themselves).
     private(set) var hasOpenWith = false
+    /// What the permission rows were filled from (see `loadPermissions`).
+    private var permissionsShown: [String]?
 
     private let comments = NSTextField()
     private let openWith = NSPopUpButton()
@@ -128,7 +130,7 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
         if !same || comments.currentEditor() == nil { comments.stringValue = FileInfoEditing.comment(at: path) }
         locked.state = FileInfoEditing.isLocked(at: path) ? .on : .off
         loadApps(entry, same: same)
-        loadPermissions(path)
+        loadPermissions(path, onlyIfChanged: true)
         updateEnabled(path)
     }
 
@@ -301,11 +303,18 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
         updateEnabled(url.path)
     }
 
-    private func loadPermissions(_ path: String) {
+    /// Fills the Locked switch and the access menus. `onlyIfChanged` (a refresh) leaves them alone when the owner,
+    /// group, mode and lock are what they show already; after a change they're always filled again, so a refused
+    /// change puts the menu back.
+    private func loadPermissions(_ path: String, onlyIfChanged: Bool = false) {
         guard let names = FileInfoEditing.names(at: path), let mode = FileInfoEditing.mode(at: path) else {
+            permissionsShown = nil
             rows.set([])
             return
         }
+        let shown = [path, names.owner, names.group, "\(names.ownedByYou)", "\(mode)", "\(isFolder)", "\(locked.state.rawValue)"]
+        if onlyIfChanged, shown == permissionsShown { return }
+        permissionsShown = shown
         whoNames[.owner] = names.ownedByYou
             ? String(localized: "\(names.owner) (Me)", comment: "Sharing & Permissions: the owner’s account name when it’s you") : names.owner
         whoNames[.group] = names.group

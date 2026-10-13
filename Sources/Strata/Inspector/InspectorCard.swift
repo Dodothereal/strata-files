@@ -136,6 +136,8 @@ final class InspectorCard: NSView {
 final class InspectorRows: NSView {
     private let grid = NSGridView()
     static let labelWidth: CGFloat = 74
+    /// What the grid shows: each row's title and value view.
+    private var shown: [(title: String, value: NSView)] = []
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -171,6 +173,10 @@ final class InspectorRows: NSView {
 
     /// Rows whose values are controls (pop-up menus, switches).
     func set(_ rows: [(String, NSView)]) {
+        // The Inspector refreshes whenever files change; the same rows again only update their text, so the card isn't
+        // torn down and laid out anew (and a selection in a value survives).
+        if updateInPlace(rows) { return }
+        shown = rows.map { (title: $0.0, value: $0.1) }
         // NSGridView.removeRow leaves the cell views behind, so remove them explicitly.
         while grid.numberOfRows > 0 {
             let row = grid.row(at: 0)
@@ -203,15 +209,44 @@ final class InspectorRows: NSView {
             }
         }
     }
+
+    /// Applies `rows` to the rows shown when they're the same rows (titles, and values of the same kind showing the
+    /// same thing), changing only text that differs. False when the grid has to be rebuilt.
+    private func updateInPlace(_ rows: [(String, NSView)]) -> Bool {
+        guard rows.count == shown.count, grid.numberOfRows == shown.count else { return false }
+        for (row, current) in zip(rows, shown) {
+            guard row.0 == current.title else { return false }
+            switch (row.1, current.value) {
+            case let (new, old) where new === old: continue
+            case let (new as NSTextField, old as NSTextField) where type(of: new) == type(of: old): continue
+            case let (new as InspectorLocationView, old as InspectorLocationView) where new.showsSamePlace(as: old):
+                // Same folder, but maybe another item in it to select when clicked.
+                old.action = new.action
+                continue
+            default: return false
+            }
+        }
+        for (row, current) in zip(rows, shown) {
+            if let new = row.1 as? NSTextField, let old = current.value as? NSTextField, new !== old,
+               old.stringValue != new.stringValue {
+                old.stringValue = new.stringValue
+            }
+        }
+        return true
+    }
 }
 
 /// "Where": the folder's icon and name, with its path on one line underneath (all of it on hover). Clicking shows the
 /// folder.
 final class InspectorLocationView: NSView {
-    private let action: () -> Void
+    fileprivate(set) var action: () -> Void
+    private let folder: URL
+    private let path: URL
 
     init(folder: URL, shownAs path: URL, action: @escaping () -> Void) {
         self.action = action
+        self.folder = folder
+        self.path = path
         super.init(frame: .zero)
         let icon = NSImageView(image: NSWorkspace.shared.icon(forFile: folder.path))
         icon.image?.size = NSSize(width: 16, height: 16)
@@ -250,6 +285,11 @@ final class InspectorLocationView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    /// Shows the same folder, the same way (its action shows the same place too).
+    func showsSamePlace(as other: InspectorLocationView) -> Bool {
+        folder == other.folder && path == other.path
+    }
 
     override var firstBaselineOffsetFromTop: CGFloat {
         subviews.compactMap { $0 as? NSTextField }.first?.firstBaselineOffsetFromTop ?? 12

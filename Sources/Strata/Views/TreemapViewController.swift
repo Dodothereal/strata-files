@@ -190,6 +190,9 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
     private var mapRect: CGRect { bounds.insetBy(dx: padding, dy: padding) }
 
     func setItems(_ items: [TreemapItem], animated: Bool) {
+        // Index refreshes come several times a second while files change elsewhere; when nothing here moved or grew,
+        // the map stays as it is (re-animating it each time kept it redrawing without end).
+        if link == nil, items == self.items, !drawn.isEmpty { return }
         self.items = items
         let next = Treemap.tiles(items, in: mapRect)
         let now = CACurrentMediaTime()
@@ -686,10 +689,25 @@ final class TreemapLegendView: NSView {
         NSRect(x: 0, y: bounds.maxY - 1, width: bounds.width, height: 1).fill()
     }
 
+    private struct Shown: Equatable {
+        let groups: [[String]]
+        let count: Int
+        let bytes: Int64
+        let pending: Int
+        let unmeasured: Int
+    }
+    private var lastShown: Shown?
+
     func update(items: [TreemapItem], total bytes: Int64, unmeasured: Int) {
         var byGroup: [FileKindGroup: Int64] = [:]
         for item in items { byGroup[item.group, default: 0] += max(item.bytes ?? 0, 0) }
         let groups = byGroup.filter { $0.value > 0 }.sorted { $0.value > $1.value }
+        let pending = items.filter { $0.bytes == nil }.count
+        // The same legend again (an index refresh): leave it be.
+        let shown = Shown(groups: groups.map { [$0.key.title, "\($0.value)"] }, count: items.count, bytes: bytes,
+                          pending: pending, unmeasured: unmeasured)
+        guard shown != lastShown else { return }
+        lastShown = shown
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         // When the strip is too narrow, the smallest groups drop out first.
         for (index, (group, groupBytes)) in groups.enumerated() {
@@ -697,7 +715,6 @@ final class TreemapLegendView: NSView {
             stack.addArrangedSubview(entry)
             stack.setVisibilityPriority(index == 0 ? .mustHold : NSStackView.VisibilityPriority(rawValue: 900 - Float(index) * 10), for: entry)
         }
-        let pending = items.filter { $0.bytes == nil }.count
         var text = String(localized: "\(items.count) items", comment: "plural") + " · " + Format.bytes(bytes)
         if pending > 0 { text = String(localized: "Measuring \(pending) folders…", comment: "plural") + "  " + text }
         if unmeasured > 0 { text += " · " + String(localized: "\(unmeasured) folders need Full Disk Access to be measured", comment: "plural") }

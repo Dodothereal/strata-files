@@ -63,7 +63,10 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
         let sets = urls.map { Set(TagStore.shared.tags(for: $0).map { $0.name.lowercased() }) }
         let common = sets.dropFirst().reduce(sets.first ?? []) { $0.intersection($1) }
         // In the first item's order, which is the order they were added.
-        shown = urls.first.map { TagStore.shared.tags(for: $0).map(\.name).filter { common.contains($0.lowercased()) } } ?? []
+        let tags = urls.first.map { TagStore.shared.tags(for: $0).map(\.name).filter { common.contains($0.lowercased()) } } ?? []
+        // The Inspector reloads whenever files change; the same tags again leave the field and its tokens alone.
+        if tags == shown, objectValue as? [String] == tags { return }
+        shown = tags
         objectValue = shown
         invalidateIntrinsicContentSize()
     }

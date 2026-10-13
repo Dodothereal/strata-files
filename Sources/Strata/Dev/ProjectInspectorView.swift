@@ -20,6 +20,9 @@ final class ProjectInspectorView: NSView {
     private var artifactRows: [String: ArtifactRow] = [:]
     private var artifactsTotalLabel: NSTextField?
     private var cleanButton: NSButton?
+    /// The Git card's content and the upstream in its header, so a status change refills just that card.
+    private var gitContent: NSStackView?
+    private var gitUpstream: String?
     private static let collapsedScriptCount = 6
 
     override init(frame: NSRect) {
@@ -52,12 +55,21 @@ final class ProjectInspectorView: NSView {
             explicitlySelected = []
             showsAllScripts = false
         }
-        if let previous, previous.folder == info.folder, previous.kinds == info.kinds, previous.scripts == info.scripts,
-           previous.git == info.git, previous.artifacts.map(\.id) == info.artifacts.map(\.id) {
-            updateArtifacts()
-        } else {
+        guard let previous, previous.folder == info.folder, previous.kinds == info.kinds, previous.scripts == info.scripts,
+              previous.artifacts.map(\.id) == info.artifacts.map(\.id) else {
             rebuild()
+            return
         }
+        if previous.git != info.git {
+            // Files saved or a commit made: only the git status moved. Refill the Git card and leave the others be,
+            // rather than rebuilding every card each time a file in the repository changes.
+            guard let git = info.git, let gitContent, git.branch.upstream == gitUpstream else {
+                rebuild()
+                return
+            }
+            fillGit(git, into: gitContent)
+        }
+        updateArtifacts()
     }
 
     // MARK: - Building
@@ -67,6 +79,8 @@ final class ProjectInspectorView: NSView {
         artifactRows = [:]
         artifactsTotalLabel = nil
         cleanButton = nil
+        gitContent = nil
+        gitUpstream = nil
         guard let info else { return }
 
         // Each part is a card like the Inspector's others, collapsed and expanded the same way.
@@ -88,7 +102,15 @@ final class ProjectInspectorView: NSView {
         let upstream = git.branch.upstream.map { label($0, size: 11, color: .tertiaryLabelColor) }
         upstream?.lineBreakMode = .byTruncatingHead
         let content = section()
+        fillGit(git, into: content)
+        gitContent = content
+        gitUpstream = git.branch.upstream
+        addCard(id: "git", title: "Git", symbol: "arrow.triangle.branch", content: content, accessory: upstream)
+    }
 
+    /// The branch line and the change counts.
+    private func fillGit(_ git: ProjectGitSummary, into content: NSStackView) {
+        content.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let branch = BranchLine(git)
         add(branch, to: content, spacingAfter: 7)
 
@@ -117,7 +139,6 @@ final class ProjectInspectorView: NSView {
         }
         if git.stashCount > 0 { items.add(StatusItem(symbol: "archivebox", String(localized: "\(git.stashCount) stashes", comment: "plural"))) }
         add(items, to: content)
-        addCard(id: "git", title: "Git", symbol: "arrow.triangle.branch", content: content, accessory: upstream)
     }
 
     private func buildArtifacts(_ artifacts: [ProjectArtifact]) {
