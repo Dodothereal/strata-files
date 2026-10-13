@@ -25,6 +25,9 @@ struct ContainerTests {
         let received = Received()
         Thread.detachNewThread {
             let client = accept(server, nil, nil)
+            // A client that stops reading early (as some of these tests do) must not kill the test run with SIGPIPE.
+            var on: Int32 = 1
+            setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
             var request = Data()
             var buffer = [UInt8](repeating: 0, count: 4096)
             while !request.contains(Data("\r\n\r\n".utf8)) {
@@ -315,6 +318,15 @@ struct ContainerTests {
         #expect(!FileManager.default.fileExists(atPath: base.appending(path: "files/escape").path))
         #expect(!FileManager.default.fileExists(atPath: folder.appending(path: "fifo").path))
         #expect(CopyWriter.readable(0o4755) == 0o555 && CopyWriter.readable(0o644) == 0o444 && CopyWriter.readable(0) == 0o400)
+        // From another machine: marked as downloaded, so Gatekeeper checks what's opened (files, and folders that may be
+        // apps).
+        func quarantine(_ name: String) -> String? {
+            var value = [UInt8](repeating: 0, count: 256)
+            let count = getxattr(folder.appending(path: name).path, "com.apple.quarantine", &value, value.count, 0, XATTR_NOFOLLOW)
+            return count > 0 ? String(decoding: value.prefix(count), as: UTF8.self) : nil
+        }
+        #expect(quarantine("hosts")?.hasPrefix("0281;") == true && quarantine("hosts")?.contains(";Strata;") == true)
+        #expect(quarantine("apt")?.hasPrefix("0281;") == true)
         // Only its owner may read it: not fetched until it's opened.
         #expect(!CopyWriter.fetchesEagerly(size: 10, mode: 0o600, bytes: 0, count: 0))
         #expect(CopyWriter.fetchesEagerly(size: 10, mode: 0o644, bytes: 0, count: 0))

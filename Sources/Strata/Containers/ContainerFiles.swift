@@ -622,6 +622,8 @@ nonisolated enum CopyWriter {
                 if !exists { mkdirat(fd, name, 0o755) }
                 let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                 if child >= 0 {
+                    // A folder can be an app (`Foo.app`): marked like the files.
+                    try? markDownloaded(child)
                     remember(entry.modified, onFolder: child)
                     close(child)
                 }
@@ -691,6 +693,7 @@ nonisolated enum CopyWriter {
                     if first.kind == .file {
                         out = openat(fd, temp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
                         guard out >= 0 else { throw CocoaError(.fileWriteNoPermission) }
+                        try markDownloaded(out)
                     }
                 case .data(let data):
                     guard out >= 0 else { return }
@@ -763,6 +766,7 @@ nonisolated enum CopyWriter {
             if current != fd { close(current) }
             current = fd
             guard next >= 0 else { return }
+            try? markDownloaded(next)
             current = next
         }
     }
@@ -803,6 +807,7 @@ nonisolated enum CopyWriter {
                 let fd = openat(parent, part, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                 guard fd >= 0 else { throw CocoaError(.fileWriteNoPermission) }
                 stack.append((part, fd))
+                try markDownloaded(fd)
             }
             return stack.last?.fd ?? rootFD
         }
@@ -858,6 +863,7 @@ nonisolated enum CopyWriter {
                         let out = openat(parent, temp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
                         guard out >= 0 else { throw CocoaError(.fileWriteNoPermission) }
                         file = (out, parent, temp, last, entry)
+                        try markDownloaded(out)
                     case .other:
                         return
                     }
@@ -950,6 +956,7 @@ nonisolated enum CopyWriter {
         let out = openat(fd, temp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard out >= 0 else { throw CocoaError(.fileWriteNoPermission) }
         do {
+            try markDownloaded(out)
             try writeAll(data, to: out)
         } catch {
             close(out)
@@ -978,6 +985,18 @@ nonisolated enum CopyWriter {
     /// Fetched files are readable by you whatever the container said, and read-only (an edit saved into a copy would
     /// be lost at the next listing); no set-ID bits.
     static func readable(_ mode: UInt32) -> UInt32 { (mode & 0o555) | 0o400 }
+
+    /// A container's files come from another machine, so they're marked as downloaded, the way macOS marks a download
+    /// itself: Gatekeeper checks an app, script or `.command` from a container before it runs, and copies keep the mark,
+    /// as Finder's do.
+    static let quarantine = Array("0281;\(String(Int(Date().timeIntervalSince1970), radix: 16));Strata;\(UUID().uuidString)".utf8)
+
+    /// Marks the file or folder open at `fd` as downloaded (see `quarantine`). Throws when it can't be, so nothing
+    /// unmarked is placed; disks that can't keep the mark at all are the exception.
+    static func markDownloaded(_ fd: Int32) throws {
+        guard fsetxattr(fd, "com.apple.quarantine", quarantine, quarantine.count, 0, 0) != 0, errno != ENOTSUP else { return }
+        throw CocoaError(.fileWriteNoPermission)
+    }
 
     private static func setTimes(_ fd: Int32, _ date: Date?) {
         guard let date, let seconds = Optional(date.timeIntervalSince1970), seconds.isFinite, abs(seconds) < 1e11 else { return }

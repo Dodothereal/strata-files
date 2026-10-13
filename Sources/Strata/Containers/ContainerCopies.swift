@@ -95,6 +95,7 @@ nonisolated enum ContainerCopies {
         let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard child >= 0 else { throw CocoaError(.fileWriteNoPermission) }
         defer { close(child) }
+        try CopyWriter.markDownloaded(child)
         let source = ContainerSource(socket: engine.socket, apiVersion: engine.apiVersion, engineName: engine.name,
                                      id: container.id, name: name)
         let data = try JSONEncoder().encode(source)
