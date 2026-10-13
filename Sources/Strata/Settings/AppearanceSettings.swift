@@ -33,6 +33,8 @@ struct AppearanceSettings: View {
                     } maximumValueLabel: {
                         Text(verbatim: "A").font(.system(size: 16))
                     }
+                    // The row has its own label; the slider's is for VoiceOver only.
+                    .labelsHidden()
                     Text("\(Int(size)) pt").monospacedDigit().foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
                 }
                 Text("Quarterly Report.pdf", comment: "Settings ▸ Appearance: a sample file name showing the text size")
