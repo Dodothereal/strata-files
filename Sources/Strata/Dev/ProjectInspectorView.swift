@@ -1,6 +1,6 @@
 import AppKit
 
-/// The inspector's developer section for a project folder or repository root: what kind of project it is, git branch
+/// The inspector's developer cards for a project folder or repository root: what kind of project it is, git branch
 /// and changes, regenerable build artifacts with a Clean button, and runnable scripts.
 ///
 /// Takes data (`configure(_:)` with a `ProjectInfo`); it never scans. Calling `configure` again for the same folder
@@ -26,7 +26,8 @@ final class ProjectInspectorView: NSView {
         super.init(frame: frame)
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 6
+        // The same gap as between the Inspector's other cards.
+        stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -35,9 +36,6 @@ final class ProjectInspectorView: NSView {
             stack.topAnchor.constraint(equalTo: topAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
-        setAccessibilityElement(true)
-        setAccessibilityRole(.group)
-        setAccessibilityLabel(String(localized: "Project", comment: "Inspector section title: the folder's software project (kind, git, build artifacts, scripts)"))
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -71,26 +69,28 @@ final class ProjectInspectorView: NSView {
         cleanButton = nil
         guard let info else { return }
 
+        // Each part is a card like the Inspector's others, collapsed and expanded the same way.
         if !info.kinds.isEmpty {
-            addSection(header(String(localized: "Project", comment: "Inspector section title: the folder's software project (kind, git, build artifacts, scripts)")))
             let chips = FlowView(spacing: 6, lineSpacing: 6)
             for kind in info.kinds { chips.add(KindChip(kind)) }
-            add(chips, spacingAfter: 18)
+            let content = section()
+            add(chips, to: content)
+            addCard(id: "project", title: String(localized: "Project", comment: "Inspector section title: the folder's software project (kind, git, build artifacts, scripts)"),
+                    symbol: "chevron.left.forwardslash.chevron.right", content: content)
         }
         if let git = info.git { buildGit(git) }
         if !info.artifacts.isEmpty { buildArtifacts(info.artifacts) }
         if !info.scripts.isEmpty { buildScripts(info.scripts) }
-        if let last = stack.arrangedSubviews.last { stack.setCustomSpacing(0, after: last) }
         updateArtifacts()
     }
 
     private func buildGit(_ git: ProjectGitSummary) {
         let upstream = git.branch.upstream.map { label($0, size: 11, color: .tertiaryLabelColor) }
         upstream?.lineBreakMode = .byTruncatingHead
-        addSection(header("Git", accessory: upstream))
+        let content = section()
 
         let branch = BranchLine(git)
-        add(branch, spacingAfter: 7)
+        add(branch, to: content, spacingAfter: 7)
 
         let items = FlowView(spacing: 12, lineSpacing: 4)
         let counts = git.counts
@@ -116,18 +116,19 @@ final class ProjectInspectorView: NSView {
             if counts.staged > 0 { items.add(StatusItem(symbol: "tray.full", String(localized: "\(counts.staged) staged", comment: "plural"))) }
         }
         if git.stashCount > 0 { items.add(StatusItem(symbol: "archivebox", String(localized: "\(git.stashCount) stashes", comment: "plural"))) }
-        add(items, spacingAfter: 18)
+        add(items, to: content)
+        addCard(id: "git", title: "Git", symbol: "arrow.triangle.branch", content: content, accessory: upstream)
     }
 
     private func buildArtifacts(_ artifacts: [ProjectArtifact]) {
         let total = label("", size: 11, color: .secondaryLabelColor, monospacedDigits: true)
         artifactsTotalLabel = total
-        addSection(header(String(localized: "Build Artifacts", comment: "Inspector section title: regenerable build output folders"), accessory: total))
+        let content = section()
         for artifact in artifacts {
             let row = ArtifactRow(artifact, selected: isSelected(artifact))
             row.onToggle = { [weak self] on in self?.toggle(artifact, on) }
             artifactRows[artifact.id] = row
-            add(row, spacingAfter: 2)
+            add(row, to: content, spacingAfter: 2)
         }
         let button = NSButton(title: String(localized: "Clean", comment: "Button: move the selected build folders to the Trash"),
                               target: self, action: #selector(cleanClicked))
@@ -138,8 +139,10 @@ final class ProjectInspectorView: NSView {
         button.imageHugsTitle = true
         button.symbolConfiguration = .init(pointSize: 11, weight: .medium)
         cleanButton = button
-        if let last = stack.arrangedSubviews.last { stack.setCustomSpacing(10, after: last) }
-        add(button, spacingAfter: 18)
+        if let last = content.arrangedSubviews.last { content.setCustomSpacing(10, after: last) }
+        add(button, to: content)
+        addCard(id: "artifacts", title: String(localized: "Build Artifacts", comment: "Inspector section title: regenerable build output folders"),
+                symbol: "shippingbox", content: content, accessory: total)
     }
 
     private func buildScripts(_ scripts: [ProjectScript]) {
@@ -147,8 +150,7 @@ final class ProjectInspectorView: NSView {
         var sources: [String] = []
         for script in scripts where !sources.contains(script.source) { sources.append(script.source) }
         let runnerName = scripts.first.map { $0.source == "package.json" ? $0.runner.rawValue : "" } ?? ""
-        addSection(header(String(localized: "Scripts", comment: "Inspector section title: runnable project scripts"), accessory: sources.count == 1 && !runnerName.isEmpty
-            ? label(runnerName, size: 11, color: .tertiaryLabelColor) : nil))
+        let content = section()
 
         let limit = showsAllScripts ? Int.max : Self.collapsedScriptCount
         var shown = 0
@@ -156,15 +158,15 @@ final class ProjectInspectorView: NSView {
             let group = scripts.filter { $0.source == source }
             if sources.count > 1, shown < limit {
                 let title = source == "package.json" ? "package.json · \(group[0].runner.rawValue)" : source
-                add(inset(label(title, size: 10.5, weight: .medium, color: .tertiaryLabelColor), by: ScriptRow.inset), spacingAfter: 2)
+                add(inset(label(title, size: 10.5, weight: .medium, color: .tertiaryLabelColor), by: ScriptRow.inset), to: content, spacingAfter: 2)
             }
             for script in group where shown < limit {
                 let row = ScriptRow(script)
                 row.onRun = { [weak self] in self?.run(script) }
-                add(row, spacingAfter: 1)
+                add(row, to: content, spacingAfter: 1)
                 shown += 1
             }
-            if let last = stack.arrangedSubviews.last, sources.count > 1 { stack.setCustomSpacing(8, after: last) }
+            if let last = content.arrangedSubviews.last, sources.count > 1 { content.setCustomSpacing(8, after: last) }
         }
         if scripts.count > shown {
             let more = NSButton(title: String(localized: "Show \(scripts.count - shown) More", comment: "plural"), target: self,
@@ -175,8 +177,11 @@ final class ProjectInspectorView: NSView {
             more.attributedTitle = NSAttributedString(string: more.title, attributes: [
                 .font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: NSColor.controlAccentColor,
             ])
-            add(inset(more, by: ScriptRow.inset - 1), spacingAfter: 0)
+            add(inset(more, by: ScriptRow.inset - 1), to: content)
         }
+        addCard(id: "scripts", title: String(localized: "Scripts", comment: "Inspector section title: runnable project scripts"),
+                symbol: "terminal", content: content,
+                accessory: sources.count == 1 && !runnerName.isEmpty ? label(runnerName, size: 11, color: .tertiaryLabelColor) : nil)
     }
 
     // MARK: - Artifacts state
@@ -253,17 +258,28 @@ final class ProjectInspectorView: NSView {
 
     // MARK: - Helpers
 
-    private func addSection(_ view: NSView) {
-        add(view, spacingAfter: 8)
+    /// The rows of one card, top to bottom.
+    private func section() -> NSStackView {
+        let content = NSStackView()
+        content.orientation = .vertical
+        content.alignment = .leading
+        content.spacing = 6
+        return content
     }
 
-    private func add(_ view: NSView, spacingAfter spacing: CGFloat) {
-        stack.addArrangedSubview(view)
+    private func addCard(id: String, title: String, symbol: String, content: NSStackView, accessory: NSView? = nil) {
+        let card = InspectorCard(id: id, title: title, symbol: symbol, content: content, accessory: accessory)
+        stack.addArrangedSubview(card)
+        card.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+    }
+
+    private func add(_ view: NSView, to content: NSStackView, spacingAfter spacing: CGFloat = 6) {
+        content.addArrangedSubview(view)
         view.translatesAutoresizingMaskIntoConstraints = false
         if !(view is NSButton) || view === cleanButton {
-            view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+            view.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
         }
-        stack.setCustomSpacing(spacing, after: view)
+        content.setCustomSpacing(spacing, after: view)
     }
 
     /// `view` shifted right, to line up with the script names inside their hover background.
@@ -278,23 +294,6 @@ final class ProjectInspectorView: NSView {
             view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
         return container
-    }
-
-    private func header(_ title: String, accessory: NSView? = nil) -> NSView {
-        let titleLabel = label(title, size: 11, weight: .semibold, color: .secondaryLabelColor)
-        titleLabel.setAccessibilityRole(.staticText)
-        let row = NSStackView(views: [titleLabel])
-        row.orientation = .horizontal
-        row.alignment = .firstBaseline
-        row.spacing = 8
-        if let accessory {
-            let spacer = NSView()
-            spacer.setContentHuggingPriority(.init(1), for: .horizontal)
-            row.addArrangedSubview(spacer)
-            accessory.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            row.addArrangedSubview(accessory)
-        }
-        return row
     }
 }
 
@@ -411,7 +410,7 @@ private final class KindChip: NSView {
     }
 }
 
-/// Branch symbol, name, ahead/behind and an in-progress operation tag.
+/// Branch name, ahead/behind and an in-progress operation tag (a detached HEAD also gets a symbol).
 private final class BranchLine: NSView {
     private let git: ProjectGitSummary
 
@@ -435,9 +434,9 @@ private final class BranchLine: NSView {
     override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: 20) }
 
     override func draw(_ dirtyRect: NSRect) {
-        let symbolName = git.branch.isDetached ? "smallcircle.filled.circle" : "arrow.triangle.branch"
-        let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 13, weight: .medium).applying(.init(paletteColors: [.secondaryLabelColor])))
+        // The card's header already shows the branch symbol; a detached HEAD gets its own.
+        let symbol = git.branch.isDetached ? NSImage(systemSymbolName: "smallcircle.filled.circle", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .medium).applying(.init(paletteColors: [.secondaryLabelColor]))) : nil
         var x: CGFloat = 0
         if let symbol {
             let s = symbol.size

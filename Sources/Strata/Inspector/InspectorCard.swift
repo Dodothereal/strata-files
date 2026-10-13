@@ -42,7 +42,11 @@ final class InspectorCard: NSView {
         chevron.setAccessibilityLabel(title)
 
         var headerViews: [NSView] = [icon, titleLabel, NSView()]
-        if let accessory { headerViews.append(accessory) }
+        if let accessory {
+            // A long accessory (an upstream branch, a size) gives way before the title does.
+            accessory.setContentCompressionResistancePriority(.defaultLow - 1, for: .horizontal)
+            headerViews.append(accessory)
+        }
         headerViews.append(chevron)
         let header = NSStackView(views: headerViews)
         header.orientation = .horizontal
