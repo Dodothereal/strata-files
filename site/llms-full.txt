@@ -64,6 +64,7 @@ Filters can be combined with words:
 - Batch rename: replace text or a regular expression, add text, number with a format, or change case, with a live preview and one undo.
 - Finder tags: colored dots in every view, the seven colors in the context menu, a tag picker that finds or creates tags as you type, and a Tags section in the sidebar. Strata and Finder share the same tags.
 - Get Info in the inspector: Spotlight comments, the app a file opens with (or all like it), Locked, and permissions.
+- Check for Updates… on apps (right-click one or several): newer versions from each app's Sparkle update feed or the App Store, with Software Update for Apple's own apps. Strata doesn't install other apps' updates; each app installs its own.
 - Share: AirDrop, Messages, Mail and more from the selection.
 
 ## For developers
@@ -80,7 +81,7 @@ Filters can be combined with words:
 
 ## Privacy and security
 
-- No accounts, no analytics, no servers. Files and searches never leave the Mac. The only network request is the update check (GitHub Releases), and only if allowed.
+- No accounts, no analytics, no servers. Files and searches never leave the Mac. The only network requests are update checks: Strata's own (GitHub Releases), if allowed, and, when you choose Check for Updates on apps, those apps' own update feeds or the App Store's lookup. Nothing about your files is sent.
 - The file index, content index and history are encrypted on disk (AES-GCM) with a key kept in the login keychain.
 - Browsing a folder can't run code from it: Strata switches off the git features a downloaded repository could use for that (fsmonitor, hooks, filters, lazy fetches).
 - Full Disk Access is optional; it lets Strata search and measure everything without macOS asking folder by folder.
@@ -98,6 +99,6 @@ Filters can be combined with words:
 
 - Does it replace Finder? It works alongside Finder. Turning on "Open Reveal in Finder in Strata" makes other apps open Strata.
 - Is it safe to download? Releases are signed with a Developer ID and notarized by Apple, and each release lists SHA-256 checksums.
-- Does it collect data? No. It only checks GitHub for a new version, if allowed.
+- Does it collect data? No. It only checks for updates: its own on GitHub, if allowed, and other apps' when you ask.
 - How do I update? Strata ▸ Check for Updates…, or automatically if allowed in Settings ▸ General.
 - Can I build it myself? Yes: `git clone https://github.com/cristipufu/strata-files.git && cd strata-files && scripts/build.sh release --open` (needs the Swift toolchain).
