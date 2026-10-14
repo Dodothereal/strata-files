@@ -571,7 +571,8 @@ final class SidebarOutlineView: NSOutlineView {
     }
 
     override func draggingEnded(_ sender: NSDraggingInfo) {
-        super.draggingEnded(sender)
+        // No super: NSTableView doesn't implement this optional NSDraggingDestination method, and calling it throws
+        // inside the drag's completion, which leaves the app unable to start another drag.
         onDragEnd?()
     }
 }
