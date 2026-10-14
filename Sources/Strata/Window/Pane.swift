@@ -162,6 +162,9 @@ private final class PaneHeaderView: NSVisualEffectView {
         icon.symbolConfiguration = .init(pointSize: 11, weight: .semibold)
         label.font = .systemFont(ofSize: 12, weight: .semibold)
         label.lineBreakMode = .byTruncatingMiddle
+        // A long folder name truncates instead of holding the pane (and the window) wider; the header is laid out even
+        // while hidden.
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         underline.wantsLayer = true
         for view in [icon, label, underline] {
             view.translatesAutoresizingMaskIntoConstraints = false

@@ -183,6 +183,9 @@ final class InspectorRows: NSView {
             for index in 0..<row.numberOfCells { row.cell(at: index).contentView?.removeFromSuperview() }
             grid.removeRow(at: 0)
         }
+        // Empty columns left behind collapse to nothing, which the 74-point label column can't do: with no rows, that
+        // contradicts the grid filling the card. addRow makes the columns again (set up below).
+        while grid.numberOfColumns > 0 { grid.removeColumn(at: 0) }
         for (name, value) in rows {
             let label = NSTextField(labelWithString: name)
             label.font = .systemFont(ofSize: 12)

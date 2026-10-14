@@ -31,6 +31,7 @@ final class SearchScopeBar: NSSplitViewItemAccessoryViewController {
         summary.font = .systemFont(ofSize: 11)
         summary.textColor = .secondaryLabelColor
         summary.lineBreakMode = .byTruncatingTail
+        summary.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         save.bezelStyle = .accessoryBarAction
         save.controlSize = .small
@@ -46,6 +47,10 @@ final class SearchScopeBar: NSSplitViewItemAccessoryViewController {
         stack.spacing = 10
         stack.edgeInsets = NSEdgeInsets(top: 6, left: 14, bottom: 6, right: 14)
         stack.translatesAutoresizingMaskIntoConstraints = false
+        // In a narrow pane the summary truncates, then Match Case steps aside, and what's left clips: the bar never holds
+        // the pane (and the window) wider. It's laid out even while hidden.
+        stack.setVisibilityPriority(.detachOnlyIfNecessary, for: matchCase)
+        stack.setClippingResistancePriority(.defaultLow, for: .horizontal)
         let container = NSView()
         container.addSubview(stack)
         NSLayoutConstraint.activate([
