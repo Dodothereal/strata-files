@@ -131,16 +131,21 @@ final class PaneHostViewController: NSViewController {
         loadViewIfNeeded()
         status.stringValue = text ?? ""
         statusBar.isHidden = text == nil
-        aboveBottom?.isActive = text == nil
-        aboveStatus?.isActive = text != nil
+        hold(text == nil ? aboveBottom : aboveStatus, over: text == nil ? aboveStatus : aboveBottom)
     }
 
     func setHeader(visible: Bool, title: String, symbol: String, active: Bool) {
         loadViewIfNeeded()
         header.isHidden = !visible
         header.configure(title: title, symbol: symbol, active: active)
-        underRoot?.isActive = !visible
-        underHeader?.isActive = visible
+        hold(visible ? underHeader : underRoot, over: visible ? underRoot : underHeader)
+    }
+
+    /// Switches from one of two contradicting constraints to the other, letting go of the old one first: with both
+    /// active for a moment, Auto Layout breaks one of the bar's own constraints to recover.
+    private func hold(_ on: NSLayoutConstraint?, over off: NSLayoutConstraint?) {
+        off?.isActive = false
+        on?.isActive = true
     }
 }
 
