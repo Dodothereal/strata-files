@@ -59,8 +59,9 @@ final class BrowserViewController: NSViewController {
     var onTab: (() -> Bool)?
     /// A different folder is being read; the rows still showing belong to the previous one, so file commands wait.
     private(set) var isLoadingFolder = false
-    /// A folder just opened shows from its top, even when a refresh overtakes its first load (a container's listing
-    /// writing into it, say): that refresh keeps the scroll position, which was still the previous folder's.
+    /// A folder just opened starts from its top (then scrolls to what it selects, going Back), even when a refresh
+    /// overtakes its first load (a container's listing writing into it, say): the scroll position is still the
+    /// previous folder's until its rows arrive.
     private var opensAtTop = false
     override func viewDidLayout() {
         super.viewDidLayout()
@@ -280,7 +281,7 @@ final class BrowserViewController: NSViewController {
             watcher = DirectoryWatcher(url: url) { [weak self] in self?.refresh() }
             gitObservation = GitStatusStore.shared.observe(url)
             pendingSelection = select.map { [$0] } ?? []
-            opensAtTop = select == nil
+            opensAtTop = true
             isLoadingFolder = true
             // Most folders load within a frame; a slow one (a network share, a huge folder) clears the old rows and
             // says so instead of leaving the previous folder's files on screen under the new location.
@@ -300,6 +301,7 @@ final class BrowserViewController: NSViewController {
         rows = []
         nodesByPath = [:]
         outlineView.reloadData()
+        scrollToTop()
         pushContent()
         emptyState.show(symbol: "hourglass", title: String(localized: "Loading…"))
         delegate?.browserSelectionDidChange(self)
@@ -331,10 +333,9 @@ final class BrowserViewController: NSViewController {
                 loadError = nil
                 isLoadingFolder = false
                 Privacy.markAccessible(url)
-                let toTop = scrollToTop || opensAtTop
+                let isNewFolder = opensAtTop
                 opensAtTop = false
-                apply(entries, preservingState: !toTop)
-                if toTop, outlineView.selectedRow < 0 { self.scrollToTop() }
+                apply(entries, preservingState: !(scrollToTop || isNewFolder), fromTop: scrollToTop || isNewFolder)
             } catch {
                 guard gen == generation else { return }
                 showError(error)
@@ -352,7 +353,8 @@ final class BrowserViewController: NSViewController {
         return values?.volumeAvailableCapacityForImportantUsage
     }
 
-    private func apply(_ entries: [FileEntry], preservingState: Bool) {
+    /// Shows `entries`. `fromTop`: a folder just opened, shown from its top before anything it selects is scrolled to.
+    private func apply(_ entries: [FileEntry], preservingState: Bool, fromTop: Bool = false) {
         let previous = preservingState ? nodesByPath : [:]
         let expanded = preservingState ? nodes.filter { outlineView.isItemExpanded($0) } : []
         nodes = entries.map { entry in
@@ -367,6 +369,7 @@ final class BrowserViewController: NSViewController {
         applyFilter()
         isLoaded = true
         outlineView.reloadData()
+        if fromTop { scrollToTop() }
         for node in expanded where self.node(for: node.url) === node {
             outlineView.expandItem(node)
             node.isLoadingChildren = false
@@ -479,6 +482,8 @@ final class BrowserViewController: NSViewController {
     }
 
     private func scrollToTop() {
+        // The rows just changed: size the list to them first, so nothing pulls the old offset back.
+        scrollView.layoutSubtreeIfNeeded()
         let clip = scrollView.contentView
         clip.scroll(to: NSPoint(x: 0, y: -clip.contentInsets.top))
         scrollView.reflectScrolledClipView(clip)
