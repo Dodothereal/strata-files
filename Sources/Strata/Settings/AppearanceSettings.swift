@@ -51,5 +51,9 @@ struct AppearanceSettings: View {
             }
         }
         .formStyle(.grouped)
+        // ⌘+ / ⌘− in the list change the size while this is open.
+        .onReceive(NotificationCenter.default.publisher(for: .appearanceChanged)) { _ in
+            if size != Prefs.nameTextSize { size = Prefs.nameTextSize }
+        }
     }
 }

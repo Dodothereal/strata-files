@@ -48,14 +48,26 @@ extension BrowserViewController {
         delegate?.browserSelectionDidChange(self)
     }
 
+    /// ⌘+: bigger icons in Icons; in List and Columns, bigger names (Settings ▸ Appearance ▸ Text size, every window).
     @objc func biggerIcons(_ sender: Any?) {
+        guard effectiveMode == .grid else { return stepTextSize(1) }
         grid.setIconSize(min(256, grid.iconSize * 1.25), animated: true)
         Prefs.gridIconSize = Double(grid.iconSize)
     }
 
     @objc func smallerIcons(_ sender: Any?) {
+        guard effectiveMode == .grid else { return stepTextSize(-1) }
         grid.setIconSize(max(32, grid.iconSize / 1.25), animated: true)
         Prefs.gridIconSize = Double(grid.iconSize)
+    }
+
+    /// The text size's range is 11–16 pt; past an end there's nothing to do.
+    static let textSizes: ClosedRange<Double> = 11...16
+
+    private func stepTextSize(_ delta: Double) {
+        let size = min(max(Prefs.nameTextSize + delta, Self.textSizes.lowerBound), Self.textSizes.upperBound)
+        guard size != Prefs.nameTextSize else { return NSSound.beep() }
+        Prefs.nameTextSize = size
     }
 
     /// Shows the active presentation's view on top of the list (the list's scroll view hides).

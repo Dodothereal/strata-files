@@ -1741,7 +1741,19 @@ extension BrowserViewController: NSMenuItemValidation {
             item.state = Prefs.showHidden ? .on : .off
             return true
         case #selector(biggerIcons(_:)), #selector(smallerIcons(_:)):
-            return effectiveMode == .grid
+            // Icons zoom the icons; List and Columns, the names' text.
+            let bigger = item.action == #selector(biggerIcons(_:))
+            switch effectiveMode {
+            case .grid:
+                item.title = bigger ? String(localized: "Bigger Icons") : String(localized: "Smaller Icons")
+                return true
+            case .list, .columns:
+                item.title = bigger ? String(localized: "Bigger Text", comment: "View menu: make file names bigger (⌘+)")
+                    : String(localized: "Smaller Text", comment: "View menu: make file names smaller (⌘−)")
+                return bigger ? Prefs.nameTextSize < Self.textSizes.upperBound : Prefs.nameTextSize > Self.textSizes.lowerBound
+            case .gallery, .treemap:
+                return false
+            }
         case #selector(toggleFoldersFirst(_:)):
             item.state = Prefs.foldersFirst ? .on : .off
             return true
