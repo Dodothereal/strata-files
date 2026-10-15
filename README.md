@@ -97,15 +97,17 @@ inspector, which also shows a container's image, ports and mounts, and a project
 | **Batch rename** | Replace text (or a regular expression), add text, number with a format or change case, previewed live, undone in one step. |
 | **Get Info** | Edit comments, the app a file opens with, Locked and permissions right in the inspector. |
 | **App updates** | Right-click apps and choose Check for Updates… to see which have a newer version, from their own update feed or the App Store. |
-| **Network and cloud** | Connect to SMB, AFP, NFS and WebDAV servers (⌥⌘K), and see what's only in iCloud Drive or another cloud folder, with Download Now and Remove Download. |
+| **Servers** | Connect to SFTP servers and S3 buckets (⌥⌘K), as well as SMB, AFP, NFS and WebDAV shares. Their folders work like any folder: browse, preview, copy things out, drop files in, rename, delete. SFTP uses your own SSH setup (`~/.ssh/config`, keys, agent); an S3 secret key stays in your keychain. |
+| **Cloud folders** | See what's only in iCloud Drive or another cloud folder, with Download Now and Remove Download. |
 | **Compare and sync** | Compare the two panes' folders and sync them both ways, one way, or as a mirror, verified and undoable. |
 | **Your shortcuts, your look** | Change any menu shortcut in Settings, and pick light or dark, row density and the size of file names. |
 | **Copy queue** | Big copies run in the background with progress you can pause, resume or cancel. Conflicts are asked up front, with a side-by-side comparison and a diff for text files, and folders can be merged. Turn on **Verify copies** in Settings to check that every byte arrived. Moves between disks keep the original if it changed while copying. |
 | **History** | Renames, moves, copies and deletions are recorded. Undo them later, even days later and after a restart, as long as the items are still where they were left. |
 | **Recents** | Files you changed in the last 7 days, across your home folder, in one place. |
 | **Shelf** | Collect files from anywhere, then drop them all at once. |
-| **Your sidebar** | Drag folders into Favorites, reorder them, and eject disks right from the sidebar. Windows and tabs come back where you left them. |
-| **Workspaces** | Save a set of tabs and panes, and reopen them together. |
+| **Your sidebar** | Drag folders into Favorites, reorder them, and eject disks right from the sidebar, or switch it to a tree of every folder. Windows and tabs come back where you left them. |
+| **Path bar** | Type a path, `github/acme`, or just a folder's name: matching folders are suggested as you type. |
+| **Workspaces** | Save a set of tabs and panes, with their views, and reopen them together from the sidebar, ⌘K or `strata -w`. Folders on network shares and servers connect again. |
 | **Ask Strata** | Describe a bulk change ("rename these photos by date taken") and review the plan before anything happens. Runs on your Mac: built-in rules handle common requests, and Apple Intelligence handles the rest. |
 | **Summaries** | Get the gist of a PDF or document in the inspector: a short summary written by Apple Intelligence, or the key sentences without it. Nothing ever leaves your Mac. |
 | **Command line** | Install it from Settings, then `strata .` opens the current folder and `strata -s "invoice pdf"` searches from your terminal. |
@@ -122,9 +124,9 @@ Click **Keyboard Shortcuts** at the bottom of the sidebar, or press ⌘/.
 Strata runs entirely on your Mac. The search index, summaries and AI features are local: no accounts, no tracking,
 no cloud. Its file index, content index and history are encrypted on disk with a key in your keychain. And a
 folder you browse can't run its own code just because you looked at it: Strata switches off the git features a
-downloaded repository could use to do that. It only goes online to check for updates: its own, if you allow it, and
-other apps' when you ask it to. Containers' files are read through your container engine on this Mac, never changed,
-and cleared when Strata quits.
+downloaded repository could use to do that. It only goes online to check for updates (its own, if you allow it, and
+other apps' when you ask it to) and to the servers you connect to. Containers' and servers' files are read as you
+browse and cleared when Strata quits; SFTP logs in with your own SSH setup, and an S3 secret key stays in your keychain.
 
 ## Translations
 
