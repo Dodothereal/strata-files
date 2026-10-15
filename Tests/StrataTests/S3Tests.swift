@@ -150,7 +150,7 @@ struct S3Tests {
 }
 
 /// Answers S3 requests in tests, recording the hosts asked.
-final class FakeS3: URLProtocol, @unchecked Sendable {
+nonisolated final class FakeS3: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var answer: (URLRequest) -> (Int, [String: String], Data) = { _ in (500, [:], Data()) }
     nonisolated(unsafe) static var hosts: Set<String> = []
 
