@@ -84,7 +84,7 @@ Filters can be combined with words:
 
 ## Privacy and security
 
-- No accounts, no analytics, no servers. Files and searches never leave the Mac. The only network requests are update checks: Strata's own (GitHub Releases), if allowed, and, when you choose Check for Updates on apps, those apps' own update feeds or the App Store's lookup. Nothing about your files is sent. Containers are reached through the container engine's socket on the Mac, never over the network.
+- No accounts, no analytics, no servers of Strata's own. Files and searches never leave the Mac unless you copy them to a server you added. The only network requests are update checks (Strata's own via GitHub Releases, if allowed, and, when you choose Check for Updates on apps, those apps' own update feeds or the App Store's lookup) and connections to the SFTP servers, S3 buckets and network shares you add yourself. Nothing about your files is sent. Containers are reached through the container engine's socket on the Mac, never over the network.
 - The file index, content index and history are encrypted on disk (AES-GCM) with a key kept in the login keychain.
 - Browsing a folder can't run code from it: Strata switches off the git features a downloaded repository could use for that (fsmonitor, hooks, filters, lazy fetches).
 - Full Disk Access is optional; it lets Strata search and measure everything without macOS asking folder by folder.

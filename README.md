@@ -81,6 +81,12 @@ shows your containers as folders. Open one to browse its files like any folder (
 you go), copy things out, or open a terminal in it. Start, stop, restart or pause them from the context menu or the
 inspector, which also shows a container's image, ports and mounts, and a project's Compose services.
 
+Servers too. Connect to Server (⌥⌘K) opens SFTP servers and S3 buckets (Amazon S3, Cloudflare R2, Backblaze B2,
+Wasabi, MinIO…) and keeps them under **Servers** in the sidebar. Their folders work like any folder: every view, Quick
+Look, copying things out, dropping files in, renaming and deleting, and moves within a server stay on the server. SFTP
+goes through your own SSH setup (`~/.ssh/config`, keys, the agent, ProxyJump) and Open in Terminal gives you a shell
+there; an S3 secret key stays in your keychain.
+
 <table>
   <tr>
     <td><img src="docs/screenshots/devmode.png" alt="Git badges, branch pill and a code preview"></td>
@@ -98,7 +104,7 @@ inspector, which also shows a container's image, ports and mounts, and a project
 | **Batch rename** | Replace text (or a regular expression), add text, number with a format or change case, previewed live, undone in one step. |
 | **Get Info** | Edit comments, the app a file opens with, Locked and permissions right in the inspector. |
 | **App updates** | Right-click apps and choose Check for Updates… to see which have a newer version, from their own update feed or the App Store. |
-| **Servers** | Connect to SFTP servers and S3 buckets (⌥⌘K), as well as SMB, AFP, NFS and WebDAV shares. Their folders work like any folder: browse, preview, copy things out, drop files in, rename, delete. SFTP uses your own SSH setup (`~/.ssh/config`, keys, agent); an S3 secret key stays in your keychain. |
+| **Network shares** | Connect to SMB, AFP, NFS and WebDAV shares (⌥⌘K), with macOS's own login and your keychain; SFTP servers and S3 buckets are covered above. |
 | **Cloud folders** | See what's only in iCloud Drive or another cloud folder, with Download Now and Remove Download. |
 | **Compare and sync** | Compare the two panes' folders and sync them both ways, one way, or as a mirror, verified and undoable. |
 | **Your shortcuts, your look** | Change any menu shortcut in Settings, and pick light or dark, row density and the size of file names. |
