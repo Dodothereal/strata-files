@@ -4,6 +4,8 @@ import Testing
 
 /// A server's copy, end to end, against macOS's own `sftp-server` over a pipe (no network, no login): listing into the
 /// copy, fetching, and changes made on the "server" (a temporary folder) and shown in the copy.
+// One at a time: they share the saved servers (`RemoteRegistry`) and the copies' folder.
+@Suite(.serialized)
 struct RemoteFilesTests {
     let server: URL
     let remote: RemoteServer

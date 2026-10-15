@@ -4,6 +4,8 @@ import Testing
 
 /// Signature Version 4, checked against the examples in AWS's S3 documentation ("Signature Calculations for the
 /// Authorization Header: Transferring Payload in a Single Chunk"), which use AWS's published example key.
+// One at a time: they share `FakeS3`'s answer.
+@Suite(.serialized)
 struct S3Tests {
     let credentials = S3Credentials(accessKeyID: "AKIAIOSFODNN7EXAMPLE", secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
     let date = Date(timeIntervalSince1970: 1_369_353_600) // 2013-05-24T00:00:00Z
