@@ -35,11 +35,12 @@ extension BrowserViewController {
         setMode(mode)
     }
 
-    func setMode(_ newMode: BrowserViewMode) {
+    /// `remember: false` (a workspace reopening) leaves the view new windows open in as it is.
+    func setMode(_ newMode: BrowserViewMode, remember: Bool = true) {
         guard newMode != mode else { return }
         let selection = selectedURLs
         setStoredMode(newMode)
-        Prefs.viewMode = newMode.rawValue
+        if remember { Prefs.viewMode = newMode.rawValue }
         installActiveView()
         pushContent()
         select(selection)

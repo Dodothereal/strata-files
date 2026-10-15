@@ -8,6 +8,7 @@ struct PaletteItem {
         case action = "Command"
         case path = "Go to"
         case match = "File"
+        case workspace = "Workspace"
 
         /// What the row says at its end when it has no shortcut.
         var label: String {
@@ -17,6 +18,7 @@ struct PaletteItem {
             case .action: String(localized: "Command", comment: "Command palette row tag: a command to run")
             case .path: String(localized: "Go to", comment: "Command palette row tag: go to the typed path")
             case .match: String(localized: "palette.tag.file", defaultValue: "File", comment: "Command palette row tag: a file found on disk (not the File menu)")
+            case .workspace: String(localized: "Workspace", comment: "Command palette row tag: a saved set of tabs and panes")
             }
         }
     }
@@ -178,7 +180,8 @@ final class CommandPalette: NSObject {
         lateResults?.cancel()
         if query.isEmpty {
             scored = []
-            results = source.filter { $0.kind == .folder }.prefix(7).map { ($0, []) }
+            results = source.filter { $0.kind == .workspace }.prefix(3).map { ($0, []) }
+                + source.filter { $0.kind == .folder }.prefix(7).map { ($0, []) }
                 + source.filter { $0.kind == .action }.prefix(5).map { ($0, []) }
         } else {
             scored = []

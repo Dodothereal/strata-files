@@ -29,6 +29,9 @@ final class Pane {
     var folderSearch: FolderSearch?
     /// The scope bar's line for this pane's search, kept so switching panes shows the right one.
     var searchSummary = ""
+    /// A workspace folder this pane is kept for until its share or disk is connected (it shows Home meanwhile).
+    /// Going anywhere else lets it go.
+    var waiting: WaitingFolder?
     let host: PaneHostViewController
 
     init(location: URL) {

@@ -215,6 +215,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         case .duplicates: go(.duplicates)
         case .largeFiles: go(.search(Self.largeFilesQuery, scope: nil))
         case .containers: openContainers()
+        case .workspace(let name): if let workspace = Workspaces.named(name) { Workspaces.open(workspace) }
         }
     }
 
@@ -243,6 +244,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                     countVisit: Bool = true) {
         let p = targetPane ?? pane
         p.columnLocation = nil
+        p.waiting = nil
         if target != .duplicates { p.duplicateSearch?.set() }
         // Leaving a folder search stops its scan; a finished one stays a minute, so Back shows the results at once.
         // A search left behind stops (a Spotlight query would otherwise run on to its time limit).
@@ -420,7 +422,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     override func newWindowForTab(_ sender: Any?) {
-        (NSApp.delegate as? AppDelegate)?.openWindow(at: location, tabbedWith: window)
+        // A new tab joins the window's workspace: updating it saves this tab too.
+        (NSApp.delegate as? AppDelegate)?.openWindow(at: location, tabbedWith: window).workspaceName = groupWorkspaceName
     }
 
     @objc private func viewModeChanged(_ sender: NSToolbarItemGroup) {
@@ -764,6 +767,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - Window
 
     func windowWillClose(_ notification: Notification) {
+        isClosed = true
         panes.forEach { $0.stopBackgroundWork() }
         onClose?()
     }
@@ -803,10 +807,78 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         StrataAI.startIndexing()
     }
 
-    /// Where each tab and pane is, for workspaces.
+    /// Where each tab and pane is, for workspaces. A pane waiting for its share or disk counts as being there.
     var snapshot: [String] {
         // A container's files are gone after quitting: such a pane comes back at home.
-        panes.map { ContainerCopies.contains($0.location) ? Places.home.path : $0.location.path }
+        panes.map { $0.waiting?.path ?? (ContainerCopies.contains($0.location) ? Places.home.path : $0.location.path) }
+    }
+
+    /// Each pane's view, for workspaces (`BrowserViewMode` raw values, in `snapshot`'s order).
+    var snapshotModes: [Int] { panes.map { $0.waiting?.mode ?? $0.browser.mode.rawValue } }
+
+    /// Shares that panes are waiting for: where each was mounted → the address that mounts it again.
+    var waitingShares: [String: String] {
+        var shares: [String: String] = [:]
+        for case let waiting? in panes.map(\.waiting) {
+            if let mountPoint = waiting.mountPoint, let address = waiting.address { shares[mountPoint] = address }
+        }
+        return shares
+    }
+
+    /// Panes kept for a folder they can't show yet, by position (0 is the left one).
+    var waitingPanes: [(index: Int, folder: WaitingFolder)] {
+        panes.enumerated().compactMap { index, pane in pane.waiting.map { (index, $0) } }
+    }
+
+    /// Keeps the pane at `index` for `folder` until it can go there.
+    func wait(pane index: Int, for folder: WaitingFolder) {
+        guard panes.indices.contains(index) else { return }
+        panes[index].waiting = folder
+    }
+
+    /// The pane at `index` no longer waits (its folder is gone); it stays where it is.
+    func stopWaiting(pane index: Int) {
+        guard panes.indices.contains(index) else { return }
+        panes[index].waiting = nil
+    }
+
+    /// The workspace this tab was opened from or saved as: Window ▸ Workspaces can update it, and opening it again
+    /// brings this window forward. Use `groupWorkspaceName` for the window as a whole.
+    var workspaceName: String?
+
+    /// The workspace of this window's tabs (a tab added later with ⌘T belongs to it too).
+    var groupWorkspaceName: String? {
+        guard let window else { return workspaceName }
+        return Workspaces.controllers(of: window).lazy.compactMap(\.workspaceName).first
+    }
+
+    /// Closed: a workspace still connecting leaves it alone.
+    private(set) var isClosed = false
+
+    /// Puts each pane in its saved view (nil: as it is), without changing the view new windows open in.
+    func applyModes(_ modes: [Int?]) {
+        let focused = pane
+        for (p, raw) in zip(panes, modes) {
+            guard let raw, let mode = BrowserViewMode(rawValue: raw) else { continue }
+            p.browser.setMode(mode, remember: false)
+        }
+        // Changing a view focuses it: the pane that had focus gets it back.
+        window?.makeFirstResponder(focused.browser.focusView)
+        syncViewModeItem()
+    }
+
+    /// Shows `url` in the pane at `index` (0 is the left one), in the view `mode` (raw value) if given, without adding to
+    /// its history.
+    func navigatePane(_ index: Int, to url: URL, mode: Int? = nil) {
+        guard !isClosed, panes.indices.contains(index) else { return }
+        let target = panes[index]
+        go(.folder(url.standardizedFileURL), in: target, recordHistory: false)
+        if let mode, let viewMode = BrowserViewMode(rawValue: mode) {
+            let focused = pane
+            target.browser.setMode(viewMode, remember: false)
+            window?.makeFirstResponder(focused.browser.focusView)
+            syncViewModeItem()
+        }
     }
 
     @objc private func cloudStatusChanged() {

@@ -1,47 +1,311 @@
 import AppKit
 
-/// A named set of tabs, each with one or two pane folders, reopened as a window.
-nonisolated struct Workspace: Codable, Equatable, Sendable {
-    var name: String
-    var tabs: [[String]]
+extension Notification.Name {
+    /// A workspace was saved, updated, renamed or deleted.
+    static let workspacesChanged = Notification.Name("StrataWorkspacesChanged")
 }
 
 enum Workspaces {
     private static let key = "workspaces"
 
+    /// Sorted by name.
     static var all: [Workspace] {
         get {
             guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
             return (try? JSONDecoder().decode([Workspace].self, from: data)) ?? []
         }
-        set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: key) }
+        set {
+            let sorted = newValue.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            UserDefaults.standard.set(try? JSONEncoder().encode(sorted), forKey: key)
+            NotificationCenter.default.post(name: .workspacesChanged, object: nil)
+        }
     }
 
-    /// Asks for a name and saves every tab of `window` (and its panes).
-    static func saveCurrent(from window: NSWindow) {
-        let windows = window.tabbedWindows ?? [window]
-        let tabs = windows.compactMap { ($0.windowController as? BrowserWindowController)?.snapshot }
-        guard !tabs.isEmpty else { return }
+    /// By name: spelled exactly, else ignoring case.
+    static func named(_ name: String) -> Workspace? {
+        let saved = all
+        return saved.first { $0.name == name } ?? saved.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+    }
 
+    // MARK: - Saving
+
+    /// `window`'s tabs (in tab order), each with its panes' folders and views.
+    static func controllers(of window: NSWindow) -> [BrowserWindowController] {
+        (window.tabbedWindows ?? [window]).compactMap { $0.windowController as? BrowserWindowController }
+    }
+
+    /// A workspace named `name` of `controllers`' tabs and panes, as they are now.
+    /// Panes waiting for a share keep its address, so the folder still opens next time.
+    static func workspace(named name: String, of controllers: [BrowserWindowController]) -> Workspace {
+        let tabs = controllers.map(\.snapshot)
+        var found = shares(for: tabs.flatMap { $0 }) ?? [:]
+        for controller in controllers { found.merge(controller.waitingShares) { current, _ in current } }
+        return Workspace(name: name, tabs: tabs, modes: controllers.map(\.snapshotModes), saved: Date(),
+                         shares: found.isEmpty ? nil : found)
+    }
+
+    /// The network shares `paths` are on, with the address each mounts from. Only the kinds Connect to Server supports
+    /// are kept, never with a password.
+    static func shares(for paths: [String]) -> [String: String]? {
+        var found: [String: String] = [:]
+        for path in paths {
+            guard let values = try? URL(fileURLWithPath: path).resourceValues(forKeys: [.volumeURLKey, .volumeURLForRemountingKey]),
+                  let volume = values.volume, let address = values.volumeURLForRemounting,
+                  ServerConnection.schemes.contains(address.scheme?.lowercased() ?? "") else { continue }
+            found[volume.path] = ServerConnection.displayString(address)
+        }
+        return found.isEmpty ? nil : found
+    }
+
+    /// Saves (or replaces, by name) `workspace`, and marks the windows it was made of as that workspace.
+    static func save(_ workspace: Workspace, from controllers: [BrowserWindowController]) {
+        var saved = all.filter { $0.name.caseInsensitiveCompare(workspace.name) != .orderedSame }
+        saved.append(workspace)
+        all = saved
+        controllers.forEach { $0.workspaceName = workspace.name }
+    }
+
+    /// Asks for a name (showing what's saved) and saves every tab of `window` and its panes.
+    static func saveCurrent(from window: NSWindow) {
+        let controllers = Self.controllers(of: window)
+        guard !controllers.isEmpty, let content = window.contentViewController else { return }
+        let sheet = SaveWorkspaceController(window: window)
+        content.presentAsSheet(sheet)
+    }
+
+    /// Saves `window`'s tabs and panes as they are now into the workspace it was opened from (or saved as).
+    static func update(_ name: String, from window: NSWindow) {
+        let controllers = Self.controllers(of: window)
+        guard !controllers.isEmpty, let existing = named(name) else { return }
+        save(workspace(named: existing.name, of: controllers), from: controllers)
+    }
+
+    enum RenameResult { case renamed, taken, gone }
+
+    static func rename(_ name: String, to newName: String) -> RenameResult {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        var saved = all
+        guard !trimmed.isEmpty, let index = saved.firstIndex(where: { $0.name == name }) else { return .gone }
+        if saved.contains(where: { $0.name != name && $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) { return .taken }
+        saved[index].name = trimmed
+        all = saved
+        for controller in openControllers(named: name) { controller.workspaceName = trimmed }
+        return .renamed
+    }
+
+    static func delete(_ name: String) {
+        all.removeAll { $0.name == name }
+        for controller in openControllers(named: name) { controller.workspaceName = nil }
+    }
+
+    /// Asks for a new name for `name`, as a sheet on `window` (or on its own).
+    static func askToRename(_ name: String, in window: NSWindow?) {
         let alert = NSAlert()
-        alert.messageText = String(localized: "Save Workspace")
-        alert.informativeText = String(localized: "Saves \(tabs.count) tabs and their panes, to reopen together from Window ▸ Workspaces.", comment: "plural")
+        alert.messageText = String(localized: "Rename Workspace")
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.stringValue = name
         field.placeholderString = String(localized: "Name", comment: "Placeholder: the new workspace's name")
-        field.stringValue = URL(fileURLWithPath: tabs[0][0]).lastPathComponent
         alert.accessoryView = field
-        alert.addButton(withTitle: String(localized: "Save", comment: "Button: save the workspace"))
+        alert.addButton(withTitle: String(localized: "Rename", comment: "Button: rename the workspace"))
         alert.addButton(withTitle: String(localized: "Cancel"))
         alert.window.initialFirstResponder = field
-        alert.beginSheetModal(for: window) { response in
-            MainActor.assumeIsolated {
-                guard response == .alertFirstButtonReturn else { return }
-                let name = field.stringValue.trimmingCharacters(in: .whitespaces)
-                guard !name.isEmpty else { return }
-                var saved = all.filter { $0.name != name }
-                saved.append(Workspace(name: name, tabs: tabs))
-                all = saved.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        let done: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .alertFirstButtonReturn else { return }
+            let newName = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !newName.isEmpty, newName != name else { return }
+            if rename(name, to: newName) == .taken {
+                let taken = NSAlert()
+                taken.messageText = String(localized: "There’s already a workspace named “\(newName)”")
+                taken.informativeText = String(localized: "Pick another name, or delete that workspace first.")
+                if let window { taken.beginSheetModal(for: window) } else { taken.runModal() }
             }
         }
+        if let window {
+            alert.beginSheetModal(for: window) { response in MainActor.assumeIsolated { done(response) } }
+        } else {
+            done(alert.runModal())
+        }
+    }
+
+    // MARK: - Opening
+
+    /// The windows (tabs) opened from, or saved as, the workspace `name`.
+    static func openControllers(named name: String) -> [BrowserWindowController] {
+        NSApp.windows.compactMap { $0.windowController as? BrowserWindowController }.filter { $0.workspaceName == name }
+    }
+
+    /// Opens `workspace` as one window with a tab per saved tab, or brings its window to the front when it's open.
+    /// Folders on a network share connect to it again; folders that are gone are left out, and said so.
+    static func open(_ workspace: Workspace) {
+        if !workspace.name.isEmpty, let open = openControllers(named: workspace.name).first(where: { !$0.isClosed }),
+           let window = open.window {
+            (window.tabGroup?.selectedWindow ?? window).makeKeyAndOrderFront(nil)
+            // Panes still waiting: a disk plugged in since shows its folder; a share is connected again.
+            let controllers = Self.controllers(of: window)
+            for controller in controllers {
+                for (index, folder) in controller.waitingPanes where folder.mountPoint == nil && FileManager.default.fileExists(atPath: folder.path) {
+                    controller.navigatePane(index, to: URL(fileURLWithPath: folder.path), mode: folder.mode)
+                }
+            }
+            if controllers.contains(where: { !$0.waitingShares.isEmpty }) { connect(controllers, of: workspace, missing: [], offline: []) }
+            return
+        }
+        let plan = WorkspacePlan(workspace) { FileManager.default.fileExists(atPath: $0) }
+        guard !plan.tabs.isEmpty else {
+            let alert = NSAlert()
+            alert.messageText = String(localized: "None of the folders in “\(workspace.name)” are there anymore")
+            alert.informativeText = list(plan.missing)
+            alert.addButton(withTitle: String(localized: "OK"))
+            alert.addButton(withTitle: String(localized: "Delete Workspace"))
+            if alert.runModal() == .alertSecondButtonReturn { delete(workspace.name) }
+            return
+        }
+        let controllers = openWindows(plan, name: workspace.name)
+        controllers.first?.window?.makeKeyAndOrderFront(nil)
+        connect(controllers, of: workspace, missing: plan.missing, offline: plan.offline)
+    }
+
+    /// One window with a tab per planned tab, in order. Panes whose folder can't be shown yet start at Home and wait
+    /// for it (see `WaitingFolder`).
+    @discardableResult
+    static func openWindows(_ plan: WorkspacePlan, name: String) -> [BrowserWindowController] {
+        guard let app = NSApp.delegate as? AppDelegate else { return [] }
+        var controllers: [BrowserWindowController] = []
+        for tab in plan.tabs {
+            let location = tab[0].waiting == nil ? URL(fileURLWithPath: tab[0].path) : Places.home
+            let second = tab.count > 1 ? (tab[1].waiting == nil ? URL(fileURLWithPath: tab[1].path) : Places.home) : nil
+            // Each tab goes after the one before, so they keep their order.
+            let controller = app.openWindow(at: location, secondPane: second, tabbedWith: controllers.last?.window)
+            controller.applyModes(tab.map { $0.waiting == nil ? $0.mode : nil })
+            for (index, pane) in tab.enumerated() {
+                if let waiting = pane.waiting { controller.wait(pane: index, for: waiting) }
+            }
+            controller.workspaceName = name.isEmpty ? nil : name
+            controllers.append(controller)
+        }
+        if let first = controllers.first?.window { first.tabGroup?.selectedWindow = first }
+        return controllers
+    }
+
+    /// Connects to the shares that `controllers`' panes wait for, one at a time (macOS may ask for a name and
+    /// password), with a sheet that can stop it; then shows each waiting pane's folder and says what didn't work out.
+    private static func connect(_ controllers: [BrowserWindowController], of workspace: Workspace, missing: [String], offline: [String]) {
+        var shares: [String: String] = [:]
+        for controller in controllers { shares.merge(controller.waitingShares) { current, _ in current } }
+        guard !shares.isEmpty, let window = controllers.first?.window, let content = window.contentViewController else {
+            return report(missing: missing, offline: offline, problems: [], of: workspace, controllers: controllers)
+        }
+        let sheet = WorkspaceConnectController()
+        content.presentAsSheet(sheet)
+        Task {
+            var mounted: [String: String] = [:]
+            var problems: [String] = []
+            for (mountPoint, address) in shares.sorted(by: { $0.key < $1.key }) {
+                guard !sheet.isCancelled else { break }
+                // Kept by Strata, but checked like a typed address: only the kinds of server Connect to Server allows.
+                guard case .success(let url) = ServerConnection.url(from: address) else {
+                    problems.append(address)
+                    continue
+                }
+                sheet.show(ServerConnection.displayString(url))
+                if let already = ServerConnection.mounted(url) {
+                    mounted[mountPoint] = already.path
+                    continue
+                }
+                let request = ServerConnection.Request()
+                sheet.onCancel = { request.cancel() }
+                switch await ServerConnection.mount(url, request: request) {
+                case .success(let at): mounted[mountPoint] = at.path
+                case .failure(let problem):
+                    problems.append(String(localized: "\(ServerConnection.displayString(url)): \(problem.message)",
+                                           comment: "A server address, then why it didn't connect"))
+                case nil: break
+                }
+            }
+            let cancelled = sheet.isCancelled
+            if content.presentedViewControllers?.contains(sheet) == true { content.dismiss(sheet) }
+            var gone = missing
+            // Tabs closed meanwhile are left alone.
+            for controller in controllers where !controller.isClosed {
+                for (index, folder) in controller.waitingPanes {
+                    guard let mountPoint = folder.mountPoint, let at = mounted[mountPoint] else { continue }
+                    let path = WorkspacePlan.path(folder.path, from: mountPoint, to: at)
+                    if FileManager.default.fileExists(atPath: path) {
+                        controller.navigatePane(index, to: URL(fileURLWithPath: path), mode: folder.mode)
+                    } else {
+                        gone.append(folder.path)
+                    }
+                }
+            }
+            report(missing: gone, offline: offline, problems: cancelled ? [] : problems, of: workspace, controllers: controllers)
+        }
+    }
+
+    /// Says which folders weren't there (offering to take them out of the workspace), which are on disks that aren't
+    /// connected (kept), and which shares didn't connect.
+    private static func report(missing: [String], offline: [String], problems: [String], of workspace: Workspace,
+                               controllers: [BrowserWindowController]) {
+        guard !missing.isEmpty || !offline.isEmpty || !problems.isEmpty,
+              let window = controllers.first(where: { !$0.isClosed })?.window, window.isVisible else { return }
+        let alert = NSAlert()
+        var sections: [String] = []
+        if !missing.isEmpty {
+            alert.messageText = String(localized: "Some folders in “\(workspace.name)” aren’t there anymore")
+            sections.append(list(missing))
+        } else if !offline.isEmpty {
+            alert.messageText = String(localized: "Some folders in “\(workspace.name)” are on a disk that isn’t connected")
+        } else {
+            alert.messageText = String(localized: "Some servers in “\(workspace.name)” didn’t connect")
+        }
+        if !offline.isEmpty {
+            sections.append(list(offline) + "\n" + String(localized: "Those panes show your home folder for now. Connect the disk, then open the workspace again."))
+        }
+        if !problems.isEmpty { sections.append(problems.joined(separator: "\n")) }
+        alert.informativeText = sections.joined(separator: "\n\n")
+        alert.addButton(withTitle: String(localized: "OK"))
+        let canPrune = !missing.isEmpty && !workspace.name.isEmpty && named(workspace.name) != nil
+        if canPrune { alert.addButton(withTitle: String(localized: "Remove from Workspace", comment: "Button: take the missing folders out of the saved workspace")) }
+        alert.beginSheetModal(for: window) { response in
+            MainActor.assumeIsolated {
+                guard canPrune, response == .alertSecondButtonReturn, let saved = named(workspace.name) else { return }
+                let gone = Set(missing)
+                var others = all.filter { $0.name != saved.name }
+                others.append(saved.removing(gone))
+                all = others
+                // Panes still kept for those folders let them go too.
+                for controller in controllers where !controller.isClosed {
+                    for (index, folder) in controller.waitingPanes where gone.contains(folder.path) { controller.stopWaiting(pane: index) }
+                }
+            }
+        }
+    }
+
+    /// Folders as a short list: a few, then how many more.
+    private static func list(_ paths: [String]) -> String {
+        let shown = paths.prefix(5).map { Format.tildePath(URL(fileURLWithPath: $0)) }
+        var lines = shown
+        if paths.count > shown.count { lines.append(String(localized: "and \(paths.count - shown.count) more", comment: "plural")) }
+        return lines.joined(separator: "\n")
+    }
+
+    /// "3 tabs · Dual pane", for menus and the palette.
+    static func summary(_ workspace: Workspace) -> String {
+        var parts = [String(localized: "\(workspace.tabs.count) tabs", comment: "plural")]
+        if workspace.isDualPane { parts.append(String(localized: "Dual Pane")) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// What a workspace's row looks like: two panes, several tabs, or one window.
+    static func symbol(_ workspace: Workspace) -> String {
+        workspace.isDualPane ? "rectangle.split.2x1" : workspace.tabs.count > 1 ? "rectangle.stack" : "macwindow"
+    }
+
+    /// Its tabs' folders and when it was saved, for a tooltip.
+    static func help(_ workspace: Workspace) -> String {
+        var lines = workspace.tabs.map { tab in
+            tab.map { FileManager.default.displayName(atPath: $0) }.joined(separator: "  |  ")
+        }
+        if let saved = workspace.saved { lines.append(String(localized: "Saved \(Format.date(saved))", comment: "Tooltip: when the workspace was saved")) }
+        return lines.joined(separator: "\n")
     }
 }

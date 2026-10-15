@@ -82,10 +82,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate()
     }
 
-    /// strata://search?q=…&in=…, strata://open?path=…, strata://recents, strata://duplicates
+    /// strata://search?q=…&in=…, strata://open?path=…, strata://workspace?name=…, strata://recents, strata://duplicates
     private func handle(_ url: URL) {
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         let value = { (name: String) in items.first { $0.name == name }?.value }
+        // A workspace opens its own window.
+        if url.host == "workspace" {
+            guard let name = value("name") else { return }
+            NSApp.activate()
+            if let workspace = Workspaces.named(name) { Workspaces.open(workspace) } else { noSuchWorkspace() }
+            return
+        }
         let controller = (NSApp.keyWindow?.windowController as? BrowserWindowController) ?? windowControllers.first ?? openWindow(at: Places.home)
         switch url.host {
         case "search":
@@ -114,6 +121,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         controller.showWindow(nil)
         NSApp.activate()
+    }
+
+    /// The name came from a link (or the command line): it isn't repeated back, and nothing blocks.
+    private func noSuchWorkspace() {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "There’s no workspace with that name")
+        alert.informativeText = String(localized: "Your workspaces are in the sidebar and in Window ▸ Workspaces.")
+        if let window = NSApp.keyWindow ?? windowControllers.first?.window {
+            alert.beginSheetModal(for: window)
+        } else {
+            NSSound.beep()
+        }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -168,8 +187,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for window in NSApp.orderedWindows where window.windowController is BrowserWindowController {
             let tabs = window.tabbedWindows ?? [window]
             guard let first = tabs.first, seen.insert(ObjectIdentifier(first)).inserted else { continue }
-            let snapshots = tabs.compactMap { ($0.windowController as? BrowserWindowController)?.snapshot }
-            if !snapshots.isEmpty { windows.append(Workspace(name: "", tabs: snapshots)) }
+            let controllers = tabs.compactMap { $0.windowController as? BrowserWindowController }
+            guard !controllers.isEmpty else { continue }
+            // The window remembers the workspace it came from, so Update and bringing it forward still work, and panes
+            // waiting for a share keep its address.
+            windows.append(Workspaces.workspace(named: controllers[0].groupWorkspaceName ?? "", of: controllers))
         }
         UserDefaults.standard.set(try? JSONEncoder().encode(windows), forKey: Self.sessionKey)
     }
@@ -181,9 +203,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var opened = false
         // Back to front, so the frontmost window ends up in front again. Folders that are gone are skipped.
         for window in windows.reversed() {
-            let tabs = window.tabs.filter { tab in tab.first.map { FileManager.default.fileExists(atPath: $0) } ?? false }
-            guard !tabs.isEmpty else { continue }
-            open(Workspace(name: window.name, tabs: tabs))
+            // Shares aren't connected at launch (no login windows out of nowhere): their panes wait, and opening the
+            // workspace connects them.
+            let plan = WorkspacePlan(window) { FileManager.default.fileExists(atPath: $0) }
+            guard !plan.tabs.isEmpty else { continue }
+            Workspaces.openWindows(plan, name: window.name.isEmpty ? "" : Workspaces.named(window.name)?.name ?? "")
             opened = true
         }
         return opened
@@ -199,17 +223,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if item.action == #selector(toggleShelf(_:)) { item.state = ShelfPanel.shared.isVisible ? .on : .off }
         if item.action == #selector(checkForUpdates(_:)) { return Updates.shared.canCheck }
         return true
-    }
-
-    /// Reopens a saved workspace as one window with a tab per saved tab.
-    func open(_ workspace: Workspace) {
-        var first: NSWindow?
-        for tab in workspace.tabs {
-            guard let path = tab.first else { continue }
-            let second = tab.count > 1 ? URL(fileURLWithPath: tab[1]) : nil
-            let controller = openWindow(at: URL(fileURLWithPath: path), secondPane: second, tabbedWith: first)
-            if first == nil { first = controller.window }
-        }
     }
 
     @discardableResult

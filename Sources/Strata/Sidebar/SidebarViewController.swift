@@ -27,6 +27,8 @@ enum SidebarTarget: Equatable {
     case largeFiles
     /// The containers of the engine Strata found.
     case containers
+    /// A saved workspace, by name: opens its window (it's never where you are, so it's never selected).
+    case workspace(String)
 }
 
 final class SidebarItem {
@@ -105,6 +107,8 @@ final class SidebarViewController: NSViewController {
         outline.allowsEmptySelection = true
         outline.dataSource = self
         outline.delegate = self
+        outline.target = self
+        outline.action = #selector(rowClicked)
         outline.registerForDraggedTypes(FileDrop.types + [.sidebarFavorite])
         outline.onDragEnd = { [weak self] in self?.springLoader.cancel() }
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
@@ -120,6 +124,7 @@ final class SidebarViewController: NSViewController {
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .savedSearchesChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .workspacesChanged, object: nil)
         // A tag used for the first time joins the Tags section.
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .tagsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .favoritesChanged, object: nil)
@@ -139,6 +144,15 @@ final class SidebarViewController: NSViewController {
             .prefix(5)
             .map { SidebarItem(Place(title: FileManager.default.displayName(atPath: $0.path), url: $0, symbol: "folder")) }
         sections = [SidebarSection(id: "favorites", title: String(localized: "Favorites", comment: "Sidebar section title"), items: favorites)]
+        let workspaces = Workspaces.all.map { workspace in
+            let item = SidebarItem(title: workspace.name, target: .workspace(workspace.name), symbol: Workspaces.symbol(workspace))
+            item.help = Workspaces.help(workspace)
+            return item
+        }
+        if !workspaces.isEmpty {
+            sections.append(SidebarSection(id: "workspaces", title: String(localized: "Workspaces", comment: "Sidebar section title: saved sets of tabs and panes"),
+                                           items: workspaces))
+        }
         let searches = SavedSearches.all.map { SidebarItem(title: $0.name, target: .search($0), symbol: "magnifyingglass") }
         if !searches.isEmpty {
             sections.append(SidebarSection(id: "searches", title: String(localized: "Searches", comment: "Sidebar section title: saved searches"), items: searches))
@@ -213,6 +227,7 @@ final class SidebarViewController: NSViewController {
         case (.recents, .recents?), (.duplicates, .duplicates?), (.largeFiles, .largeFiles?): true
         case (.search(let x), .search(let y)?): x == y
         case (.containers, .containers?): true
+        case (.workspace(let x), .workspace(let y)?): x == y
         // Anywhere in the containers or their files.
         case (.containers, .folder(let url)?): ContainerCopies.contains(url)
         default: false
@@ -244,8 +259,12 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         item is SidebarSection
     }
 
+    /// A workspace opens a window when clicked (`rowClicked`): it's never where you are, so it's never selected, and
+    /// moving through the sidebar with the arrow keys passes it by.
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
-        item is SidebarItem
+        guard let item = item as? SidebarItem else { return false }
+        if case .workspace = item.target { return false }
+        return true
     }
 
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
@@ -450,6 +469,10 @@ extension SidebarViewController: NSMenuDelegate {
         menu.removeAllItems()
         guard let item = outline.item(atRow: outline.clickedRow) as? SidebarItem else { return }
         if case .containers = item.target { return }
+        if case .workspace(let name) = item.target {
+            addWorkspaceItems(name, to: menu)
+            return
+        }
         // Tags you added can leave the sidebar; the seven colored ones stay, like Finder's.
         if item.tint != nil {
             let name = item.tagName ?? item.title
@@ -490,6 +513,51 @@ extension SidebarViewController: NSMenuDelegate {
             menu.addItem(.separator())
             add("Eject “\(item.title)”", #selector(ejectItem(_:)), url)
         }
+    }
+
+    @objc private func rowClicked() {
+        guard let item = outline.item(atRow: outline.clickedRow) as? SidebarItem, case .workspace(let name) = item.target,
+              let workspace = Workspaces.named(name) else { return }
+        Workspaces.open(workspace)
+    }
+
+    /// Open, save this window into it (only the window it belongs to), rename or delete.
+    private func addWorkspaceItems(_ name: String, to menu: NSMenu) {
+        func entry(_ title: String, _ action: Selector) {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            item.representedObject = name
+            menu.addItem(item)
+        }
+        entry(String(localized: "Open", comment: "Sidebar menu: open the saved workspace"), #selector(openWorkspace(_:)))
+        menu.addItem(.separator())
+        if (view.window?.windowController as? BrowserWindowController)?.groupWorkspaceName == name {
+            entry(String(localized: "Update with This Window", comment: "Sidebar menu: save this window's tabs and panes into the workspace"),
+                  #selector(updateWorkspace(_:)))
+        }
+        entry(String(localized: "Rename…"), #selector(renameWorkspace(_:)))
+        menu.addItem(.separator())
+        entry(String(localized: "Delete Workspace"), #selector(deleteWorkspace(_:)))
+    }
+
+    @objc private func openWorkspace(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String, let workspace = Workspaces.named(name) else { return }
+        Workspaces.open(workspace)
+    }
+
+    @objc private func updateWorkspace(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String, let window = view.window else { return }
+        Workspaces.update(name, from: window)
+    }
+
+    @objc private func renameWorkspace(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        Workspaces.askToRename(name, in: view.window)
+    }
+
+    @objc private func deleteWorkspace(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        Workspaces.delete(name)
     }
 
     private func add(_ title: String.LocalizationValue, _ action: Selector, _ url: URL) {

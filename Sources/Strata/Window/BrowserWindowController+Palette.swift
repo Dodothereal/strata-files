@@ -76,7 +76,20 @@ extension BrowserWindowController {
             items.append(PaletteItem(title: place.title, subtitle: Format.tildePath(place.url), icon: IconCache.shared.icon(forPath: place.url.path),
                                      kind: .folder, boost: 4, url: place.url) { [weak self] in self?.navigate(to: place.url) })
         }
-        return items + commandItems()
+        return items + workspaceItems() + commandItems()
+    }
+
+    /// Saved workspaces: the one this window came from isn't offered (it's here already).
+    private func workspaceItems() -> [PaletteItem] {
+        let current = groupWorkspaceName
+        return Workspaces.all.filter { $0.name != current }.map { workspace in
+            let image = NSImage(systemSymbolName: Workspaces.symbol(workspace), accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
+            return PaletteItem(title: workspace.name, subtitle: Workspaces.summary(workspace), icon: image, kind: .workspace,
+                               keywords: workspace.tabs.joined().map { FileManager.default.displayName(atPath: $0) }, boost: 10) {
+                Workspaces.open(workspace)
+            }
+        }
     }
 
     private func commandItems() -> [PaletteItem] {
@@ -136,6 +149,10 @@ extension BrowserWindowController {
                 (NSApp.delegate as? AppDelegate)?.emptyTrash(nil)
             },
             command("Go to Folder…", "folder.badge.questionmark", "⇧⌘G") { [weak self] in self?.goToFolder(nil) },
+            command("Save Workspace…", "rectangle.stack.badge.plus", nil, keywords: ["Layout", "Setup", "Session", "Tabs"]) { [weak self] in
+                guard let window = self?.window else { return }
+                Workspaces.saveCurrent(from: window)
+            },
             command("Connect to Server…", "network", "⌥⌘K", keywords: ["SMB", "Network", "Share", "Mount", "NAS", "WebDAV"]) { [weak self] in
                 self?.connectToServer(nil)
             },
@@ -166,6 +183,13 @@ extension BrowserWindowController {
                     self?.browser.deleteImmediately(nil)
                 },
             ], at: 0)
+        }
+        if let name = groupWorkspaceName, let workspace = Workspaces.named(name) {
+            commands.append(localizedCommand(String(localized: "Update “\(workspace.name)”", comment: "Window ▸ Workspaces: save this window into the workspace it was opened from"),
+                                             "arrow.triangle.2.circlepath", nil, keywords: ["Workspace", "Save"]) { [weak self] in
+                guard let window = self?.window else { return }
+                Workspaces.update(workspace.name, from: window)
+            })
         }
         if paneFolders != nil {
             commands.append(command("Compare with Other Pane…", "arrow.left.arrow.right.square", nil,
