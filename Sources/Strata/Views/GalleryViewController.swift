@@ -94,6 +94,9 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         detailLabel.alignment = .center
         detailLabel.lineBreakMode = .byTruncatingTail
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
+        // A long name or description truncates instead of holding the pane wider (dragging the divider between panes).
+        nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        detailLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let separator = NSBox()
         separator.boxType = .separator
@@ -104,13 +107,13 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         let root = GalleryRootView()
         root.controller = self
         root.wantsLayer = true
-        root.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
         for subview in [previewBox, nameLabel, detailLabel, separator, stripScroll, dropHighlight] as [NSView] { root.addSubview(subview) }
         let guide = root.safeAreaLayoutGuide
         // The icon fills what it can of the box, square, up to 256 points (above the image's own small size, which
-        // the view would otherwise hug).
+        // the view would otherwise hug). Below the panes' holding priority: the icon shrinks with a narrow pane rather
+        // than holding the divider (or the window) wider.
         let preferredIcon = iconView.widthAnchor.constraint(equalToConstant: 256)
-        preferredIcon.priority = NSLayoutConstraint.Priority(700)
+        preferredIcon.priority = NSLayoutConstraint.Priority(200)
         iconView.setContentHuggingPriority(.init(1), for: .horizontal)
         iconView.setContentHuggingPriority(.init(1), for: .vertical)
         iconView.setContentCompressionResistancePriority(.init(1), for: .horizontal)
@@ -554,9 +557,17 @@ final class GalleryRootView: NSView {
         return controller.contextMenu(at: nil)
     }
 
+    // The background is worked out as it's drawn, in this view's light or dark: a color worked out when the gallery
+    // was made could be the other one (made before the Mac switched to dark, say), and nothing would put it right.
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        effectiveAppearance.performAsCurrentDrawingAppearance { layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor }
+    }
+
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        effectiveAppearance.performAsCurrentDrawingAppearance { layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor }
+        needsDisplay = true
         controller?.refreshVisibleItems()
     }
 }

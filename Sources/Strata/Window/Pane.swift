@@ -229,6 +229,7 @@ private final class PaneHeaderView: NSVisualEffectView {
 final class PaneContainerViewController: NSSplitViewController {
     init(first: PaneHostViewController) {
         super.init(nibName: nil, bundle: nil)
+        splitView = PaneSplitView()
         splitView.isVertical = true
         splitView.dividerStyle = .thin
         add(first)
@@ -253,5 +254,29 @@ final class PaneContainerViewController: NSSplitViewController {
     func remove(_ host: PaneHostViewController) {
         guard let item = splitViewItems.first(where: { $0.viewController === host }) else { return }
         removeSplitViewItem(item)
+    }
+}
+
+/// The line between the panes: a hairline like the app's others, from under the toolbar down (the toolbar spans both
+/// panes, so the line doesn't cut through it).
+private final class PaneSplitView: NSSplitView {
+    override var dividerColor: NSColor { .separatorColor }
+
+    override func drawDivider(in rect: NSRect) {
+        // Split views are flipped: the safe area's top is the toolbar's bottom (or the search bar's, while it shows).
+        var line = rect
+        line.origin.y = max(rect.minY, safeAreaRect.minY)
+        line.size.height = max(0, rect.maxY - line.minY)
+        super.drawDivider(in: line)
+    }
+
+    /// The toolbar showing or hiding (full screen, the search bar) moves where the line starts.
+    private var drawnTop: CGFloat?
+
+    override func layout() {
+        super.layout()
+        guard drawnTop != safeAreaInsets.top else { return }
+        drawnTop = safeAreaInsets.top
+        needsDisplay = true
     }
 }
