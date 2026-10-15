@@ -6,7 +6,7 @@ import Foundation
 /// (or folder directly inside one) whose name matches the first part, the rest walks down the tree, so never-opened
 /// folders are found too.
 /// A trailing `/` lists everything inside the matched folder.
-final class PathQuery {
+nonisolated final class PathQuery {
     struct Hit {
         let url: URL
         let isFolder: Bool

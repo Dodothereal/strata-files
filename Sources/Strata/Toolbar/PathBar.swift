@@ -1,7 +1,8 @@
 import AppKit
 
 /// The address bar. Shows the location as clickable breadcrumbs; click empty space or press ⌘L to type a path, with
-/// Tab completion. The chevrons between crumbs list that folder's subfolders for sideways jumps.
+/// Tab completion and a list of matching folders (or folders with the typed name anywhere). The chevrons between
+/// crumbs list that folder's subfolders for sideways jumps.
 final class PathBar: NSView, NSTextFieldDelegate {
     /// Folder to show, plus an item inside it to select (when a file path was typed).
     var onNavigate: ((URL, URL?) -> Void)?
@@ -28,6 +29,9 @@ final class PathBar: NSView, NSTextFieldDelegate {
     private let crumbs = NSStackView()
     private let field = NSTextField()
     private(set) var isEditing = false
+    private let suggestions = PathSuggestions()
+    private let suggestionList = PathSuggestionList()
+    private var suggesting: Task<Void, Never>?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -56,6 +60,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         field.delegate = self
         field.isHidden = true
         addSubview(field)
+        suggestionList.onPick = { [weak self] suggestion in self?.go(to: suggestion) }
 
         // A wish, weaker than the toolbar's own sizing: the bar gives up width before other items overflow.
         let preferred = widthAnchor.constraint(equalToConstant: 520)
@@ -192,6 +197,12 @@ final class PathBar: NSView, NSTextFieldDelegate {
     func beginEditing() {
         guard let url, !isEditing else { return }
         isEditing = true
+        suggestions.begin(at: url)
+        if let window {
+            for name in [NSWindow.didResizeNotification, NSWindow.didMoveNotification] {
+                NotificationCenter.default.addObserver(self, selector: #selector(windowMoved), name: name, object: window)
+            }
+        }
         crumbs.isHidden = true
         field.isHidden = false
         var text = Format.tildePath(url)
@@ -204,6 +215,12 @@ final class PathBar: NSView, NSTextFieldDelegate {
     private func endEditing(restoreFocus: Bool) {
         guard isEditing else { return }
         isEditing = false
+        closeSuggestions()
+        if let window {
+            for name in [NSWindow.didResizeNotification, NSWindow.didMoveNotification] {
+                NotificationCenter.default.removeObserver(self, name: name, object: window)
+            }
+        }
         field.isHidden = true
         crumbs.isHidden = false
         rebuild()
@@ -214,20 +231,86 @@ final class PathBar: NSView, NSTextFieldDelegate {
         endEditing(restoreFocus: false)
     }
 
+    func controlTextDidChange(_ notification: Notification) {
+        suggestionList.resetChoice()
+        updateSuggestions()
+    }
+
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         switch selector {
         case #selector(NSResponder.insertNewline(_:)):
             commit()
             return true
         case #selector(NSResponder.cancelOperation(_:)):
-            endEditing(restoreFocus: true)
+            // The list closes first; a second Esc stops editing.
+            if suggestionList.isVisible {
+                closeSuggestions()
+            } else {
+                endEditing(restoreFocus: true)
+            }
             return true
         case #selector(NSResponder.insertTab(_:)):
-            complete()
+            if suggestionList.hasChosen, let chosen = suggestionList.selected {
+                complete(to: chosen.url)
+            } else {
+                complete()
+            }
+            return true
+        case #selector(NSResponder.moveDown(_:)) where suggestionList.isVisible:
+            suggestionList.move(1)
+            return true
+        case #selector(NSResponder.moveUp(_:)) where suggestionList.isVisible:
+            suggestionList.move(-1)
             return true
         default:
             return false
         }
+    }
+
+    // MARK: - Suggestions
+
+    /// Looks again a moment after typing stops; what was being looked up for older text is dropped.
+    private func updateSuggestions() {
+        suggesting?.cancel()
+        let text = field.stringValue
+        let current = url
+        suggesting = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(70))
+            guard let self, !Task.isCancelled else { return }
+            let found = await suggestions.suggestions(for: text, in: current)
+            guard !Task.isCancelled, isEditing, field.stringValue == text else { return }
+            // Nothing to add when the only suggestion is the folder already typed.
+            let typed = resolvedPath()
+            if found.count == 1, found[0].url.standardizedFileURL.path == URL(fileURLWithPath: typed).standardizedFileURL.path {
+                return closeSuggestions()
+            }
+            var isFolder: ObjCBool = false
+            let typedIsThere = FileManager.default.fileExists(atPath: typed, isDirectory: &isFolder)
+            suggestionList.show(found, for: text, highlightFirst: !typedIsThere, below: self)
+        }
+    }
+
+    /// The list doesn't follow a window being moved or resized: it closes (typing brings it back).
+    @objc private func windowMoved() {
+        suggestionList.close()
+    }
+
+    private func closeSuggestions() {
+        suggesting?.cancel()
+        suggesting = nil
+        suggestionList.close()
+    }
+
+    private func go(to suggestion: PathSuggestion) {
+        endEditing(restoreFocus: true)
+        onNavigate?(suggestion.url.standardizedFileURL, nil)
+    }
+
+    /// Tab on a chosen suggestion: its path goes in the field, to keep typing inside it.
+    private func complete(to folder: URL) {
+        field.stringValue = Format.tildePath(folder) + "/"
+        field.currentEditor()?.selectedRange = NSRange(location: (field.stringValue as NSString).length, length: 0)
+        updateSuggestions()
     }
 
     private func resolvedPath() -> String {
@@ -237,11 +320,23 @@ final class PathBar: NSView, NSTextFieldDelegate {
         return url!.appending(path: expanded).path
     }
 
+    /// Return: a suggestion picked with the arrows, else what's typed if it's there, else the best suggestion for what's
+    /// typed now (looked up first if the list is for older text).
     private func commit() {
+        if suggestionList.hasChosen, let chosen = suggestionList.selected { return go(to: chosen) }
         let path = resolvedPath()
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else {
-            shake()
+            let text = field.stringValue
+            if suggestionList.forText == text, let best = suggestionList.items.first { return go(to: best) }
+            suggesting?.cancel()
+            let current = url
+            suggesting = Task { [weak self] in
+                guard let self else { return }
+                let found = await suggestions.suggestions(for: text, in: current)
+                guard !Task.isCancelled, isEditing, field.stringValue == text else { return }
+                if let best = found.first { go(to: best) } else { shake() }
+            }
             return
         }
         let target = URL(fileURLWithPath: path).standardizedFileURL
@@ -287,6 +382,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         let newPath = (directory as NSString).appendingPathComponent(completed)
         field.stringValue = (newPath as NSString).abbreviatingWithTildeInPath + (matches.count == 1 ? "/" : "")
         field.currentEditor()?.selectedRange = NSRange(location: (field.stringValue as NSString).length, length: 0)
+        updateSuggestions()
     }
 
     private func shake() {
