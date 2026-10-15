@@ -64,11 +64,18 @@ nonisolated final class IndexWorker: @unchecked Sendable {
     }
 
     /// Writes the index now (used at quit). Skipped while a full scan is still running: the scan holds the queue, and
-    /// the index on disk (or the next launch's scan) covers it.
+    /// the index on disk (or the next launch's scan) covers it. Never waits much past quit's deadline: work in progress
+    /// stops by then, and if the queue is still busy (a disk slow to answer), the next launch catches up from the last
+    /// save (saves are atomic, so one cut short by quitting leaves the previous file).
     func saveNow() {
         guard !scanning.withLock({ $0 }) else { return }
         quitDeadline.withLock { $0 = DispatchTime.now().uptimeNanoseconds + 2_000_000_000 }
-        queue.sync { self.save() }
+        let saved = DispatchSemaphore(value: 0)
+        queue.async {
+            self.save()
+            saved.signal()
+        }
+        if saved.wait(timeout: .now() + 3) == .timedOut { log.info("Index still busy at quit; the next launch catches up") }
     }
 
     /// Whether quit's deadline has passed (any thread).
@@ -271,7 +278,11 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         guard let config, let store, !stopForQuit() else { return }
         var items: [ScannedItem] = []
         var names: [UInt8] = []
-        let error = BulkDirectoryReader.read(path, items: &items, names: &names, buffer: readBuffer)
+        let error = BulkDirectoryReader.read(path, items: &items, names: &names, buffer: readBuffer) { self.pastQuitDeadline }
+        if error == ECANCELED {
+            interrupted = true
+            return
+        }
         if error == ENOENT || error == ENOTDIR {
             store.write { store.remove(id) }
             return

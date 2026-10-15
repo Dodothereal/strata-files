@@ -10,8 +10,11 @@ nonisolated enum BulkDirectoryReader {
         "logicx", "fcpbundle", "imovielibrary", "dSYM", "xcarchive", "docset", "safariextz", "wdgt", "saver", "theater",
     ]
 
-    /// Lists `path`, appending entries to `items` and their names to `names`. Returns `errno` on failure.
-    static func read(_ path: String, items: inout [ScannedItem], names: inout [UInt8], buffer: UnsafeMutableRawBufferPointer) -> Int32 {
+    /// Lists `path`, appending entries to `items` and their names to `names`. Returns `errno` on failure, and
+    /// `ECANCELED` when `shouldStop` says so between batches (a folder with a huge number of entries, or a slow disk,
+    /// mustn't hold up quitting).
+    static func read(_ path: String, items: inout [ScannedItem], names: inout [UInt8], buffer: UnsafeMutableRawBufferPointer,
+                     shouldStop: () -> Bool = { false }) -> Int32 {
         let fd = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
         guard fd >= 0 else { return errno }
         defer { close(fd) }
@@ -25,6 +28,7 @@ nonisolated enum BulkDirectoryReader {
         request.fileattr = attrgroup_t(ATTR_FILE_DATALENGTH)
 
         while true {
+            if shouldStop() { return ECANCELED }
             let count = getattrlistbulk(fd, &request, buffer.baseAddress, buffer.count, 0)
             if count < 0 { return errno }
             if count == 0 { return 0 }
@@ -188,7 +192,7 @@ nonisolated final class IndexScanner: @unchecked Sendable {
         while let job = nextJob() {
             items.removeAll(keepingCapacity: true)
             names.removeAll(keepingCapacity: true)
-            _ = BulkDirectoryReader.read(job.path, items: &items, names: &names, buffer: buffer)
+            _ = BulkDirectoryReader.read(job.path, items: &items, names: &names, buffer: buffer) { self.isCancelled }
             // Work out child folder paths before taking the lock; only id assignment happens inside it.
             let prefix = job.path.hasSuffix("/") ? job.path : job.path + "/"
             var folders: [(offset: Int, path: String, noise: Bool)] = []
