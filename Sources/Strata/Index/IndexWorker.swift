@@ -30,6 +30,11 @@ nonisolated final class IndexWorker: @unchecked Sendable {
     private var saveScheduled = false
     /// A full scan holds `queue` for its whole run; read from other threads, so `saveNow` never waits on it.
     private let scanning = OSAllocatedUnfairLock(initialState: false)
+    /// Set at quit: catching up (a deep refresh can take minutes on a busy disk) gives up past it rather than hold quit.
+    private let quitDeadline = OSAllocatedUnfairLock<UInt64?>(initialState: nil)
+    /// Catching up stopped part way: the index isn't saved, so the file on disk keeps its older event ID and the next
+    /// launch replays those changes.
+    private var interrupted = false
     private let events = FSEventsStream()
 
     /// Called with each new store (after loading or a full rebuild) and every phase change.
@@ -62,7 +67,20 @@ nonisolated final class IndexWorker: @unchecked Sendable {
     /// the index on disk (or the next launch's scan) covers it.
     func saveNow() {
         guard !scanning.withLock({ $0 }) else { return }
+        quitDeadline.withLock { $0 = DispatchTime.now().uptimeNanoseconds + 2_000_000_000 }
         queue.sync { self.save() }
+    }
+
+    /// Whether quit's deadline has passed (any thread).
+    private var pastQuitDeadline: Bool {
+        quitDeadline.withLock { $0.map { DispatchTime.now().uptimeNanoseconds > $0 } ?? false }
+    }
+
+    /// Past the quit deadline: work in progress stops (and marks the index as not to be saved). On `queue`.
+    private func stopForQuit() -> Bool {
+        guard pastQuitDeadline else { return false }
+        interrupted = true
+        return true
     }
 
     // MARK: - Lifecycle (on `queue`)
@@ -141,11 +159,11 @@ nonisolated final class IndexWorker: @unchecked Sendable {
 
     private func save() {
         // An invalidated index must not be saved as current: the older file on disk replays the invalidating event
-        // at the next launch and rebuilds then.
-        guard !rescanNeeded else { return }
+        // at the next launch and rebuilds then. The same goes for one whose catching up was cut short at quit.
+        guard !rescanNeeded, !interrupted else { return }
         // Apply events already received first: the saved event ID says they're in the file.
         if !pending.isEmpty { flush() }
-        guard let config, let store, dirty || !FileManager.default.fileExists(atPath: config.file.path) else { return }
+        guard !interrupted, let config, let store, dirty || !FileManager.default.fileExists(atPath: config.file.path) else { return }
         try? IndexPersistence.save(store, eventID: lastEventID, excluded: Array(config.excluded), to: config.file)
         dirty = false
     }
@@ -182,6 +200,11 @@ nonisolated final class IndexWorker: @unchecked Sendable {
     private func flush() {
         if rescanNeeded {
             pending.removeAll()
+            // Quitting: no full scan now (the next launch replays the invalidating event and rescans).
+            if quitDeadline.withLock({ $0 != nil }) {
+                interrupted = true
+                return
+            }
             rebuild()
             return
         }
@@ -190,6 +213,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         pending.removeAll()
         var deepRoots: [String] = []
         for (path, deep) in work {
+            if stopForQuit() { break }
             // A deep refresh of a parent already covers this folder.
             if deepRoots.contains(where: { path.hasPrefix($0 + "/") }) { continue }
             if isExcluded(path, config) { continue }
@@ -239,7 +263,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
     /// Re-reads one folder and applies the differences. New subfolders are scanned in full; with `deep`, existing
     /// subfolders are refreshed too (FSEvents asks for that when it coalesced too many changes).
     private func refreshFolder(_ id: Int32, _ path: String, deep: Bool) {
-        guard let config, let store else { return }
+        guard let config, let store, !stopForQuit() else { return }
         var items: [ScannedItem] = []
         var names: [UInt8] = []
         let error = BulkDirectoryReader.read(path, items: &items, names: &names, buffer: readBuffer)
@@ -304,7 +328,15 @@ nonisolated final class IndexWorker: @unchecked Sendable {
             return firstNew
         }
         if !newFolders.isEmpty {
-            IndexScanner(store: store, excluded: config.excluded, noiseFolders: config.noise).scan(newFolders, threads: 4)
+            let scanner = IndexScanner(store: store, excluded: config.excluded, noiseFolders: config.noise)
+            // A big new folder can take a while: quitting stops it too.
+            let watchdog = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+            watchdog.schedule(deadline: .now() + 0.25, repeating: 0.25)
+            watchdog.setEventHandler { [weak self] in if self?.pastQuitDeadline == true { scanner.cancel() } }
+            watchdog.resume()
+            scanner.scan(newFolders, threads: 4)
+            watchdog.cancel()
+            if scanner.isCancelled { interrupted = true }
         }
         store.write { store.integrateNew(from: firstNew) }
         for folder in existingFolders { refreshFolder(folder.id, folder.path, deep: true) }
