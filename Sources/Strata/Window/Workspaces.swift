@@ -165,22 +165,21 @@ enum Workspaces {
         return errno != ENOENT && errno != ENOTDIR
     }
 
-    static func open(_ workspace: Workspace) {
+    ///
+    /// Opened from its own window (`from`: the sidebar, the menus), the window goes back to the workspace as it was
+    /// saved, in the same place on screen; bringing it forward would do nothing you could see.
+    static func open(_ workspace: Workspace, from current: NSWindow? = nil) {
+        var replacing: NSWindow?
         if !workspace.name.isEmpty, let open = openControllers(named: workspace.name).first(where: { !$0.isClosed }),
            let window = open.window {
-            if connecting.contains(workspace.name) { return (window.tabGroup?.selectedWindow ?? window).makeKeyAndOrderFront(nil) }
-            (window.tabGroup?.selectedWindow ?? window).makeKeyAndOrderFront(nil)
-            // Panes still waiting: a disk plugged in since shows its folder; a share is connected again.
-            let controllers = Self.controllers(of: window)
-            for controller in controllers {
-                for (index, folder) in controller.waitingPanes where folder.mountPoint == nil && FileManager.default.fileExists(atPath: folder.path) {
-                    controller.navigatePane(index, to: URL(fileURLWithPath: folder.path), mode: folder.mode)
-                }
+            let front = window.tabGroup?.selectedWindow ?? window
+            if front.isMiniaturized { front.deminiaturize(nil) }
+            if connecting.contains(workspace.name) { return front.makeKeyAndOrderFront(nil) }
+            if let current, (window.tabGroup?.windows ?? [window]).contains(current) {
+                replacing = current
+            } else {
+                return bringForward(front, of: workspace)
             }
-            if controllers.contains(where: { !$0.waitingShares.isEmpty || $0.waitingPanes.contains { $0.folder.server != nil } }) {
-                connect(controllers, of: workspace, missing: [], offline: [])
-            }
-            return
         }
         let plan = WorkspacePlan(workspace, exists: Self.isThere, server: Self.server(of:))
         guard !plan.tabs.isEmpty else {
@@ -192,9 +191,30 @@ enum Workspaces {
             if alert.runModal() == .alertSecondButtonReturn { confirmDelete(workspace.name, in: nil) }
             return
         }
+        let old = replacing.map { Self.controllers(of: $0) } ?? []
+        let frame = replacing.map { ($0.tabGroup?.selectedWindow ?? $0).frame }
+        old.forEach { $0.workspaceName = nil }
         let controllers = openWindows(plan, name: workspace.name)
+        if let frame { controllers.first?.window?.setFrame(frame, display: false) }
         controllers.first?.window?.makeKeyAndOrderFront(nil)
+        // After this click (or menu choice) is done with the window it came from.
+        DispatchQueue.main.async { old.forEach { $0.window?.close() } }
         connect(controllers, of: workspace, missing: plan.missing, offline: plan.offline)
+    }
+
+    /// Its window, open elsewhere, to the front; panes still waiting get another go.
+    private static func bringForward(_ window: NSWindow, of workspace: Workspace) {
+        window.makeKeyAndOrderFront(nil)
+        // Panes still waiting: a disk plugged in since shows its folder; a share is connected again.
+        let controllers = Self.controllers(of: window)
+        for controller in controllers {
+            for (index, folder) in controller.waitingPanes where folder.mountPoint == nil && FileManager.default.fileExists(atPath: folder.path) {
+                controller.navigatePane(index, to: URL(fileURLWithPath: folder.path), mode: folder.mode)
+            }
+        }
+        if controllers.contains(where: { !$0.waitingShares.isEmpty || $0.waitingPanes.contains { $0.folder.server != nil } }) {
+            connect(controllers, of: workspace, missing: [], offline: [])
+        }
     }
 
     /// One window with a tab per planned tab, in order. Panes whose folder can't be shown yet start at Home and wait

@@ -254,7 +254,7 @@ final class WorkspaceMenu: NSObject, NSMenuDelegate {
 
     @objc private func open(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String, let workspace = Workspaces.named(name) else { return }
-        Workspaces.open(workspace)
+        Workspaces.open(workspace, from: NSApp.keyWindow ?? NSApp.mainWindow)
     }
 
     @objc private func rename(_ sender: NSMenuItem) {

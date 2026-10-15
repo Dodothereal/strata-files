@@ -584,7 +584,7 @@ extension SidebarViewController: NSMenuDelegate {
     private func openWorkspaceRow(_ item: SidebarItem) {
         guard case .workspace(let name) = item.target, let workspace = Workspaces.named(name) else { return }
         highlight(current)
-        Workspaces.open(workspace)
+        Workspaces.open(workspace, from: view.window)
     }
 
     /// Disconnect (while connected), edit, copy its address, remove.
@@ -662,7 +662,7 @@ extension SidebarViewController: NSMenuDelegate {
 
     @objc private func openWorkspace(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String, let workspace = Workspaces.named(name) else { return }
-        Workspaces.open(workspace)
+        Workspaces.open(workspace, from: view.window)
     }
 
     @objc private func updateWorkspace(_ sender: NSMenuItem) {

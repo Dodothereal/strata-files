@@ -153,7 +153,8 @@ extension BrowserWindowController {
                 (NSApp.delegate as? AppDelegate)?.emptyTrash(nil)
             },
             command("Go to Folder…", "folder.badge.questionmark", "⇧⌘G") { [weak self] in self?.goToFolder(nil) },
-            command("Save Workspace…", "rectangle.stack.badge.plus", nil, keywords: ["Layout", "Setup", "Session", "Tabs"]) { [weak self] in
+            command("Save Workspace…", "rectangle.stack.badge.plus", nil,
+                    keywords: ["New Workspace", "Create Workspace", "Add Workspace", "Layout", "Setup", "Session", "Tabs"]) { [weak self] in
                 guard let window = self?.window else { return }
                 Workspaces.saveCurrent(from: window)
             },
