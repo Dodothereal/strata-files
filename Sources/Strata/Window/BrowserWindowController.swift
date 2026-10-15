@@ -90,6 +90,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(sidebarModePrefChanged), name: .prefsChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(serverDisconnected(_:)), name: .remoteServerDisconnected, object: nil)
         // The Inspector's Cloud row follows downloads and uploads.
         NotificationCenter.default.addObserver(self, selector: #selector(cloudStatusChanged), name: .cloudStatusChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(containerCopyProblem(_:)), name: .containerCopyProblem, object: nil)
@@ -167,6 +168,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     var paneFolders: (left: URL, right: URL)? {
         guard panes.count == 2, case .folder(let left) = panes[0].destination, case .folder(let right) = panes[1].destination
         else { return nil }
+        // Not a copy Strata fills in (a server's, a container's, an archive's): a sync can't write into one.
+        guard !ReadOnlyCopies.contains(left), !ReadOnlyCopies.contains(right) else { return nil }
         let l = TransferJob.realPath(left.standardizedFileURL.path), r = TransferJob.realPath(right.standardizedFileURL.path)
         func inside(_ a: String, _ b: String) -> Bool { a == b || a.hasPrefix(b == "/" ? "/" : b + "/") }
         guard !inside(l, r), !inside(r, l) else { return nil }
@@ -188,6 +191,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         guard let other = panes.first(where: { $0 !== pane }), case .folder(let target) = other.destination else { return }
         let urls = browser.selectedURLs
         guard !urls.isEmpty else { return }
+        // Onto a server: copied there (or moved within it), through the server.
+        if RemoteCopies.contains(target) { return other.browser.copyToServer(urls, into: target, move: move) }
         let job = TransferQueue.shared.enqueue(urls, to: target, mode: move ? .move : .copy,
                                                undo: window?.undoManager, conflicts: .sheet(for: window))
         job.onFinish = { [weak self] job in
@@ -225,6 +230,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         case .largeFiles: go(.search(Self.largeFilesQuery, scope: nil))
         case .containers: openContainers()
         case .workspace(let name): if let workspace = Workspaces.named(name) { Workspaces.open(workspace) }
+        case .server(let id): if let server = RemoteServers.server(id: id) { openServer(server) }
         }
     }
 
@@ -302,7 +308,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             split.sidebar.highlight(.folder(url))
             window?.title = Places.displayName(url)
             // Not a container's copy: dragging the title's icon would hand out what isn't fully read yet.
-            window?.representedURL = ContainerCopies.contains(url) ? nil : url
+            window?.representedURL = LazyCopies.contains(url) ? nil : url
             setSearchField("")
             split.scopeBar.isHidden = true
             updateNotice(for: url)
@@ -388,8 +394,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             if let (archive, top) = ArchiveCache.archive(containing: current), top.standardizedFileURL == current.standardizedFileURL {
                 return navigate(to: archive.deletingLastPathComponent(), select: archive)
             }
-            // The Containers folder has nothing above it (a container's `/` goes up to it).
+            // The Containers folder has nothing above it (a container's `/` goes up to it); nor has a server's `/`.
             if ContainerCopies.engineFolder(current) != nil { return NSSound.beep() }
+            if let (_, top) = RemoteCopies.server(containing: current), top.standardizedFileURL == current.standardizedFileURL { return NSSound.beep() }
             navigate(to: current.deletingLastPathComponent(), select: current)
         } else {
             navigate(to: location)
@@ -439,6 +446,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         let tree = sender.selectedIndex == 1
         if tree != Prefs.sidebarShowsTree { Prefs.sidebarShowsTree = tree }
         if split.splitViewItems.first?.isCollapsed == true { split.toggleSidebar(nil) }
+    }
+
+    /// A server's files were let go: panes showing them go home.
+    @objc private func serverDisconnected(_ notification: Notification) {
+        guard let id = notification.object as? String else { return }
+        for p in panes where RemoteCopies.server(containing: p.location)?.server.id == id || p.location.standardizedFileURL == RemoteCopies.top(of: id).standardizedFileURL {
+            let folder = WaitingFolder(path: p.location.path, mode: p.browser.mode.rawValue, server: id)
+            go(.folder(Places.home), in: p)
+            // Kept for its server folder, so updating a workspace (or the session) doesn't lose it.
+            p.waiting = folder
+        }
     }
 
     /// Every window's switch follows the setting (it's the same for all of them).
@@ -830,6 +848,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// Where each tab and pane is, for workspaces. A pane waiting for its share or disk counts as being there.
     var snapshot: [String] {
         // A container's files are gone after quitting: such a pane comes back at home.
+        // A server's folder is kept (opening the workspace connects to it again).
         panes.map { $0.waiting?.path ?? (ContainerCopies.contains($0.location) ? Places.home.path : $0.location.path) }
     }
 
@@ -920,13 +939,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         let location = location
         split.inspector.onShowFolder = { [weak self] folder, item in self?.navigate(to: folder, select: item) }
         split.inspector.onOpenFolder = { [weak self] folder in
-            guard ContainerCopies.contains(folder) else {
+            guard LazyCopies.contains(folder) else {
                 self?.navigate(to: folder)
                 return
             }
             // A mount's path in a container: listed on the way there first, if it hasn't been browsed yet.
             Task { [weak self] in
-                if await ContainerFiles.shared.reveal(folder) { self?.navigate(to: folder) } else { NSSound.beep() }
+                if await LazyCopies.reveal(folder) { self?.navigate(to: folder) } else { NSSound.beep() }
             }
         }
         split.inspector.onOpenContainer = { [weak self] id in self?.openContainer(id) }

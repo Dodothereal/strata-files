@@ -197,9 +197,9 @@ final class TransferJob {
         state = .scanning
         changed()
         // From a container's files: everything copied out is fetched first (folders with all they hold).
-        let fromContainers = sources.filter(ContainerCopies.contains)
+        let fromContainers = sources.filter(LazyCopies.contains)
         if !fromContainers.isEmpty {
-            let fetch = Task { try await ContainerFiles.shared.prepareForCopying(fromContainers) }
+            let fetch = Task { try await LazyCopies.prepareForCopying(fromContainers) }
             containerFetch = fetch
             do {
                 try await fetch.value
@@ -558,10 +558,14 @@ final class TransferJob {
     }
 
     private func finish() {
-        // Copied out of a container: ordinary files from now on.
-        if sources.contains(where: ContainerCopies.contains) {
-            let made = createdItems
-            DispatchQueue.global(qos: .utility).async { made.forEach(ContainerCopies.finishCopyingOut) }
+        // Copied out of a container or a server: ordinary files from now on. What a cancelled or failed item left
+        // behind too (its links mustn't lead anywhere either); only what came from the copy is touched.
+        if sources.contains(where: LazyCopies.contains) {
+            let made = items.filter { [.done, .partial, .failed, .cancelled].contains($0.outcome) && LazyCopies.contains($0.source) }
+                .map { (source: $0.source, destination: $0.destination) }
+            DispatchQueue.global(qos: .utility).async {
+                for item in made { ContainerCopies.finishCopyingOut(item.destination, from: item.source) }
+            }
         }
         if let disk = heldDisk {
             queue?.releaseDisk(disk, for: self)

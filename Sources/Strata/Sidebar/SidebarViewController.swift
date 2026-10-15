@@ -29,6 +29,8 @@ enum SidebarTarget: Equatable {
     case containers
     /// A saved workspace, by name: opens its window (it's never where you are, so it's never selected).
     case workspace(String)
+    /// A saved SFTP server or bucket, by ID: connects and shows its files.
+    case server(String)
 }
 
 final class SidebarItem {
@@ -112,6 +114,11 @@ final class SidebarViewController: NSViewController {
         outline.delegate = self
         outline.target = self
         outline.action = #selector(rowClicked)
+        outline.onReturn = { [weak self] in
+            guard let self, let item = outline.item(atRow: outline.selectedRow) as? SidebarItem, case .workspace = item.target else { return false }
+            openWorkspaceRow(item)
+            return true
+        }
         outline.registerForDraggedTypes(FileDrop.types + [.sidebarFavorite])
         outline.onDragEnd = { [weak self] in self?.springLoader.cancel() }
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
@@ -146,6 +153,8 @@ final class SidebarViewController: NSViewController {
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .savedSearchesChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .workspacesChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .remoteServersChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .remoteSessionsChanged, object: nil)
         // A tag used for the first time joins the Tags section.
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .tagsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .favoritesChanged, object: nil)
@@ -196,6 +205,18 @@ final class SidebarViewController: NSViewController {
         sections.append(SidebarSection(id: "locations", title: String(localized: "Locations", comment: "Sidebar section title: disks and the Trash"),
                                        items: Places.volumes().map(SidebarItem.init) + [containers].compactMap { $0 }
             + [SidebarItem(title: String(localized: "Trash", comment: "Sidebar item: the Trash"), target: .folder(Trash.home), symbol: Self.trashSymbol)]))
+        // Servers you've connected to: an SFTP server or a bucket each, green while connected.
+        let servers = RemoteServers.all.map { server -> SidebarItem in
+            let item = SidebarItem(title: server.name, target: .server(server.id),
+                                   symbol: server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack")
+            item.help = server.address
+            if RemoteStatus.connected.contains(server.id) { item.tint = .systemGreen }
+            return item
+        }
+        if !servers.isEmpty {
+            sections.append(SidebarSection(id: "servers", title: String(localized: "Servers", comment: "Sidebar section title: SFTP servers and S3 buckets"),
+                                           items: servers))
+        }
         // Finder's Tags: the colored ones, then others you've used here. Each shows everything with that tag (Spotlight).
         let tags = TagStore.shared.suggestions.prefix(12).map { tag in
             let item = SidebarItem(title: tag.shownName, target: .search(SavedSearch(name: tag.name, query: SpotlightQuery.term(forTag: tag.name), scopePath: nil)),
@@ -264,6 +285,9 @@ final class SidebarViewController: NSViewController {
         case (.search(let x), .search(let y)?): x == y
         case (.containers, .containers?): true
         case (.workspace(let x), .workspace(let y)?): x == y
+        case (.server(let x), .server(let y)?): x == y
+        // Anywhere in that server's files.
+        case (.server(let id), .folder(let url)?): RemoteCopies.server(containing: url)?.server.id == id
         // Anywhere in the containers or their files.
         case (.containers, .folder(let url)?): ContainerCopies.contains(url)
         default: false
@@ -295,12 +319,10 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         item is SidebarSection
     }
 
-    /// A workspace opens a window when clicked (`rowClicked`): it's never where you are, so it's never selected, and
-    /// moving through the sidebar with the arrow keys passes it by.
+    /// A workspace opens a window when clicked (`rowClicked`), or with Return once it's selected with the keyboard;
+    /// selecting it with the arrow keys alone opens nothing.
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
-        guard let item = item as? SidebarItem else { return false }
-        if case .workspace = item.target { return false }
-        return true
+        item is SidebarItem
     }
 
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
@@ -339,6 +361,7 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !suppressSelection, let item = outline.item(atRow: outline.selectedRow) as? SidebarItem else { return }
+        if case .workspace = item.target { return }
         onSelect?(item.target)
     }
 
@@ -505,6 +528,10 @@ extension SidebarViewController: NSMenuDelegate {
             addWorkspaceItems(name, to: menu)
             return
         }
+        if case .server(let id) = item.target, let server = RemoteServers.server(id: id) {
+            addServerItems(server, to: menu)
+            return
+        }
         // Tags you added can leave the sidebar; the seven colored ones stay, like Finder's.
         if item.tint != nil {
             let name = item.tagName ?? item.title
@@ -548,9 +575,70 @@ extension SidebarViewController: NSMenuDelegate {
     }
 
     @objc private func rowClicked() {
-        guard let item = outline.item(atRow: outline.clickedRow) as? SidebarItem, case .workspace(let name) = item.target,
-              let workspace = Workspaces.named(name) else { return }
+        guard let item = outline.item(atRow: outline.clickedRow) as? SidebarItem, case .workspace = item.target else { return }
+        openWorkspaceRow(item)
+    }
+
+    /// Opens the workspace in `item` (click, Return, VoiceOver's press); the row for where this window is gets the
+    /// selection back.
+    private func openWorkspaceRow(_ item: SidebarItem) {
+        guard case .workspace(let name) = item.target, let workspace = Workspaces.named(name) else { return }
+        highlight(current)
         Workspaces.open(workspace)
+    }
+
+    /// Disconnect (while connected), edit, copy its address, remove.
+    private func addServerItems(_ server: RemoteServer, to menu: NSMenu) {
+        func entry(_ title: String, _ action: Selector) {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            item.representedObject = server.id
+            menu.addItem(item)
+        }
+        if RemoteStatus.connected.contains(server.id) {
+            entry(String(localized: "Disconnect", comment: "Button: end the connection to the server"), #selector(disconnectServer(_:)))
+            menu.addItem(.separator())
+        }
+        entry(String(localized: "Edit…", comment: "Sidebar menu: change a saved server's settings"), #selector(editServer(_:)))
+        entry(String(localized: "Copy Address", comment: "Sidebar menu: copy a server's address"), #selector(copyServerAddress(_:)))
+        menu.addItem(.separator())
+        entry(String(localized: "Remove “\(server.name)”…", comment: "Sidebar menu: forget a saved server"), #selector(removeServer(_:)))
+    }
+
+    private var windowController: BrowserWindowController? { view.window?.windowController as? BrowserWindowController }
+
+    @objc private func disconnectServer(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String, let server = RemoteServers.server(id: id) else { return }
+        windowController?.disconnectServer(server)
+    }
+
+    @objc private func editServer(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String, let server = RemoteServers.server(id: id) else { return }
+        windowController?.editServer(server)
+    }
+
+    @objc private func copyServerAddress(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String, let server = RemoteServers.server(id: id) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(server.address, forType: .string)
+    }
+
+    @objc private func removeServer(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String, let server = RemoteServers.server(id: id), let window = view.window else { return }
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Remove “\(server.name)” from Strata?", comment: "A saved server's name")
+        alert.informativeText = server.kind == .s3
+            ? String(localized: "Its secret key is deleted from your keychain. Nothing in the bucket changes.")
+            : String(localized: "Nothing on the server changes.")
+        alert.addButton(withTitle: String(localized: "Remove", comment: "Alert button: forget the saved server"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            MainActor.assumeIsolated {
+                self?.windowController?.disconnectServer(server)
+                RemoteServers.remove(server)
+            }
+        }
     }
 
     /// Open, save this window into it (only the window it belongs to), rename or delete.
@@ -589,7 +677,7 @@ extension SidebarViewController: NSMenuDelegate {
 
     @objc private func deleteWorkspace(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
-        Workspaces.delete(name)
+        Workspaces.confirmDelete(name, in: view.window)
     }
 
     private func add(_ title: String.LocalizationValue, _ action: Selector, _ url: URL) {
@@ -672,6 +760,13 @@ final class SavedSearchBox: NSObject {
 /// The sidebar's outline, telling the controller when a drag leaves or ends (to stop spring loading).
 final class SidebarOutlineView: NSOutlineView {
     var onDragEnd: (() -> Void)?
+    /// Return (or Enter) on the selected row; true when it was handled.
+    var onReturn: (() -> Bool)?
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 36 || event.keyCode == 76, onReturn?() == true { return }
+        super.keyDown(with: event)
+    }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
         super.draggingExited(sender)

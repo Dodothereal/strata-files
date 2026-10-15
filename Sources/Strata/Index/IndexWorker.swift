@@ -108,6 +108,11 @@ nonisolated final class IndexWorker: @unchecked Sendable {
 
     private func rebuild() {
         guard let config else { return }
+        // Quitting: no full scan now (the next launch does it).
+        if quitDeadline.withLock({ $0 != nil }) {
+            interrupted = true
+            return
+        }
         events.stop()
         let startEventID = FSEventsStream.currentEventID
         let fresh = IndexStore()

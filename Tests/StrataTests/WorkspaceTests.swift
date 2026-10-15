@@ -77,6 +77,16 @@ struct WorkspaceTests {
         #expect(gone.offline.isEmpty)
     }
 
+    @Test func serverFoldersWaitForTheirServer() {
+        let copy = "/Users/me/Library/Caches/dev.strata.app/Servers.noindex/0B5E6C2A-0000-0000-0000-000000000000/srv/app"
+        let workspace = Workspace(name: "W", tabs: [[copy, "/a"]], modes: [[2, 1]])
+        let opened = WorkspacePlan(workspace, exists: { $0 == "/a" }, server: { $0 == copy ? "0B5E6C2A-0000-0000-0000-000000000000" : nil })
+        #expect(opened.tabs.count == 1)
+        #expect(opened.tabs[0][0].waiting == WaitingFolder(path: copy, mode: 2, server: "0B5E6C2A-0000-0000-0000-000000000000"))
+        #expect(opened.tabs[0][1].waiting == nil)
+        #expect(opened.missing.isEmpty && opened.offline.isEmpty && opened.shares.isEmpty)
+    }
+
     @Test func volumeOfAPath() {
         #expect(WorkspacePlan.volume(of: "/Volumes/Backup/2026") == "/Volumes/Backup")
         #expect(WorkspacePlan.volume(of: "/Volumes/Backup") == "/Volumes/Backup")

@@ -17,7 +17,7 @@ final class ContainerFetchJob {
     init(_ urls: [URL], then: @escaping () -> Void) {
         self.urls = urls
         self.then = then
-        containerName = urls.first.flatMap { ContainerCopies.copy(containing: $0)?.source.name } ?? ""
+        containerName = urls.first.flatMap(LazyCopies.sourceName) ?? ""
     }
 
     func start() {
@@ -26,18 +26,16 @@ final class ContainerFetchJob {
         onChange?(self)
         task = Task {
             do {
-                try await ContainerFiles.shared.prepareForCopying(urls)
+                try await LazyCopies.prepareForCopying(urls)
                 try Task.checkCancellation()
-                guard !urls.contains(where: ContainerCopies.isPlaceholder) else { throw ContainerAPIError.notFound }
+                guard !urls.contains(where: LazyCopies.isPlaceholder) else { throw ContainerAPIError.notFound }
                 state = .finished
                 then()
             } catch is CancellationError {
                 state = .cancelled
             } catch {
                 state = Task.isCancelled ? .cancelled : .failed
-                if let source = urls.first.flatMap({ ContainerCopies.copy(containing: $0)?.source }) {
-                    errorMessage = ContainerFiles.message(for: error, source: source)
-                }
+                if let first = urls.first { errorMessage = LazyCopies.message(for: error, about: first) }
             }
             finish()
         }

@@ -107,6 +107,10 @@ enum Places {
         if let (source, top) = ContainerCopies.copy(containing: url), top.standardizedFileURL == url.standardizedFileURL {
             return source.name
         }
+        // A server's `/` (a bucket's top) goes by the server's name.
+        if let (server, top) = RemoteCopies.server(containing: url), top.standardizedFileURL == url.standardizedFileURL {
+            return server.name
+        }
         return FileManager.default.displayName(atPath: url.path)
     }
 

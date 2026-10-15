@@ -8,6 +8,14 @@ import AppKit
 //   strata -s <query> -i <folder>   search inside a folder
 //   strata -w <name>       open a saved workspace
 
+// Started by ssh as SSH_ASKPASS while Strata connects to a server: a dialog, not the command line.
+let environment = ProcessInfo.processInfo.environment
+if environment["STRATA_ASKPASS"] == "1" {
+    MainActor.assumeIsolated {
+        runAskpass(prompt: CommandLine.arguments.dropFirst().joined(separator: " "), environment: environment)
+    }
+}
+
 let usage = """
 usage: strata [path …]
        strata -s <query> [-i <folder>]

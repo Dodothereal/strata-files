@@ -56,6 +56,7 @@ extension BrowserViewController {
     /// Deletes the selection for good, skipping the Trash, after asking (Finder's ⌥⌘⌫).
     @objc func deleteImmediately(_ sender: Any?) {
         guard !isLoadingFolder else { return }
+        if isOnServer { return deleteOnServer(selectedURLs) }
         Self.confirmDelete(selectedURLs, in: view.window) { [weak self] in self?.refresh() }
     }
 
@@ -181,7 +182,7 @@ extension BrowserViewController {
     }
 
     /// `urls` without those inside another of them.
-    private static func outermost(_ urls: [URL]) -> [URL] {
+    static func outermost(_ urls: [URL]) -> [URL] {
         let paths = urls.map { $0.standardizedFileURL.path }.sorted { $0.count < $1.count }
         var kept: [String] = []
         for path in paths where !kept.contains(where: { path == $0 || path.hasPrefix($0 == "/" ? "/" : $0 + "/") }) {

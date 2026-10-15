@@ -264,6 +264,6 @@ final class WorkspaceMenu: NSObject, NSMenuDelegate {
 
     @objc private func remove(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
-        Workspaces.delete(name)
+        Workspaces.confirmDelete(name, in: NSApp.keyWindow ?? NSApp.mainWindow)
     }
 }

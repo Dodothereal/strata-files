@@ -73,7 +73,7 @@ final class TreemapViewController: NSViewController, FileCollectionController {
     }
 
     fileprivate func relayout(animated: Bool) {
-        let total = items.reduce(Int64(0)) { $0 + max($1.bytes ?? 0, 0) }
+        let total = items.map { max($0.bytes ?? 0, 0) }.saturatingSum
         treemapView.totalBytes = total
         treemapView.setItems(items, animated: animated && view.window != nil)
         legend.update(items: items, total: total, unmeasured: unmeasured)
@@ -489,7 +489,8 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
         mouseDownTile = nil
         let dragged = tiles.filter { selectedKeys.contains($0.key) && $0.item != nil }
         let items: [NSDraggingItem] = dragged.map { t in
-            let item = NSDraggingItem(pasteboardWriter: t.item!.url as NSURL)
+            // A container's or a server's item as a promise: dropped outside Strata it's fetched and finished first.
+            let item = NSDraggingItem(pasteboardWriter: ContainerDragItem.writer(for: t.item!.url))
             let icon = icon(for: t.item!)
             let side: CGFloat = 48
             item.setDraggingFrame(NSRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side), contents: icon)
@@ -700,7 +701,7 @@ final class TreemapLegendView: NSView {
 
     func update(items: [TreemapItem], total bytes: Int64, unmeasured: Int) {
         var byGroup: [FileKindGroup: Int64] = [:]
-        for item in items { byGroup[item.group, default: 0] += max(item.bytes ?? 0, 0) }
+        for item in items { byGroup[item.group] = [byGroup[item.group, default: 0], max(item.bytes ?? 0, 0)].saturatingSum }
         let groups = byGroup.filter { $0.value > 0 }.sorted { $0.value > $1.value }
         let pending = items.filter { $0.bytes == nil }.count
         // The same legend again (an index refresh): leave it be.

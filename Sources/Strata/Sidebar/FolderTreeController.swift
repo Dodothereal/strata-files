@@ -3,8 +3,8 @@ import AppKit
 /// A folder in the sidebar's tree; its subfolders are read the first time it's expanded. Whether it has any is looked
 /// ahead at once its parent opens, so the disclosure triangle is right before you click it.
 final class FolderNode {
-    /// The Trash and Containers sit at the top level next to the disks: places, not folders to expand.
-    enum Kind { case folder, trash, containers }
+    /// The Trash, Containers and servers sit at the top level next to the disks: places, not folders to expand.
+    enum Kind { case folder, trash, containers, server }
 
     let url: URL
     let title: String
@@ -18,6 +18,9 @@ final class FolderNode {
     var lookedAhead = false
     /// Bumped by each re-read, so an older one finishing late is dropped.
     var refreshes = 0
+    /// A re-read is under way; changes meanwhile ask for one more after it (not one each).
+    var isRefreshing = false
+    var refreshAgain = false
     /// What to do once the subfolders being read arrive (expanding, revealing a folder inside).
     var waiters: [() -> Void] = []
 
@@ -62,10 +65,13 @@ final class FolderTreeController: NSViewController {
             }
         }
     }
-    /// Expanded folders are watched for subfolders coming and going; past `maxWatchers`, the longest-watched stops.
+    /// Expanded folders are watched for subfolders coming and going; past `maxWatchers` (or `maxWatchersInAll` across
+    /// every window's tree: each holds a file descriptor), the longest-watched stops.
     private var watchers: [String: DirectoryWatcher] = [:]
     private var watchOrder: [String] = []
     private static let maxWatchers = 48
+    private static let maxWatchersInAll = 96
+    private static var watchersInAll = 0
     /// Reads for expanding and revealing; looking ahead has its own queue, one folder at a time, so it never holds those
     /// up (or the index and search).
     private static let reads = DispatchQueue(label: "dev.strata.folder-tree", qos: .userInitiated, attributes: .concurrent)
@@ -116,6 +122,7 @@ final class FolderTreeController: NSViewController {
         // Show Hidden Files shows hidden folders here too.
         NotificationCenter.default.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .containersChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .remoteServersChanged, object: nil)
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(trashMayHaveChanged), name: name, object: nil)
         }
@@ -140,6 +147,15 @@ final class FolderTreeController: NSViewController {
         fresh.append(reuse(Trash.home, .trash) {
             FolderNode(url: Trash.home, title: String(localized: "Trash", comment: "Sidebar item: the Trash"), symbol: Self.trashSymbol, kind: .trash)
         })
+        // Saved servers: each opens its files (its row's URL is its copy's top, named by its ID).
+        for server in RemoteServers.all {
+            let top = RemoteCopies.top(of: server.id)
+            let node = reuse(top, .server) {
+                FolderNode(url: top, title: server.name, symbol: server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack", kind: .server)
+            }
+            fresh.append(node.title == server.name ? node
+                : FolderNode(url: top, title: server.name, symbol: node.symbol, kind: .server))
+        }
         if ContainerStore.shared.engine != nil {
             fresh.append(reuse(ContainerCopies.root, .containers) {
                 FolderNode(url: ContainerCopies.root, title: String(localized: "Containers", comment: "Sidebar section title: Docker containers"),
@@ -213,7 +229,9 @@ final class FolderTreeController: NSViewController {
         node.waiters = []
         // From a tree that's since been rebuilt: nothing to do.
         guard generation == self.generation else { return }
-        node.children = folders?.map { FolderNode(url: $0.url, title: $0.title) }
+        // Unreadable (no access, gone): nothing inside to show, and no triangle to click again and again.
+        node.children = folders?.map { FolderNode(url: $0.url, title: $0.title) } ?? []
+        node.hasSubfolders = folders.map { !$0.isEmpty } ?? false
         outline.reloadItem(node, reloadChildren: true)
         waiters.forEach { $0() }
         if outline.isItemExpanded(node) { lookAhead(node) }
@@ -292,9 +310,9 @@ final class FolderTreeController: NSViewController {
     private func watch(_ node: FolderNode) {
         let key = node.url.fileViewKey
         guard node.kind == .folder, watchers[key] == nil else { return }
-        if watchers.count >= Self.maxWatchers, let oldest = watchOrder.first {
-            watchers[oldest] = nil
-            watchOrder.removeFirst()
+        if watchers.count >= Self.maxWatchers || Self.watchersInAll >= Self.maxWatchersInAll {
+            guard let oldest = watchOrder.first else { return }
+            unwatchOne(oldest)
         }
         guard let watcher = DirectoryWatcher(url: node.url, onChange: { [weak self, weak node] in
             guard let self, let node else { return }
@@ -302,24 +320,37 @@ final class FolderTreeController: NSViewController {
         }) else { return }
         watchers[key] = watcher
         watchOrder.append(key)
+        Self.watchersInAll += 1
+    }
+
+    private func unwatchOne(_ key: String) {
+        guard watchers.removeValue(forKey: key) != nil else { return }
+        watchOrder.removeAll { $0 == key }
+        Self.watchersInAll -= 1
     }
 
     /// Stops watching `url` and every folder inside it.
     private func unwatch(below url: URL) {
         let key = url.fileViewKey
         let inside: (String) -> Bool = { $0 == key || $0.hasPrefix(key == "/" ? "/" : key + "/") }
-        for watched in watchers.keys where inside(watched) { watchers[watched] = nil }
-        watchOrder.removeAll(where: inside)
+        for watched in watchers.keys where inside(watched) { unwatchOne(watched) }
     }
 
     private func unwatchAll() {
+        Self.watchersInAll -= watchers.count
         watchers.removeAll()
         watchOrder.removeAll()
     }
 
-    /// The folder changed: its subfolders are read again; nothing moves unless they changed (and the scroll stays).
+    /// The folder changed: its subfolders are read again; nothing moves unless they changed (and the scroll stays). A
+    /// burst of changes is one read, and one more after it.
     private func refresh(_ node: FolderNode) {
         guard node.children != nil else { return }
+        guard !node.isRefreshing else {
+            node.refreshAgain = true
+            return
+        }
+        node.isRefreshing = true
         node.refreshes += 1
         let token = node.refreshes, url = node.url, hidden = Prefs.showHidden, generation = generation
         Self.reads.async {
@@ -331,6 +362,11 @@ final class FolderTreeController: NSViewController {
     }
 
     private func refreshed(_ node: FolderNode, _ folders: [(url: URL, title: String)]?, token: Int, generation: Int) {
+        node.isRefreshing = false
+        if node.refreshAgain {
+            node.refreshAgain = false
+            DispatchQueue.main.async { [weak self] in self?.refresh(node) }
+        }
         guard generation == self.generation, token == node.refreshes, let folders else { return }
         let old = node.children ?? []
         guard folders.map(\.url.fileViewKey) != old.map(\.url.fileViewKey) else { return }
@@ -349,7 +385,11 @@ final class FolderTreeController: NSViewController {
 
     private func expand(_ node: FolderNode) {
         guard node.kind == .folder else { return }
-        load(node) { [weak self] in self?.outline.expandItem(node) }
+        load(node) { [weak self] in
+            // Expanded only with something inside (expanding asks to load again: an unreadable folder would loop).
+            guard node.children?.isEmpty == false else { return NSSound.beep() }
+            self?.outline.expandItem(node)
+        }
     }
 
     // MARK: - Following the window
@@ -372,6 +412,10 @@ final class FolderTreeController: NSViewController {
             guard let containers = roots.first(where: { $0.kind == .containers }) else { return deselect() }
             return select(containers)
         }
+        if let (server, _) = RemoteCopies.server(containing: target) {
+            guard let row = roots.first(where: { $0.kind == .server && $0.url.lastPathComponent == server.id }) else { return deselect() }
+            return select(row)
+        }
         let path = target.fileViewKey
         // The deepest root that holds it: Home before the startup disk.
         guard let root = roots.filter({ $0.kind == .folder && (path == $0.url.fileViewKey || path.hasPrefix($0.url.fileViewKey == "/" ? "/" : $0.url.fileViewKey + "/")) })
@@ -386,7 +430,7 @@ final class FolderTreeController: NSViewController {
         if node.url.fileViewKey == path { return select(node) }
         load(node) { [weak self] in
             guard let self, current?.fileViewKey == path, generation == self.generation else { return }
-            outline.expandItem(node)
+            if node.children?.isEmpty == false { outline.expandItem(node) }
             guard let next = node.children?.first(where: { path.hasPrefix($0.url.fileViewKey + "/") || path == $0.url.fileViewKey }) else {
                 // Hidden, a package or gone: the closest folder above it stays selected.
                 return select(node)
@@ -482,19 +526,26 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
         switch node.kind {
         case .folder, .trash: onSelect?(.folder(node.url))
         case .containers: onSelect?(.containers)
+        case .server: onSelect?(.server(node.url.lastPathComponent))
         }
     }
 
-    // Dragging a folder out of the tree hands it on like dragging it from the list.
+    // Dragging a folder out of the tree hands it on like dragging it from the list (a server's as a promise).
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
         guard let node = item as? FolderNode, node.kind == .folder, !roots.contains(where: { $0 === node }) else { return nil }
-        return node.url as NSURL
+        return ContainerDragItem.writer(for: node.url)
     }
 
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?,
                      proposedChildIndex index: Int) -> NSDragOperation {
         let urls = FileDrop.urls(info)
-        guard let node = item as? FolderNode, index == NSOutlineViewDropOnItemIndex, !urls.isEmpty, node.kind != .containers else {
+        guard let node = item as? FolderNode, index == NSOutlineViewDropOnItemIndex, !urls.isEmpty, node.kind != .containers, node.kind != .server else {
+            springLoader.hover(nil, drag: info.draggingSequenceNumber)
+            return []
+        }
+        // Into a server's or a container's copy (Strata's caches, reachable through Home ▸ Library): nothing goes there
+        // from the tree; the list routes drops onto servers.
+        if node.kind == .folder, ReadOnlyCopies.contains(node.url) {
             springLoader.hover(nil, drag: info.draggingSequenceNumber)
             return []
         }
@@ -512,7 +563,7 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
         springLoader.cancel()
-        guard let node = item as? FolderNode, node.kind != .containers else { return false }
+        guard let node = item as? FolderNode, node.kind != .containers, node.kind != .server else { return false }
         let urls = FileDrop.urls(info)
         if node.kind == .trash {
             guard !urls.isEmpty, canTrash?(urls) == true else { return false }
@@ -531,7 +582,7 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
 extension FolderTreeController: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        guard let node = outline.item(atRow: outline.clickedRow) as? FolderNode, node.kind != .containers else { return }
+        guard let node = outline.item(atRow: outline.clickedRow) as? FolderNode, node.kind != .containers, node.kind != .server else { return }
         func add(_ title: String, _ action: Selector) {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self

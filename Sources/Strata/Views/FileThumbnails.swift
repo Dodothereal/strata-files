@@ -43,7 +43,7 @@ final class FileThumbnails {
     /// bundles, archives, disk images and executables are pictured by their icon, and links keep their arrow.
     static func canThumbnail(_ entry: FileEntry) -> Bool {
         // A container's file not fetched yet has nothing to show.
-        guard !entry.isFolder, !entry.isSymlink, !ContainerCopies.isPlaceholder(entry.url) else { return false }
+        guard !entry.isFolder, !entry.isSymlink, !LazyCopies.isPlaceholder(entry.url) else { return false }
         guard let type = entry.contentType else { return !entry.isPackage }
         return !(type.conforms(to: .bundle) || type.conforms(to: .application) || type.conforms(to: .archive)
             || type.conforms(to: .diskImage) || type.conforms(to: .unixExecutable) || type.conforms(to: .aliasFile)
@@ -226,9 +226,9 @@ final class ItemInfoLoader {
     }
 
     func needsLoading(_ entry: FileEntry) -> Bool {
-        if entry.isFolder { return !entry.isSymlink && !entry.isVolume && !ContainerCopies.contains(entry.url) }
+        if entry.isFolder { return !entry.isSymlink && !entry.isVolume && !LazyCopies.contains(entry.url) }
         // A container's image not fetched yet: its size for now, its dimensions once it's here (not cached meanwhile).
-        if ContainerCopies.isPlaceholder(entry.url) { return false }
+        if LazyCopies.isPlaceholder(entry.url) { return false }
         return entry.contentType?.conforms(to: .image) == true
     }
 

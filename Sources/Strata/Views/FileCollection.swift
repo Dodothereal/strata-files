@@ -148,6 +148,8 @@ enum FileDrop {
     /// dropping on the Dock's Trash.
     static func sourceMask(_ mask: NSDragOperation, _ session: NSDraggingSession) -> NSDragOperation {
         let urls = urls(session.draggingPasteboard)
+        // A server's items can also move within that server (a rename there); out of it, they're copied.
+        if !urls.isEmpty, urls.allSatisfy({ RemoteCopies.server(containing: $0) != nil }) { return mask.intersection([.copy, .move]) }
         return urls.contains(where: ReadOnlyCopies.contains) ? mask.intersection(.copy) : mask
     }
 
@@ -182,6 +184,17 @@ enum FileDrop {
         guard let first = urls.first else { return [] }
         let targetPath = target.standardizedFileURL.path
         if isInside(urls, target) { return [] }
+        // Onto a server: copied there, or moved within that server.
+        if RemoteCopies.contains(target) {
+            // Strata's Servers folder, or what a removed server left: nothing goes there.
+            guard let sameServer = RemoteCopies.server(containing: target)?.server.id else { return [] }
+            if urls.allSatisfy({ RemoteCopies.server(containing: $0)?.server.id == sameServer }) {
+                // Within one server: a move there, or a copy with Option, as on this Mac.
+                if NSEvent.modifierFlags.contains(.option) { return .copy }
+                return urls.allSatisfy({ $0.deletingLastPathComponent().standardizedFileURL.path == targetPath }) ? [] : .move
+            }
+            return info.draggingSourceOperationMask.contains(.copy) || info.draggingSourceOperationMask.contains(.generic) ? .copy : []
+        }
         // An archive opened as a folder isn't changed; what's dragged out of one is copied.
         if ReadOnlyCopies.contains(target) { return [] }
         let mask = info.draggingSourceOperationMask

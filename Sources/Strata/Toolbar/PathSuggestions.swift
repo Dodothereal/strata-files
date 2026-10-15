@@ -16,10 +16,13 @@ final class PathSuggestions {
     /// Folders you use and where `github/acme`-style lookups start, read once per editing (`begin`).
     private var visited: [URL] = []
     private var roots: [URL] = []
+    /// Folders already read this editing: their subfolders.
+    private var listings: [String: [URL]] = [:]
 
     /// Typing starts: what the lookups use, taken now rather than on every key. Roots that would ask for access
     /// (Desktop, Documents… without Full Disk Access) or live on another machine are left out.
     func begin(at current: URL?) {
+        listings.removeAll()
         visited = Array(Frecency.shared.ranked().prefix(400))
         let here = current ?? Places.home
         let candidates = (Places.favorites().map(\.url) + Places.volumes().filter { $0.symbol != "network" }.map(\.url)) + [Places.home] + visited.prefix(100)
@@ -32,7 +35,7 @@ final class PathSuggestions {
         if visited.isEmpty, roots.isEmpty { begin(at: current) }
         if typed.hasPrefix("/") || typed.hasPrefix("~") {
             let path = (typed as NSString).expandingTildeInPath
-            return await Self.inside(path, keepTrailingSlash: typed.hasSuffix("/"))
+            return await inside(path, keepTrailingSlash: typed.hasSuffix("/"))
         }
         var found: [String: PathSuggestion] = [:]
         func keep(_ suggestion: PathSuggestion) {
@@ -42,7 +45,7 @@ final class PathSuggestions {
         if typed.contains("/") {
             // Relative to this folder first, then `github/acme`-style lookups.
             if let current {
-                for hit in await Self.inside(current.appending(path: typed).path, keepTrailingSlash: typed.hasSuffix("/")) {
+                for hit in await inside(current.appending(path: typed).path, keepTrailingSlash: typed.hasSuffix("/")) {
                     keep(PathSuggestion(url: hit.url, score: hit.score + 40, matches: hit.matches))
                 }
             }
@@ -55,7 +58,7 @@ final class PathSuggestions {
         } else {
             // A name: folders here, folders you use, then any folder on disk by that name.
             if let current {
-                for hit in await Self.inside(current.path + "/" + typed, keepTrailingSlash: false) {
+                for hit in await inside(current.path + "/" + typed, keepTrailingSlash: false) {
                     keep(PathSuggestion(url: hit.url, score: hit.score + 30, matches: hit.matches))
                 }
             }
@@ -78,30 +81,45 @@ final class PathSuggestions {
 
     /// The folders in `path`'s parent whose names match its last part (all of them after a trailing `/`), names starting
     /// with what's typed first. Read off the main thread: a folder on a slow disk or server mustn't stall typing.
-    private static func inside(_ path: String, keepTrailingSlash: Bool) async -> [PathSuggestion] {
+    /// The folders in `path`'s parent whose names match its last part (all of them after a trailing `/`), names starting
+    /// with what's typed first. Each folder is read once per editing, off the main thread: typing on in a big folder (or
+    /// one on a slow disk or server) doesn't read it again for every key.
+    private func inside(_ path: String, keepTrailingSlash: Bool) async -> [PathSuggestion] {
         let directory = keepTrailingSlash ? path : (path as NSString).deletingLastPathComponent
         let prefix = keepTrailingSlash ? "" : (path as NSString).lastPathComponent
         let showHidden = Prefs.showHidden || prefix.hasPrefix(".")
-        return await offMain {
-            let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey]
-            let base = URL(fileURLWithPath: directory, isDirectory: true)
-            guard let urls = try? FileManager.default.contentsOfDirectory(at: base, includingPropertiesForKeys: keys,
-                                                                          options: showHidden ? [] : [.skipsHiddenFiles]) else { return [] }
-            var hits: [PathSuggestion] = []
-            for url in urls.prefix(5000) {
-                guard let values = try? url.resourceValues(forKeys: Set(keys)), values.isDirectory == true, values.isPackage != true else { continue }
-                let name = url.lastPathComponent
-                if prefix.isEmpty {
-                    hits.append(PathSuggestion(url: url, score: 0, matches: []))
-                } else if let match = Fuzzy.match(prefix, name) {
-                    // Names that start with what's typed come first, as completion would have them.
-                    let starts = name.lowercased().hasPrefix(prefix.lowercased())
-                    hits.append(PathSuggestion(url: url, score: match.score + (starts ? 40 : 0), matches: match.indices))
-                }
+        let key = directory + (showHidden ? "\u{0}hidden" : "")
+        let folders: [URL]
+        if let cached = listings[key] {
+            folders = cached
+        } else {
+            folders = await Self.offMain { Self.subfolders(of: directory, showHidden: showHidden) }
+            listings[key] = folders
+        }
+        var hits: [PathSuggestion] = []
+        for url in folders {
+            let name = url.lastPathComponent
+            if prefix.isEmpty {
+                hits.append(PathSuggestion(url: url, score: 0, matches: []))
+            } else if let match = Fuzzy.match(prefix, name) {
+                // Names that start with what's typed come first, as completion would have them.
+                let starts = name.lowercased().hasPrefix(prefix.lowercased())
+                hits.append(PathSuggestion(url: url, score: match.score + (starts ? 40 : 0), matches: match.indices))
             }
-            return Array(hits.sorted {
-                $0.score != $1.score ? $0.score > $1.score : $0.url.lastPathComponent.localizedStandardCompare($1.url.lastPathComponent) == .orderedAscending
-            }.prefix(40))
+        }
+        return Array(hits.sorted {
+            $0.score != $1.score ? $0.score > $1.score : $0.url.lastPathComponent.localizedStandardCompare($1.url.lastPathComponent) == .orderedAscending
+        }.prefix(40))
+    }
+
+    nonisolated private static func subfolders(of directory: String, showHidden: Bool) -> [URL] {
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey]
+        let base = URL(fileURLWithPath: directory, isDirectory: true)
+        guard let urls = try? FileManager.default.contentsOfDirectory(at: base, includingPropertiesForKeys: keys,
+                                                                      options: showHidden ? [] : [.skipsHiddenFiles]) else { return [] }
+        return urls.prefix(5000).filter { url in
+            guard let values = try? url.resourceValues(forKeys: Set(keys)) else { return false }
+            return values.isDirectory == true && values.isPackage != true
         }
     }
 

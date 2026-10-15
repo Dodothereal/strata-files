@@ -59,7 +59,8 @@ enum Workspaces {
 
     /// Saves (or replaces, by name) `workspace`, and marks the windows it was made of as that workspace.
     static func save(_ workspace: Workspace, from controllers: [BrowserWindowController]) {
-        var saved = all.filter { $0.name.caseInsensitiveCompare(workspace.name) != .orderedSame }
+        // Exactly that one: names saved before differing only by case are separate workspaces.
+        var saved = all.filter { $0.name != workspace.name }
         saved.append(workspace)
         all = saved
         controllers.forEach { $0.workspaceName = workspace.name }
@@ -96,6 +97,23 @@ enum Workspaces {
     static func delete(_ name: String) {
         all.removeAll { $0.name == name }
         for controller in openControllers(named: name) { controller.workspaceName = nil }
+    }
+
+    /// Asks first (there's no undo), then deletes.
+    static func confirmDelete(_ name: String, in window: NSWindow?) {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Delete the workspace “\(name)”?")
+        alert.informativeText = String(localized: "Its folders stay where they are; only the saved setup goes.")
+        alert.addButton(withTitle: String(localized: "Delete", comment: "Alert button: delete for good"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        alert.buttons[0].hasDestructiveAction = true
+        if let window {
+            alert.beginSheetModal(for: window) { response in
+                MainActor.assumeIsolated { if response == .alertFirstButtonReturn { delete(name) } }
+            }
+        } else if alert.runModal() == .alertFirstButtonReturn {
+            delete(name)
+        }
     }
 
     /// Asks for a new name for `name`, as a sheet on `window` (or on its own).
@@ -136,9 +154,21 @@ enum Workspaces {
 
     /// Opens `workspace` as one window with a tab per saved tab, or brings its window to the front when it's open.
     /// Folders on a network share connect to it again; folders that are gone are left out, and said so.
+    /// Workspaces connecting to their shares or servers right now: opening one again meanwhile only brings it forward.
+    private static var connecting: Set<String> = []
+
+    /// Whether a folder is there for opening a workspace. Only one that doesn't exist is gone: one Strata may not read
+    /// (access not granted yet, a folder above it locked) is still opened, and says why.
+    nonisolated static func isThere(_ path: String) -> Bool {
+        var info = stat()
+        if stat(path, &info) == 0 { return true }
+        return errno != ENOENT && errno != ENOTDIR
+    }
+
     static func open(_ workspace: Workspace) {
         if !workspace.name.isEmpty, let open = openControllers(named: workspace.name).first(where: { !$0.isClosed }),
            let window = open.window {
+            if connecting.contains(workspace.name) { return (window.tabGroup?.selectedWindow ?? window).makeKeyAndOrderFront(nil) }
             (window.tabGroup?.selectedWindow ?? window).makeKeyAndOrderFront(nil)
             // Panes still waiting: a disk plugged in since shows its folder; a share is connected again.
             let controllers = Self.controllers(of: window)
@@ -147,17 +177,19 @@ enum Workspaces {
                     controller.navigatePane(index, to: URL(fileURLWithPath: folder.path), mode: folder.mode)
                 }
             }
-            if controllers.contains(where: { !$0.waitingShares.isEmpty }) { connect(controllers, of: workspace, missing: [], offline: []) }
+            if controllers.contains(where: { !$0.waitingShares.isEmpty || $0.waitingPanes.contains { $0.folder.server != nil } }) {
+                connect(controllers, of: workspace, missing: [], offline: [])
+            }
             return
         }
-        let plan = WorkspacePlan(workspace) { FileManager.default.fileExists(atPath: $0) }
+        let plan = WorkspacePlan(workspace, exists: Self.isThere, server: Self.server(of:))
         guard !plan.tabs.isEmpty else {
             let alert = NSAlert()
             alert.messageText = String(localized: "None of the folders in “\(workspace.name)” are there anymore")
             alert.informativeText = list(plan.missing)
             alert.addButton(withTitle: String(localized: "OK"))
             alert.addButton(withTitle: String(localized: "Delete Workspace"))
-            if alert.runModal() == .alertSecondButtonReturn { delete(workspace.name) }
+            if alert.runModal() == .alertSecondButtonReturn { confirmDelete(workspace.name, in: nil) }
             return
         }
         let controllers = openWindows(plan, name: workspace.name)
@@ -187,17 +219,31 @@ enum Workspaces {
         return controllers
     }
 
-    /// Connects to the shares that `controllers`' panes wait for, one at a time (macOS may ask for a name and
-    /// password), with a sheet that can stop it; then shows each waiting pane's folder and says what didn't work out.
+    /// The saved server whose files `path` is in (a folder in Strata's copy of them), if any.
+    nonisolated static func server(of path: String) -> String? {
+        RemoteCopies.server(containing: URL(fileURLWithPath: path))?.server.id
+    }
+
+    /// Connects to the shares and servers that `controllers`' panes wait for, one at a time (macOS or ssh may ask for a
+    /// name and password), with a sheet that can stop it; then shows each waiting pane's folder and says what didn't
+    /// work out.
     private static func connect(_ controllers: [BrowserWindowController], of workspace: Workspace, missing: [String], offline: [String]) {
         var shares: [String: String] = [:]
-        for controller in controllers { shares.merge(controller.waitingShares) { current, _ in current } }
-        guard !shares.isEmpty, let window = controllers.first?.window, let content = window.contentViewController else {
+        var servers: [String] = []
+        for controller in controllers {
+            shares.merge(controller.waitingShares) { current, _ in current }
+            for (_, folder) in controller.waitingPanes { if let id = folder.server, !servers.contains(id) { servers.append(id) } }
+        }
+        // On the tab being looked at.
+        let shown = controllers.first?.window.map { $0.tabGroup?.selectedWindow ?? $0 }
+        guard !shares.isEmpty || !servers.isEmpty, let window = shown, let content = window.contentViewController else {
             return report(missing: missing, offline: offline, problems: [], of: workspace, controllers: controllers)
         }
         let sheet = WorkspaceConnectController()
         content.presentAsSheet(sheet)
+        if !workspace.name.isEmpty { connecting.insert(workspace.name) }
         Task {
+            defer { connecting.remove(workspace.name) }
             var mounted: [String: String] = [:]
             var problems: [String] = []
             for (mountPoint, address) in shares.sorted(by: { $0.key < $1.key }) {
@@ -222,8 +268,40 @@ enum Workspaces {
                 case nil: break
                 }
             }
+            // SFTP servers and buckets: connected (ssh may ask for a password), then their folders listed down to each.
+            var connected: Set<String> = []
+            for id in servers {
+                guard !sheet.isCancelled, let server = RemoteServers.server(id: id) else { continue }
+                sheet.show(server.name)
+                sheet.onCancel = { Task { await RemoteSessions.shared.disconnect(id) } }
+                do {
+                    _ = try RemoteCopies.prepare(server)
+                    _ = try await RemoteSessions.shared.backend(for: id)
+                    connected.insert(id)
+                } catch {
+                    if !sheet.isCancelled {
+                        problems.append(String(localized: "\(server.name): \(RemoteFiles.message(for: error))", comment: "A server's name, then why it didn't connect"))
+                    }
+                }
+            }
             let cancelled = sheet.isCancelled
             if content.presentedViewControllers?.contains(sheet) == true { content.dismiss(sheet) }
+            for controller in controllers where !controller.isClosed {
+                for (index, folder) in controller.waitingPanes {
+                    guard let id = folder.server, connected.contains(id) else { continue }
+                    let url = URL(fileURLWithPath: folder.path)
+                    let found = await RemoteFiles.shared.reveal(url)
+                    // Moved elsewhere (or closed) while that was read: left where it is now.
+                    guard !controller.isClosed, controller.waitingPanes.contains(where: { $0.index == index && $0.folder == folder }) else { continue }
+                    if found {
+                        controller.navigatePane(index, to: url, mode: folder.mode)
+                    } else {
+                        // Not on the server anymore: the pane keeps waiting (so the workspace keeps it) and it's said.
+                        problems.append(String(localized: "\(RemoteServers.server(id: id)?.name ?? ""): “\(url.lastPathComponent)” isn’t there.",
+                                               comment: "A server's name, then a folder that wasn't found on it"))
+                    }
+                }
+            }
             var gone = missing
             // Tabs closed meanwhile are left alone.
             for controller in controllers where !controller.isClosed {
@@ -246,7 +324,9 @@ enum Workspaces {
     private static func report(missing: [String], offline: [String], problems: [String], of workspace: Workspace,
                                controllers: [BrowserWindowController]) {
         guard !missing.isEmpty || !offline.isEmpty || !problems.isEmpty,
-              let window = controllers.first(where: { !$0.isClosed })?.window, window.isVisible else { return }
+              let first = controllers.first(where: { !$0.isClosed })?.window else { return }
+        // On the tab being looked at.
+        let window = first.tabGroup?.selectedWindow ?? first
         let alert = NSAlert()
         var sections: [String] = []
         if !missing.isEmpty {
@@ -300,10 +380,15 @@ enum Workspaces {
         workspace.isDualPane ? "rectangle.split.2x1" : workspace.tabs.count > 1 ? "rectangle.stack" : "macwindow"
     }
 
-    /// Its tabs' folders and when it was saved, for a tooltip.
+    /// Its tabs' folders and when it was saved, for a tooltip. Names only: nothing is read from disk (a folder may be on
+    /// a share that isn't there).
     static func help(_ workspace: Workspace) -> String {
         var lines = workspace.tabs.map { tab in
-            tab.map { FileManager.default.displayName(atPath: $0) }.joined(separator: "  |  ")
+            tab.map { path in
+                let url = URL(fileURLWithPath: path)
+                if let (server, top) = RemoteCopies.server(containing: url), top.standardizedFileURL == url.standardizedFileURL { return server.name }
+                return url.lastPathComponent.isEmpty ? path : url.lastPathComponent
+            }.joined(separator: "  |  ")
         }
         if let saved = workspace.saved { lines.append(String(localized: "Saved \(Format.date(saved))", comment: "Tooltip: when the workspace was saved")) }
         return lines.joined(separator: "\n")

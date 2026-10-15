@@ -90,6 +90,19 @@ final class TransferQueue {
         startTicking()
     }
 
+    /// Copying onto a server: starts right away, alongside copies on this Mac.
+    func add(_ job: RemoteUploadJob) {
+        jobs.append(job)
+        job.onChange = { [weak self] _ in self?.notify() }
+        job.onFinish = { [weak self, previous = job.onFinish] job in
+            previous?(job)
+            self?.notifyNow()
+        }
+        job.start()
+        notify()
+        startTicking()
+    }
+
     private func startNextArchiveJob() {
         let archiveJobs = jobs.compactMap { $0 as? ArchiveJob }
         // Opening an archive to browse is something you're waiting on: it doesn't queue behind a long Extract.

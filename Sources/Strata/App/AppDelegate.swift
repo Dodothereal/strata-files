@@ -6,6 +6,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         Prefs.register()
+        // Before anything opens (a strata:// link or `strata -w` arrives before launching finishes): saved servers are
+        // known, and copies a crash left are set aside (removed once launched).
+        RemoteServers.load()
+        RemoteCopies.setAsideForRemoval()
+        Self.raiseFileLimit()
         registerRevealHandler()
         FileViewStyle.applyTheme()
         NotificationCenter.default.addObserver(forName: .appearanceChanged, object: nil, queue: .main) { _ in
@@ -14,6 +19,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = MainMenu.build()
         // Your own shortcuts (Settings ▸ Shortcuts) over the built-in ones.
         if let menu = NSApp.mainMenu { ShortcutStore.shared.install(menu) }
+    }
+
+    /// macOS starts apps with room for 256 open files; folder watchers (lists, columns, folder trees), the index and
+    /// copies all hold some. Raised as far as the system allows, to a sensible ceiling.
+    private static func raiseFileLimit() {
+        var limit = rlimit()
+        guard getrlimit(RLIMIT_NOFILE, &limit) == 0 else { return }
+        let wanted = min(limit.rlim_max, 8192)
+        guard limit.rlim_cur < wanted else { return }
+        limit.rlim_cur = wanted
+        setrlimit(RLIMIT_NOFILE, &limit)
     }
 
     private var welcome: WelcomeSheetController?
@@ -31,11 +47,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         StrataAI.startIndexing()
         // Loads history now, so a plain copy left by an earlier build is removed right away.
         _ = OperationLog.shared
-        // Archives opened as folders and not looked at for a day; containers' files left by a crash.
+        // Archives opened as folders and not looked at for a day; containers' and servers' files left by a crash.
         ContainerCopies.setAsideForRemoval()
         DispatchQueue.global(qos: .utility).async {
             ArchiveCache.prune()
             ContainerCopies.removeSetAside()
+            RemoteCopies.removeSetAside()
+            LazyCopies.removeClipboardStaging()
         }
         if windowControllers.isEmpty, !restoreSession() { openWindow(at: startLocation) }
         if !Privacy.hasFullDiskAccess, !UserDefaults.standard.bool(forKey: "welcomeShown"),
@@ -166,11 +184,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         saveSession()
         FileIndex.shared.saveNow()
-        // Containers' files don't outlive Strata: removed now, as far as two seconds allow (the rest at next launch).
+        // Containers' and servers' files don't outlive Strata: removed now, as far as two seconds allow (the rest at
+        // next launch). An SFTP connection's ssh ends by itself when Strata does (its input closes).
         ContainerCopies.setAsideForRemoval()
+        RemoteCopies.setAsideForRemoval()
         let removed = DispatchSemaphore(value: 0)
         DispatchQueue.global(qos: .userInitiated).async {
             ContainerCopies.removeSetAside()
+            RemoteCopies.removeSetAside()
             removed.signal()
         }
         _ = removed.wait(timeout: .now() + 2)
@@ -205,7 +226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for window in windows.reversed() {
             // Shares aren't connected at launch (no login windows out of nowhere): their panes wait, and opening the
             // workspace connects them.
-            let plan = WorkspacePlan(window) { FileManager.default.fileExists(atPath: $0) }
+            let plan = WorkspacePlan(window, exists: Workspaces.isThere, server: Workspaces.server(of:))
             guard !plan.tabs.isEmpty else { continue }
             Workspaces.openWindows(plan, name: window.name.isEmpty ? "" : Workspaces.named(window.name)?.name ?? "")
             opened = true

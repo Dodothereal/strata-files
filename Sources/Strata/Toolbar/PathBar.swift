@@ -149,6 +149,17 @@ final class PathBar: NSView, NSTextFieldDelegate {
             }
             return parts
         }
+        // On a server: the server, then its folders from `/`.
+        if let (server, top) = RemoteCopies.server(containing: url) {
+            var parts: [(title: String, url: URL, symbol: String?)] = [(server.name, top, server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack")]
+            var current = top
+            let inner = url.standardizedFileURL.path.dropFirst(top.standardizedFileURL.path.count).split(separator: "/")
+            for component in inner {
+                current = current.appending(path: String(component))
+                parts.append((String(component), current, nil))
+            }
+            return parts
+        }
         // Inside an archive opened as a folder: the archive's own location, the archive, then the folders inside it
         // (an archive opened from inside another one nests, a few levels at most).
         if depth < 8, let (archive, top) = ArchiveCache.archive(containing: url) {

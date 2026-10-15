@@ -55,6 +55,8 @@ nonisolated struct WaitingFolder: Equatable, Sendable {
     /// Where its share was mounted and the address that mounts it again; nil for a disk that isn't connected.
     var mountPoint: String?
     var address: String?
+    /// A saved SFTP server's or bucket's ID, for a folder of its files (connected again, then listed down to it).
+    var server: String? = nil
 }
 
 /// How a workspace opens, given what's on disk now: folders that are there, folders on a share to connect to first,
@@ -75,12 +77,16 @@ nonisolated struct WorkspacePlan: Equatable, Sendable {
     /// Shares to connect to before their panes can be shown: mount point → address.
     var shares: [String: String] = [:]
 
-    init(_ workspace: Workspace, exists: (String) -> Bool) {
+    /// `server` says which saved server a path's files are of (a folder in Strata's copy of its files), if any.
+    init(_ workspace: Workspace, exists: (String) -> Bool, server: (String) -> String? = { _ in nil }) {
         for (t, tab) in workspace.tabs.enumerated() {
             var panes: [Pane] = []
             for (p, path) in tab.enumerated().prefix(2) {
                 let mode = workspace.mode(tab: t, pane: p)
-                if exists(path) {
+                if let id = server(path) {
+                    // A server's files are read again each time: the pane waits for its server.
+                    panes.append(Pane(path: path, mode: mode, waiting: WaitingFolder(path: path, mode: mode, server: id)))
+                } else if exists(path) {
                     panes.append(Pane(path: path, mode: mode))
                 } else if let share = workspace.share(for: path), !exists(share.mountPoint) {
                     panes.append(Pane(path: path, mode: mode,

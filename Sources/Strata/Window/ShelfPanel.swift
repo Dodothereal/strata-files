@@ -60,7 +60,7 @@ private final class ShelfWell: NSView, NSDraggingSource {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        registerForDraggedTypes([.fileURL])
+        registerForDraggedTypes(FileDrop.types)
         iconView.imageScaling = .scaleProportionallyUpOrDown
         label.font = .systemFont(ofSize: 12)
         label.textColor = .secondaryLabelColor
@@ -148,7 +148,7 @@ private final class ShelfWell: NSView, NSDraggingSource {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         highlighted = false
-        let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        let urls = FileDrop.urls(sender)
         add(urls)
         return !urls.isEmpty
     }
@@ -158,7 +158,7 @@ private final class ShelfWell: NSView, NSDraggingSource {
     override func mouseDragged(with event: NSEvent) {
         guard !items.isEmpty else { return }
         let draggingItems = items.enumerated().map { index, url -> NSDraggingItem in
-            let item = NSDraggingItem(pasteboardWriter: url as NSURL)
+            let item = NSDraggingItem(pasteboardWriter: ContainerDragItem.writer(for: url))
             let offset = CGFloat(min(index, 4)) * 4
             item.setDraggingFrame(iconView.frame.offsetBy(dx: offset, dy: -offset), contents: NSWorkspace.shared.icon(forFile: url.path))
             return item
@@ -180,6 +180,8 @@ private final class ShelfWell: NSView, NSDraggingSource {
     private func transfer(move: Bool) {
         guard let controller = NSApp.orderedWindows.compactMap({ $0.windowController as? BrowserWindowController }).first else { return }
         let urls = items
+        // Onto a server: copied there through the server (what's on the Shelf stays).
+        if RemoteCopies.contains(controller.location) { return controller.browser.copyToServer(urls, into: controller.location, move: false) }
         let job = TransferQueue.shared.enqueue(urls, to: controller.location, mode: move ? .move : .copy,
                                                undo: controller.window?.undoManager, conflicts: .sheet(for: controller.window))
         job.onFinish = { [weak self] _ in

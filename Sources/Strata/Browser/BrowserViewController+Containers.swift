@@ -64,35 +64,38 @@ extension BrowserViewController {
     func fetchSelectedContainerFiles() {
         containerFetch?.cancel()
         containerFetch = nil
-        guard let directory, ContainerCopies.contains(directory) else { return }
+        guard let directory, LazyCopies.contains(directory) else { return }
         let files = selectedEntries.filter { !$0.isDirectory }
         guard files.count <= 20 else { return }
-        let urls = files.map(\.url).filter(ContainerCopies.isPlaceholder)
+        let urls = files.map(\.url).filter(LazyCopies.isPlaceholder)
         guard !urls.isEmpty else { return }
-        containerFetch = Task { await ContainerFiles.shared.fetchSelection(urls, limit: Self.containerAutoFetchLimit) }
+        containerFetch = Task { await LazyCopies.fetchSelection(urls, limit: Self.containerAutoFetchLimit) }
     }
 
     /// Runs `action` once `urls` (the placeholders among them) are fetched; says what went wrong if they can't be. A big
     /// fetch shows in Transfers, with a Stop button.
     func afterFetching(_ urls: [URL], _ action: @escaping () -> Void) {
-        let pending = urls.filter(ContainerCopies.isPlaceholder)
+        let pending = urls.filter(LazyCopies.isPlaceholder)
         guard !pending.isEmpty else { return action() }
-        let bytes = pending.reduce(Int64(0)) { total, url in
-            total + Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
-        }
+        let bytes = pending.map { Int64((try? $0.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0) }.saturatingSum
         if bytes > 8 << 20 { return TransferQueue.shared.add(ContainerFetchJob(pending, then: action)) }
         Task {
             do {
-                try await ContainerFiles.shared.fetch(pending)
-                // Still not here (it changed in the container meanwhile, say): say so rather than open nothing.
-                guard !pending.contains(where: ContainerCopies.isPlaceholder) else { throw ContainerAPIError.notFound }
+                try await LazyCopies.fetch(pending)
+                // Still not here (it changed in the container or on the server meanwhile, say): say so rather than open
+                // nothing.
+                guard !pending.contains(where: LazyCopies.isPlaceholder) else { throw ContainerAPIError.notFound }
                 action()
             } catch {
-                let source = pending.first.flatMap { ContainerCopies.copy(containing: $0)?.source }
                 let alert = NSAlert()
-                alert.messageText = String(localized: "“\(pending[0].lastPathComponent)” couldn’t be read from its container.",
-                                           comment: "A file in a container couldn't be fetched")
-                alert.informativeText = source.map { ContainerFiles.message(for: error, source: $0) } ?? error.localizedDescription
+                if RemoteCopies.contains(pending[0]) {
+                    alert.messageText = String(localized: "“\(pending[0].lastPathComponent)” couldn’t be read from the server.",
+                                               comment: "A file on an SFTP server or in a bucket couldn't be fetched")
+                } else {
+                    alert.messageText = String(localized: "“\(pending[0].lastPathComponent)” couldn’t be read from its container.",
+                                               comment: "A file in a container couldn't be fetched")
+                }
+                alert.informativeText = LazyCopies.message(for: error, about: pending[0])
                 Self.present(alert, in: view.window) { _ in }
             }
         }
@@ -117,7 +120,7 @@ extension BrowserViewController {
 
     /// Files arrived from a container: rows show their thumbnails, Quick Look shows what it couldn't before.
     @objc func containerFilesFetched(_ notification: Notification) {
-        guard let urls = notification.object as? [URL], let directory, ContainerCopies.contains(directory) else { return }
+        guard let urls = notification.object as? [URL], let directory, LazyCopies.contains(directory) else { return }
         // This folder or one below it (columns, folders expanded in the list).
         let shown = [directory.standardizedFileURL.path, directory.resolvingSymlinksInPath().standardizedFileURL.path]
         guard urls.contains(where: { url in shown.contains { url.standardizedFileURL.path.hasPrefix($0 + "/") } }) else { return }

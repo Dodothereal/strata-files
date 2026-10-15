@@ -203,6 +203,9 @@ final class FileIndex {
         }
         // Containers' files aren't this Mac's: their not-yet-fetched placeholders would count as their full size.
         excluded.insert(realPath(ContainerCopies.root.path))
+        // Servers' copies neither: their files are another machine's, and gone when Strata quits.
+        excluded.insert(realPath(RemoteCopies.root.path))
+        excluded.insert(realPath(LazyCopies.clipboardRoot.path))
         // The encrypted index replaces the plain index.bin of earlier builds.
         SecureStorage.removeLegacy(SecureStorage.url("index.bin"))
         let config = IndexConfig(roots: rootPaths, excluded: excluded,

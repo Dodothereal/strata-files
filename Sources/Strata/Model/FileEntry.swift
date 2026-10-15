@@ -114,7 +114,7 @@ nonisolated enum DirectoryLoader {
     @concurrent
     static func load(_ directory: URL, showHidden: Bool) async throws -> [FileEntry] {
         // A container's files: list the folder from the container first (every view loads folders here).
-        if ContainerCopies.contains(directory) { await ContainerFiles.shared.refresh(directory) }
+        if LazyCopies.contains(directory) { await LazyCopies.refresh(directory) }
         let isContainersFolder = ContainerCopies.engineFolder(directory) != nil
         let keys = FileEntry.resourceKeys
         let urls = try FileManager.default.contentsOfDirectory(

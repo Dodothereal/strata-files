@@ -1,0 +1,436 @@
+import Darwin
+import Foundation
+
+/// Reads servers' folders into their copies (see `RemoteCopies`) and makes changes on servers.
+///
+/// A folder is listed when it's shown and applied like a container's (`CopyWriter.apply`: folders, links kept inside
+/// the copy, files as placeholders). Small files are fetched right after; anything else when it's opened, previewed or
+/// copied. Changes (a new folder, a rename, a deletion, files dropped in) happen on the server first, then the folder
+/// is listed again, so the copy only ever shows what the server has.
+actor RemoteFiles {
+    static let shared = RemoteFiles()
+
+    /// A folder listed this recently isn't listed again (several views load the same folder).
+    static let freshFor: TimeInterval = 10
+    /// Fetched with their folder's listing: files up to this size…
+    static let eagerFileSize: Int64 = 256 << 10
+    /// …up to this much per folder…
+    static let eagerFolderBytes: Int64 = 8 << 20
+    /// …and this many.
+    static let eagerFolderCount = 100
+
+    /// Where connections come from (tests give a local one).
+    private let backends: @Sendable (String) async throws -> any RemoteBackend
+    private var listings: [String: Task<TimeInterval?, Never>] = [:]
+    private var freshUntil: [String: Date] = [:]
+    private var stale: Set<String> = []
+    private var fetches: [String: Task<Void, Error>] = [:]
+    /// Listed permissions of files still to fetch, by local path.
+    private var modes: [String: UInt32] = [:]
+    /// Servers whose copies are being removed: nothing new starts in them.
+    private var closing: Set<String> = []
+
+    init(backends: @escaping @Sendable (String) async throws -> any RemoteBackend = { try await RemoteSessions.shared.backend(for: $0) }) {
+        self.backends = backends
+    }
+
+    // MARK: - Listing
+
+    /// Brings the copy's `folder` up to date with the server. Problems are reported with `.containerCopyProblem` (the
+    /// window shows them over the folder); what's in the copy stays as it was.
+    func refresh(_ folder: URL) async {
+        let real = folder.resolvingSymlinksInPath().standardizedFileURL
+        guard let (server, top) = RemoteCopies.server(containing: real), let path = RemoteCopies.remotePath(of: real, top: top),
+              !closing.contains(server.id) else { return }
+        let key = real.path
+        if let running = listings[key] {
+            _ = await running.value
+            guard stale.remove(key) != nil else { return }
+        } else if let until = freshUntil[key], Date() < until {
+            return
+        }
+        let task = Task { await self.list(real, path: path, server: server, top: top) }
+        listings[key] = task
+        let fresh = await task.value
+        listings[key] = nil
+        freshUntil[key] = fresh.map { Date().addingTimeInterval($0) }
+        if freshUntil.count > 4000 { freshUntil = freshUntil.filter { $0.value > Date() } }
+    }
+
+    /// The next `refresh` of `folder` (and of folders in it) lists it again, even one under way.
+    func invalidate(_ folder: URL) {
+        let key = folder.resolvingSymlinksInPath().standardizedFileURL.path
+        let inside: (String) -> Bool = { $0 == key || $0.hasPrefix(key + "/") }
+        freshUntil = freshUntil.filter { !inside($0.key) }
+        for running in listings.keys where inside(running) { stale.insert(running) }
+    }
+
+    /// Makes `url`, a path in a server's copy, exist by listing the folders on the way to it from the top. False when
+    /// it isn't on the server.
+    func reveal(_ url: URL) async -> Bool {
+        guard let (_, top) = RemoteCopies.server(containing: url), let path = RemoteCopies.remotePath(of: url, top: top) else { return false }
+        var current = top
+        for part in ContainerCopies.normalized(path) {
+            await refresh(current)
+            current = current.appending(path: part)
+            var info = stat()
+            guard stat(current.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else { return false }
+        }
+        return true
+    }
+
+    /// Lists and applies one folder; how long the result stays current, or nil when it failed.
+    private func list(_ folder: URL, path: String, server: RemoteServer, top: URL) async -> TimeInterval? {
+        do {
+            let backend = try await backends(server.id)
+            let entries = try await backend.list(path)
+            guard !closing.contains(server.id) else { return nil }
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            _ = try CopyWriter.apply(entries, contents: [:], to: folder, containerPath: path, top: top)
+            if modes.count > 200_000 { modes.removeAll() }
+            var eager: [URL] = []
+            var bytes: Int64 = 0
+            for entry in entries where entry.kind == .file && ContainerCopies.isSafeName(entry.name) {
+                let url = folder.appending(path: entry.name)
+                modes[url.standardizedFileURL.path] = entry.mode
+                // Only what everyone on the server may read comes by itself (a key or a .env waits until it's opened);
+                // a bucket's objects have no such permissions.
+                let everyone = server.kind == .s3 || entry.mode & 0o004 != 0
+                if everyone, entry.size <= Self.eagerFileSize, bytes + entry.size <= Self.eagerFolderBytes, eager.count < Self.eagerFolderCount,
+                   RemoteCopies.isPlaceholder(url) {
+                    bytes += entry.size
+                    eager.append(url)
+                }
+            }
+            if !eager.isEmpty { Task { await self.fetchEagerly(eager) } }
+            return Self.freshFor
+        } catch {
+            await Self.report(error, folder: folder)
+            return nil
+        }
+    }
+
+    private func fetchEagerly(_ urls: [URL]) async {
+        await withTaskGroup(of: URL?.self) { group in
+            var queue = urls[...]
+            func next() -> Bool {
+                guard let url = queue.popFirst() else { return false }
+                group.addTask { (try? await self.fetchOne(url)) == true ? url : nil }
+                return true
+            }
+            for _ in 0..<4 { _ = next() }
+            var fetched: [URL] = []
+            for await url in group {
+                if let url { fetched.append(url) }
+                if fetched.count >= 32 {
+                    await Self.announce(fetched)
+                    fetched.removeAll()
+                }
+                _ = next()
+            }
+            if !fetched.isEmpty { await Self.announce(fetched) }
+        }
+    }
+
+    // MARK: - Fetching
+
+    /// Fetches `urls` that are still placeholders (opening, previewing or copying them). Throws the first problem.
+    func fetch(_ urls: [URL]) async throws {
+        var fetched: [URL] = []
+        for url in urls where RemoteCopies.isPlaceholder(url) {
+            try Task.checkCancellation()
+            if try await fetchOne(url) { fetched.append(url) }
+        }
+        if !fetched.isEmpty { await Self.announce(fetched) }
+    }
+
+    /// The selected files worth fetching right away, up to `limit` bytes in all.
+    func fetchSelection(_ urls: [URL], limit: Int64) async {
+        var total: Int64 = 0
+        var chosen: [URL] = []
+        for url in urls where RemoteCopies.isPlaceholder(url) {
+            let size = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+            guard total + size <= limit else { break }
+            total += size
+            chosen.append(url)
+        }
+        try? await fetch(chosen)
+    }
+
+    /// One placeholder, once (a second request waits for the first). True when it was fetched now.
+    private func fetchOne(_ requested: URL) async throws -> Bool {
+        // Through a linked folder: the real one, in the same copy.
+        let url = requested.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: requested.lastPathComponent).standardizedFileURL
+        let key = url.path
+        if let running = fetches[key] {
+            try await running.value
+            return false
+        }
+        guard let (server, top) = RemoteCopies.server(containing: url), !closing.contains(server.id), RemoteCopies.isPlaceholder(url),
+              let path = RemoteCopies.remotePath(of: url, top: top) else { return false }
+        let mode = modes[key] ?? 0o644
+        let task = Task {
+            let backend = try await backends(server.id)
+            // Stopping (cancelling this task: a Stop, a disconnect) stops the download too.
+            let stop = StopFlag()
+            try await withTaskCancellationHandler {
+                try await RemoteWriter.fetch(path, into: url, mode: mode) { temp, limit in
+                    try await backend.download(path, to: temp, limit: limit, progress: { _ in }, stop: stop)
+                }
+            } onCancel: {
+                stop.set()
+            }
+        }
+        fetches[key] = task
+        defer { fetches[key] = nil }
+        try await task.value
+        return true
+    }
+
+    /// Makes everything at `urls` complete before it's copied out: placeholders fetched, and folders with all they
+    /// hold (listed afresh, not just what's been browsed). Throws the first problem.
+    func prepareForCopying(_ urls: [URL]) async throws {
+        for url in urls where RemoteCopies.contains(url) {
+            try Task.checkCancellation()
+            var info = stat()
+            guard lstat(url.path, &info) == 0 else { continue }
+            if info.st_mode & S_IFMT == S_IFDIR {
+                try await fetchTree(url)
+            } else {
+                try await fetch([url])
+            }
+        }
+    }
+
+    private func fetchTree(_ folder: URL) async throws {
+        invalidate(folder)
+        await refresh(folder)
+        let contents = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isSymbolicLinkKey, .isDirectoryKey])) ?? []
+        var files: [URL] = []
+        for item in contents {
+            try Task.checkCancellation()
+            let values = try? item.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+            if values?.isSymbolicLink == true { continue }
+            if values?.isDirectory == true { try await fetchTree(item) } else { files.append(item) }
+        }
+        try await fetch(files)
+    }
+
+    /// Stops reading into a server's copy and removes it (disconnecting, removing the server).
+    func discard(_ id: String) async {
+        closing.insert(id)
+        defer { closing.remove(id) }
+        let top = RemoteCopies.top(of: id).standardizedFileURL.path
+        let inside: (String) -> Bool = { $0 == top || $0.hasPrefix(top + "/") }
+        for (key, task) in fetches where inside(key) { task.cancel() }
+        for (key, task) in listings where inside(key) { _ = await task.value }
+        freshUntil = freshUntil.filter { !inside($0.key) }
+        modes = modes.filter { !inside($0.key) }
+        RemoteCopies.remove(id)
+    }
+
+    // MARK: - Changes on the server
+
+    /// The server's path for `url` and its server's ID; throws outside a server's copy.
+    private func target(_ url: URL) throws -> (server: RemoteServer, top: URL, path: String) {
+        guard let (server, top) = RemoteCopies.server(containing: url), let path = RemoteCopies.remotePath(of: url, top: top),
+              !closing.contains(server.id) else { throw RemoteError.unknownServer }
+        return (server, top, path)
+    }
+
+    /// Lists `folder` again now (after a change).
+    private func relist(_ folder: URL) async {
+        invalidate(folder)
+        await refresh(folder)
+    }
+
+    /// The names in `folder` on the server now (not as last listed); the copy is brought up to date too.
+    func names(in folder: URL) async throws -> Set<String> {
+        let (server, _, path) = try target(folder)
+        let backend = try await backends(server.id)
+        let names = Set(try await backend.list(path).map(\.name))
+        await relist(folder)
+        return names
+    }
+
+    /// A new folder named `name` in `folder`; where it is in the copy.
+    func makeFolder(named name: String, in folder: URL) async throws -> URL {
+        guard ContainerCopies.isSafeName(name) else { throw RemoteError.refused(String(localized: "That name can’t be used.")) }
+        let (server, _, path) = try target(folder)
+        let backend = try await backends(server.id)
+        let newPath = RemotePath.join(path, name)
+        if try await backend.exists(newPath) { throw RemoteError.exists(name) }
+        try await backend.makeFolder(newPath)
+        await relist(folder)
+        return folder.appending(path: name, directoryHint: .isDirectory)
+    }
+
+    /// Renames the item at `url` on the server; where it is in the copy now.
+    func rename(_ url: URL, to name: String) async throws -> URL {
+        guard ContainerCopies.isSafeName(name) else { throw RemoteError.refused(String(localized: "That name can’t be used.")) }
+        let (server, _, path) = try target(url)
+        guard path != "/" else { throw RemoteError.refused(String(localized: "The server’s top folder can’t be renamed.")) }
+        let backend = try await backends(server.id)
+        try await backend.rename(path, to: RemotePath.join(RemotePath.parent(path), name))
+        let parent = url.deletingLastPathComponent()
+        await relist(parent)
+        return parent.appending(path: name)
+    }
+
+    /// Deletes `urls` from the server (folders with everything in them). There's no Trash on a server.
+    func delete(_ urls: [URL]) async throws {
+        var parents: Set<URL> = []
+        for url in urls {
+            try Task.checkCancellation()
+            let (server, _, path) = try target(url)
+            guard path != "/" else { continue }
+            let backend = try await backends(server.id)
+            // What it is (a folder, or a link to one) is the server's to say: a link goes, what it points to stays.
+            try await backend.remove(path)
+            parents.insert(url.deletingLastPathComponent().standardizedFileURL)
+        }
+        for parent in parents { await relist(parent) }
+    }
+
+    /// Moves items within one server into `folder`: a rename there, nothing downloaded. Items on another server are
+    /// refused (they'd have to come through this Mac). Returns where they are in the copy now.
+    func move(_ urls: [URL], into folder: URL) async throws -> [URL] {
+        let (server, _, destination) = try target(folder)
+        let backend = try await backends(server.id)
+        var parents: Set<URL> = [folder.standardizedFileURL]
+        var moved: [URL] = []
+        for url in urls {
+            try Task.checkCancellation()
+            let (source, _, path) = try target(url)
+            guard source.id == server.id else {
+                throw RemoteError.refused(String(localized: "Items can only be moved within one server. Copy them to this Mac first."))
+            }
+            // Never the top, never into itself.
+            guard path != "/", destination != path, !destination.hasPrefix(path + "/") else { continue }
+            let newPath = RemotePath.join(destination, RemotePath.name(path))
+            guard newPath != path else { continue }
+            try await backend.rename(path, to: newPath)
+            parents.insert(url.deletingLastPathComponent().standardizedFileURL)
+            moved.append(folder.appending(path: RemotePath.name(path)))
+        }
+        for parent in parents { await relist(parent) }
+        return moved
+    }
+
+    /// Copies `sources` (files and folders on this Mac) into `folder` on the server. Items named in `skipping` are left
+    /// out; others replace what has their name (a folder is merged into one that's there). `progress` gets the bytes
+    /// sent so far. Returns where the items are in the copy.
+    func upload(_ sources: [URL], into folder: URL, skipping: Set<String> = [], stop: StopFlag,
+                progress: @escaping @Sendable (Int64) -> Void) async throws -> [URL] {
+        let (server, _, path) = try target(folder)
+        let backend = try await backends(server.id)
+        let sent = Counter()
+        var placed: [URL] = []
+        for source in sources where !skipping.contains(source.lastPathComponent) {
+            if stop.isSet { throw SFTPError.stopped }
+            let name = source.lastPathComponent
+            guard ContainerCopies.isSafeName(name) else { continue }
+            try await send(source, to: RemotePath.join(path, name), backend: backend, stop: stop, sent: sent, progress: progress)
+            placed.append(folder.appending(path: name))
+        }
+        await relist(folder)
+        return placed
+    }
+
+    private func send(_ source: URL, to path: String, backend: any RemoteBackend, stop: StopFlag, sent: Counter,
+                      progress: @escaping @Sendable (Int64) -> Void) async throws {
+        var info = stat()
+        // Links aren't followed: what a link points to may be anywhere on this Mac.
+        guard lstat(source.path, &info) == 0 else { return }
+        switch info.st_mode & S_IFMT {
+        case S_IFDIR:
+            // Merged into a folder that's there; never into a link (it could lead anywhere on the server) or a file.
+            switch try await backend.kind(of: path) {
+            case nil: try await backend.makeFolder(path)
+            case .folder: break
+            default:
+                throw RemoteError.refused(String(localized: "“\(RemotePath.name(path))” on the server isn’t a folder, so “\(source.lastPathComponent)” can’t go into it.",
+                                                 comment: "A name on the server, then the folder being copied"))
+            }
+            let children = (try? FileManager.default.contentsOfDirectory(atPath: source.path)) ?? []
+            for name in children.sorted() where ContainerCopies.isSafeName(name) {
+                if stop.isSet { throw SFTPError.stopped }
+                try await send(source.appending(path: name), to: RemotePath.join(path, name), backend: backend, stop: stop, sent: sent, progress: progress)
+            }
+        case S_IFREG:
+            let before = sent.value
+            let modified = (try? source.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            try await backend.upload(source, to: path, modified: modified, progress: { done in progress(before + done) }, stop: stop)
+            sent.add(Int64(info.st_size))
+            progress(sent.value)
+        default:
+            return
+        }
+    }
+
+    // MARK: - Notifications
+
+    @MainActor private static func announce(_ urls: [URL]) {
+        NotificationCenter.default.post(name: .containerFilesFetched, object: urls)
+    }
+
+    @MainActor private static func report(_ error: Error, folder: URL) {
+        NotificationCenter.default.post(name: .containerCopyProblem, object: nil,
+                                        userInfo: ["folder": folder, "message": message(for: error)])
+    }
+
+    /// What went wrong, in a sentence.
+    nonisolated static func message(for error: Error) -> String {
+        if let error = error as? LocalizedError, let description = error.errorDescription { return description }
+        return error.localizedDescription
+    }
+}
+
+/// Bytes sent, across nested calls.
+nonisolated final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var total: Int64 = 0
+    var value: Int64 { lock.withLock { total } }
+    func add(_ bytes: Int64) { lock.withLock { total += bytes } }
+    func set(_ bytes: Int64) { lock.withLock { total = bytes } }
+}
+
+/// Writes fetched files into a copy the safe way: into a private temporary file first, then over the placeholder
+/// (never through a link), readable but read-only, marked as downloaded, with the server's date.
+nonisolated enum RemoteWriter {
+    /// Downloads with `download` (given a temporary file to fill) and puts the result at `url` if the placeholder is
+    /// still there.
+    static func fetch(_ path: String, into url: URL, mode: UInt32, download: (URL, Int64) async throws -> Void) async throws {
+        let temporary = RemoteCopies.root.appending(path: ".fetching", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let temp = temporary.appending(path: UUID().uuidString)
+        defer { unlink(temp.path) }
+        // Its date was the server's when it was listed.
+        var placeholder = stat()
+        guard lstat(url.path, &placeholder) == 0, placeholder.st_mode & S_IFMT == S_IFREG else { return }
+        // No more than it was listed with: a server can't fill the disk by sending without end.
+        try await download(temp, Int64(placeholder.st_size))
+        try place(temp, at: url, mode: mode, modified: placeholder.st_mtimespec)
+    }
+
+    private static func place(_ temp: URL, at url: URL, mode: UInt32, modified: timespec) throws {
+        let file = open(temp.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        guard file >= 0 else { throw CocoaError(.fileReadUnknown) }
+        defer { close(file) }
+        try CopyWriter.markDownloaded(file)
+        fchmod(file, mode_t(CopyWriter.readable(mode)))
+        var times = [modified, modified]
+        futimens(file, &times)
+        let folder = open(url.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard folder >= 0 else { throw CocoaError(.fileWriteNoPermission) }
+        defer { close(folder) }
+        let tempFolder = open(temp.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard tempFolder >= 0 else { throw CocoaError(.fileWriteNoPermission) }
+        defer { close(tempFolder) }
+        // Only over the placeholder: if the folder was listed again meanwhile and it's something else now, leave that.
+        var info = stat()
+        guard fstatat(folder, url.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFREG else { return }
+        guard renameat(tempFolder, temp.lastPathComponent, folder, url.lastPathComponent) == 0 else { throw CocoaError(.fileWriteUnknown) }
+        CopyWriter.restoreTimes(folder)
+    }
+}

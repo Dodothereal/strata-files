@@ -118,7 +118,8 @@ final class BrowserViewController: NSViewController {
     private var gitObservation: GitObservation?
     private var sortKey: SortKey = .name
     private var ascending = true
-    private var pendingSelection: [URL] = []
+    /// Selected once the folder shows them (after the reload a change brings).
+    var pendingSelection: [URL] = []
     /// Opens the folder row a drag rests on (only rows still on screen).
     private lazy var springLoader = SpringLoader(view: outlineView, frame: { [weak self] folder in
         guard let self, let node = node(for: folder) else { return nil }
@@ -130,7 +131,8 @@ final class BrowserViewController: NSViewController {
     })
     /// A drag is over the list: folders don't expand on hover then (they spring open instead).
     private var isDragOver = false
-    private var pendingRename: URL?
+    /// Renamed (inline) once the folder shows it: a new folder.
+    var pendingRename: URL?
     private var renaming: FileNode?
     private var resortWork: DispatchWorkItem?
     /// Showing search results or Recents instead of a folder's contents.
@@ -754,7 +756,7 @@ final class BrowserViewController: NSViewController {
 
     /// Cached size of a folder; with `request`, starts measuring it when unknown and allowed.
     func folderSize(_ url: URL, request: Bool = false) -> FolderSize? {
-        if ContainerCopies.contains(url) { return nil }
+        if LazyCopies.contains(url) { return nil }
         if let size = FileIndex.shared.folderSize(url) { return size }
         if let size = sizer.cached(url) { return size }
         if request, !Privacy.measuringWouldPrompt(url, browsing: directory ?? url) { sizer.request(url) }
@@ -795,7 +797,7 @@ final class BrowserViewController: NSViewController {
             let sizes = selected.map { $0.isDirectory ? folderSize($0.url)?.bytes : $0.size }
             let known = sizes.compactMap { $0 }
             parts.append(known.count == sizes.count
-                ? String(localized: "\(selected.count) selected, \(Format.bytes(known.reduce(0, +)))", comment: "plural")
+                ? String(localized: "\(selected.count) selected, \(Format.bytes(known.saturatingSum))", comment: "plural")
                 : String(localized: "\(selected.count) selected", comment: "plural"))
         }
         if let availableCapacity, !isShowingResults {
@@ -815,7 +817,7 @@ final class BrowserViewController: NSViewController {
         guard !entries.isEmpty else { return }
         // A container's files are fetched first.
         let files = entries.filter { !$0.isFolder }.map(\.url)
-        if files.contains(where: ContainerCopies.isPlaceholder) {
+        if files.contains(where: LazyCopies.isPlaceholder) {
             return afterFetching(files) { [weak self] in self?.openFetched(entries) }
         }
         openFetched(entries)
@@ -842,6 +844,8 @@ final class BrowserViewController: NSViewController {
 
     @objc func moveToTrash(_ sender: Any?) {
         let urls = selectedURLs
+        // A server has no Trash: deleting there asks first.
+        if !urls.isEmpty, isOnServer { return deleteOnServer(urls) }
         guard !urls.isEmpty, !isInsideArchive else { return }
         // In the Trash, ⌘⌫ puts things back (Finder does the same). Trashing what's already in a Trash again would lose
         // where it came from.
@@ -886,6 +890,7 @@ final class BrowserViewController: NSViewController {
     }
 
     @objc func newFolder(_ sender: Any?) {
+        if let directory = targetDirectory, RemoteCopies.server(containing: directory) != nil, !isShowingResults { return newFolderOnServer(in: directory) }
         guard let directory = targetDirectory, !isShowingTrash, !isInsideArchive else { return }
         perform {
             let url = try FileOps.newFolder(in: directory, undo: self.undoManager)
@@ -940,11 +945,17 @@ final class BrowserViewController: NSViewController {
 
     @objc func copy(_ sender: Any?) {
         let urls = selectedURLs
-        // A container's items are read first (folders with all they hold, shown in Transfers), then go on the
-        // clipboard: pasting anywhere gets all of them, never a half-read copy.
-        let fromContainers = urls.filter(ContainerCopies.contains)
+        // A container's or a server's items are read first (folders with all they hold, shown in Transfers), then go on
+        // the clipboard as a staged copy: pasting anywhere (Finder too) gets all of them as ordinary files, never a
+        // half-read copy or a link written by another machine.
+        let fromContainers = urls.filter(LazyCopies.contains)
         guard fromContainers.isEmpty else {
-            return TransferQueue.shared.add(ContainerFetchJob(fromContainers) { Clipboard.write(urls, cut: false) })
+            return TransferQueue.shared.add(ContainerFetchJob(fromContainers) {
+                Task {
+                    let staged = await Task.detached(priority: .userInitiated) { LazyCopies.stageForClipboard(urls) }.value
+                    if !staged.isEmpty { Clipboard.write(staged, cut: false) }
+                }
+            })
         }
         Clipboard.write(urls, cut: false)
     }
@@ -954,12 +965,12 @@ final class BrowserViewController: NSViewController {
     }
 
     @objc func paste(_ sender: Any?) {
-        guard !isInsideArchive else { return }
+        guard !isInsideArchive || isOnServer else { return }
         pasteItems(forceMove: false)
     }
 
     @objc func pasteAndMove(_ sender: Any?) {
-        guard !isInsideArchive else { return }
+        guard !isInsideArchive || isOnServer else { return }
         pasteItems(forceMove: true)
     }
 
@@ -967,6 +978,8 @@ final class BrowserViewController: NSViewController {
         guard let directory = targetDirectory else { return }
         let (urls, isCut) = Clipboard.read()
         guard !urls.isEmpty else { return }
+        // Onto a server: copied there (what's on this Mac stays, even after Cut; a Cut on that server moves it there).
+        if RemoteCopies.contains(directory) { return copyToServer(urls, into: directory, move: forceMove || isCut) }
         transfer(urls, into: directory, move: forceMove || isCut)
         if isCut { Clipboard.clearCut() }
     }
@@ -975,9 +988,11 @@ final class BrowserViewController: NSViewController {
         let here = (effectiveMode == .columns ? columns.activeDirectory : nil) ?? directory
         let urls = selectedURLs.isEmpty ? [here].compactMap { $0 } : selectedURLs
         NSPasteboard.general.clearContents()
-        // In a container's files, the path in the container ("/etc/hosts"); a container itself, its name. Never the
-        // path of Strata's copy, which is gone when it quits.
+        // In a container's files, the path in the container ("/etc/hosts"); a container itself, its name. On a server,
+        // the server's address and path ("deploy@web-1:/srv/app"). Never the path of Strata's copy, which is gone when
+        // it quits.
         let paths = urls.compactMap { url -> String? in
+            if RemoteCopies.contains(url) { return RemoteCopies.displayPath(url) }
             guard ContainerCopies.contains(url) else { return url.path }
             guard let (source, top) = ContainerCopies.copy(containing: url), let path = ContainerCopies.containerPath(of: url, top: top) else {
                 return nil
@@ -1053,8 +1068,8 @@ final class BrowserViewController: NSViewController {
     }
 
     @objc func openInTerminal(_ sender: Any?) {
-        // In a container's files: a shell in the container.
-        if openTerminalInContainer() { return }
+        // In a container's files: a shell in the container. On an SFTP server: a shell there.
+        if openTerminalInContainer() || openTerminalOnServer() { return }
         let selected = selectedEntries
         let folder = selected.count == 1 && selected[0].isFolder ? selected[0].url : targetDirectory
         guard let folder else { return }
@@ -1074,9 +1089,9 @@ final class BrowserViewController: NSViewController {
         for node in nodes where node.entry.isDirectory { FolderSizer.invalidate(node.url) }
         if let repository = gitObservation?.repository { GitStatusStore.shared.refresh(repository, force: true) }
         // A container's folder is read from the container again, not just from its copy.
-        if let directory, ContainerCopies.contains(directory) {
+        if let directory, LazyCopies.contains(directory) {
             Task {
-                await ContainerFiles.shared.invalidate(directory)
+                await LazyCopies.invalidate(directory)
                 refresh()
             }
             return
@@ -1154,6 +1169,7 @@ final class BrowserViewController: NSViewController {
 
     /// Copies and moves go through the transfer queue: progress, pause, conflicts asked up front, undo.
     private func transfer(_ urls: [URL], into target: URL, move: Bool) {
+        if RemoteCopies.contains(target) { return copyToServer(urls, into: target, move: move) }
         let job = TransferQueue.shared.enqueue(urls, to: target, mode: move ? .move : .copy,
                                                undo: undoManager, conflicts: .sheet(for: view.window))
         job.onFinish = { [weak self] job in
@@ -1198,6 +1214,7 @@ final class BrowserViewController: NSViewController {
             return
         }
         let commit = { [self] in
+            if RemoteCopies.contains(url) { return renameOnServer(url, to: newName) }
             performAsync { [self] in
                 let renamed = try await FileOps.rename(url, to: newName, undo: undoManager)
                 pendingSelection = [renamed]
@@ -1238,8 +1255,8 @@ final class BrowserViewController: NSViewController {
     }
 
     private func beginRename(_ url: URL) {
-        // An archive opened as a folder isn't changed.
-        guard !ReadOnlyCopies.contains(url) else { return }
+        // An archive opened as a folder isn't changed (a server's files are, through the server).
+        guard !ReadOnlyCopies.contains(url) || (RemoteCopies.contains(url) && RemoteCopies.remotePath(of: url, top: RemoteCopies.server(containing: url)?.top ?? url) != "/") else { return }
         if let activeView {
             activeView.beginRename(rowURL(url))
             return
@@ -1316,6 +1333,19 @@ final class BrowserViewController: NSViewController {
         }
         let hiddenFilesTitle = Prefs.showHidden ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files")
         if selected.isEmpty {
+            // On a server: a new folder there, or pasting onto it; a shell there (SFTP).
+            if isOnServer {
+                add("New Folder", #selector(newFolder(_:)), "folder.badge.plus")
+                if Clipboard.hasFiles { add("Paste", #selector(paste(_:)), "doc.on.clipboard") }
+                menu.addItem(.separator())
+                if directory.flatMap({ RemoteCopies.server(containing: $0)?.server.kind }) == .sftp {
+                    add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
+                }
+                add("Copy Path", #selector(copyPath(_:)), "link")
+                menu.addItem(.separator())
+                addTitled(hiddenFilesTitle, #selector(toggleHiddenFiles(_:)), "eye")
+                return menu
+            }
             // Inside an archive opened as a folder nothing is added; Finder is shown the archive itself.
             if isInsideArchive {
                 if directory.map({ ContainerCopies.engineFolder($0) == nil }) != false {
@@ -1403,9 +1433,19 @@ final class BrowserViewController: NSViewController {
         add("Quick Look", #selector(toggleQuickLook(_:)), "eye")
         // The system's own item: it keeps its picker alive and shows the share sheet next to the menu. Not for a
         // container's files: they're only read when copied out.
-        let inContainer = directory.map(ContainerCopies.contains) == true
+        let inContainer = directory.map(LazyCopies.contains) == true
         if !inContainer { menu.addItem(NSSharingServicePicker(items: selected.map(\.url)).standardShareMenuItem) }
         menu.addItem(.separator())
+        // On a server: rename one, delete (it asks: no Trash there), copy out.
+        if isOnServer {
+            if selected.count == 1 { addTitled(renameTitle, #selector(renameSelection(_:)), "pencil") }
+            addTitled(String(localized: "Delete…", comment: "Menu command: delete for good (on a server, which has no Trash)"),
+                      #selector(moveToTrash(_:)), "trash")
+            menu.addItem(.separator())
+            add("Copy", #selector(copy(_:)), "doc.on.doc")
+            add("Copy Path", #selector(copyPath(_:)), "link")
+            return menu
+        }
         // Inside an archive opened as a folder nothing changes: copying out is what's offered.
         let inArchive = isInsideArchive
         if inArchive {
@@ -1534,7 +1574,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     private func sizeText(_ node: FileNode) -> String {
         guard node.entry.isDirectory else { return Format.bytes(node.entry.size ?? 0) }
         // A container's folder holds only what's been browsed: its size isn't known.
-        if ContainerCopies.contains(node.url) { return "—" }
+        if LazyCopies.contains(node.url) { return "—" }
         if let size = FileIndex.shared.folderSize(node.url) ?? sizer.cached(node.url) { return Format.bytes(size.bytes) }
         guard canMeasure(node.entry) else { return "—" }
         sizer.request(node.url)
@@ -1543,7 +1583,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     /// Symlinks and volumes aren't walked, and neither are guarded folders that would trigger a consent prompt.
     func canMeasure(_ entry: FileEntry) -> Bool {
-        guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, !ContainerCopies.contains(entry.url), let directory else { return false }
+        guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, !LazyCopies.contains(entry.url), let directory else { return false }
         if FileIndex.shared.folderSize(entry.url) != nil { return true }
         return !Privacy.measuringWouldPrompt(entry.url, browsing: directory)
     }
@@ -1692,6 +1732,24 @@ extension BrowserViewController: NSMenuItemValidation {
             #selector(compress(_:)), #selector(extract(_:)), #selector(putBack(_:)),
             #selector(editTags(_:)), #selector(addToSidebar(_:)),
         ]
+        // On a server: new folders, renaming one item, deleting and pasting go to the server; the rest stays off.
+        let serverChanges: [Selector] = [#selector(newFolder(_:)), #selector(paste(_:)), #selector(pasteAndMove(_:)),
+                                         #selector(renameSelection(_:)), #selector(moveToTrash(_:)), #selector(deleteImmediately(_:))]
+        if isOnServer, let action = item.action, serverChanges.contains(action) {
+            // Like on this Mac: not in search results, a folder that didn't load, or Disk Usage.
+            let showsFolder = !isShowingResults && loadError == nil && effectiveMode != .treemap
+            switch action {
+            case #selector(moveToTrash(_:)):
+                item.title = String(localized: "Delete…", comment: "Menu command: delete for good (on a server, which has no Trash)")
+                return hasSelection
+            case #selector(deleteImmediately(_:)): return hasSelection
+            case #selector(renameSelection(_:)): return showsFolder && selectedEntries.count == 1
+            case #selector(paste(_:)), #selector(pasteAndMove(_:)): return showsFolder && Clipboard.hasFiles
+            default: return showsFolder
+            }
+        }
+        // Back from a server: the File menu says Move to Trash again (Delete… was the server's).
+        if item.action == #selector(moveToTrash(_:)) { item.title = String(localized: "Move to Trash") }
         if let action = item.action, changes.contains(action), isInsideArchive { return false }
         switch item.action {
         case #selector(moveToTrash(_:)):
@@ -1705,10 +1763,13 @@ extension BrowserViewController: NSMenuItemValidation {
             item.title = appUpdatesTitle
             return !selectedApps.isEmpty
         // A container's files are read only when copied out: no shelf, no share sheet, no Finder.
-        case #selector(addToShelf(_:)) where directory.map(ContainerCopies.contains) == true,
-             #selector(share(_:)) where directory.map(ContainerCopies.contains) == true,
-             #selector(showInFinder(_:)) where directory.map(ContainerCopies.contains) == true:
+        case #selector(addToShelf(_:)) where directory.map(LazyCopies.contains) == true,
+             #selector(share(_:)) where directory.map(LazyCopies.contains) == true,
+             #selector(showInFinder(_:)) where directory.map(LazyCopies.contains) == true:
             return false
+        case #selector(openInTerminal(_:)) where serverKind != nil:
+            // On a server it's a shell there over ssh; a bucket has none.
+            return serverKind == .sftp
         case #selector(openInTerminal(_:)) where canOpenTerminalInContainer != nil:
             // In a container's files it's a shell in the container, which has to be running.
             return canOpenTerminalInContainer == true

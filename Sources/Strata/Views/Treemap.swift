@@ -45,7 +45,7 @@ nonisolated enum Treemap {
     /// `minArea` points² (and there are at most `maxTiles`).
     static func tiles(_ items: [TreemapItem], in rect: CGRect, minArea: CGFloat = 34 * 26, maxTiles: Int = 300) -> [TreemapTile] {
         let measured = items.filter { ($0.bytes ?? 0) > 0 }.sorted { $0.bytes! > $1.bytes! }
-        let total = measured.reduce(Int64(0)) { $0 + $1.bytes! }
+        let total = measured.map { $0.bytes! }.saturatingSum
         guard total > 0, rect.width > 4, rect.height > 4 else { return [] }
         let area = Double(rect.width * rect.height)
         var kept: [TreemapItem] = []
@@ -56,7 +56,7 @@ nonisolated enum Treemap {
             if kept.count < maxTiles - 1, share >= Double(minArea) {
                 kept.append(item)
             } else {
-                otherBytes += item.bytes!
+                otherBytes = [otherBytes, item.bytes!].saturatingSum
                 otherCount += 1
             }
         }

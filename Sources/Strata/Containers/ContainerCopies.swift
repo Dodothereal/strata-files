@@ -273,20 +273,58 @@ nonisolated enum ContainerCopies {
         Archiver.removeTree(folder)
     }
 
-    /// Items copied out of a copy become ordinary files: Strata's bookkeeping (which container a folder is, folders'
-    /// dates) stays behind, and they're yours to change (in the copy they're read-only).
-    static func finishCopyingOut(_ url: URL) {
+    /// Items copied out of a copy (a container's, a server's) become ordinary files: Strata's bookkeeping (which
+    /// container a folder is, folders' dates) stays behind, and they're yours to change (in the copy they're
+    /// read-only). Links that would lead outside what was copied are dropped: written by another machine, they'd
+    /// otherwise point into this Mac's own folders from wherever the copy lands.
+    ///
+    /// With `source` (what `url` was copied from), only what came from it is touched: copied into a folder that was
+    /// already there (a merge), the folder's own items, links included, stay exactly as they were.
+    static func finishCopyingOut(_ url: URL, from source: URL? = nil) {
         let names = [sourceAttribute, engineAttribute, "dev.strata.modified"]
-        func finish(_ path: String) {
+        let root = url.standardizedFileURL.pathComponents
+        let fm = FileManager.default
+        func isFromCopy(_ path: String, _ relative: String, _ info: stat) -> Bool {
+            guard let source else { return true }
+            let counterpart = relative.isEmpty ? source.path : source.path + "/" + relative
+            var theirs = stat()
+            guard lstat(counterpart, &theirs) == 0, theirs.st_mode & S_IFMT == info.st_mode & S_IFMT else { return false }
+            guard info.st_mode & S_IFMT == S_IFLNK else { return true }
+            let target = try? fm.destinationOfSymbolicLink(atPath: path)
+            return target != nil && target == (try? fm.destinationOfSymbolicLink(atPath: counterpart))
+        }
+        func leadsOutside(_ path: String) -> Bool {
+            guard let target = try? FileManager.default.destinationOfSymbolicLink(atPath: path) else { return false }
+            if target.hasPrefix("/") { return true }
+            var parts = URL(fileURLWithPath: path).deletingLastPathComponent().standardizedFileURL.pathComponents
+            for part in target.split(separator: "/") where part != "." {
+                if part == ".." {
+                    guard parts.count > root.count else { return true }
+                    parts.removeLast()
+                } else {
+                    parts.append(String(part))
+                }
+            }
+            return !parts.starts(with: root)
+        }
+        /// False for what isn't the copy's (nothing under it is looked at either).
+        func finish(_ path: String, _ relative: String) -> Bool {
             var info = stat()
-            guard lstat(path, &info) == 0 else { return }
+            guard lstat(path, &info) == 0, isFromCopy(path, relative, info) else { return false }
             let kind = info.st_mode & S_IFMT
+            if kind == S_IFLNK, leadsOutside(path) {
+                unlink(path)
+                return false
+            }
             if kind == S_IFDIR { for name in names { removexattr(path, name, XATTR_NOFOLLOW) } }
             if kind == S_IFDIR || kind == S_IFREG, info.st_mode & 0o200 == 0 { chmod(path, (info.st_mode & 0o7777) | 0o200) }
+            return true
         }
-        finish(url.path)
-        let walker = FileManager.default.enumerator(at: url, includingPropertiesForKeys: nil, options: [])
-        while let item = walker?.nextObject() as? URL { finish(item.path) }
+        let top = url.path
+        guard finish(top, ""), let walker = fm.enumerator(atPath: top) else { return }
+        while let relative = walker.nextObject() as? String {
+            if !finish(top + "/" + relative, relative) { walker.skipDescendants() }
+        }
     }
 
     /// At quit (and at launch, for anything a crash left): containers' files don't outlive Strata (a container's files
@@ -312,6 +350,6 @@ nonisolated enum ContainerCopies {
 /// Strata, and nothing is moved or saved into one.
 nonisolated enum ReadOnlyCopies {
     static func contains(_ url: URL) -> Bool {
-        ArchiveCache.contains(url) || ContainerCopies.contains(url)
+        ArchiveCache.contains(url) || ContainerCopies.contains(url) || RemoteCopies.contains(url)
     }
 }

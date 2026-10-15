@@ -229,7 +229,11 @@ extension BrowserWindowController {
         }
         // In the Trash: Put Back. Never offered for something inside a trashed folder.
         let selected = browser.selectedURLs
-        if !selected.isEmpty, selected.allSatisfy(Trash.contains) {
+        if !selected.isEmpty, browser.isOnServer {
+            // A server has no Trash: deleting there asks first.
+            commands.insert(localizedCommand(String(localized: "Delete…", comment: "Menu command: delete for good (on a server, which has no Trash)"),
+                                             "trash", "⌘⌫", keywords: ["Remove", "Erase", "Trash"]) { [weak self] in self?.browser.moveToTrash(nil) }, at: 0)
+        } else if !selected.isEmpty, selected.allSatisfy(Trash.contains) {
             commands.insert(command("Put Back", "tray.and.arrow.up", "⌘⌫") { [weak self] in self?.browser.putBack(nil) }, at: 0)
         } else if !selected.isEmpty, !selected.contains(where: Trash.isInTrash) {
             commands.insert(command("Move to Trash", "trash", "⌘⌫") { [weak self] in self?.browser.moveToTrash(nil) }, at: 0)
@@ -241,12 +245,15 @@ extension BrowserWindowController {
         // A read-only copy (an archive opened as a folder, a container's files): nothing in it changes, so commands that
         // would do nothing aren't offered. A container's files aren't handed to Finder, the Shelf or the share sheet.
         if browser.isInsideArchive {
-            var hidden = Set(["New Folder", "Tags…", "Duplicate", "Delete Immediately…", "Move to Trash"].map { String(localized: String.LocalizationValue($0)) })
-            hidden.insert(browser.renameTitle)
-            if browser.directory.map(ContainerCopies.contains) == true {
+            // On a server, new folders, renaming one item and deleting go to the server.
+            let onServer = browser.isOnServer
+            var hidden = Set((onServer ? ["Tags…", "Duplicate", "Delete Immediately…"]
+                : ["New Folder", "Tags…", "Duplicate", "Delete Immediately…", "Move to Trash"]).map { String(localized: String.LocalizationValue($0)) })
+            if !onServer || browser.selectedURLs.count > 1 { hidden.insert(browser.renameTitle) }
+            if browser.directory.map(LazyCopies.contains) == true {
                 hidden.formUnion(["Add to Shelf", "Share…", "Show in Finder"].map { String(localized: String.LocalizationValue($0)) })
             }
-            if browser.canOpenTerminalInContainer == false { hidden.insert(String(localized: "Open in Terminal")) }
+            if browser.canOpenTerminalInContainer == false || browser.serverKind == .s3 { hidden.insert(String(localized: "Open in Terminal")) }
             commands.removeAll { hidden.contains($0.title) }
         }
         return commands

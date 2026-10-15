@@ -228,7 +228,10 @@ final class InspectorViewController: NSViewController {
             let apparent = ArchiveCache.apparentURL(entry.url)
             let container = ContainerCopies.copy(containing: entry.url)
             let containerPath = container.flatMap { ContainerCopies.containerPath(of: entry.url, top: $0.top) }
-            titleLabel.stringValue = containerPath == "/" ? container?.source.name ?? entry.name
+            let server = RemoteCopies.server(containing: entry.url)
+            let serverPath = server.flatMap { RemoteCopies.remotePath(of: entry.url, top: $0.top) }
+            titleLabel.stringValue = serverPath == "/" ? server?.server.name ?? entry.name
+                : containerPath == "/" ? container?.source.name ?? entry.name
                 : ContainerCopies.engineFolder(entry.url) != nil ? Places.displayName(entry.url) : apparent?.lastPathComponent ?? entry.name
             let size = entry.isDirectory ? folderSize(entry.url).map { Format.bytes($0.bytes) } : entry.size.map(Format.bytes)
             subtitleLabel.stringValue = [entry.kind, size].compactMap { $0 }.joined(separator: " · ")
@@ -240,7 +243,7 @@ final class InspectorViewController: NSViewController {
                     rows.append((sizeTitle, InspectorRows.text("\(Format.bytes(size.bytes)) · \(files)")))
                 } else if canMeasure(entry) {
                     rows.append((sizeTitle, InspectorRows.text(String(localized: "Calculating…"))))
-                } else if entry.isVolume || entry.isSymlink || ContainerCopies.contains(entry.url) {
+                } else if entry.isVolume || entry.isSymlink || LazyCopies.contains(entry.url) {
                     rows.append((sizeTitle, InspectorRows.text("—")))
                 } else {
                     rows.append((sizeTitle, InspectorRows.text(String(localized: "Needs Full Disk Access", comment: "Inspector: a folder’s size can’t be measured without Full Disk Access"))))
@@ -253,8 +256,8 @@ final class InspectorViewController: NSViewController {
             if let dimensions = Self.imageDimensions(entry) {
                 rows.append((String(localized: "Dimensions", comment: "Inspector row: an image’s width × height in pixels"), InspectorRows.text(dimensions)))
             }
-            // A container's files have the container's modification dates; created and added would be the copy's.
-            let isCopy = ContainerCopies.contains(entry.url)
+            // A container's or a server's files have their modification dates; created and added would be the copy's.
+            let isCopy = LazyCopies.contains(entry.url)
             if !isCopy {
                 rows.append((String(localized: "Created", comment: "Inspector row: creation date"), InspectorRows.text(Format.longDate(entry.created))))
             }
@@ -278,6 +281,12 @@ final class InspectorViewController: NSViewController {
                 let folder = (path as NSString).deletingLastPathComponent
                 return folder == "/" ? (copy.source.name, copy.source.engineName)
                     : ((folder as NSString).lastPathComponent, "\(copy.source.name):" + ((folder as NSString).deletingLastPathComponent))
+            } ?? server.flatMap { copy in
+                // On a server: the folder there ("app", in “web-1:/srv”).
+                guard let path = serverPath, path != "/" else { return nil }
+                let folder = RemotePath.parent(path)
+                return folder == "/" ? (copy.server.name, copy.server.address)
+                    : (RemotePath.name(folder), "\(copy.server.name):" + RemotePath.parent(folder))
             }
             if !isCopy || inContainer != nil {
                 rows.append((String(localized: "Where", comment: "Inspector row: the folder the item is in"),
@@ -294,7 +303,7 @@ final class InspectorViewController: NSViewController {
         } else {
             titleLabel.stringValue = String(localized: "\(items.count) items", comment: "plural")
             let known = items.compactMap { $0.isDirectory ? folderSize($0.url)?.bytes : $0.size }
-            let total = known.reduce(0, +)
+            let total = known.saturatingSum
             // Symlinked folders, volumes and folders macOS guards aren't measured: their size never arrives, so they
             // mustn't leave the total "calculating" forever.
             let unmeasured = items.filter { item in
@@ -335,7 +344,7 @@ final class InspectorViewController: NSViewController {
             MainActor.assumeIsolated {
                 guard let self, self.shownURLs == [entry.url] else { return }
                 // A container's file not fetched yet: its icon until it arrives.
-                if ContainerCopies.isPlaceholder(entry.url) { return }
+                if LazyCopies.isPlaceholder(entry.url) { return }
                 if !entry.isDirectory, let rich = RichPreview.makeView(for: entry.url, contentType: entry.contentType, fallback: { [weak self] in
                     guard let self, self.shownURLs == [entry.url] else { return }
                     self.removeRichPreview()

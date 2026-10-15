@@ -23,7 +23,7 @@ nonisolated final class ContainerDragItem: NSFilePromiseProvider {
     /// An item of a container's files gets a promise; anything else drags as itself.
     @MainActor
     static func writer(for url: URL) -> NSPasteboardWriting {
-        ContainerCopies.contains(url) ? ContainerDragItem(source: url) : url as NSURL
+        LazyCopies.contains(url) ? ContainerDragItem(source: url) : url as NSURL
     }
 
     override func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
@@ -57,9 +57,9 @@ nonisolated final class ContainerPromises: NSObject, NSFilePromiseProviderDelega
         nonisolated(unsafe) var failure: Error?
         Task {
             do {
-                try await ContainerFiles.shared.prepareForCopying([source])
+                try await LazyCopies.prepareForCopying([source])
                 try FileManager.default.copyItem(at: source, to: url)
-                ContainerCopies.finishCopyingOut(url)
+                ContainerCopies.finishCopyingOut(url, from: source)
             } catch {
                 failure = error
             }
@@ -74,6 +74,6 @@ extension FileDrop {
     /// Items of containers' files dragged within Strata (see `ContainerDragItem`).
     static func containerItems(_ pasteboard: NSPasteboard) -> [URL] {
         (pasteboard.pasteboardItems ?? []).compactMap { $0.string(forType: .strataContainerItem) }
-            .map { URL(fileURLWithPath: $0) }.filter(ContainerCopies.contains)
+            .map { URL(fileURLWithPath: $0) }.filter(LazyCopies.contains)
     }
 }

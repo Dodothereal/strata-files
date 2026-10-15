@@ -24,6 +24,10 @@ nonisolated struct ListedEntry: Sendable, Equatable {
     let linkTarget: String
     /// A link that leads to a folder (so the copy can show it as one).
     var targetIsDirectory = false
+
+    /// A size as another machine reported it, kept within what a file can be (0 to 16 TB): a negative or absurd number
+    /// from a container's `stat` or a server would otherwise overflow sums of sizes.
+    static func saneSize(_ size: Int64) -> Int64 { min(max(size, 0), 1 << 44) }
 }
 
 /// Reads containers' files into their copies (see `ContainerCopies`).
@@ -448,8 +452,9 @@ nonisolated enum ContainerListing {
             guard let newline = data[index...].firstIndex(of: 0x0A) else { break }
             let fields = String(decoding: data[index..<newline], as: UTF8.self).split(separator: " ")
             // Whole numbers only: a container's own `stat` could print anything.
-            guard fields.count == 3 || fields.count == 4, let raw = UInt32(fields[0], radix: 16), let size = Int64(fields[1]),
+            guard fields.count == 3 || fields.count == 4, let raw = UInt32(fields[0], radix: 16), let parsedSize = Int64(fields[1]),
                   let seconds = Int64(fields[2]) else { break }
+            let size = ListedEntry.saneSize(parsedSize)
             let leadsToFolder = fields.count == 4 && fields[3] == "1"
             guard let nameEnd = data[(newline + 1)...].firstIndex(of: 0),
                   let targetEnd = data[(nameEnd + 1)...].firstIndex(of: 0) else { break }
