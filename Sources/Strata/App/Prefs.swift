@@ -27,6 +27,7 @@ enum Prefs {
         static let density = "density"
         static let nameTextSize = "nameTextSize"
         static let showIconPreviews = "showIconPreviews"
+        static let sidebarShowsTree = "sidebarShowsTree"
     }
 
     static func register() {
@@ -36,6 +37,12 @@ enum Prefs {
     static var showHidden: Bool {
         get { defaults.bool(forKey: Key.showHidden) }
         set { defaults.set(newValue, forKey: Key.showHidden); NotificationCenter.default.post(name: .prefsChanged, object: nil) }
+    }
+
+    /// The sidebar shows the folder tree instead of Favorites, Locations and the rest.
+    static var sidebarShowsTree: Bool {
+        get { defaults.bool(forKey: Key.sidebarShowsTree) }
+        set { defaults.set(newValue, forKey: Key.sidebarShowsTree); NotificationCenter.default.post(name: .prefsChanged, object: nil) }
     }
 
     static var foldersFirst: Bool {

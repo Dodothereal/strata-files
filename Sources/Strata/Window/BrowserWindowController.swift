@@ -8,6 +8,7 @@ extension NSToolbarItem.Identifier {
     static let viewMode = Self("viewMode")
     static let dualPane = Self("dualPane")
     static let share = Self("share")
+    static let sidebarMode = Self("sidebarMode")
 }
 
 /// One browser window (or tab): one or two panes, each with its own place and history, sharing the sidebar,
@@ -30,6 +31,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private let pathBar = PathBar()
     private var searchItem: NSSearchToolbarItem?
     private var viewModeItem: NSToolbarItemGroup?
+    private var sidebarModeItem: NSToolbarItemGroup?
     private var dualPaneItem: NSToolbarItem?
     private var responderObservation: NSKeyValueObservation?
     /// Index changes re-run searches no more often than `indexRefreshInterval`.
@@ -87,6 +89,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(indexPhaseChanged), name: .indexPhaseDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(sidebarModePrefChanged), name: .prefsChanged, object: nil)
         // The Inspector's Cloud row follows downloads and uploads.
         NotificationCenter.default.addObserver(self, selector: #selector(cloudStatusChanged), name: .cloudStatusChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(containerCopyProblem(_:)), name: .containerCopyProblem, object: nil)
@@ -124,6 +127,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func toggleDualPane(_ sender: Any?) {
         toggleDualPane(at: nil)
+    }
+
+    /// View ▸ Folder Tree in Sidebar: the tree of folders instead of Favorites, Locations and the rest (every window).
+    @objc func toggleFolderTree(_ sender: Any?) {
+        Prefs.sidebarShowsTree.toggle()
+        if split.splitViewItems.first?.isCollapsed == true { split.toggleSidebar(nil) }
     }
 
     /// Adds a second pane (at `url`, or where the current one is), or closes the pane without focus.
@@ -424,6 +433,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     override func newWindowForTab(_ sender: Any?) {
         // A new tab joins the window's workspace: updating it saves this tab too.
         (NSApp.delegate as? AppDelegate)?.openWindow(at: location, tabbedWith: window).workspaceName = groupWorkspaceName
+    }
+
+    @objc private func sidebarModeChanged(_ sender: NSToolbarItemGroup) {
+        let tree = sender.selectedIndex == 1
+        if tree != Prefs.sidebarShowsTree { Prefs.sidebarShowsTree = tree }
+        if split.splitViewItems.first?.isCollapsed == true { split.toggleSidebar(nil) }
+    }
+
+    /// Every window's switch follows the setting (it's the same for all of them).
+    @objc private func sidebarModePrefChanged() {
+        sidebarModeItem?.selectedIndex = Prefs.sidebarShowsTree ? 1 : 0
     }
 
     @objc private func viewModeChanged(_ sender: NSToolbarItemGroup) {
@@ -1008,7 +1028,7 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
 
 extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, NSMenuItemValidation {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .sidebarTrackingSeparator, .back, .forward, .flexibleSpace, .pathBar, .flexibleSpace, .viewMode,
+        [.toggleSidebar, .sidebarMode, .sidebarTrackingSeparator, .back, .forward, .flexibleSpace, .pathBar, .flexibleSpace, .viewMode,
          .dualPane, .share, .search, .transfers, .inspectorTrackingSeparator, .toggleInspector]
     }
 
@@ -1037,6 +1057,23 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             item.label = String(localized: "Location", comment: "Toolbar item: the path bar")
             item.view = pathBar
             item.visibilityPriority = .high
+            return item
+        case .sidebarMode:
+            // Next to Hide Sidebar: what the sidebar shows, Places (Favorites, Locations…) or the folder tree.
+            let places = String(localized: "Places", comment: "Sidebar switch: Favorites, Locations and the other sections")
+            let folders = String(localized: "Folders", comment: "Sidebar switch: the tree of folders")
+            let images = [NSImage(systemSymbolName: "star", accessibilityDescription: places)!,
+                          NSImage(systemSymbolName: "list.bullet.indent", accessibilityDescription: folders)!]
+            let item = NSToolbarItemGroup(itemIdentifier: id, images: images, selectionMode: .selectOne, labels: [places, folders],
+                                          target: self, action: #selector(sidebarModeChanged(_:)))
+            item.label = String(localized: "Sidebar", comment: "Toolbar item label: switch between Places and the folder tree")
+            item.paletteLabel = String(localized: "Sidebar Contents", comment: "Toolbar customization palette label")
+            item.controlRepresentation = .expanded
+            item.subitems[0].toolTip = String(localized: "Favorites, disks and other places", comment: "Tooltip of the sidebar's Places switch")
+            item.subitems[1].toolTip = String(localized: "Every folder, as a tree", comment: "Tooltip of the sidebar's Folders switch")
+            item.selectedIndex = Prefs.sidebarShowsTree ? 1 : 0
+            item.visibilityPriority = .low
+            sidebarModeItem = item
             return item
         case .viewMode:
             let item = BrowserViewMode.makeToolbarItem(id, target: self, action: #selector(viewModeChanged(_:)))
@@ -1096,6 +1133,9 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
         case #selector(goForward(_:)): return !pane.forwardStack.isEmpty
         case #selector(toggleDualPane(_:)):
             item.state = isDualPane ? .on : .off
+            return true
+        case #selector(toggleFolderTree(_:)):
+            item.state = Prefs.sidebarShowsTree ? .on : .off
             return true
         case #selector(focusOtherPane(_:)):
             return isDualPane

@@ -127,6 +127,10 @@ extension BrowserWindowController {
                                  : String(localized: "Hide Sidebar"), "sidebar.left", "⌃⌘S") { [weak self] in
                 self?.splitController.toggleSidebar(nil)
             },
+            localizedCommand(Prefs.sidebarShowsTree ? String(localized: "Show Places in Sidebar") : String(localized: "Show Folder Tree in Sidebar"),
+                             "list.bullet.indent", nil, keywords: ["Tree", "Folders", "Favorites", "Navigation", "Hierarchy"]) { [weak self] in
+                self?.toggleFolderTree(nil)
+            },
             localizedCommand(isDualPane ? String(localized: "Single Pane") : String(localized: "Dual Pane"), "rectangle.split.2x1", "⌘\\") { [weak self] in
                 self?.toggleDualPane(nil)
             },

@@ -76,6 +76,7 @@ enum MainMenu {
             item("Compare with Other Pane…", #selector(BrowserWindowController.compareWithOtherPane(_:))),
             .separator(),
             item("Toggle Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control]),
+            item("Folder Tree in Sidebar", #selector(BrowserWindowController.toggleFolderTree(_:))),
             item("Toggle Inspector", #selector(NSSplitViewController.toggleInspector(_:)), "i"),
             .separator(),
             item("Command Palette…", #selector(BrowserWindowController.showCommandPalette(_:)), "k"),

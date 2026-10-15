@@ -68,6 +68,9 @@ final class SidebarViewController: NSViewController {
     var onOpenInNewTab: ((URL) -> Void)?
 
     private let outline = SidebarOutlineView()
+    private let placesScroll = NSScrollView()
+    /// Folders mode (Prefs.sidebarShowsTree): the tree instead of the sections.
+    private let tree = FolderTreeController()
     /// Opens the location a drag rests on, in the current pane.
     private lazy var springLoader = SpringLoader(view: outline, frame: { [weak self] folder in
         guard let self, let row = row(for: folder) else { return nil }
@@ -92,7 +95,7 @@ final class SidebarViewController: NSViewController {
     private var trashVerdict: (drag: Int, operation: NSDragOperation)?
 
     override func loadView() {
-        let scroll = NSScrollView()
+        let scroll = placesScroll
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
@@ -117,8 +120,26 @@ final class SidebarViewController: NSViewController {
         menu.delegate = self
         outline.menu = menu
         scroll.documentView = outline
-        view = scroll
+        tree.onSelect = { [weak self] target in self?.onSelect?(target) }
+        tree.onTrash = { [weak self] urls in self?.moveToTrash(urls) }
+        tree.canTrash = { urls in Self.canTrash(urls) }
+        tree.onOpenInNewTab = { [weak self] url in self?.onOpenInNewTab?(url) }
+        addChild(tree)
+        let container = NSView()
+        for child in [scroll, tree.view] {
+            child.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(child)
+            NSLayoutConstraint.activate([
+                child.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                child.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                child.topAnchor.constraint(equalTo: container.topAnchor),
+                child.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            ])
+        }
+        view = container
         reload()
+        showMode()
+        NotificationCenter.default.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
 
         let center = NSWorkspace.shared.notificationCenter
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
@@ -189,9 +210,24 @@ final class SidebarViewController: NSViewController {
         if let current { highlight(current) }
     }
 
+    /// Places or Folders, as set.
+    private func showMode() {
+        let showsTree = Prefs.sidebarShowsTree
+        let hiding = showsTree ? placesScroll : tree.view
+        let hadFocus = (view.window?.firstResponder as? NSView).map { $0.isDescendant(of: hiding) } ?? false
+        placesScroll.isHidden = showsTree
+        tree.view.isHidden = !showsTree
+        tree.isActive = showsTree
+        // Arrow keys mustn't keep moving through the list that just went away.
+        if hadFocus { view.window?.makeFirstResponder(showsTree ? tree.focusView : outline) }
+    }
+
+    @objc private func prefsChanged() { showMode() }
+
     /// Selects the row for `target` (or nothing) without navigating.
     func highlight(_ target: SidebarTarget?) {
         current = target
+        if case .folder(let url)? = target { tree.reveal(url) } else { tree.reveal(nil) }
         var row = -1
         for section in sections {
             if let item = section.items.first(where: { Self.matches($0.target, target) }) {
@@ -358,13 +394,9 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         guard let target = (item as? SidebarItem)?.url, index == NSOutlineViewDropOnItemIndex else { return [] }
         if Trash.isTrash(target) {
             if let verdict = trashVerdict, verdict.drag == info.draggingSequenceNumber { return verdict.operation }
-            // Not what's already in a Trash, a Trash itself, or a whole disk.
-            let refused = urls.isEmpty || urls.contains { url in
-                Trash.isInTrash(url) || Trash.isTrash(url) || ReadOnlyCopies.contains(url)
-                    || (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
-            }
-            trashVerdict = (info.draggingSequenceNumber, refused ? [] : .delete)
-            return refused ? [] : .delete
+            let operation: NSDragOperation = Self.canTrash(urls) ? .delete : []
+            trashVerdict = (info.draggingSequenceNumber, operation)
+            return operation
         }
         return FileDrop.operation(urls, into: target, info: info)
     }
@@ -578,6 +610,14 @@ extension SidebarViewController: NSMenuDelegate {
     }
 
     /// Files dropped on the Trash go there like ⌘⌫: undoable, in History, and Put Back knows where they came from.
+    /// Not what's already in a Trash, a Trash itself, a read-only copy or a whole disk.
+    static func canTrash(_ urls: [URL]) -> Bool {
+        !urls.isEmpty && !urls.contains { url in
+            Trash.isInTrash(url) || Trash.isTrash(url) || ReadOnlyCopies.contains(url)
+                || (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
+        }
+    }
+
     private func moveToTrash(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
         let window = view.window
