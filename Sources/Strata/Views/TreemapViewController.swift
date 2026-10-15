@@ -652,14 +652,16 @@ final class TreemapLegendView: NSView {
         stack.alignment = .centerY
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.detachesHiddenViews = true
-        // The legend must never widen the window: it may be narrower than its content, dropping the smallest groups.
-        stack.setClippingResistancePriority(.defaultLow, for: .horizontal)
+        // The legend must never widen the window, or hold a pane wider (dragging the divider between panes, whose
+        // holding priority is 250): it may be narrower than its content, dropping the smallest groups first, then
+        // shortening the total.
+        stack.setClippingResistancePriority(.init(150), for: .horizontal)
         stack.setHuggingPriority(.defaultLow, for: .horizontal)
         total.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         total.textColor = .secondaryLabelColor
         total.alignment = .right
         total.translatesAutoresizingMaskIntoConstraints = false
-        total.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        total.setContentCompressionResistancePriority(.init(200), for: .horizontal)
         total.lineBreakMode = .byTruncatingHead
         spinner.style = .spinning
         spinner.controlSize = .mini

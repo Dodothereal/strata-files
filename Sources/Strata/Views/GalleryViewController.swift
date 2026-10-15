@@ -94,9 +94,13 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         detailLabel.alignment = .center
         detailLabel.lineBreakMode = .byTruncatingTail
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
-        // A long name or description truncates instead of holding the pane wider (dragging the divider between panes).
-        nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        detailLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        // The labels span the gallery, so they mustn't size it: below the panes' holding priority (250), a long name
+        // truncates instead of holding the pane wider, and a short one doesn't pull it back narrower after the divider
+        // between two panes is dragged (a label hugs its text at 251).
+        for label in [nameLabel, detailLabel] {
+            label.setContentCompressionResistancePriority(.init(200), for: .horizontal)
+            label.setContentHuggingPriority(.init(200), for: .horizontal)
+        }
 
         let separator = NSBox()
         separator.boxType = .separator

@@ -91,6 +91,10 @@ final class PaneHostViewController: NSViewController {
         status.alignment = .center
         status.lineBreakMode = .byTruncatingMiddle
         status.translatesAutoresizingMaskIntoConstraints = false
+        // Spanning the pane, the status line mustn't size it (dragging the divider between panes): below the panes'
+        // holding priority (250), it neither holds the pane wider nor pulls it narrower (a label hugs its text at 251).
+        status.setContentCompressionResistancePriority(.init(200), for: .horizontal)
+        status.setContentHuggingPriority(.init(200), for: .horizontal)
         let hairline = NSBox()
         hairline.boxType = .separator
         hairline.translatesAutoresizingMaskIntoConstraints = false
