@@ -1517,6 +1517,7 @@
     "The server has no shared folders you can open.": "A szerveren nincs megnyitható megosztott mappa.",
     "The server sent something Strata doesn’t understand.": "A szerver olyasmit küldött, amit a Strata nem ért.",
     "The server speaks a version of the protocol macOS doesn’t.": "A szerver olyan protokollverziót használ, amelyet a macOS nem támogat.",
+    "The server stopped answering, so Strata disconnected. Reload the folder to connect again.": "A szerver nem válaszolt, ezért a Strata bontotta a kapcsolatot. Töltse be újra a mappát az újbóli csatlakozáshoz.",
     "The server wants a way of signing in that macOS doesn’t offer.": "A szerver olyan bejelentkezési módot kér, amelyet a macOS nem kínál.",
     "The server’s password rules don’t accept that password.": "A szerver jelszószabályai nem fogadják el ezt a jelszót.",
     "The server’s top folder can’t be renamed.": "A szerver legfelső szintű mappája nem nevezhető át.",

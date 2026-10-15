@@ -1396,6 +1396,7 @@
     "The server has no shared folders you can open.": "サーバに開くことができる共有フォルダはありません。",
     "The server sent something Strata doesn’t understand.": "サーバから、Strataが解釈できないデータが送信されました。",
     "The server speaks a version of the protocol macOS doesn’t.": "サーバはmacOSが対応していないバージョンのプロトコルを使用しています。",
+    "The server stopped answering, so Strata disconnected. Reload the folder to connect again.": "サーバが応答しなくなったため、Strataは接続を解除しました。フォルダを再読み込みすると、もう一度接続します。",
     "The server wants a way of signing in that macOS doesn’t offer.": "サーバはmacOSが対応していないサインイン方法を要求しています。",
     "The server’s password rules don’t accept that password.": "サーバのパスワードのルールにより、このパスワードは使用できません。",
     "The server’s top folder can’t be renamed.": "サーバの最上位フォルダの名前は変更できません。",

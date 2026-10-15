@@ -1638,6 +1638,7 @@
     "The server has no shared folders you can open.": "Server nemá žádné sdílené složky, které byste mohli otevřít.",
     "The server sent something Strata doesn’t understand.": "Server odeslal něco, čemu Strata nerozumí.",
     "The server speaks a version of the protocol macOS doesn’t.": "Server používá verzi protokolu, kterou macOS nepodporuje.",
+    "The server stopped answering, so Strata disconnected. Reload the folder to connect again.": "Server přestal odpovídat, a tak se od něj Strata odpojila. Obnovte složku a připojte se znovu.",
     "The server wants a way of signing in that macOS doesn’t offer.": "Server vyžaduje způsob přihlášení, který macOS nenabízí.",
     "The server’s password rules don’t accept that password.": "Pravidla hesel serveru toto heslo nepřijímají.",
     "The server’s top folder can’t be renamed.": "Nejvyšší složku serveru nelze přejmenovat.",

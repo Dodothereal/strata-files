@@ -105,6 +105,8 @@ actor RemoteFiles {
             if !eager.isEmpty { Task { await self.fetchEagerly(eager) } }
             return Self.freshFor
         } catch {
+            // A server that stopped answering was disconnected; the sidebar says so too (the next look connects again).
+            if case SFTPError.stoppedAnswering = error { await RemoteSessions.shared.disconnect(server.id) }
             await Self.report(error, folder: folder)
             return nil
         }

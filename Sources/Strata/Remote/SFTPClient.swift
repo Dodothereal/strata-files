@@ -31,6 +31,8 @@ nonisolated enum SFTPError: Error, Equatable, LocalizedError {
     case stopped
     /// The file is bigger than it was when it was listed.
     case tooLarge
+    /// Connected, but nothing came back for a minute while something was asked (see `silenceLimit`).
+    case stoppedAnswering
 
     static let eof: UInt32 = 1
     static let noSuchFile: UInt32 = 2
@@ -53,6 +55,7 @@ nonisolated enum SFTPError: Error, Equatable, LocalizedError {
         case .malformed: String(localized: "The server sent something Strata doesn’t understand.")
         case .stopped: String(localized: "Stopped.")
         case .tooLarge: String(localized: "It changed on the server while it was being read. Reload the folder and try again.")
+        case .stoppedAnswering: String(localized: "The server stopped answering, so Strata disconnected. Reload the folder to connect again.")
         }
     }
 }
@@ -87,6 +90,14 @@ nonisolated final class SFTPClient: @unchecked Sendable {
     private var nextID: UInt32 = 1
     private var waiting: [UInt32: Waiter] = [:]
     private var closedReason: String?
+    /// When anything last came from the server, and whether the session is up (logging in can take as long as you
+    /// take to type a password, so the silence limit only counts after it).
+    private var lastHeard = ProcessInfo.processInfo.systemUptime
+    private var isAnswering = false
+    private var stoppedAnswering = false
+    /// How long a connected server may send nothing at all while something is asked before it's taken as stuck and the
+    /// connection is closed. A slow server still sends something; a dropped network ends ssh by itself (keepalives).
+    let silenceLimit: TimeInterval
     private var stderrText = ""
     /// Extensions the server announced ("posix-rename@openssh.com", "statvfs@openssh.com"…).
     private(set) var extensions: [String: String] = [:]
@@ -98,7 +109,9 @@ nonisolated final class SFTPClient: @unchecked Sendable {
 
     /// Starts `executable` with `arguments` (and `environment` added); `connect()` then says hello. Throws when the
     /// program can't start.
-    init(executable: URL, arguments: [String], environment: [String: String] = [:], connect: Bool = true) throws {
+    init(executable: URL, arguments: [String], environment: [String: String] = [:], connect: Bool = true,
+         silenceLimit: TimeInterval = 60) throws {
+        self.silenceLimit = silenceLimit
         process = Process()
         process.executableURL = executable
         process.arguments = arguments
@@ -125,6 +138,7 @@ nonisolated final class SFTPClient: @unchecked Sendable {
     func connect() throws {
         do {
             try hello()
+            lock.withLock { isAnswering = true }
         } catch {
             close()
             throw error
@@ -432,13 +446,32 @@ nonisolated final class SFTPClient: @unchecked Sendable {
     }
 
     private func wait(_ waiter: Waiter, id: UInt32) throws -> (type: UInt8, body: [UInt8]) {
-        waiter.done.wait()
+        let asked = ProcessInfo.processInfo.systemUptime
+        let check = min(5, max(silenceLimit / 4, 0.05))
+        while waiter.done.wait(timeout: .now() + check) == .timedOut {
+            let stuck = lock.withLock {
+                isAnswering && ProcessInfo.processInfo.systemUptime - max(lastHeard, asked) >= silenceLimit
+            }
+            if stuck {
+                lock.withLock { stoppedAnswering = true }
+                close()
+            }
+        }
         guard let reply = waiter.reply else {
+            if lock.withLock({ stoppedAnswering }) { throw SFTPError.stoppedAnswering }
             let detail = lock.withLock { stderrText.isEmpty ? (closedReason ?? "") : stderrText }
             throw SFTPError.disconnected(detail)
         }
         return reply
     }
+
+    /// Something came from the server.
+    private func heard() {
+        lock.withLock { lastHeard = ProcessInfo.processInfo.systemUptime }
+    }
+
+    /// The ssh (or server) process, for tests.
+    var processIdentifier: Int32 { process.processIdentifier }
 
     private func write(type: UInt8, body: [UInt8]) throws {
         var packet = Writer()
@@ -453,9 +486,9 @@ nonisolated final class SFTPClient: @unchecked Sendable {
     private func readLoop() {
         let fd = fromServer.fileDescriptor
         while true {
-            guard let header = Self.readExactly(fd, 4) else { break }
+            guard let header = Self.readExactly(fd, 4, heard: heard) else { break }
             let length = Int(UInt32(header[0]) << 24 | UInt32(header[1]) << 16 | UInt32(header[2]) << 8 | UInt32(header[3]))
-            guard length >= 1, length <= Self.maxPacket, let packet = Self.readExactly(fd, length) else { break }
+            guard length >= 1, length <= Self.maxPacket, let packet = Self.readExactly(fd, length, heard: heard) else { break }
             let type = packet[0]
             var body = Array(packet[1...])
             let id: UInt32
@@ -493,7 +526,7 @@ nonisolated final class SFTPClient: @unchecked Sendable {
         }
     }
 
-    private static func readExactly(_ fd: Int32, _ count: Int) -> [UInt8]? {
+    private static func readExactly(_ fd: Int32, _ count: Int, heard: () -> Void) -> [UInt8]? {
         var buffer = [UInt8](repeating: 0, count: count)
         var got = 0
         while got < count {
@@ -501,6 +534,7 @@ nonisolated final class SFTPClient: @unchecked Sendable {
             if n < 0, errno == EINTR { continue }
             guard n > 0 else { return nil }
             got += n
+            heard()
         }
         return buffer
     }

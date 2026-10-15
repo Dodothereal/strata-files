@@ -32,6 +32,31 @@ struct SFTPClientTests {
         try? FileManager.default.removeItem(at: root)
     }
 
+    @Test func aServerThatStopsAnsweringIsDisconnected() throws {
+        defer { cleanUp() }
+        let quiet = try SFTPClient(executable: URL(fileURLWithPath: "/usr/libexec/sftp-server"), arguments: ["-d", root.path],
+                                   silenceLimit: 0.5)
+        // Connected and answering: quick requests never come near the limit.
+        #expect(try quiet.realPath(".") == root.path)
+        let pid = quiet.processIdentifier
+        kill(pid, SIGSTOP)
+        defer { kill(pid, SIGKILL) }
+        let started = Date()
+        #expect(throws: SFTPError.stoppedAnswering) { try quiet.list(root.path) }
+        #expect(Date().timeIntervalSince(started) < 5)
+        #expect(!quiet.isConnected)
+    }
+
+    @Test func aSlowLoginIsNeverCutShort() throws {
+        defer { cleanUp() }
+        // The login (here: a server that takes a while to start) isn't counted; only silence once it's up.
+        let slow = try SFTPClient(executable: URL(fileURLWithPath: "/bin/sh"),
+                                  arguments: ["-c", "sleep 1.5; exec /usr/libexec/sftp-server -d \"$0\"", root.path],
+                                  silenceLimit: 0.5)
+        defer { slow.close() }
+        #expect(try slow.realPath(".") == root.path)
+    }
+
     @Test func startsInItsFolder() throws {
         defer { cleanUp() }
         #expect(try client.realPath(".") == root.path)

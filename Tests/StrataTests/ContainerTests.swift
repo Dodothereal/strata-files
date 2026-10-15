@@ -334,8 +334,11 @@ struct ContainerTests {
             let count = getxattr(folder.appending(path: name).path, "com.apple.quarantine", &value, value.count, 0, XATTR_NOFOLLOW)
             return count > 0 ? String(decoding: value.prefix(count), as: UTF8.self) : nil
         }
-        #expect(quarantine("hosts")?.hasPrefix("0281;") == true && quarantine("hosts")?.contains(";Strata;") == true)
-        #expect(quarantine("apt")?.hasPrefix("0281;") == true)
+        // The mark macOS gives a download by Strata: "downloaded", not "already approved", named Strata.
+        let mark = String(decoding: CopyWriter.quarantine, as: UTF8.self)
+        let flags = UInt32(mark.prefix(4), radix: 16) ?? 0
+        #expect(flags & 0x0001 != 0 && flags & 0x0040 == 0 && mark.split(separator: ";")[2] == "Strata")
+        #expect(quarantine("hosts") == mark && quarantine("apt") == mark)
         // Only its owner may read it: not fetched until it's opened.
         #expect(!CopyWriter.fetchesEagerly(size: 10, mode: 0o600, bytes: 0, count: 0))
         #expect(CopyWriter.fetchesEagerly(size: 10, mode: 0o644, bytes: 0, count: 0))

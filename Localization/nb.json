@@ -1517,6 +1517,7 @@
     "The server has no shared folders you can open.": "Tjeneren har ingen delte mapper du kan åpne.",
     "The server sent something Strata doesn’t understand.": "Tjeneren sendte noe Strata ikke forstår.",
     "The server speaks a version of the protocol macOS doesn’t.": "Tjeneren bruker en protokollversjon som macOS ikke støtter.",
+    "The server stopped answering, so Strata disconnected. Reload the folder to connect again.": "Tjeneren sluttet å svare, så Strata koblet fra. Last inn mappen på nytt for å koble til igjen.",
     "The server wants a way of signing in that macOS doesn’t offer.": "Tjeneren krever en påloggingsmetode som macOS ikke tilbyr.",
     "The server’s password rules don’t accept that password.": "Tjenerens passordregler godtar ikke det passordet.",
     "The server’s top folder can’t be renamed.": "Kan ikke endre navn på tjenerens øverste mappe.",

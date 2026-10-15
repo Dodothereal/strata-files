@@ -1396,6 +1396,7 @@
     "The server has no shared folders you can open.": "서버에 열 수 있는 공유 폴더가 없습니다.",
     "The server sent something Strata doesn’t understand.": "서버에서 Strata가 이해할 수 없는 응답을 보냈습니다.",
     "The server speaks a version of the protocol macOS doesn’t.": "서버가 macOS에서 지원하지 않는 버전의 프로토콜을 사용합니다.",
+    "The server stopped answering, so Strata disconnected. Reload the folder to connect again.": "서버가 응답하지 않아 Strata가 연결을 해제했습니다. 다시 연결하려면 폴더를 새로고침하십시오.",
     "The server wants a way of signing in that macOS doesn’t offer.": "서버에서 macOS가 제공하지 않는 로그인 방식을 요구합니다.",
     "The server’s password rules don’t accept that password.": "서버의 암호 규칙에 맞지 않는 암호입니다.",
     "The server’s top folder can’t be renamed.": "서버의 최상위 폴더는 이름을 변경할 수 없습니다.",

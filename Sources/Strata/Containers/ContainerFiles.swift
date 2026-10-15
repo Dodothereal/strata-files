@@ -1,4 +1,5 @@
 import Darwin
+import CoreServices
 import Foundation
 import Synchronization
 
@@ -996,10 +997,36 @@ nonisolated enum CopyWriter {
     /// be lost at the next listing); no set-ID bits.
     static func readable(_ mode: UInt32) -> UInt32 { (mode & 0o555) | 0o400 }
 
-    /// A container's files come from another machine, so they're marked as downloaded, the way macOS marks a download
-    /// itself: Gatekeeper checks an app, script or `.command` from a container before it runs, and copies keep the mark,
-    /// as Finder's do.
-    static let quarantine = Array("0281;\(String(Int(Date().timeIntervalSince1970), radix: 16));Strata;\(UUID().uuidString)".utf8)
+    /// A container's or a server's files come from another machine, so they're marked as downloaded: Gatekeeper checks
+    /// an app, script or `.command` from one before it runs, and copies keep the mark, as Finder's do. The mark is the one
+    /// macOS itself gives a download made by Strata (asked once, through its quarantine API), so it's always what this
+    /// macOS expects; "0281;…;Strata;…" on macOS 26, and that as a fallback.
+    static let quarantine: [UInt8] = systemQuarantine()
+        ?? Array("0281;\(String(Int(Date().timeIntervalSince1970), radix: 16));Strata;\(UUID().uuidString)".utf8)
+
+    /// The mark macOS writes for a download by this app, read back from a scratch file. Nil unless it's one that says
+    /// "downloaded" and not "already approved".
+    static func systemQuarantine() -> [UInt8]? {
+        let probe = FileManager.default.temporaryDirectory.appending(path: "strata-quarantine-\(UUID().uuidString)")
+        guard FileManager.default.createFile(atPath: probe.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { return nil }
+        defer { unlink(probe.path) }
+        var values = URLResourceValues()
+        values.quarantineProperties = [kLSQuarantineAgentNameKey as String: "Strata",
+                                       kLSQuarantineTypeKey as String: kLSQuarantineTypeOtherDownload as String]
+        var url = probe
+        guard (try? url.setResourceValues(values)) != nil else { return nil }
+        let size = getxattr(probe.path, "com.apple.quarantine", nil, 0, 0, XATTR_NOFOLLOW)
+        guard size > 5, size < 512 else { return nil }
+        var mark = [UInt8](repeating: 0, count: size)
+        guard getxattr(probe.path, "com.apple.quarantine", &mark, size, 0, XATTR_NOFOLLOW) == size,
+              mark[4] == UInt8(ascii: ";"), let flags = UInt32(String(decoding: mark[0..<4], as: UTF8.self), radix: 16),
+              flags & 0x0001 != 0, flags & 0x0040 == 0 else { return nil }
+        // Flags; time; the app that downloaded it; the download's ID. The app is named when macOS left it out.
+        var fields = String(decoding: mark, as: UTF8.self).split(separator: ";", omittingEmptySubsequences: false).map(String.init)
+        guard fields.count >= 4 else { return nil }
+        if fields[2].isEmpty { fields[2] = "Strata" }
+        return Array(fields.joined(separator: ";").utf8)
+    }
 
     /// Marks the file or folder open at `fd` as downloaded (see `quarantine`). Throws when it can't be, so nothing
     /// unmarked is placed; disks that can't keep the mark at all are the exception.

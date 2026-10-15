@@ -1517,6 +1517,7 @@
     "The server has no shared folders you can open.": "Sunucuda açabileceğiniz paylaşılan klasör yok.",
     "The server sent something Strata doesn’t understand.": "Sunucu, Strata’nın anlamadığı bir şey gönderdi.",
     "The server speaks a version of the protocol macOS doesn’t.": "Sunucu, macOS’in desteklemediği bir protokol sürümü kullanıyor.",
+    "The server stopped answering, so Strata disconnected. Reload the folder to connect again.": "Sunucu yanıt vermeyi bıraktı, bu yüzden Strata bağlantıyı kesti. Yeniden bağlanmak için klasörü yeniden yükleyin.",
     "The server wants a way of signing in that macOS doesn’t offer.": "Sunucu, macOS’in sunmadığı bir oturum açma yöntemi istiyor.",
     "The server’s password rules don’t accept that password.": "Sunucunun parola kuralları bu parolayı kabul etmiyor.",
     "The server’s top folder can’t be renamed.": "Sunucunun en üst klasörünün adı değiştirilemez.",

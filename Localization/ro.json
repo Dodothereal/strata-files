@@ -1638,6 +1638,7 @@
     "The server has no shared folders you can open.": "Serverul nu are dosare partajate pe care le poți deschide.",
     "The server sent something Strata doesn’t understand.": "Serverul a trimis ceva ce Strata nu înțelege.",
     "The server speaks a version of the protocol macOS doesn’t.": "Serverul folosește o versiune a protocolului pe care macOS nu o acceptă.",
+    "The server stopped answering, so Strata disconnected. Reload the folder to connect again.": "Serverul nu a mai răspuns, așa că Strata s-a deconectat. Reîncarcă dosarul ca să te conectezi din nou.",
     "The server wants a way of signing in that macOS doesn’t offer.": "Serverul cere o metodă de autentificare pe care macOS nu o oferă.",
     "The server’s password rules don’t accept that password.": "Regulile serverului pentru parole nu acceptă această parolă.",
     "The server’s top folder can’t be renamed.": "Dosarul de nivel superior al serverului nu poate fi redenumit.",
