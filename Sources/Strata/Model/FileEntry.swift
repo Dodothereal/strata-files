@@ -20,6 +20,27 @@ nonisolated struct FileEntry: Sendable, Hashable {
     /// A folder you navigate into (packages such as apps open instead).
     var isFolder: Bool { isDirectory && !isPackage }
 
+    /// The folder opening `url` should show. A symlink or Finder alias to a folder opens that folder:
+    /// listing the link itself fails, because the link is not a directory.
+    static func openedFolder(_ url: URL) -> URL {
+        guard let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isAliasFileKey]) else { return url }
+        if values.isSymbolicLink == true {
+            let resolved = url.resolvingSymlinksInPath()
+            if resolved.standardizedFileURL.path != url.standardizedFileURL.path, isNavigableFolder(resolved) {
+                return resolved
+            }
+        } else if values.isAliasFile == true, let resolved = try? URL(resolvingAliasFileAt: url), isNavigableFolder(resolved) {
+            return resolved
+        }
+        return url
+    }
+
+    /// A directory the browser lists. Apps and other packages open instead.
+    static func isNavigableFolder(_ url: URL) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]) else { return false }
+        return values.isDirectory == true && values.isPackage != true
+    }
+
     /// macOS calls `.ts` an MPEG-2 stream and has no names for many source files; developers expect these.
     static let developerKinds: [String: String] = [
         "ts": String(localized: "TypeScript source", comment: "Kind of file"),
@@ -115,15 +136,21 @@ nonisolated enum DirectoryLoader {
     static func load(_ directory: URL, showHidden: Bool) async throws -> [FileEntry] {
         // A container's files: list the folder from the container first (every view loads folders here).
         if LazyCopies.contains(directory) { await LazyCopies.refresh(directory) }
+        // Follow a symlink or Finder alias. FileManager will not list the link itself.
+        let directory = FileEntry.openedFolder(directory)
         let isContainersFolder = ContainerCopies.engineFolder(directory) != nil
         let keys = FileEntry.resourceKeys
         let urls = try FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: keys, options: showHidden ? [] : [.skipsHiddenFiles])
         let keySet = Set(keys)
+        let containerKind = String(localized: "Container", comment: "Kind of item: a Docker container's files")
+        let stackKind = String(localized: "Stack", comment: "Kind of item: a Compose project's containers")
         return urls.compactMap { url in
             guard let values = try? url.resourceValues(forKeys: keySet) else { return nil }
             let entry = FileEntry(url: url, values: values)
-            return isContainersFolder ? entry.with(kind: String(localized: "Container", comment: "Kind of item: a Docker container's files")) : entry
+            if ContainerCopies.isContainerTop(url) { return entry.with(kind: containerKind) }
+            if isContainersFolder, ContainerCopies.isStack(url) { return entry.with(kind: stackKind) }
+            return entry
         }
     }
 }

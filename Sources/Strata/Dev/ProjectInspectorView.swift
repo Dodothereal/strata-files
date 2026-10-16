@@ -29,8 +29,8 @@ final class ProjectInspectorView: NSView {
         super.init(frame: frame)
         stack.orientation = .vertical
         stack.alignment = .leading
-        // The same gap as between the Inspector's other cards.
-        stack.spacing = 10
+        // Sections meet at the hairline, same as the Inspector's other cards.
+        stack.spacing = 0
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([

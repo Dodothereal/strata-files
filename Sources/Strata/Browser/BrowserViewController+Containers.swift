@@ -53,6 +53,7 @@ extension BrowserViewController {
 
     /// Whether Open in Terminal can open a shell in the container shown (or selected): it has to be running.
     var canOpenTerminalInContainer: Bool? {
+        if isStackContext { return !stackProjectFolders().isEmpty }
         if let container = selectedContainers.first { return container.isRunning }
         guard let directory, ContainerCopies.contains(directory) else { return nil }
         guard let (source, _) = ContainerCopies.copy(containing: directory) else { return false }
@@ -104,7 +105,7 @@ extension BrowserViewController {
     /// Containers started, stopped, came or went: the Containers folder follows (and its icons, which show who runs).
     @objc func containersChanged() {
         guard let directory else { return }
-        if ContainerCopies.engineFolder(directory) != nil {
+        if ContainerCopies.engineFolder(directory) != nil || ContainerCopies.isStack(directory) {
             reloadFolder(nil)
             reloadVisibleCells()
             return

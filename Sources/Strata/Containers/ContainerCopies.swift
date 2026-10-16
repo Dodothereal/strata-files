@@ -29,10 +29,11 @@ nonisolated struct EngineRecord: Codable, Sendable, Equatable {
     var engine: ContainerEngine { ContainerEngine(socket: socket, name: name, apiVersion: apiVersion) }
 }
 
-/// Container files, browsed as read-only copies in Strata's caches. `Containers/<engine>/` is the Containers folder,
-/// with one folder per container (named after it); each is that container's `/`, filled in folder by folder as you
-/// browse (see `ContainerFiles`). Which engine and container a folder is of is kept in an extended attribute on it, so
-/// nothing but the container's own files shows inside.
+/// Container files, browsed as read-only copies in Strata's caches. `Containers/<engine>/` is the Containers folder.
+/// A Compose project's containers live in a folder named after the project; every other container is a folder of its
+/// own beside those. Each container folder is that container's `/`, filled in folder by folder as you browse (see
+/// `ContainerFiles`). Which engine and container a folder is of is kept in an extended attribute on it, so nothing but
+/// the container's own files shows inside.
 ///
 /// Like an archive's copy (see `ArchiveCache`), nothing in it is changed from Strata; it only ever reads the container.
 /// A file not fetched yet is a *placeholder*: the right size and date, but no permissions at all, so nothing can read
@@ -71,15 +72,30 @@ nonisolated enum ContainerCopies {
         return folder
     }
 
-    /// A container's folder (its `/`), made if needed.
+    /// A container's folder (its `/`), made if needed. One from a Compose project is made inside that project's folder.
     static func prepare(_ container: ContainerInfo, on engine: ContainerEngine) throws -> URL {
         guard isContainerName(container.name) else { throw CocoaError(.fileWriteInvalidFileName) }
-        let folder = try prepare(engine)
-        let fd = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        let parent = try stackFolder(for: container, in: prepare(engine))
+        let fd = open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw CocoaError(.fileWriteNoPermission) }
         defer { close(fd) }
-        try record(container, on: engine, in: fd, folder: folder)
-        return folder.appending(path: container.name, directoryHint: .isDirectory)
+        try record(container, on: engine, in: fd, folder: parent)
+        return parent.appending(path: container.name, directoryHint: .isDirectory)
+    }
+
+    /// Where `container`'s folder goes: its Compose project's folder, or the engine's folder when it isn't in one.
+    /// The project folder is made if needed.
+    static func stackFolder(for container: ContainerInfo, in engineFolder: URL) throws -> URL {
+        guard let name = stackName(container) else { return engineFolder }
+        let stack = engineFolder.appending(path: name, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: stack, withIntermediateDirectories: true)
+        return stack
+    }
+
+    /// The Compose project a container is grouped under, when that name can be a folder. Nil leaves it beside the stacks.
+    static func stackName(_ container: ContainerInfo) -> String? {
+        guard let project = container.compose?.project, isContainerName(project) else { return nil }
+        return project
     }
 
     /// Makes (or keeps) the folder for `container` in the Containers folder open at `fd`, recording its source and
@@ -138,17 +154,26 @@ nonisolated enum ContainerCopies {
     }
 
     /// For a path inside a container's folder: which container it's of, and its top folder (the container's `/`).
+    /// A container sits in the engine's folder, or one level down inside its Compose project.
     static func copy(containing url: URL) -> (source: ContainerSource, top: URL)? {
         guard let parts = components(url), parts.count >= 2 else { return nil }
-        let top = root.appending(path: parts[0], directoryHint: .isDirectory).appending(path: parts[1], directoryHint: .isDirectory)
-        guard let source = source(of: top) else { return nil }
-        return (source, top)
+        for depth in [2, 3] where depth <= parts.count {
+            let top = parts.prefix(depth).reduce(root) { $0.appending(path: $1, directoryHint: .isDirectory) }
+            if let source = source(of: top) { return (source, top) }
+        }
+        return nil
     }
 
-    /// Whether `url` is a container's top folder (an item of a Containers folder).
+    /// Whether `url` is a container's top folder.
     static func isContainerTop(_ url: URL) -> Bool {
-        guard components(url)?.count == 2 else { return false }
+        guard let parts = components(url), (2...3).contains(parts.count) else { return false }
         return source(of: url) != nil
+    }
+
+    /// A Compose project's folder: directly in the engine's folder, and not a container itself.
+    static func isStack(_ url: URL) -> Bool {
+        guard components(url)?.count == 2, engineFolder(url.deletingLastPathComponent()) != nil else { return false }
+        return source(of: url) == nil
     }
 
     private static func components(_ url: URL) -> [String]? {
@@ -264,11 +289,11 @@ nonisolated enum ContainerCopies {
     /// Unix executable before it's fetched. A fetched file is always readable.
     static func isPlaceholderMode(_ mode: mode_t) -> Bool { mode & 0o666 == 0 }
 
-    /// Removes a Containers folder or a container's folder (`Containers/<engine>` or `Containers/<engine>/<name>`),
-    /// never the cache itself or anything outside it.
+    /// Removes an engine's folder, a Compose project's folder, or a container's folder. Never the cache itself, and
+    /// never a folder inside a container (its files aren't Strata's to delete).
     static func remove(_ folder: URL) {
         let path = folder.standardizedFileURL.path
-        guard path.hasPrefix(rootPath + "/"), (1...2).contains(path.dropFirst(rootPath.count + 1).split(separator: "/").count) else { return }
+        guard path.hasPrefix(rootPath + "/"), (1...3).contains(path.dropFirst(rootPath.count + 1).split(separator: "/").count) else { return }
         forget(path)
         Archiver.removeTree(folder)
     }

@@ -86,6 +86,9 @@ actor ContainerFiles {
         // Links in a copy all point inside it, so the real folder is still in the same copy.
         let real = folder.resolvingSymlinksInPath().standardizedFileURL
         if let engine = ContainerCopies.engineFolder(real) { return await syncContainers(real, engine: engine) }
+        if ContainerCopies.isStack(real), let engine = ContainerCopies.engineFolder(real.deletingLastPathComponent()) {
+            return await syncContainers(real.deletingLastPathComponent(), engine: engine)
+        }
         guard let (source, top) = ContainerCopies.copy(containing: real), let path = ContainerCopies.containerPath(of: real, top: top),
               !closing.contains(top.standardizedFileURL.path) else { return }
         let key = real.path
@@ -133,12 +136,12 @@ actor ContainerFiles {
     /// The folder for `container` in its engine's Containers folder, ready to browse. One made again under the same
     /// name (`docker compose up`) starts over: the old one's files aren't its.
     func open(_ container: ContainerInfo, on engine: ContainerEngine) async throws -> URL {
-        let folder = try ContainerCopies.prepare(engine)
-        let fd = Darwin.open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        let parent = try ContainerCopies.stackFolder(for: container, in: ContainerCopies.prepare(engine))
+        let fd = Darwin.open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         let recorded = fd >= 0 ? ContainerCopies.recordedSource(container.name, in: fd) : nil
         if fd >= 0 { close(fd) }
         if let recorded, recorded.id != container.id {
-            await discard(folder.appending(path: container.name, directoryHint: .isDirectory))
+            await discard(parent.appending(path: container.name, directoryHint: .isDirectory))
         }
         return try ContainerCopies.prepare(container, on: engine)
     }
@@ -575,26 +578,90 @@ nonisolated enum CopyWriter {
         isCaseSensitive ? name : name.decomposedStringWithCanonicalMapping.lowercased()
     }
 
-    /// Makes the Containers `folder` hold a folder per container in `containers` (recording which container each is).
-    /// Returns the folders to discard: containers gone, and ones made again under the same name (made afresh after).
+    /// Makes the Containers `folder` match `containers`. A Compose project's containers go in a folder named after the
+    /// project; the rest stay beside those. Returns the folders to discard: containers gone, and ones made again under
+    /// the same name (made afresh after). A container that moved into its project keeps the files already fetched.
     static func syncContainers(_ containers: [ContainerInfo], engine: ContainerEngine, in folder: URL) throws -> [URL] {
         let fd = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw CocoaError(.fileReadNoPermission) }
         defer { close(fd) }
+        let looseNames = Set(containers.compactMap { container -> String? in
+            guard ContainerCopies.stackName(container) == nil, ContainerCopies.isContainerName(container.name) else { return nil }
+            return folded(container.name)
+        })
+        var byStack: [String: [ContainerInfo]] = [:]
+        var loose: [ContainerInfo] = []
+        for container in containers where ContainerCopies.isContainerName(container.name) {
+            if let project = ContainerCopies.stackName(container), !looseNames.contains(folded(project)) {
+                byStack[project, default: []].append(container)
+            } else {
+                loose.append(container)
+            }
+        }
         var keep = Set<String>()
         var gone: [URL] = []
-        for container in containers where ContainerCopies.isContainerName(container.name) {
-            guard keep.insert(folded(container.name)).inserted else { continue }
-            if let recorded = ContainerCopies.recordedSource(container.name, in: fd), recorded.id != container.id {
-                gone.append(folder.appending(path: container.name, directoryHint: .isDirectory))
-                continue
+        func place(_ container: ContainerInfo, in parent: Int32, at parentURL: URL, keeping: inout Set<String>) {
+            guard keeping.insert(folded(container.name)).inserted else { return }
+            if let recorded = ContainerCopies.recordedSource(container.name, in: parent), recorded.id != container.id {
+                gone.append(parentURL.appending(path: container.name, directoryHint: .isDirectory))
+                return
             }
-            try? ContainerCopies.record(container, on: engine, in: fd, folder: folder)
+            try? ContainerCopies.record(container, on: engine, in: parent, folder: parentURL)
+        }
+        for container in loose { place(container, in: fd, at: folder, keeping: &keep) }
+        for (project, members) in byStack {
+            guard keep.insert(folded(project)).inserted else { continue }
+            // The project name is already a container folder. Move that container aside when it belongs inside the
+            // project; otherwise the project can't be a folder and its containers stay beside the stacks.
+            var held: String?
+            if let recorded = ContainerCopies.recordedSource(project, in: fd) {
+                let movesIn = members.contains { $0.id == recorded.id && $0.name == project }
+                guard movesIn else {
+                    for container in members where folded(container.name) != folded(project) {
+                        place(container, in: fd, at: folder, keeping: &keep)
+                    }
+                    continue
+                }
+                let temp = ".hold-" + String(UUID().uuidString.prefix(8))
+                if renameat(fd, project, fd, temp) == 0 {
+                    held = temp
+                    ContainerCopies.forget(folder.appending(path: project).standardizedFileURL.path)
+                }
+            }
+            mkdirat(fd, project, 0o755)
+            let child = openat(fd, project, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard child >= 0 else { continue }
+            defer { close(child) }
+            let stack = folder.appending(path: project, directoryHint: .isDirectory)
+            if let held {
+                if renameat(fd, held, child, project) == 0 {
+                    ContainerCopies.forget(folder.appending(path: held).standardizedFileURL.path)
+                }
+            }
+            var keepChild = Set<String>()
+            for container in members {
+                bringDown(container, from: fd, to: child, stack: stack, engineFolder: folder)
+                place(container, in: child, at: stack, keeping: &keepChild)
+            }
+            for name in names(in: child) where !keepChild.contains(folded(name)) {
+                gone.append(stack.appending(path: name, directoryHint: .isDirectory))
+            }
         }
         for name in names(in: fd) where !keep.contains(folded(name)) {
             gone.append(folder.appending(path: name, directoryHint: .isDirectory))
         }
         return gone
+    }
+
+    /// Moves a container's folder from the engine's folder into its project, when an older layout left it there.
+    private static func bringDown(_ container: ContainerInfo, from engineFD: Int32, to stackFD: Int32, stack: URL, engineFolder: URL) {
+        var info = stat()
+        guard fstatat(stackFD, container.name, &info, AT_SYMLINK_NOFOLLOW) != 0 else { return }
+        guard fstatat(engineFD, container.name, &info, AT_SYMLINK_NOFOLLOW) == 0,
+              info.st_mode & S_IFMT == S_IFDIR else { return }
+        guard let recorded = ContainerCopies.recordedSource(container.name, in: engineFD), recorded.id == container.id else { return }
+        guard renameat(engineFD, container.name, stackFD, container.name) == 0 else { return }
+        ContainerCopies.forget(engineFolder.appending(path: container.name).standardizedFileURL.path)
     }
 
     /// Makes `folder` match `entries`: folders and links made, files as placeholders (or written, from `contents`),

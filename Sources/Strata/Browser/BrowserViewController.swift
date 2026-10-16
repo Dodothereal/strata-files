@@ -36,12 +36,13 @@ final class FileNode {
 }
 
 enum SortKey: String {
-    case name, modified, size, kind
+    case name, modified, created, size, kind
 }
 
 private extension NSUserInterfaceItemIdentifier {
     static let name = Self("name")
     static let modified = Self("modified")
+    static let created = Self("created")
     static let size = Self("size")
     static let kind = Self("kind")
     static let location = Self("location")
@@ -75,7 +76,7 @@ final class BrowserViewController: NSViewController {
         let spacing = outlineView.intercellSpacing.width * CGFloat(visible.count + 1)
         var excess = visible.reduce(0) { $0 + $1.width } + spacing - scrollView.contentView.bounds.width
         guard excess > 1 else { return }
-        for id in [NSUserInterfaceItemIdentifier.kind, .location, .modified, .name] {
+        for id in [NSUserInterfaceItemIdentifier.kind, .location, .created, .modified, .name] {
             guard excess > 0, let column = outlineView.tableColumn(withIdentifier: id), !column.isHidden else { continue }
             let give = min(excess, column.width - column.minWidth)
             guard give > 0 else { continue }
@@ -116,8 +117,8 @@ final class BrowserViewController: NSViewController {
     private var watcher: DirectoryWatcher?
     /// Keeps git status for the shown folder's repository fresh (FSEvents) while this folder is shown.
     private var gitObservation: GitObservation?
-    private var sortKey: SortKey = .name
-    private var ascending = true
+    private var sortKey: SortKey = SortKey(rawValue: Prefs.sortColumn) ?? .name
+    private var ascending = Prefs.sortAscending
     /// Selected once the folder shows them (after the reload a change brings).
     var pendingSelection: [URL] = []
     /// Opens the folder row a drag rests on (only rows still on screen).
@@ -224,12 +225,13 @@ final class BrowserViewController: NSViewController {
 
         addColumn(.name, "Name", width: 340, min: 160, ascending: true)
         addColumn(.modified, "Date Modified", width: 170, min: 110, ascending: false)
+        addColumn(.created, "Date Created", width: 170, min: 110, ascending: false)
         addColumn(.size, "Size", width: 84, min: 60, ascending: false, alignment: .right)
         addColumn(.kind, "Kind", width: 150, min: 80, ascending: true)
         addColumn(.location, "Where", width: 220, min: 100, ascending: true)
         ov.tableColumn(withIdentifier: .location)?.isHidden = true
         ov.outlineTableColumn = ov.tableColumns.first
-        ov.sortDescriptors = [NSSortDescriptor(key: SortKey.name.rawValue, ascending: true)]
+        ov.sortDescriptors = [NSSortDescriptor(key: Prefs.sortColumn, ascending: Prefs.sortAscending)]
 
         ov.onType = { [weak self] text in self?.setFilter((self?.filter ?? "") + text) }
         ov.onBackspace = { [weak self] in
@@ -601,8 +603,9 @@ final class BrowserViewController: NSViewController {
             folderSortDescriptors = outlineView.sortDescriptors
             outlineView.sortDescriptors = []
             // Make room for "Where" from Date and Kind, not from Name (the only column that gives up width on its own).
-            columnWidthsBeforeResults = [.modified, .kind].compactMap { id in outlineView.tableColumn(withIdentifier: id).map { (id, $0.width) } }
+            columnWidthsBeforeResults = [.modified, .created, .kind].compactMap { id in outlineView.tableColumn(withIdentifier: id).map { (id, $0.width) } }
             outlineView.tableColumn(withIdentifier: .modified)?.width = 130
+            outlineView.tableColumn(withIdentifier: .created)?.width = 130
             outlineView.tableColumn(withIdentifier: .kind)?.width = 120
             outlineView.tableColumn(withIdentifier: .location)?.isHidden = false
             fitNameColumn()
@@ -619,7 +622,7 @@ final class BrowserViewController: NSViewController {
         columnWidthsBeforeResults = []
         fitNameColumn()
         outlineView.sortDescriptors = folderSortDescriptors.isEmpty
-            ? [NSSortDescriptor(key: SortKey.name.rawValue, ascending: true)] : folderSortDescriptors
+            ? [NSSortDescriptor(key: Prefs.sortColumn, ascending: Prefs.sortAscending)] : folderSortDescriptors
     }
 
     // MARK: - Sorting and filtering
@@ -645,6 +648,7 @@ final class BrowserViewController: NSViewController {
         switch sortKey {
         case .name: result = a.name.localizedStandardCompare(b.name)
         case .modified: result = compare(a.modified ?? .distantPast, b.modified ?? .distantPast)
+        case .created: result = compare(a.created ?? .distantPast, b.created ?? .distantPast)
         case .size: result = compare(sizeValue(a), sizeValue(b))
         case .kind: result = a.kind.localizedStandardCompare(b.kind)
         }
@@ -932,7 +936,7 @@ final class BrowserViewController: NSViewController {
 
     /// View ▸ Sort By: the same orders as the list's column headers, for every view. Tags follow `sortMenuKeys`.
     static let sortMenuKeys: [(key: NSUserInterfaceItemIdentifier, ascending: Bool)] = [
-        (.name, true), (.kind, true), (.modified, false), (.size, false),
+        (.name, true), (.kind, true), (.modified, false), (.created, false), (.size, false),
     ]
 
     @objc func sortBy(_ sender: NSMenuItem) {
@@ -1068,6 +1072,8 @@ final class BrowserViewController: NSViewController {
     }
 
     @objc func openInTerminal(_ sender: Any?) {
+        // A Compose project's folder on this Mac, not the copy Strata keeps of its containers.
+        if openStackInTerminal() { return }
         // In a container's files: a shell in the container. On an SFTP server: a shell there.
         if openTerminalInContainer() || openTerminalOnServer() { return }
         let selected = selectedEntries
@@ -1075,6 +1081,36 @@ final class BrowserViewController: NSViewController {
         guard let folder else { return }
         guard let terminal = Prefs.terminalURL else { return }
         NSWorkspace.shared.open([folder], withApplicationAt: terminal, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    /// The selection is a Compose project (or the folder shown is one, with nothing selected).
+    var isStackContext: Bool {
+        if selectedEntries.isEmpty { return directory.map(ContainerCopies.isStack) == true }
+        return selectedEntries.allSatisfy { ContainerCopies.isStack($0.url) }
+    }
+
+    /// Project folders on this Mac for the stacks in the context menu.
+    func stackProjectFolders() -> [URL] {
+        let stacks = selectedEntries.isEmpty ? [directory].compactMap { $0 } : selectedEntries.map(\.url)
+        return stacks.compactMap(StackProjects.existingFolder(of:))
+    }
+
+    /// Opens those project folders in the terminal. True when this was a stack, even if the folder is gone.
+    private func openStackInTerminal() -> Bool {
+        guard isStackContext else { return false }
+        let folders = stackProjectFolders()
+        guard let terminal = Prefs.terminalURL, !folders.isEmpty else { NSSound.beep(); return true }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.open(folders, withApplicationAt: terminal, configuration: configuration)
+        return true
+    }
+
+    @objc private func openStackWithApplication(_ sender: NSMenuItem) {
+        guard let app = sender.representedObject as? URL else { return }
+        let folders = stackProjectFolders()
+        guard !folders.isEmpty else { return NSSound.beep() }
+        for folder in folders { ProjectEditors.open(folder, with: app) }
     }
 
     @objc func toggleHiddenFiles(_ sender: Any?) {
@@ -1331,6 +1367,26 @@ final class BrowserViewController: NSViewController {
         func add(_ title: String.LocalizationValue, _ action: Selector, _ symbol: String? = nil) {
             addTitled(String(localized: title), action, symbol)
         }
+        func addStackOpenItems() {
+            guard !stackProjectFolders().isEmpty else { return }
+            add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
+            let apps = ProjectEditors.installed()
+            guard !apps.isEmpty else { return }
+            let submenu = NSMenu()
+            for app in apps {
+                let item = NSMenuItem(title: FileManager.default.displayName(atPath: app.path), action: #selector(openStackWithApplication(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = app
+                let icon = NSWorkspace.shared.icon(forFile: app.path)
+                icon.size = NSSize(width: 16, height: 16)
+                item.image = icon
+                submenu.addItem(item)
+            }
+            let openWith = NSMenuItem(title: String(localized: "Open With"), action: nil, keyEquivalent: "")
+            openWith.image = NSImage(systemSymbolName: "app.badge", accessibilityDescription: nil)
+            openWith.submenu = submenu
+            menu.addItem(openWith)
+        }
         let hiddenFilesTitle = Prefs.showHidden ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files")
         if selected.isEmpty {
             // On a server: a new folder there, or pasting onto it; a shell there (SFTP).
@@ -1348,7 +1404,9 @@ final class BrowserViewController: NSViewController {
             }
             // Inside an archive opened as a folder nothing is added; Finder is shown the archive itself.
             if isInsideArchive {
-                if directory.map({ ContainerCopies.engineFolder($0) == nil }) != false {
+                if directory.map(ContainerCopies.isStack) == true {
+                    addStackOpenItems()
+                } else if directory.map(ContainerCopies.engineFolder) == nil {
                     add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
                 }
                 if directory.map(ArchiveCache.contains) == true { add("Show Archive in Finder", #selector(showArchiveInFinder(_:)), "macwindow") }
@@ -1452,8 +1510,11 @@ final class BrowserViewController: NSViewController {
             add("Copy", #selector(copy(_:)), "doc.on.doc")
             if !inContainer { add("Add to Shelf", #selector(addToShelf(_:)), "tray.and.arrow.down") }
             if containers.isEmpty {
-                menu.addItem(.separator())
-                add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
+                if !selectedEntries.isEmpty, selectedEntries.allSatisfy({ ContainerCopies.isStack($0.url) }) {
+                    addStackOpenItems()
+                } else {
+                    add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
+                }
             }
             if directory.map(ArchiveCache.contains) == true { add("Show Archive in Finder", #selector(showArchiveInFinder(_:)), "macwindow") }
             return menu
@@ -1564,6 +1625,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         }()
         switch column.identifier {
         case .modified: cell.configure(Format.date(entry.modified), alignment: .left, dimmed: dimmed)
+        case .created: cell.configure(Format.date(entry.created), alignment: .left, dimmed: dimmed)
         case .size: cell.configure(sizeText(node), alignment: .right, dimmed: dimmed)
         case .location: cell.configure(Format.tildePath(entry.url.deletingLastPathComponent()), alignment: .left, dimmed: dimmed)
         default: cell.configure(entry.kind, alignment: .left, dimmed: dimmed)
@@ -1608,6 +1670,8 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         guard let descriptor = outlineView.sortDescriptors.first, let key = SortKey(rawValue: descriptor.key ?? "") else { return }
         sortKey = key
         ascending = descriptor.ascending
+        Prefs.sortColumn = key.rawValue
+        Prefs.sortAscending = descriptor.ascending
         let selection = selectedURLs
         sort(&nodes)
         applyFilter()
@@ -1770,6 +1834,8 @@ extension BrowserViewController: NSMenuItemValidation {
         case #selector(openInTerminal(_:)) where serverKind != nil:
             // On a server it's a shell there over ssh; a bucket has none.
             return serverKind == .sftp
+        case #selector(openInTerminal(_:)) where isStackContext:
+            return !stackProjectFolders().isEmpty
         case #selector(openInTerminal(_:)) where canOpenTerminalInContainer != nil:
             // In a container's files it's a shell in the container, which has to be running.
             return canOpenTerminalInContainer == true

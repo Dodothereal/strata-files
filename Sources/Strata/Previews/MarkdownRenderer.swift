@@ -391,7 +391,7 @@ nonisolated enum MarkdownColors {
 
 /// Rounded background behind a fenced code block.
 nonisolated final class CodeBlockBackground: NSTextBlock {
-    override func drawBackground(withFrame frameRect: NSRect, in controlView: NSView, characterRange charRange: NSRange,
+    override func drawBackground(withFrame frameRect: NSRect, in controlView: NSView?, characterRange charRange: NSRange,
                                  layoutManager: NSLayoutManager) {
         let rect = contentFrame(frameRect)
         MarkdownColors.codeBlock.setFill()
@@ -411,7 +411,7 @@ nonisolated final class CodeBlockBackground: NSTextBlock {
 
 /// The rounded bar to the left of a block quote.
 nonisolated final class QuoteBlock: NSTextBlock {
-    override func drawBackground(withFrame frameRect: NSRect, in controlView: NSView, characterRange charRange: NSRange,
+    override func drawBackground(withFrame frameRect: NSRect, in controlView: NSView?, characterRange charRange: NSRange,
                                  layoutManager: NSLayoutManager) {
         let left = frameRect.minX + width(for: .margin, edge: .minX)
         let top = frameRect.minY + width(for: .margin, edge: .minY)
