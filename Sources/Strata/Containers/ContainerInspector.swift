@@ -6,7 +6,21 @@ final class ContainerInspectorView: NSView {
     /// Shows a folder (in the container's files, or on this Mac).
     var onOpen: ((URL) -> Void)?
     private let stack = NSStackView()
-    private var shown: Shown?
+    private var display: Display?
+
+    private enum Display: Equatable {
+        case container(Shown)
+        case stack(StackShown)
+    }
+
+    /// A Compose project selected in Containers: its containers, and whatever action is running on one of them.
+    private struct StackShown: Equatable {
+        let project: String
+        let engine: String
+        let directory: URL?
+        let containers: [ContainerInfo]
+        let busy: ContainerAction?
+    }
 
     private struct Shown: Equatable {
         let source: ContainerSource
@@ -19,7 +33,7 @@ final class ContainerInspectorView: NSView {
         super.init(frame: frame)
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 10
+        stack.spacing = 0
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -32,17 +46,31 @@ final class ContainerInspectorView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    /// The container whose files these are (nil hides the cards). Rebuilt only when something shown changed.
-    func configure(_ copy: (source: ContainerSource, top: URL)?) {
-        let next = copy.map { Shown(source: $0.source, top: $0.top, container: ContainerStore.shared.container(id: $0.source.id),
-                                    busy: ContainerStore.shared.busy[$0.source.id]) }
+    /// The selection (a container's files, or a Compose project's folder). Nil hides the cards. Rebuilt only when
+    /// something shown changed.
+    func configure(url: URL?) {
+        let next: Display?
+        if let url, ContainerCopies.isStack(url) {
+            next = stackDisplay(url)
+        } else {
+            next = url.flatMap(ContainerCopies.copy(containing:)).map { copy in
+                .container(Shown(source: copy.source, top: copy.top, container: ContainerStore.shared.container(id: copy.source.id),
+                                 busy: ContainerStore.shared.busy[copy.source.id]))
+            }
+        }
         isHidden = next == nil
-        guard next != shown else { return }
-        shown = next
+        guard next != display else { return }
+        display = next
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        guard let next else { return }
-        addCard(containerCard(next))
-        if let mounts = mountsCard(next) { addCard(mounts) }
+        switch next {
+        case .container(let shown):
+            addCard(containerCard(shown))
+            if let mounts = mountsCard(shown) { addCard(mounts) }
+        case .stack(let shown):
+            addCard(stackCard(shown))
+        case nil:
+            break
+        }
     }
 
     private func addCard(_ card: InspectorCard) {
@@ -98,6 +126,120 @@ final class ContainerInspectorView: NSView {
         let count = Self.small(mounts.count.formatted(), color: .secondaryLabelColor)
         return InspectorCard(id: "containerMounts", title: String(localized: "Mounts", comment: "Inspector section: a container's mounted folders and volumes"),
                              symbol: "externaldrive.connected.to.line.below", content: content, accessory: count)
+    }
+
+    /// The containers of the Compose project this folder is. Nil when none of them are here.
+    private func stackDisplay(_ url: URL) -> Display? {
+        let name = url.lastPathComponent
+        let containers = ContainerStore.shared.containers.filter {
+            $0.compose?.project.compare(name, options: [.caseInsensitive]) == .orderedSame
+        }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        guard !containers.isEmpty else { return nil }
+        let engine = ContainerCopies.engineFolder(url.deletingLastPathComponent())?.name ?? ContainerStore.shared.engine?.name ?? ""
+        let busy = containers.lazy.compactMap { ContainerStore.shared.busy[$0.id] }.first
+        return .stack(StackShown(project: containers.first?.compose?.project ?? name, engine: engine,
+                                 directory: StackProjects.workingDirectory(of: url), containers: containers, busy: busy))
+    }
+
+    /// The same actions as a container (Start, Stop, Restart, Pause, Resume), done to every container they apply to,
+    /// plus where the project lives.
+    private func stackCard(_ shown: StackShown) -> InspectorCard {
+        let rows = InspectorRows()
+        var list: [(String, NSView)] = []
+        if !shown.engine.isEmpty {
+            list.append((String(localized: "Engine", comment: "Inspector row: Docker Desktop, OrbStack, Colima…"), InspectorRows.text(shown.engine)))
+        }
+        if let directory = shown.directory {
+            let path = Format.tildePath(directory)
+            let value: NSView
+            if FileManager.default.fileExists(atPath: directory.path) {
+                let link = LinkButton(path, font: .systemFont(ofSize: 12)) { [weak self] in self?.onOpen?(directory) }
+                link.toolTip = String(localized: "Show this folder on your Mac", comment: "Inspector, Mounts: tooltip")
+                value = link
+            } else {
+                value = InspectorRows.text(path)
+            }
+            list.append((String(localized: "Directory", comment: "Inspector row: the folder a Compose project runs from"), value))
+        }
+        let described = shown.containers.map { container in
+            container.status.isEmpty ? container.name : "\(container.name) — \(container.status)"
+        }.joined(separator: "\n")
+        list.append((String(localized: "Containers", comment: "Inspector row: the containers in a Compose project"), InspectorRows.text(described)))
+        rows.set(list)
+        let running = shown.containers.filter(\.isRunning).count
+        let state = Self.small(String(localized: "\(running) of \(shown.containers.count) running", comment: "Inspector, Compose: how many services run"),
+                               color: running == shown.containers.count ? .systemGreen : running == 0 ? .secondaryLabelColor : .systemOrange)
+        let buttons = stackActions(shown)
+        let content = NSStackView(views: [rows, buttons])
+        content.orientation = .vertical
+        content.alignment = .leading
+        content.spacing = 10
+        rows.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
+        buttons.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
+        return InspectorCard(id: "stack", title: shown.project, symbol: "square.stack.3d.up", content: content, accessory: state)
+    }
+
+    private func stackActions(_ shown: StackShown) -> NSView {
+        let column = NSStackView()
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = 8
+        if let busy = shown.busy {
+            let spinner = NSProgressIndicator()
+            spinner.style = .spinning
+            spinner.controlSize = .small
+            spinner.startAnimation(nil)
+            let row = NSStackView(views: [spinner, Self.small(ContainerControl.progress(busy), color: .secondaryLabelColor)])
+            row.spacing = 6
+            column.addArrangedSubview(row)
+        } else {
+            let row = FlowView(spacing: 6, lineSpacing: 6)
+            for action in ContainerControl.actions(for: shown.containers) {
+                row.add(ActionButton(ContainerControl.title(action), symbol: ContainerControl.symbol(action)) { [weak self] in
+                    ContainerControl.run(action, on: shown.containers, in: self?.window)
+                })
+            }
+            column.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+        }
+        if let folder = shown.directory, FileManager.default.fileExists(atPath: folder.path) {
+            let row = FlowView(spacing: 6, lineSpacing: 6)
+            let terminal = ActionButton(String(localized: "Open in Terminal", comment: "Menu command: open a shell in the selected folder"), symbol: "terminal") {
+                guard let app = Prefs.terminalURL else { return NSSound.beep() }
+                ProjectEditors.open(folder, with: app)
+            }
+            terminal.toolTip = String(localized: "Open the project folder in your terminal", comment: "Inspector, a Compose project: tooltip on Open in Terminal")
+            row.add(terminal)
+            let editors = ProjectEditors.installed()
+            if !editors.isEmpty {
+                let popup = NSPopUpButton()
+                popup.pullsDown = true
+                popup.controlSize = .small
+                popup.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+                popup.addItem(withTitle: String(localized: "Open With"))
+                for app in editors {
+                    let item = NSMenuItem(title: FileManager.default.displayName(atPath: app.path), action: nil, keyEquivalent: "")
+                    item.representedObject = app
+                    let icon = NSWorkspace.shared.icon(forFile: app.path)
+                    icon.size = NSSize(width: 16, height: 16)
+                    item.image = icon
+                    popup.menu?.addItem(item)
+                }
+                popup.target = self
+                popup.action = #selector(openStackWith(_:))
+                row.add(popup)
+            }
+            column.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+        }
+        return column
+    }
+
+    @objc private func openStackWith(_ sender: NSPopUpButton) {
+        defer { sender.selectItem(at: 0) }
+        guard let app = sender.selectedItem?.representedObject as? URL, case .stack(let shown) = display,
+              let folder = shown.directory, FileManager.default.fileExists(atPath: folder.path) else { return }
+        ProjectEditors.open(folder, with: app)
     }
 
     /// Start, Stop, Restart, Pause or Resume (what applies) and Terminal; a spinner while an action runs.

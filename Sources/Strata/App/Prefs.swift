@@ -28,6 +28,8 @@ enum Prefs {
         static let nameTextSize = "nameTextSize"
         static let showIconPreviews = "showIconPreviews"
         static let sidebarShowsTree = "sidebarShowsTree"
+        static let sortColumn = "sortColumn"
+        static let sortAscending = "sortAscending"
     }
 
     static func register() {
@@ -136,6 +138,20 @@ enum Prefs {
     static var terminalURL: URL? {
         let ids = (terminal.map { [$0] } ?? []) + terminals.map(\.bundleID)
         return ids.lazy.compactMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }.first
+    }
+
+    /// List sort from the last session. Unknown or missing values are Name, ascending.
+    static var sortColumn: String {
+        get {
+            let stored = defaults.string(forKey: Key.sortColumn) ?? SortKey.name.rawValue
+            return SortKey(rawValue: stored)?.rawValue ?? SortKey.name.rawValue
+        }
+        set { defaults.set(newValue, forKey: Key.sortColumn) }
+    }
+
+    static var sortAscending: Bool {
+        get { defaults.object(forKey: Key.sortAscending) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.sortAscending) }
     }
 
     static var lastLocation: URL? {

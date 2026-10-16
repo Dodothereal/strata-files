@@ -54,8 +54,19 @@ final class GridItemView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    // Clicks belong to the collection view (selection, rubber band, drags).
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    // The collection view selects, rubber-bands and drags from the view hit-testing returns. Subviews (the icon, the
+    // badges) must not take the click. Returning nil makes a click on the icon look like empty space, so only a drag
+    // selects; this view is the hit target and then hands the click to the collection view.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isHidden, alphaValue > 0, bounds.contains(convert(point, from: superview)) else { return nil }
+        return self
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        var ancestor: NSView? = superview
+        while let view = ancestor, !(view is NSCollectionView) { ancestor = view.superview }
+        ancestor?.mouseDown(with: event)
+    }
 
     func configure(name: String, matches: [Int], detail: String?, metrics: GridMetrics) {
         let changed = name != self.name || matches != self.matches || metrics != self.metrics

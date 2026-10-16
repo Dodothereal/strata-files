@@ -38,7 +38,7 @@ struct ShortcutSettings: View {
                     }
                 }
             }
-            .frame(height: 420)
+            .frame(minHeight: 160, maxHeight: .infinity)
             HStack {
                 Text("Click a shortcut, then press the keys. ⌫ removes it; esc keeps it.")
                     .font(.caption)

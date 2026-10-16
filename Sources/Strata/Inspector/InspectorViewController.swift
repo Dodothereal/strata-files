@@ -103,11 +103,11 @@ final class InspectorViewController: NSViewController {
         let stack = NSStackView(views: [previewBox, titleLabel, subtitleLabel] + cards)
         stack.orientation = .vertical
         stack.alignment = .centerX
-        stack.spacing = 10
+        stack.spacing = 0
         stack.setCustomSpacing(14, after: previewBox)
         stack.setCustomSpacing(2, after: titleLabel)
         stack.setCustomSpacing(16, after: subtitleLabel)
-        stack.edgeInsets = NSEdgeInsets(top: 16, left: 14, bottom: 18, right: 14)
+        stack.edgeInsets = NSEdgeInsets(top: 16, left: 10, bottom: 18, right: 10)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let document = FlippedView()
@@ -125,8 +125,8 @@ final class InspectorViewController: NSViewController {
             stack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
             stack.topAnchor.constraint(equalTo: document.topAnchor),
             stack.bottomAnchor.constraint(equalTo: document.bottomAnchor),
-            previewBox.leadingAnchor.constraint(equalTo: stack.leadingAnchor, constant: 14),
-            previewBox.trailingAnchor.constraint(equalTo: stack.trailingAnchor, constant: -14),
+            previewBox.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
+            previewBox.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
             richBackdrop.leadingAnchor.constraint(equalTo: previewBox.leadingAnchor),
             richBackdrop.trailingAnchor.constraint(equalTo: previewBox.trailingAnchor),
             richBackdrop.topAnchor.constraint(equalTo: previewBox.topAnchor),
@@ -157,7 +157,7 @@ final class InspectorViewController: NSViewController {
 
     /// Containers started, stopped or went away: their cards follow.
     @objc private func containersChanged() {
-        containerView.configure(shownURLs.first.flatMap(ContainerCopies.copy(containing:)))
+        containerView.configure(url: shownURLs.first)
         composeView.configure(composeFolder)
     }
 
@@ -176,7 +176,7 @@ final class InspectorViewController: NSViewController {
         loadProject(projectFolder)
         composeFolder = projectFolder
         composeView.configure(projectFolder)
-        containerView.configure(items.first.flatMap { ContainerCopies.copy(containing: $0.url) })
+        containerView.configure(url: items.first?.url)
         // Summaries for single documents; the card hides itself when there's no readable text.
         // Source code has its own preview; summaries are for prose (PDFs, Markdown, Word, text…).
         let isCode = items.first?.contentType.map { $0.conforms(to: .sourceCode) || $0.conforms(to: .json) || $0.conforms(to: .propertyList) } ?? false

@@ -1,7 +1,7 @@
 import AppKit
 
-/// One section of the Inspector: a rounded card with an icon, a title, an optional accessory and a chevron that
-/// collapses it (remembered per section). Every section looks and lines up the same way.
+/// One section of the Inspector: an icon, a title, an optional accessory and a chevron that collapses it
+/// (remembered per section), with a hairline above. Every section looks and lines up the same way.
 final class InspectorCard: NSView {
     /// The card's content; it spans the card's width inside the padding.
     let content: NSView
@@ -15,6 +15,8 @@ final class InspectorCard: NSView {
     private var bodyTop: NSLayoutConstraint?
 
     static let padding: CGFloat = 12
+    /// Side inset of a section's title and rows. Smaller than `padding` so a narrow inspector keeps room for values.
+    static let horizontalPadding: CGFloat = 8
 
     init(id: String, title: String, symbol: String, content: NSView, accessory: NSView? = nil) {
         self.id = id
@@ -63,6 +65,7 @@ final class InspectorCard: NSView {
         card.addSubview(header)
         card.addSubview(body)
         let pad = Self.padding
+        let inset = Self.horizontalPadding
         let bottom = content.bottomAnchor.constraint(equalTo: body.bottomAnchor)
         contentBottom = bottom
         let top = body.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8)
@@ -72,12 +75,12 @@ final class InspectorCard: NSView {
             card.trailingAnchor.constraint(equalTo: trailingAnchor),
             card.topAnchor.constraint(equalTo: topAnchor),
             card.bottomAnchor.constraint(equalTo: bottomAnchor),
-            header.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: pad),
-            header.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -pad + 4),
-            header.topAnchor.constraint(equalTo: card.topAnchor, constant: 9),
+            header.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: inset),
+            header.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -inset + 4),
+            header.topAnchor.constraint(equalTo: card.topAnchor, constant: 12),
             header.heightAnchor.constraint(equalToConstant: 20),
-            body.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: pad),
-            body.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -pad),
+            body.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: inset),
+            body.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -inset),
             top,
             body.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -pad),
             content.leadingAnchor.constraint(equalTo: body.leadingAnchor),

@@ -349,9 +349,10 @@ struct ContainerTests {
         try FileManager.default.createDirectory(at: folder.appending(path: "removed-one"), withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
         let engine = ContainerEngine(socket: "/tmp/strata-test.sock", name: "Docker", apiVersion: "1.41")
-        func container(_ name: String, _ id: String) -> ContainerInfo {
+        func container(_ name: String, _ id: String, project: String? = nil) -> ContainerInfo {
             ContainerInfo(id: id, name: name, image: "nginx", state: .running, status: "Up", created: Date(timeIntervalSince1970: 1_700_000_000),
-                          mounts: [], ports: [], compose: nil)
+                          mounts: [], ports: [],
+                          compose: project.map { ComposeLabels(project: $0, service: name, workingDirectory: nil) })
         }
         let first = String(repeating: "a", count: 64), second = String(repeating: "b", count: 64)
         let gone = try CopyWriter.syncContainers([container("web", first), container("../escape", second), container(".hidden", second)],
@@ -363,6 +364,56 @@ struct ContainerTests {
         // Made again under the same name: its folder starts over (the old one's files aren't this one's).
         let again = try CopyWriter.syncContainers([container("web", second)], engine: engine, in: folder)
         #expect(again.map(\.lastPathComponent).sorted() == ["removed-one", "web"])
+    }
+
+    @Test func composeProjectsGroupTheirContainers() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "strata-stacks-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let engine = ContainerEngine(socket: "/tmp/strata-test.sock", name: "Docker", apiVersion: "1.41")
+        func container(_ name: String, _ id: String, project: String? = nil) -> ContainerInfo {
+            ContainerInfo(id: id, name: name, image: "nginx", state: .running, status: "Up", created: nil, mounts: [], ports: [],
+                          compose: project.map { ComposeLabels(project: $0, service: name, workingDirectory: nil) })
+        }
+        let web = String(repeating: "a", count: 64), db = String(repeating: "b", count: 64), redis = String(repeating: "c", count: 64)
+        // Where an older layout left it: beside the stacks. Grouping moves it and keeps what was already fetched.
+        _ = try CopyWriter.syncContainers([container("web", web)], engine: engine, in: folder)
+        try Data("notes".utf8).write(to: folder.appending(path: "web/readme.txt"))
+        let gone = try CopyWriter.syncContainers(
+            [container("web", web, project: "shop"), container("db", db, project: "shop"), container("redis", redis),
+             container("odd", db, project: "../nope")],
+            engine: engine, in: folder)
+        #expect(gone.isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["odd", "redis", "shop"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.appending(path: "shop").path).sorted() == ["db", "web"])
+        #expect(try String(contentsOf: folder.appending(path: "shop/web/readme.txt"), encoding: .utf8) == "notes")
+    }
+
+    @Test func containerIconsFollowRunning() {
+        #expect(ContainerIconMark.container(state: .running, busy: false) == .running)
+        #expect(ContainerIconMark.container(state: .exited, busy: false) == .stopped)
+        #expect(ContainerIconMark.container(state: .paused, busy: false) == .changing)
+        #expect(ContainerIconMark.container(state: .running, busy: true) == .changing)
+        #expect(ContainerIconMark.stack(states: [.running, .running], anyBusy: false) == .running)
+        #expect(ContainerIconMark.stack(states: [.exited], anyBusy: false) == .stopped)
+        #expect(ContainerIconMark.stack(states: [.running, .exited], anyBusy: false) == .changing)
+        #expect(ContainerIconMark.stack(states: [], anyBusy: false) == .stopped)
+        #expect(ContainerIconMark.running.containerSymbol == "shippingbox.fill")
+        #expect(ContainerIconMark.stopped.containerSymbol == "shippingbox")
+        #expect(ContainerIconMark.running.stackSymbol == "square.stack.3d.up.fill")
+        #expect(ContainerIconMark.stopped.stackSymbol == "square.stack.3d.up")
+    }
+
+    @Test func projectEditorsAreCodeEditors() {
+        #expect(ProjectEditors.includes(bundleID: "com.todesktop.230313mzl4w4u92", category: nil))
+        #expect(ProjectEditors.includes(bundleID: "com.microsoft.VSCode", category: nil))
+        #expect(ProjectEditors.includes(bundleID: "com.sublimetext.4", category: nil))
+        #expect(ProjectEditors.includes(bundleID: "com.jetbrains.pycharm.ce", category: nil))
+        #expect(ProjectEditors.includes(bundleID: "com.google.antigravity-ide", category: "public.app-category.developer-tools"))
+        #expect(!ProjectEditors.includes(bundleID: "com.apple.TextEdit", category: "public.app-category.productivity"))
+        #expect(!ProjectEditors.includes(bundleID: "com.microsoft.Word", category: nil))
+        #expect(!ProjectEditors.includes(bundleID: "com.anthropic.claudefordesktop", category: "public.app-category.developer-tools"))
+        #expect(!ProjectEditors.includes(bundleID: "com.apple.dt.Instruments", category: "public.app-category.developer-tools"))
     }
 
     @Test func actionsAreOnePostEach() throws {

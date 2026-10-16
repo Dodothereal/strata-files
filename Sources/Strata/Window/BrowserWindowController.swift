@@ -218,7 +218,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - Navigation
 
     func navigate(to url: URL, select: URL? = nil, recordHistory: Bool = true) {
-        go(.folder(url.standardizedFileURL), select: select, recordHistory: recordHistory)
+        go(.folder(FileEntry.openedFolder(url).standardizedFileURL), select: select, recordHistory: recordHistory)
     }
 
     private func open(_ target: SidebarTarget) {

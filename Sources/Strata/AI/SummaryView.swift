@@ -132,8 +132,8 @@ final class SummaryView: NSView {
             card.trailingAnchor.constraint(equalTo: trailingAnchor),
             card.topAnchor.constraint(equalTo: topAnchor),
             card.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 12),
-            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -12),
+            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: InspectorCard.horizontalPadding),
+            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -InspectorCard.horizontalPadding),
             stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 10),
             stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -12),
             header.widthAnchor.constraint(equalTo: stack.widthAnchor),
@@ -243,7 +243,7 @@ final class SummaryView: NSView {
     override func layout() {
         super.layout()
         // Wrap labels at the card's real width.
-        let width = max(80, bounds.width - 24)
+        let width = max(80, bounds.width - InspectorCard.horizontalPadding * 2)
         for case let label as NSTextField in body.arrangedSubviews where label.preferredMaxLayoutWidth != width {
             label.preferredMaxLayoutWidth = width
         }
@@ -251,26 +251,24 @@ final class SummaryView: NSView {
     }
 }
 
-/// A rounded, subtly filled section background that follows light and dark mode.
+/// Inspector section chrome: no fill, just a hairline along the top.
 final class CardView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
-        wantsLayer = true
-        layer?.cornerRadius = 12
-        layer?.cornerCurve = .continuous
+        let line = NSBox()
+        line.boxType = .separator
+        line.titlePosition = .noTitle
+        line.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(line)
+        NSLayoutConstraint.activate([
+            line.leadingAnchor.constraint(equalTo: leadingAnchor),
+            line.trailingAnchor.constraint(equalTo: trailingAnchor),
+            line.topAnchor.constraint(equalTo: topAnchor),
+            line.heightAnchor.constraint(equalToConstant: 1),
+        ])
     }
 
     required init?(coder: NSCoder) { fatalError() }
-
-    override var wantsUpdateLayer: Bool { true }
-
-    override func updateLayer() {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = NSColor.tertiarySystemFill.withAlphaComponent(0.7).cgColor
-            layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.35).cgColor
-        }
-        layer?.borderWidth = 0.5
-    }
 }
 
 /// "•  text" with a small accent dot and a hanging indent.

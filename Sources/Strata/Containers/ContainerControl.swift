@@ -1,4 +1,5 @@
 import AppKit
+import CoreServices
 
 /// Starting, stopping… containers, and shells in them, the same way from every place that offers it (the context menu,
 /// the Inspector, the Compose card, the command palette).
@@ -105,4 +106,90 @@ enum ContainerControl {
 
         """
     }
+}
+
+/// The folder on this Mac a Compose project was launched from.
+enum StackProjects {
+    static func workingDirectory(of url: URL) -> URL? {
+        guard ContainerCopies.isStack(url) else { return nil }
+        let name = url.lastPathComponent
+        guard let path = ContainerStore.shared.containers.lazy.compactMap({ container -> String? in
+            guard let compose = container.compose,
+                  compose.project.compare(name, options: [.caseInsensitive]) == .orderedSame,
+                  compose.workingDirectory?.hasPrefix("/") == true else { return nil }
+            return compose.workingDirectory
+        }).first else { return nil }
+        return URL(filePath: path, directoryHint: .isDirectory)
+    }
+
+    /// `workingDirectory` when that folder is still on this Mac.
+    static func existingFolder(of url: URL) -> URL? {
+        guard let folder = workingDirectory(of: url), FileManager.default.fileExists(atPath: folder.path) else { return nil }
+        return folder
+    }
+}
+
+/// Code editors installed on this Mac: the well-known ones, and any other developer tool that opens source code.
+enum ProjectEditors {
+    /// Opens `folder` in `app`.
+    static func open(_ folder: URL, with app: URL) {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.open([folder], withApplicationAt: app, configuration: configuration)
+    }
+
+    /// Editors to offer, by display name.
+    static func installed() -> [URL] {
+        if let cached, Date() < cached.until { return cached.apps }
+        var ids = Set(knownIDs)
+        if let handlers = LSCopyAllRoleHandlersForContentType("public.swift-source" as CFString, .editor)?.takeRetainedValue() as? [String] {
+            ids.formUnion(handlers)
+        }
+        var seen = Set<String>()
+        var apps: [URL] = []
+        for id in ids {
+            for app in NSWorkspace.shared.urlsForApplications(withBundleIdentifier: id) {
+                let url = app.standardizedFileURL
+                guard seen.insert(url.path).inserted else { continue }
+                let bundle = Bundle(url: url)
+                let category = bundle?.object(forInfoDictionaryKey: "LSApplicationCategoryType") as? String
+                guard includes(bundleID: bundle?.bundleIdentifier ?? id, category: category) else { continue }
+                apps.append(url)
+            }
+        }
+        apps.sort { FileManager.default.displayName(atPath: $0.path).localizedStandardCompare(FileManager.default.displayName(atPath: $1.path)) == .orderedAscending }
+        cached = (apps, Date().addingTimeInterval(30))
+        return apps
+    }
+
+    /// Whether an app that claims to edit source is one to offer. Office apps and chat apps also claim source files.
+    static func includes(bundleID: String, category: String?) -> Bool {
+        if skipped.contains(bundleID) { return false }
+        if knownIDs.contains(bundleID) || prefixes.contains(where: { bundleID.hasPrefix($0) }) { return true }
+        return category == "public.app-category.developer-tools"
+    }
+
+    private static var cached: (apps: [URL], until: Date)?
+
+    private static let skipped: Set<String> = [
+        "com.anthropic.claudefordesktop", "com.apple.dt.Instruments", "com.apple.ScriptEditor2",
+    ]
+
+    /// Prefixes, so a new version (`com.sublimetext.4`, `com.jetbrains.pycharm.ce`) is picked up without being listed.
+    private static let prefixes = [
+        "com.microsoft.VSCode", "com.visualstudio.code", "com.vscodium", "com.todesktop.", "com.exafunction.",
+        "com.codeium.", "dev.zed.", "com.sublimetext.", "com.jetbrains.", "com.google.android.studio",
+        "com.google.antigravity", "com.apple.dt.Xcode", "com.panic.Nova", "com.barebones.bbedit", "com.macromates.",
+        "com.coteditor.", "com.trae.", "dev.kiro.", "com.kiro.", "com.neovide.", "com.github.atom",
+    ]
+
+    private static let knownIDs = [
+        "com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.visualstudio.code.oss",
+        "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf", "dev.zed.Zed", "com.apple.dt.Xcode",
+        "com.sublimetext.4", "com.sublimetext.3", "com.panic.Nova", "com.barebones.bbedit", "com.macromates.TextMate",
+        "com.coteditor.CotEditor", "com.google.android.studio", "com.google.antigravity-ide",
+        "com.jetbrains.intellij", "com.jetbrains.intellij.ce", "com.jetbrains.pycharm", "com.jetbrains.pycharm.ce",
+        "com.jetbrains.WebStorm", "com.jetbrains.PhpStorm", "com.jetbrains.goland", "com.jetbrains.CLion",
+        "com.jetbrains.rider", "com.jetbrains.rustrover", "com.jetbrains.datagrip", "com.jetbrains.rubymine",
+    ]
 }
