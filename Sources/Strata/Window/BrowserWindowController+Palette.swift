@@ -110,6 +110,7 @@ extension BrowserWindowController {
         }
         var commands = [
             command("New Folder", "folder.badge.plus", "⇧⌘N") { [weak self] in self?.browser.newFolder(nil) },
+            command("New File", "doc.badge.plus", "⌥⌘N", keywords: ["Text", "Empty", "Document"]) { [weak self] in self?.browser.newFile(nil) },
             command("New Tab", "plus.rectangle.on.rectangle", "⌘T") { [weak self] in self?.newWindowForTab(nil) },
             command("New Window", "macwindow.badge.plus", "⌘N") { (NSApp.delegate as? AppDelegate)?.newWindow(nil) },
             command("Open in Terminal", "terminal", "⌃⌘T") { [weak self] in self?.browser.openInTerminal(nil) },
@@ -247,10 +248,10 @@ extension BrowserWindowController {
         // A read-only copy (an archive opened as a folder, a container's files): nothing in it changes, so commands that
         // would do nothing aren't offered. A container's files aren't handed to Finder, the Shelf or the share sheet.
         if browser.isInsideArchive {
-            // On a server, new folders, renaming one item and deleting go to the server.
+            // On a server, new files and folders, renaming one item and deleting go to the server.
             let onServer = browser.isOnServer
             var hidden = Set((onServer ? ["Tags…", "Duplicate", "Delete Immediately…"]
-                : ["New Folder", "Tags…", "Duplicate", "Delete Immediately…", "Move to Trash"]).map { String(localized: String.LocalizationValue($0)) })
+                : ["New Folder", "New File", "Tags…", "Duplicate", "Delete Immediately…", "Move to Trash"]).map { String(localized: String.LocalizationValue($0)) })
             if !onServer || browser.selectedURLs.count > 1 { hidden.insert(browser.renameTitle) }
             if browser.directory.map(LazyCopies.contains) == true {
                 hidden.formUnion(["Add to Shelf", "Share…", "Show in Finder"].map { String(localized: String.LocalizationValue($0)) })

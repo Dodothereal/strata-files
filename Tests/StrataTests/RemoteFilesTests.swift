@@ -102,6 +102,19 @@ struct RemoteFilesTests {
         #expect(!FileManager.default.fileExists(atPath: folder.appending(path: "Documents").path))
     }
 
+    @Test func newFilesAreMadeOnTheServerNeverOverAnything() async throws {
+        defer { cleanUp() }
+        await files.refresh(folder)
+        let made = try await files.makeFile(named: "untitled.txt", in: folder)
+        #expect(made.lastPathComponent == "untitled.txt")
+        #expect(try Data(contentsOf: server.appending(path: "untitled.txt")).isEmpty)
+        #expect(FileManager.default.fileExists(atPath: made.path))
+        // Nothing left behind under a temporary name.
+        #expect(try FileManager.default.contentsOfDirectory(atPath: server.path).filter { $0.hasPrefix(".") }.isEmpty)
+        await #expect(throws: RemoteError.exists("note.txt")) { _ = try await files.makeFile(named: "note.txt", in: folder) }
+        #expect(try String(contentsOf: server.appending(path: "note.txt"), encoding: .utf8) == "hello")
+    }
+
     @Test func uploadsFilesAndFolders() async throws {
         defer { cleanUp() }
         await files.refresh(folder)

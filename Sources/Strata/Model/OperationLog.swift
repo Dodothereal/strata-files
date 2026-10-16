@@ -78,6 +78,7 @@ final class OperationLog {
         case "Rename": String(localized: "Rename", comment: "Undo and History action name")
         case "Move to Trash": String(localized: "Move to Trash", comment: "Undo and History action name")
         case "New Folder": String(localized: "New Folder", comment: "Undo and History action name")
+        case "New File": String(localized: "New File", comment: "Undo and History action name")
         case "Compress": String(localized: "Compress", comment: "Undo and History action name: making a zip")
         case "Extract": String(localized: "Extract", comment: "Undo and History action name: unpacking an archive")
         case "Put Back": String(localized: "Put Back", comment: "Undo and History action name: items taken out of the Trash")

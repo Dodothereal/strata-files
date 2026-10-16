@@ -23,6 +23,7 @@ enum MainMenu {
             item("New Window", #selector(AppDelegate.newWindow(_:)), "n", symbol: "macwindow.badge.plus"),
             item("New Tab", #selector(NSResponder.newWindowForTab(_:)), "t", symbol: "plus.rectangle.on.rectangle"),
             item("New Folder", #selector(BrowserViewController.newFolder(_:)), "n", [.command, .shift], symbol: "folder.badge.plus"),
+            item("New File", #selector(BrowserViewController.newFile(_:)), "n", [.command, .option], symbol: "doc.badge.plus"),
             .separator(),
             item("Open", #selector(BrowserViewController.openSelection(_:)), "o", symbol: "arrow.up.forward.app"),
             item("Open in Terminal", #selector(BrowserViewController.openInTerminal(_:)), "t", [.command, .control], symbol: "terminal"),

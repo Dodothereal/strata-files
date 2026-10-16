@@ -121,6 +121,9 @@ private struct GeneralSettings: View {
                     Text("Your home folder").tag(true)
                 }
             }
+            Section("New Files") {
+                NewFileExtensionField()
+            }
             UpdatesSection()
             Section("Copying") {
                 PrefToggle(title: "Verify copies",
@@ -153,6 +156,29 @@ private struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// The extension File ▸ New File gives a file. Saved as you type, once it's one an extension can be.
+private struct NewFileExtensionField: View {
+    @State private var text = Prefs.newFileExtension
+
+    var body: some View {
+        TextField("Extension", text: Binding(get: { text }, set: { typed in
+            text = typed
+            if FileOps.newFileExtension(typed) != nil { Prefs.newFileExtension = typed }
+        }))
+        if let ext = FileOps.newFileExtension(text) {
+            let name = FileOps.newFileName(extension: ext)
+            Text(String(localized: "File ▸ New File makes an empty “\(name)”. Leave the extension empty for none.",
+                        comment: "Settings caption; placeholder: the new file's name, like “untitled.txt”"))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        } else {
+            Text("An extension can only have letters, numbers, “-”, “_” and “+”.")
+                .font(.callout)
+                .foregroundStyle(.red)
+        }
     }
 }
 

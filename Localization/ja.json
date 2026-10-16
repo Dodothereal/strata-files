@@ -302,6 +302,7 @@
     "Also ⇧⌘. in any window.": "どのウインドウでも⇧⌘.で切り替えられます。",
     "Amazon S3 for the region": "リージョンのAmazon S3",
     "Amazon S3, or an S3-compatible service with its endpoint (Cloudflare R2, Backblaze B2, Wasabi, MinIO…). The secret key is kept in your keychain.": "Amazon S3、またはエンドポイントを指定したS3互換サービス（Cloudflare R2、Backblaze B2、Wasabi、MinIO…）。シークレットキーはキーチェーンに保管されます。",
+    "An extension can only have letters, numbers, “-”, “_” and “+”.": "拡張子に使えるのは文字、数字、「-」「_」「+」だけです。",
     "An item named “%@” already exists in “%@”.": "「%@」という名前の項目がすでに「%@」にあります。",
     "An item with the same name already exists": "同じ名前の項目がすでにあります",
     "and %lld more": {
@@ -625,6 +626,7 @@
     "exactly %lld px wide": "幅ちょうど%lldピクセル",
     "Existing": "既存",
     "Expanded": "展開",
+    "Extension": "拡張子",
     "Extract": "展開",
     "Extract %lld Archives": {
       "other": "%lld個のアーカイブを展開"
@@ -641,6 +643,7 @@
     "File": "ファイル",
     "file extensions": "ファイル拡張子",
     "File vs. folder": "ファイル / フォルダ",
+    "File ▸ New File makes an empty “%@”. Leave the extension empty for none.": "ファイル ▸ 新規ファイルで空の「%@」が作成されます。拡張子を付けない場合は空欄にしてください。",
     "Files": "ファイル",
     "Files in “%@” on %@: a read-only copy, read from the container as you browse.": "%2$@上の「%1$@」内のファイル: ブラウズに応じてコンテナから読み込まれる読み出し専用のコピーです。",
     "Files over 5 GB can’t be uploaded to a bucket yet.": "5 GBを超えるファイルは、まだバケットにアップロードできません。",
@@ -886,6 +889,9 @@
     "Names starting with “.” are hidden": "「.」で始まる名前は非表示になります",
     "Needs Full Disk Access": "フルディスクアクセスが必要",
     "Network Share": "ネットワーク共有",
+    "New File": "新規ファイル",
+    "New file (empty; its extension is in Settings)": "新規ファイル（空のファイル。拡張子は設定で指定）",
+    "New Files": "新規ファイル",
     "New Folder": "新規フォルダ",
     "New folder": "新規フォルダ",
     "New Tab": "新規タブ",
@@ -1506,6 +1512,7 @@
     "Unknown error": "不明なエラー",
     "Unmodified": "変更なし",
     "Untitled": "名称未設定",
+    "untitled": "名称未設定",
     "untitled folder": "名称未設定フォルダ",
     "Untracked": "未追跡",
     "Untracked folder": "未追跡のフォルダ",

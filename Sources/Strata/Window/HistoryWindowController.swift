@@ -193,6 +193,7 @@ private final class HistoryCell: NSTableCellView {
         case "Rename": symbol = "pencil"
         case "Copy", "Duplicate": symbol = "plus.square.on.square"
         case "New Folder": symbol = "folder.badge.plus"
+        case "New File": symbol = "doc.badge.plus"
         case "Compress": symbol = "doc.zipper"
         case "Extract": symbol = "archivebox"
         case "Put Back": symbol = "tray.and.arrow.up"

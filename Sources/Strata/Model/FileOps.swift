@@ -170,6 +170,43 @@ enum FileOps {
         return url
     }
 
+    /// File ▸ New File: an empty "untitled.txt" (`ext` is Settings' extension, "" for none), "untitled 2.txt" when that's
+    /// taken. Never over anything: the name is claimed only while nothing is there, not even a link.
+    static func newFile(in directory: URL, extension ext: String, undo: UndoManager?) throws -> URL {
+        guard !ReadOnlyCopies.contains(directory) else { throw insideArchiveError }
+        let name = newFileName(extension: ext)
+        var url = available(directory.appending(path: name), copyStyle: false)
+        for attempt in 0... {
+            do {
+                try Data().write(to: url, options: .withoutOverwriting)
+                break
+            } catch CocoaError.fileWriteFileExists where attempt < 20 {
+                // Something took the name meanwhile: the next free one.
+                url = available(directory.appending(path: name), copyStyle: false)
+            }
+        }
+        let entry = OperationLog.shared.recordCreate("New File", [url])
+        registerTrashUndo([url], "New File", undo, entry: entry)
+        return url
+    }
+
+    /// What New File calls a file: "untitled.txt", "untitled" with no extension. `stem` replaces "untitled" ("untitled 2").
+    nonisolated static func newFileName(extension ext: String, stem: String? = nil) -> String {
+        let base = stem ?? nameText(String(localized: "untitled", comment: "Name of a new empty file, before its extension: “untitled.txt”"),
+                                    english: "untitled")
+        return ext.isEmpty ? base : base + "." + ext
+    }
+
+    /// An extension for new files as typed in Settings ("txt", ".md", " TXT "), without its dot; nil when it can't be one.
+    /// Letters, digits, "-", "_" and "+" only: no dots, slashes or spaces, so a new file is always one plain name.
+    nonisolated static func newFileExtension(_ typed: String) -> String? {
+        var text = typed.trimmingCharacters(in: .whitespaces)
+        if text.hasPrefix(".") { text.removeFirst() }
+        guard text.utf8.count <= 32,
+              text.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || "-_+".unicodeScalars.contains($0) }) else { return nil }
+        return text
+    }
+
     /// With `record: false` the trashing is part of another operation (undoing a copy, say): its undo then marks
     /// History entry `entry` as `marksUndone` once it has worked. Returns where the items went.
     @discardableResult

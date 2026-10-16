@@ -37,6 +37,7 @@ enum Prefs {
         static let hiddenListColumns = "hiddenListColumns"
         static let dockSearch = "dockSearch"
         static let collapsedSidebarSections = "collapsedSidebarSections"
+        static let newFileExtension = "newFileExtension"
     }
 
     static func register() {
@@ -58,6 +59,15 @@ enum Prefs {
     static var collapsedSidebarSections: Set<String> {
         get { Set(defaults.stringArray(forKey: Key.collapsedSidebarSections) ?? []) }
         set { defaults.set(newValue.sorted(), forKey: Key.collapsedSidebarSections) }
+    }
+
+    /// The extension File ▸ New File gives the file ("txt" until you change it; empty for none).
+    static var newFileExtension: String {
+        get { defaults.string(forKey: Key.newFileExtension).flatMap(FileOps.newFileExtension) ?? "txt" }
+        set {
+            guard let clean = FileOps.newFileExtension(newValue) else { return }
+            defaults.set(clean, forKey: Key.newFileExtension)
+        }
     }
 
     static var foldersFirst: Bool {

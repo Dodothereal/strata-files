@@ -302,6 +302,7 @@
     "Also ⇧⌘. in any window.": "在任意窗口中按⇧⌘.也可切换。",
     "Amazon S3 for the region": "该区域的Amazon S3",
     "Amazon S3, or an S3-compatible service with its endpoint (Cloudflare R2, Backblaze B2, Wasabi, MinIO…). The secret key is kept in your keychain.": "Amazon S3，或指定了端点的S3兼容服务（Cloudflare R2、Backblaze B2、Wasabi、MinIO…）。私有访问密钥会存储在你的钥匙串中。",
+    "An extension can only have letters, numbers, “-”, “_” and “+”.": "扩展名只能包含字母、数字以及“-”“_”和“+”。",
     "An item named “%@” already exists in “%@”.": "“%2$@”中已存在名为“%1$@”的项目。",
     "An item with the same name already exists": "已存在同名项目",
     "and %lld more": {
@@ -625,6 +626,7 @@
     "exactly %lld px wide": "宽度正好%lld像素",
     "Existing": "现有项目",
     "Expanded": "已展开",
+    "Extension": "扩展名",
     "Extract": "解压缩",
     "Extract %lld Archives": {
       "other": "解压缩%lld个归档"
@@ -641,6 +643,7 @@
     "File": "文件",
     "file extensions": "文件扩展名",
     "File vs. folder": "文件对文件夹",
+    "File ▸ New File makes an empty “%@”. Leave the extension empty for none.": "“文件” ▸ “新建文件”会创建一个空的“%@”。如不需要扩展名，请留空。",
     "Files": "文件",
     "Files in “%@” on %@: a read-only copy, read from the container as you browse.": "%2$@上“%1$@”中的文件：浏览时从容器中读取的只读副本。",
     "Files over 5 GB can’t be uploaded to a bucket yet.": "暂不支持将超过5 GB的文件上传到存储桶。",
@@ -886,6 +889,9 @@
     "Names starting with “.” are hidden": "以“.”开头的名称会被隐藏",
     "Needs Full Disk Access": "需要完全磁盘访问权限",
     "Network Share": "网络共享",
+    "New File": "新建文件",
+    "New file (empty; its extension is in Settings)": "新建文件（空文件；扩展名在设置中设定）",
+    "New Files": "新建文件",
     "New Folder": "新建文件夹",
     "New folder": "新建文件夹",
     "New Tab": "新建标签页",
@@ -1506,6 +1512,7 @@
     "Unknown error": "未知错误",
     "Unmodified": "未修改",
     "Untitled": "未命名",
+    "untitled": "未命名",
     "untitled folder": "未命名文件夹",
     "Untracked": "未跟踪",
     "Untracked folder": "未跟踪的文件夹",

@@ -944,15 +944,30 @@ final class BrowserViewController: NSViewController {
         guard let directory = targetDirectory, !isShowingTrash, !isInsideArchive else { return }
         perform {
             let url = try FileOps.newFolder(in: directory, undo: self.undoManager)
-            if self.mode == .columns, directory != self.directory {
-                // A deeper column picks the folder up from its own watcher; rename once it's shown.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { _ = self.activeView?.beginRename(url) }
-                return
-            }
-            self.pendingSelection = [url]
-            self.pendingRename = url
-            self.refresh()
+            self.renameWhenShown(url, in: directory)
         }
+    }
+
+    /// File ▸ New File: an empty "untitled.txt" (the extension is in Settings ▸ General), selected and being renamed.
+    @objc func newFile(_ sender: Any?) {
+        if let directory = targetDirectory, RemoteCopies.server(containing: directory) != nil, !isShowingResults { return newFileOnServer(in: directory) }
+        guard let directory = targetDirectory, !isShowingTrash, !isInsideArchive else { return }
+        perform {
+            let url = try FileOps.newFile(in: directory, extension: Prefs.newFileExtension, undo: self.undoManager)
+            self.renameWhenShown(url, in: directory)
+        }
+    }
+
+    /// An item just made in `directory`: selected, and renamed once it's shown.
+    func renameWhenShown(_ url: URL, in directory: URL) {
+        if mode == .columns, directory != self.directory {
+            // A deeper column picks the item up from its own watcher; rename once it's shown.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { _ = self.activeView?.beginRename(url) }
+            return
+        }
+        pendingSelection = [url]
+        pendingRename = url
+        refresh()
     }
 
     @objc func renameSelection(_ sender: Any?) {
@@ -1452,6 +1467,7 @@ final class BrowserViewController: NSViewController {
             // On a server: a new folder there, or pasting onto it; a shell there (SFTP).
             if isOnServer {
                 add("New Folder", #selector(newFolder(_:)), "folder.badge.plus")
+                add("New File", #selector(newFile(_:)), "doc.badge.plus")
                 if Clipboard.hasFiles { add("Paste", #selector(paste(_:)), "doc.on.clipboard") }
                 menu.addItem(.separator())
                 if directory.flatMap({ RemoteCopies.server(containing: $0)?.server.kind }) == .sftp {
@@ -1475,6 +1491,7 @@ final class BrowserViewController: NSViewController {
                 return menu
             }
             add("New Folder", #selector(newFolder(_:)), "folder.badge.plus")
+            add("New File", #selector(newFile(_:)), "doc.badge.plus")
             if Clipboard.hasFiles { add("Paste", #selector(paste(_:)), "doc.on.clipboard") }
             menu.addItem(.separator())
             add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
@@ -1844,11 +1861,11 @@ extension BrowserViewController: NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         let fileCommands: [Selector] = [
             #selector(openSelection(_:)), #selector(moveToTrash(_:)), #selector(duplicate(_:)), #selector(newFolder(_:)),
-            #selector(renameSelection(_:)), #selector(toggleQuickLook(_:)), #selector(pasteAndMove(_:)),
+            #selector(newFile(_:)), #selector(renameSelection(_:)), #selector(toggleQuickLook(_:)), #selector(pasteAndMove(_:)),
             #selector(copy(_:)), #selector(cut(_:)), #selector(paste(_:)), #selector(share(_:)),
             #selector(putBack(_:)), #selector(deleteImmediately(_:)), #selector(compress(_:)), #selector(extract(_:)),
         ]
-        // While a name is being edited, ⌘⌫, ⌘D and ⇧⌘N belong to the text, not the file. While another folder loads,
+        // While a name is being edited, ⌘⌫, ⌘D, ⇧⌘N and ⌥⌘N belong to the text, not the file. While another folder loads,
         // the rows on screen are the previous folder's.
         if let action = item.action, fileCommands.contains(action),
            view.window?.firstResponder is NSText || isLoadingFolder {
@@ -1858,13 +1875,13 @@ extension BrowserViewController: NSMenuItemValidation {
         let hasSelection = selectionCount > 0
         // An archive opened as a folder is a copy that isn't saved back: nothing in it is changed from Strata.
         let changes: [Selector] = [
-            #selector(newFolder(_:)), #selector(paste(_:)), #selector(pasteAndMove(_:)), #selector(renameSelection(_:)),
+            #selector(newFolder(_:)), #selector(newFile(_:)), #selector(paste(_:)), #selector(pasteAndMove(_:)), #selector(renameSelection(_:)),
             #selector(moveToTrash(_:)), #selector(deleteImmediately(_:)), #selector(duplicate(_:)), #selector(cut(_:)),
             #selector(compress(_:)), #selector(extract(_:)), #selector(putBack(_:)),
             #selector(editTags(_:)), #selector(addToSidebar(_:)),
         ]
-        // On a server: new folders, renaming one item, deleting and pasting go to the server; the rest stays off.
-        let serverChanges: [Selector] = [#selector(newFolder(_:)), #selector(paste(_:)), #selector(pasteAndMove(_:)),
+        // On a server: new files and folders, renaming one item, deleting and pasting go to the server; the rest stays off.
+        let serverChanges: [Selector] = [#selector(newFolder(_:)), #selector(newFile(_:)), #selector(paste(_:)), #selector(pasteAndMove(_:)),
                                          #selector(renameSelection(_:)), #selector(moveToTrash(_:)), #selector(deleteImmediately(_:))]
         if isOnServer, let action = item.action, serverChanges.contains(action) {
             // Like on this Mac: not in search results, a folder that didn't load, or Disk Usage.
@@ -1928,8 +1945,8 @@ extension BrowserViewController: NSMenuItemValidation {
             return selectionCount >= 1 && effectiveMode != .treemap
         case #selector(paste(_:)), #selector(pasteAndMove(_:)):
             return directory != nil && !isShowingResults && Clipboard.hasFiles && !isShowingTrash
-        case #selector(newFolder(_:)):
-            // Disk Usage can't show an empty folder, so a new one would seem to vanish.
+        case #selector(newFolder(_:)), #selector(newFile(_:)):
+            // Disk Usage can't show an empty folder or file, so a new one would seem to vanish.
             return directory != nil && !isShowingResults && loadError == nil && effectiveMode != .treemap && !isShowingTrash
         case #selector(toggleHiddenFiles(_:)):
             item.state = Prefs.showHidden ? .on : .off

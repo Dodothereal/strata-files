@@ -49,6 +49,7 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
             Shortcut(keys: ["space"], action: "Quick Look (also ⌘Y)"),
             Shortcut(keys: ["⌘", "O"], action: "Open"),
             Shortcut(keys: ["⇧", "⌘", "N"], action: "New folder"),
+            Shortcut(keys: ["⌥", "⌘", "N"], action: "New file (empty; its extension is in Settings)"),
             Shortcut(keys: ["⌘", "D"], action: "Duplicate"),
             Shortcut(keys: ["⌘", "⌫"], action: "Move to Trash (in the Trash: Put Back)"),
             Shortcut(keys: ["⌥", "⌘", "⌫"], action: "Delete immediately, skipping the Trash"),

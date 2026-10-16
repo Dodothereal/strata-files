@@ -38,14 +38,24 @@ extension BrowserViewController {
         }
         runOnServer {
             let made = try await RemoteFiles.shared.makeFolder(named: name, in: folder)
-            if self.mode == .columns, folder != self.directory {
-                // A deeper column picks the folder up from its own watcher; rename once it's shown.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { _ = self.activeView?.beginRename(made) }
-                return
-            }
-            self.pendingSelection = [made]
-            self.pendingRename = made
-            self.refresh()
+            self.renameWhenShown(made, in: folder)
+        }
+    }
+
+    /// An empty "untitled.txt" on the server, like New File on this Mac.
+    func newFileOnServer(in folder: URL) {
+        let existing = Set(((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).map { $0.lowercased() })
+        let ext = Prefs.newFileExtension
+        let base = FileOps.newFileName(extension: "")
+        var name = FileOps.newFileName(extension: ext)
+        var number = 2
+        while existing.contains(name.lowercased()) {
+            name = FileOps.newFileName(extension: ext, stem: "\(base) \(number)")
+            number += 1
+        }
+        runOnServer {
+            let made = try await RemoteFiles.shared.makeFile(named: name, in: folder)
+            self.renameWhenShown(made, in: folder)
         }
     }
 

@@ -267,6 +267,29 @@ actor RemoteFiles {
         return folder.appending(path: name, directoryHint: .isDirectory)
     }
 
+    /// An empty file named `name` in `folder`, made on the server; where it is in the copy. Written under a temporary
+    /// name, then renamed into place: like any rename here, never over something that's there.
+    func makeFile(named name: String, in folder: URL) async throws -> URL {
+        guard ContainerCopies.isSafeName(name) else { throw RemoteError.refused(String(localized: "That name can’t be used.")) }
+        let (server, _, path) = try target(folder)
+        let backend = try await backends(server.id)
+        let newPath = RemotePath.join(path, name)
+        if try await backend.exists(newPath) { throw RemoteError.exists(name) }
+        let empty = FileManager.default.temporaryDirectory.appending(path: "strata-empty-\(UUID().uuidString)")
+        try Data().write(to: empty, options: .withoutOverwriting)
+        defer { try? FileManager.default.removeItem(at: empty) }
+        let temp = RemotePath.join(path, ".\(name).strata-\(UUID().uuidString.prefix(8))")
+        try await backend.upload(empty, to: temp, modified: nil, progress: { _ in }, stop: StopFlag())
+        do {
+            try await backend.rename(temp, to: newPath)
+        } catch {
+            try? await backend.remove(temp)
+            throw error
+        }
+        await relist(folder)
+        return folder.appending(path: name)
+    }
+
     /// Renames the item at `url` on the server; where it is in the copy now.
     func rename(_ url: URL, to name: String) async throws -> URL {
         guard ContainerCopies.isSafeName(name) else { throw RemoteError.refused(String(localized: "That name can’t be used.")) }

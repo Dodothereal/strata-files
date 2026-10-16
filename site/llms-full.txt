@@ -40,7 +40,7 @@ Filters can be combined with words:
 - Dual Pane (⌘\): two folders side by side; copy or move between them with a keystroke. Compare with Other Pane lists what's only on one side, newer or different, then syncs both ways, one way or as a mirror (verified and undoable).
 - Spring-loaded folders: hold a drag over a folder and it opens.
 - Connect to Server (⌥⌘K): SMB, AFP, NFS and WebDAV shares, with macOS's own login and the Keychain.
-- Servers: SFTP servers (through the Mac's own ssh and ~/.ssh/config: keys, agent, ProxyJump) and S3 buckets (Amazon S3 or S3-compatible, the secret key in the Keychain) browse like folders: every view, Quick Look, copy or drag out, drop or paste files in, new folders, rename, delete (asks first), moves within a server, Open in Terminal over ssh. Files are read as you browse and cleared when Strata quits.
+- Servers: SFTP servers (through the Mac's own ssh and ~/.ssh/config: keys, agent, ProxyJump) and S3 buckets (Amazon S3 or S3-compatible, the secret key in the Keychain) browse like folders: every view, Quick Look, copy or drag out, drop or paste files in, new files and folders, rename, delete (asks first), moves within a server, Open in Terminal over ssh. Files are read as you browse and cleared when Strata quits.
 - iCloud Drive and cloud folders (Dropbox, OneDrive, Google Drive…): see what's only in the cloud or still syncing, with Download Now and Remove Download.
 - Tabs, Workspaces (a saved set of tabs and panes with their views; in the sidebar, ⌘K and `strata -w <name>`; folders on shares and servers connect again), and windows that reopen where you left them.
 - Sidebar: Favorites you can drag in and reorder, frequent folders, workspaces, servers, Large Files, Duplicates, disks with Eject, the Trash and Finder tags; or a folder tree (Home, disks, the Trash, servers, containers) that follows the folder you're in.
@@ -96,7 +96,7 @@ Filters can be combined with words:
 - ⌘[ back · ⌘] forward · ⌘↑ enclosing folder · ⌘↓ open
 - ⌘1 to ⌘5 views · ⌘\ dual pane · ⌘I inspector · Space Quick Look · ⌥⌘K connect to server
 - Every menu shortcut can be changed in Settings ▸ Shortcuts; Settings ▸ Appearance sets light or dark, row density and the file name size.
-- ⇧⌘N new folder · ⇧⌘F Recents · ⇧⌘H Home · ⇧⌘D Desktop · ⇧⌘O Documents · ⌥⌘L Downloads · ⇧⌘A Applications
+- ⇧⌘N new folder · ⌥⌘N new file · ⇧⌘F Recents · ⇧⌘H Home · ⇧⌘D Desktop · ⇧⌘O Documents · ⌥⌘L Downloads · ⇧⌘A Applications
 - ⌘/ the searchable list of every shortcut
 
 ## FAQ
