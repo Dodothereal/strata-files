@@ -79,7 +79,9 @@ Markdown, JSON, CSV, SQLite databases and archives preview right in the inspecto
 Containers too. With Docker Desktop, OrbStack, Colima, Podman or Rancher Desktop running, **Containers** in the sidebar
 shows your containers as folders. Open one to browse its files like any folder (read-only, read from the container as
 you go), copy things out, or open a terminal in it. Start, stop, restart or pause them from the context menu or the
-inspector, which also shows a container's image, ports and mounts, and a project's Compose services.
+inspector, which also shows a container's image, ports and mounts, and a project's Compose services. A Compose project's
+containers come together as a stack: start, stop or restart it at once, and open its project folder in your terminal
+or code editor.
 
 Servers too. Connect to Server (⌥⌘K) opens SFTP servers and S3 buckets (Amazon S3, Cloudflare R2, Backblaze B2,
 Wasabi, MinIO…) and keeps them under **Servers** in the sidebar. Their folders work like any folder: every view, Quick
