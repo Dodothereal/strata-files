@@ -7,6 +7,8 @@ extension Notification.Name {
     static let favoritesChanged = Notification.Name("StrataFavoritesChanged")
     /// A list column was shown or hidden (right-click the column titles): every list follows.
     static let listColumnsChanged = Notification.Name("StrataListColumnsChanged")
+    /// A sidebar section was hidden or shown: every window's sidebar follows.
+    static let sidebarSectionsCollapsed = Notification.Name("StrataSidebarSectionsCollapsed")
 }
 
 enum Prefs {
@@ -34,6 +36,7 @@ enum Prefs {
         static let sortAscending = "sortAscending"
         static let hiddenListColumns = "hiddenListColumns"
         static let dockSearch = "dockSearch"
+        static let collapsedSidebarSections = "collapsedSidebarSections"
     }
 
     static func register() {
@@ -49,6 +52,12 @@ enum Prefs {
     static var sidebarShowsTree: Bool {
         get { defaults.bool(forKey: Key.sidebarShowsTree) }
         set { defaults.set(newValue, forKey: Key.sidebarShowsTree); NotificationCenter.default.post(name: .prefsChanged, object: nil) }
+    }
+
+    /// Sidebar sections you've hidden (Hide on a section's title), by ID: they stay hidden until you show them again.
+    static var collapsedSidebarSections: Set<String> {
+        get { Set(defaults.stringArray(forKey: Key.collapsedSidebarSections) ?? []) }
+        set { defaults.set(newValue.sorted(), forKey: Key.collapsedSidebarSections) }
     }
 
     static var foldersFirst: Bool {

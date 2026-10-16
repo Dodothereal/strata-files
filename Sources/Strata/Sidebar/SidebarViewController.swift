@@ -91,6 +91,8 @@ final class SidebarViewController: NSViewController {
         return nil
     }
     private var sections: [SidebarSection] = []
+    /// Sections being opened and closed to match what you chose, not by you.
+    private var applyingCollapsed = false
     private var suppressSelection = false
     private var current: SidebarTarget?
     /// Whether the current drag may go on the Trash, worked out once per drag.
@@ -159,6 +161,7 @@ final class SidebarViewController: NSViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .tagsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .favoritesChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(collapsedSectionsChanged(_:)), name: .sidebarSectionsCollapsed, object: nil)
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(trashMayHaveChanged), name: name, object: nil)
         }
@@ -226,8 +229,28 @@ final class SidebarViewController: NSViewController {
             return item
         }
         if !tags.isEmpty { sections.append(SidebarSection(id: "tags", title: String(localized: "Tags", comment: "Sidebar section title: Finder tags"), items: Array(tags))) }
+        applyingCollapsed = true
         outline.reloadData()
-        outline.expandItem(nil, expandChildren: true)
+        applyingCollapsed = false
+        applyCollapsed()
+        if let current { highlight(current) }
+    }
+
+    /// Every section open except those you've hidden. The sidebar is rebuilt whenever a window comes forward (and
+    /// when disks, servers or tags change), and that mustn't open them again.
+    private func applyCollapsed() {
+        let collapsed = Prefs.collapsedSidebarSections
+        applyingCollapsed = true
+        for section in sections {
+            if collapsed.contains(section.id) { outline.collapseItem(section) } else { outline.expandItem(section) }
+        }
+        applyingCollapsed = false
+    }
+
+    /// Hidden or shown in another window's sidebar: this one follows.
+    @objc private func collapsedSectionsChanged(_ notification: Notification) {
+        guard notification.object as? SidebarViewController !== self else { return }
+        applyCollapsed()
         if let current { highlight(current) }
     }
 
@@ -317,6 +340,24 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
         item is SidebarSection
+    }
+
+    func outlineViewItemDidCollapse(_ notification: Notification) {
+        sectionToggled(notification, collapsed: true)
+    }
+
+    func outlineViewItemDidExpand(_ notification: Notification) {
+        sectionToggled(notification, collapsed: false)
+    }
+
+    /// Hide or Show on a section's title: remembered for every window and the next launch.
+    private func sectionToggled(_ notification: Notification, collapsed: Bool) {
+        guard !applyingCollapsed, let section = notification.userInfo?["NSObject"] as? SidebarSection else { return }
+        var hidden = Prefs.collapsedSidebarSections
+        guard hidden.contains(section.id) != collapsed else { return }
+        if collapsed { hidden.insert(section.id) } else { hidden.remove(section.id) }
+        Prefs.collapsedSidebarSections = hidden
+        NotificationCenter.default.post(name: .sidebarSectionsCollapsed, object: self)
     }
 
     /// A workspace opens a window when clicked (`rowClicked`), or with Return once it's selected with the keyboard;
