@@ -45,7 +45,11 @@ stays live as files change.
 ## Jump anywhere with ⌘K
 
 One shortcut opens a command palette that knows your most-used folders, the files in your index and Strata's
-commands. Type `acme-web/` to list a project's contents without opening a single window.
+commands. Type `acme-web/` to list a project's contents without opening a single window, or plain English like
+`pdfs from last week`.
+
+Prefer a search box like Windows has? Turn on Settings ▸ General ▸ Search box in the Dock: a box sits in the Dock next
+to Strata's icon and finds what ⌘K finds, plus your apps and documents by what they say, from any app.
 
 <p align="center"><img src="docs/screenshots/palette.png" alt="The command palette listing the contents of a project" width="820"></p>
 

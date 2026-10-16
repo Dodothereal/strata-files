@@ -32,7 +32,8 @@ Filters can be combined with words:
 
 ## Navigation
 
-- Command palette (⌘K): the most-used folders first, files from the index, and every command by name. Typing a path such as `acme-web/` lists that folder's contents.
+- Command palette (⌘K): the most-used folders first, files from the index (plain English understood, such as "pdfs from last week"), and every command by name. Typing a path such as `acme-web/` lists that folder's contents.
+- Search box in the Dock (Settings ▸ General, off by default): a search box in the Dock next to Strata's icon, like the one on the Windows taskbar. It finds what ⌘K finds, plus apps and documents by their content, from any app. Strata keeps a few empty tiles in the Dock for it and needs Accessibility access to place it.
 - Type a path (⌘L) with Tab completion and folder suggestions as you type (a path, `github/acme`, or a folder's name anywhere); Go to Folder (⇧⌘G).
 - Type in any folder to filter it (fuzzy); Return opens the top match, Esc clears the filter.
 - Five views, one keystroke apart like Finder: Icons (⌘1), List (⌘2), Columns (⌘3), Gallery (⌘4), Disk Usage (⌘5).
