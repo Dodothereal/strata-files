@@ -84,9 +84,16 @@ nonisolated enum ContainerCopies {
     }
 
     /// Where `container`'s folder goes: its Compose project's folder, or the engine's folder when it isn't in one.
-    /// The project folder is made if needed.
+    /// The project folder is made if needed. When a container's folder already has the project's name (a container on
+    /// its own, called that), it stays beside the stacks, as `CopyWriter.syncContainers` places it: never inside that
+    /// container's files.
     static func stackFolder(for container: ContainerInfo, in engineFolder: URL) throws -> URL {
         guard let name = stackName(container) else { return engineFolder }
+        let fd = open(engineFolder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { throw CocoaError(.fileWriteNoPermission) }
+        let taken = recordedSource(name, in: fd) != nil
+        close(fd)
+        if taken { return engineFolder }
         let stack = engineFolder.appending(path: name, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: stack, withIntermediateDirectories: true)
         return stack
@@ -293,7 +300,11 @@ nonisolated enum ContainerCopies {
     /// never a folder inside a container (its files aren't Strata's to delete).
     static func remove(_ folder: URL) {
         let path = folder.standardizedFileURL.path
-        guard path.hasPrefix(rootPath + "/"), (1...3).contains(path.dropFirst(rootPath.count + 1).split(separator: "/").count) else { return }
+        guard path.hasPrefix(rootPath + "/") else { return }
+        let depth = path.dropFirst(rootPath.count + 1).split(separator: "/").count
+        guard (1...3).contains(depth) else { return }
+        // Three deep is a container in a project's folder, never a folder in a container's own files.
+        if depth == 3, source(of: folder.deletingLastPathComponent()) != nil { return }
         forget(path)
         Archiver.removeTree(folder)
     }

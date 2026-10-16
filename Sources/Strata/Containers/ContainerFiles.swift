@@ -589,11 +589,13 @@ nonisolated enum CopyWriter {
             guard ContainerCopies.stackName(container) == nil, ContainerCopies.isContainerName(container.name) else { return nil }
             return folded(container.name)
         })
-        var byStack: [String: [ContainerInfo]] = [:]
+        // By the name as the disk sees it: projects whose names differ only in case share one folder (named the first
+        // way seen) rather than one of them going missing.
+        var byStack: [String: (project: String, members: [ContainerInfo])] = [:]
         var loose: [ContainerInfo] = []
         for container in containers where ContainerCopies.isContainerName(container.name) {
             if let project = ContainerCopies.stackName(container), !looseNames.contains(folded(project)) {
-                byStack[project, default: []].append(container)
+                byStack[folded(project), default: (project, [])].members.append(container)
             } else {
                 loose.append(container)
             }
@@ -609,15 +611,19 @@ nonisolated enum CopyWriter {
             try? ContainerCopies.record(container, on: engine, in: parent, folder: parentURL)
         }
         for container in loose { place(container, in: fd, at: folder, keeping: &keep) }
-        for (project, members) in byStack {
-            guard keep.insert(folded(project)).inserted else { continue }
+        for (key, stack) in byStack {
+            let (project, members) = stack
+            guard keep.insert(key).inserted else { continue }
             // The project name is already a container folder. Move that container aside when it belongs inside the
-            // project; otherwise the project can't be a folder and its containers stay beside the stacks.
+            // project. Otherwise it's a container that's gone, renamed or now in another project (a container with
+            // that name still on its own keeps it: see `looseNames`), so it's discarded and the next pass makes the
+            // project's folder; until then its containers stay beside the stacks.
             var held: String?
             if let recorded = ContainerCopies.recordedSource(project, in: fd) {
                 let movesIn = members.contains { $0.id == recorded.id && $0.name == project }
                 guard movesIn else {
-                    for container in members where folded(container.name) != folded(project) {
+                    gone.append(folder.appending(path: project, directoryHint: .isDirectory))
+                    for container in members where folded(container.name) != key {
                         place(container, in: fd, at: folder, keeping: &keep)
                     }
                     continue

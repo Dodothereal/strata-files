@@ -389,6 +389,80 @@ struct ContainerTests {
         #expect(try String(contentsOf: folder.appending(path: "shop/web/readme.txt"), encoding: .utf8) == "notes")
     }
 
+    @Test func aLeftoverFolderNamedLikeAProjectMakesWay() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "strata-stacks-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let engine = ContainerEngine(socket: "/tmp/strata-test.sock", name: "Docker", apiVersion: "1.41")
+        func container(_ name: String, _ id: String, project: String? = nil) -> ContainerInfo {
+            ContainerInfo(id: id, name: name, image: "nginx", state: .running, status: "Up", created: nil, mounts: [], ports: [],
+                          compose: project.map { ComposeLabels(project: $0, service: name, workingDirectory: nil) })
+        }
+        let old = String(repeating: "a", count: 64), web = String(repeating: "b", count: 64), db = String(repeating: "c", count: 64)
+        // A container called "shop", since removed, left its folder; now a project is called "shop".
+        _ = try CopyWriter.syncContainers([container("shop", old)], engine: engine, in: folder)
+        let list = [container("web", web, project: "shop"), container("db", db, project: "shop")]
+        let gone = try CopyWriter.syncContainers(list, engine: engine, in: folder)
+        #expect(gone.map(\.lastPathComponent) == ["shop"])
+        // What discarding does; then the next pass makes the project's folder, its containers moved in.
+        for url in gone { try FileManager.default.removeItem(at: url) }
+        #expect(try CopyWriter.syncContainers(list, engine: engine, in: folder).isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == ["shop"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.appending(path: "shop").path).sorted() == ["db", "web"])
+    }
+
+    @Test func projectsNamedAlikeShareAFolder() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "strata-stacks-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let engine = ContainerEngine(socket: "/tmp/strata-test.sock", name: "Docker", apiVersion: "1.41")
+        func container(_ name: String, _ id: String, project: String) -> ContainerInfo {
+            ContainerInfo(id: id, name: name, image: "nginx", state: .running, status: "Up", created: nil, mounts: [], ports: [],
+                          compose: ComposeLabels(project: project, service: name, workingDirectory: nil))
+        }
+        let list = [container("api", String(repeating: "a", count: 64), project: "App"),
+                    container("worker", String(repeating: "b", count: 64), project: "app")]
+        #expect(try CopyWriter.syncContainers(list, engine: engine, in: folder).isEmpty)
+        let top = try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted()
+        if CopyWriter.isCaseSensitive {
+            #expect(top == ["App", "app"])
+        } else {
+            // One folder on a disk that can't tell the names apart, with both projects' containers in it.
+            #expect(top == ["App"])
+            #expect(try FileManager.default.contentsOfDirectory(atPath: folder.appending(path: "App").path).sorted() == ["api", "worker"])
+        }
+    }
+
+    @Test func aContainerCalledLikeAProjectKeepsItsFiles() throws {
+        let engineFolder = FileManager.default.temporaryDirectory.appending(path: "strata-stacks-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: engineFolder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: engineFolder) }
+        let engine = ContainerEngine(socket: "/tmp/strata-test.sock", name: "Docker", apiVersion: "1.41")
+        // A container on its own called "db", and a project called "db" too: the project's containers stay beside it,
+        // never inside its files.
+        let own = ContainerInfo(id: String(repeating: "a", count: 64), name: "db", image: "postgres", state: .running, status: "Up",
+                                created: nil, mounts: [], ports: [], compose: nil)
+        let member = ContainerInfo(id: String(repeating: "b", count: 64), name: "db-web-1", image: "nginx", state: .running,
+                                   status: "Up", created: nil, mounts: [], ports: [],
+                                   compose: ComposeLabels(project: "db", service: "web", workingDirectory: nil))
+        _ = try CopyWriter.syncContainers([own, member], engine: engine, in: engineFolder)
+        #expect(try ContainerCopies.stackFolder(for: member, in: engineFolder).standardizedFileURL == engineFolder.standardizedFileURL)
+        #expect(!FileManager.default.fileExists(atPath: engineFolder.appending(path: "db/db-web-1").path))
+    }
+
+    @Test func aProjectFolderMustBeAFolder() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "strata-project-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root.appending(path: "Tool.app/Contents"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let script = root.appending(path: "run.command")
+        try Data("#!/bin/sh\n".utf8).write(to: script)
+        // Labels on a container (an image can set them) name the folder; Terminal would run a script it's handed.
+        #expect(StackProjects.existing(root) == root)
+        #expect(StackProjects.existing(script) == nil)
+        #expect(StackProjects.existing(root.appending(path: "Tool.app")) == nil)
+        #expect(StackProjects.existing(root.appending(path: "missing")) == nil)
+    }
+
     @Test func containerIconsFollowRunning() {
         #expect(ContainerIconMark.container(state: .running, busy: false) == .running)
         #expect(ContainerIconMark.container(state: .exited, busy: false) == .stopped)

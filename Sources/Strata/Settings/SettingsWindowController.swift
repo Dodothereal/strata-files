@@ -4,21 +4,19 @@ import SwiftUI
 /// ⌘, — the standard toolbar-tabbed settings window, each pane a SwiftUI form.
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     static let shared = SettingsWindowController()
-    /// The first time the window is shown it gets a height that fits the screen; later opens keep the size you chose.
-    private var placed = false
+    private let room: SettingsRoom
 
     private init() {
         let tabs = NSTabViewController()
         tabs.tabStyle = .toolbar
-        func pane(_ title: String.LocalizationValue, _ symbol: String, _ view: some View, scrolls: Bool = true) -> NSTabViewItem {
+        let room = SettingsRoom()
+        self.room = room
+        func pane(_ title: String.LocalizationValue, _ symbol: String, _ view: some View) -> NSTabViewItem {
             let title = String(localized: title)
-            // Tall panes scroll inside the window. The window stays on screen and can be resized; its content
-            // does not report a preferred height, which would otherwise grow the window past the display.
-            let root: AnyView = scrolls
-                ? AnyView(SettingsScroll { view })
-                : AnyView(view.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top))
-            let host = NSHostingController(rootView: root)
-            host.sizingOptions = []
+            // Each pane reports its own height, so the window resizes to fit it (like System Settings panes) instead of
+            // leaving short panes floating; a pane taller than the screen has room for scrolls. Its title names it.
+            let host = NSHostingController(rootView: SettingsPaneView(room: room, content: view))
+            host.sizingOptions = [.preferredContentSize]
             host.title = title
             let item = NSTabViewItem(viewController: host)
             item.label = title
@@ -29,11 +27,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         tabs.addTabViewItem(pane("Search & Index", "magnifyingglass", IndexSettings()))
         tabs.addTabViewItem(pane("Terminal", "terminal", TerminalSettings()))
         tabs.addTabViewItem(pane("Appearance", "paintbrush", AppearanceSettings()))
-        tabs.addTabViewItem(pane("Shortcuts", "keyboard", ShortcutSettings(), scrolls: false))
+        tabs.addTabViewItem(pane("Shortcuts", "keyboard", ShortcutSettings()))
         let window = NSWindow(contentViewController: tabs)
-        window.styleMask = [.titled, .closable, .resizable]
+        window.styleMask = [.titled, .closable]
         window.title = String(localized: "General", comment: "Settings pane: general settings")
-        window.contentMinSize = NSSize(width: 480, height: 280)
         super.init(window: window)
         window.delegate = self
     }
@@ -41,46 +38,38 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     required init?(coder: NSCoder) { fatalError() }
 
     func show() {
-        limitToScreen(usingDefaultHeight: !placed)
-        if !placed {
-            placed = true
-            window?.center()
-        }
+        fitToScreen()
+        if window?.isVisible != true { window?.center() }
         showWindow(nil)
     }
 
     func windowDidChangeScreen(_ notification: Notification) {
-        limitToScreen(usingDefaultHeight: false)
+        fitToScreen()
     }
 
-    /// Keeps the window from growing taller than the display it is on. A first show also picks a starting height.
-    private func limitToScreen(usingDefaultHeight: Bool) {
-        guard let window else { return }
-        let screen = window.screen ?? NSScreen.main
-        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
-        let chrome = max(0, window.frame.height - window.contentLayoutRect.height)
-        let maxContentHeight = max(window.contentMinSize.height, visible.height - chrome)
-        window.contentMaxSize = NSSize(width: 860, height: maxContentHeight)
-        let current = window.contentRect(forFrameRect: window.frame).size
-        let height = min(max(usingDefaultHeight ? 620 : current.height, window.contentMinSize.height), maxContentHeight)
-        let width = min(max(usingDefaultHeight ? 540 : current.width, window.contentMinSize.width), 860)
-        var frame = window.frameRect(forContentRect: NSRect(x: window.frame.minX, y: window.frame.minY, width: width, height: height))
-        frame.origin.y += window.frame.height - frame.height
-        window.setFrame(window.constrainFrameRect(frame, to: screen), display: true)
+    /// How tall a pane may be: what the screen the window is on has room for, under the title and the tabs.
+    private func fitToScreen() {
+        guard let window, let screen = window.screen ?? NSScreen.main else { return }
+        let chrome = window.frame.height - window.contentLayoutRect.height
+        let height = max(240, screen.visibleFrame.height - chrome)
+        if room.height != height { room.height = height }
     }
 }
 
-/// A settings form that scrolls when it is taller than the window.
-private struct SettingsScroll<Content: View>: View {
-    @ViewBuilder var content: () -> Content
+/// The tallest a Settings pane may be (see `SettingsWindowController.fitToScreen`).
+private final class SettingsRoom: ObservableObject {
+    @Published var height: CGFloat = 640
+}
+
+/// A Settings pane: as tall as its form, up to the room the screen has, scrolling past that.
+private struct SettingsPaneView<Content: View>: View {
+    @ObservedObject var room: SettingsRoom
+    let content: Content
 
     var body: some View {
-        ScrollView {
-            content()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ScrollView { content.frame(width: 520).fixedSize(horizontal: false, vertical: true) }
+            .frame(width: 520)
+            .frame(maxHeight: room.height)
     }
 }
 

@@ -5,6 +5,8 @@ extension Notification.Name {
     /// Theme, density or text size changed (Settings ▸ Appearance): views restyle, nothing reloads.
     static let appearanceChanged = Notification.Name("StrataAppearanceChanged")
     static let favoritesChanged = Notification.Name("StrataFavoritesChanged")
+    /// A list column was shown or hidden (right-click the column titles): every list follows.
+    static let listColumnsChanged = Notification.Name("StrataListColumnsChanged")
 }
 
 enum Prefs {
@@ -30,6 +32,7 @@ enum Prefs {
         static let sidebarShowsTree = "sidebarShowsTree"
         static let sortColumn = "sortColumn"
         static let sortAscending = "sortAscending"
+        static let hiddenListColumns = "hiddenListColumns"
     }
 
     static func register() {
@@ -152,6 +155,15 @@ enum Prefs {
     static var sortAscending: Bool {
         get { defaults.object(forKey: Key.sortAscending) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.sortAscending) }
+    }
+
+    /// The list columns you've hidden, by identifier. Date Created starts hidden, as in Finder.
+    static var hiddenListColumns: Set<String> {
+        get { Set(defaults.stringArray(forKey: Key.hiddenListColumns) ?? ["created"]) }
+        set {
+            defaults.set(newValue.sorted(), forKey: Key.hiddenListColumns)
+            NotificationCenter.default.post(name: .listColumnsChanged, object: nil)
+        }
     }
 
     static var lastLocation: URL? {

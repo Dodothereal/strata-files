@@ -189,6 +189,7 @@ final class BrowserViewController: NSViewController {
         installActiveView()
         NotificationCenter.default.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(listColumnsChanged), name: .listColumnsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
@@ -231,6 +232,17 @@ final class BrowserViewController: NSViewController {
         addColumn(.location, "Where", width: 220, min: 100, ascending: true)
         ov.tableColumn(withIdentifier: .location)?.isHidden = true
         ov.outlineTableColumn = ov.tableColumns.first
+        // Right-click the column titles to show or hide a column (Name always shows; Where comes with results).
+        let columnsMenu = NSMenu()
+        for id in Self.optionalColumns {
+            guard let column = ov.tableColumn(withIdentifier: id) else { continue }
+            let item = NSMenuItem(title: column.title, action: #selector(toggleListColumn(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = id.rawValue
+            columnsMenu.addItem(item)
+        }
+        ov.headerView?.menu = columnsMenu
+        applyColumnVisibility(fitName: false)
         ov.sortDescriptors = [NSSortDescriptor(key: Prefs.sortColumn, ascending: Prefs.sortAscending)]
 
         ov.onType = { [weak self] text in self?.setFilter((self?.filter ?? "") + text) }
@@ -257,6 +269,29 @@ final class BrowserViewController: NSViewController {
             self?.springLoader.cancel()
             self?.isDragOver = false
         }
+    }
+
+    /// The list columns that can be shown or hidden, in the order of the menu on their titles.
+    private static let optionalColumns: [NSUserInterfaceItemIdentifier] = [.modified, .created, .size, .kind]
+
+    @objc private func toggleListColumn(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        Prefs.hiddenListColumns.formSymmetricDifference([id])
+    }
+
+    @objc private func listColumnsChanged() { applyColumnVisibility(fitName: true) }
+
+    /// Shows the columns you haven't hidden (and ticks them in the menu on the titles); Name takes up the difference
+    /// (before the list is laid out, the window's first layout does that).
+    private func applyColumnVisibility(fitName: Bool) {
+        let hidden = Prefs.hiddenListColumns
+        for id in Self.optionalColumns {
+            outlineView.tableColumn(withIdentifier: id)?.isHidden = hidden.contains(id.rawValue)
+        }
+        for item in outlineView.headerView?.menu?.items ?? [] {
+            item.state = (item.representedObject as? String).map { hidden.contains($0) ? .off : .on } ?? .off
+        }
+        if fitName { fitNameColumn() }
     }
 
     private func addColumn(_ id: NSUserInterfaceItemIdentifier, _ title: String.LocalizationValue, width: CGFloat, min: CGFloat,
@@ -830,10 +865,12 @@ final class BrowserViewController: NSViewController {
     private func openFetched(_ entries: [FileEntry]) {
         // One archive opens like a folder (Windows-style), unless that's turned off in Settings.
         if entries.count == 1, let entry = entries.first, opensAsFolder(entry) { return browseArchive(entry.url) }
-        for entry in entries where !entry.isFolder {
+        // A Finder alias to a folder opens that folder here, like a folder (macOS would hand it to Finder).
+        let aliasedFolders = entries.filter { !$0.isFolder && !$0.isSymlink && FileEntry.openedFolder($0.url) != $0.url }
+        for entry in entries where !entry.isFolder && !aliasedFolders.contains(entry) {
             NSWorkspace.shared.open(entry.url)
         }
-        if let folder = entries.first(where: \.isFolder) {
+        if let folder = entries.first(where: \.isFolder) ?? aliasedFolders.first {
             delegate?.browser(self, navigateTo: folder.url)
         }
     }
@@ -1511,8 +1548,10 @@ final class BrowserViewController: NSViewController {
             if !inContainer { add("Add to Shelf", #selector(addToShelf(_:)), "tray.and.arrow.down") }
             if containers.isEmpty {
                 if !selectedEntries.isEmpty, selectedEntries.allSatisfy({ ContainerCopies.isStack($0.url) }) {
+                    if !stackProjectFolders().isEmpty { menu.addItem(.separator()) }
                     addStackOpenItems()
                 } else {
+                    menu.addItem(.separator())
                     add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
                 }
             }

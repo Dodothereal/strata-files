@@ -63,9 +63,18 @@ final class GridItemView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        collectionView?.mouseDown(with: event)
+    }
+
+    /// A click on an icon in a window in the background does what the collection view would do with it.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        collectionView?.acceptsFirstMouse(for: event) ?? false
+    }
+
+    private var collectionView: NSCollectionView? {
         var ancestor: NSView? = superview
         while let view = ancestor, !(view is NSCollectionView) { ancestor = view.superview }
-        ancestor?.mouseDown(with: event)
+        return ancestor as? NSCollectionView
     }
 
     func configure(name: String, matches: [Int], detail: String?, metrics: GridMetrics) {

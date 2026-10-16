@@ -124,8 +124,14 @@ enum StackProjects {
 
     /// `workingDirectory` when that folder is still on this Mac.
     static func existingFolder(of url: URL) -> URL? {
-        guard let folder = workingDirectory(of: url), FileManager.default.fileExists(atPath: folder.path) else { return nil }
-        return folder
+        workingDirectory(of: url).flatMap(existing)
+    }
+
+    /// `folder` when it's a folder on this Mac. The path comes from the containers' labels, which an image can set, so
+    /// it's checked to be a plain folder before Terminal or an editor is asked to open it: Terminal *runs* a script
+    /// it's given, and an app would launch.
+    static func existing(_ folder: URL) -> URL? {
+        FileEntry.isNavigableFolder(folder) ? folder : nil
     }
 }
 

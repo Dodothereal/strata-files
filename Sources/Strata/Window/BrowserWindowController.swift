@@ -218,7 +218,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - Navigation
 
     func navigate(to url: URL, select: URL? = nil, recordHistory: Bool = true) {
-        go(.folder(FileEntry.openedFolder(url).standardizedFileURL), select: select, recordHistory: recordHistory)
+        go(.folder(url.standardizedFileURL), select: select, recordHistory: recordHistory)
     }
 
     private func open(_ target: SidebarTarget) {
@@ -258,6 +258,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private func go(_ target: Destination, in targetPane: Pane? = nil, select: URL? = nil, recordHistory: Bool = true,
                     countVisit: Bool = true) {
         let p = targetPane ?? pane
+        // A link or Finder alias to a folder shows that folder, by its own path (however it was reached: a click,
+        // a restored window, a workspace, spring loading), so the folder and the items listed in it always agree.
+        var target = target, select = select
+        if case .folder(let url) = target {
+            let opened = FileEntry.openedFolder(url).standardizedFileURL
+            if opened != url.standardizedFileURL, let item = select,
+               item.deletingLastPathComponent().standardizedFileURL == url.standardizedFileURL {
+                select = opened.appending(path: item.lastPathComponent)
+            }
+            target = .folder(opened)
+        }
         p.columnLocation = nil
         p.waiting = nil
         if target != .duplicates { p.duplicateSearch?.set() }

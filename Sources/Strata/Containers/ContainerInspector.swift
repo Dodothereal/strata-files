@@ -152,7 +152,7 @@ final class ContainerInspectorView: NSView {
         if let directory = shown.directory {
             let path = Format.tildePath(directory)
             let value: NSView
-            if FileManager.default.fileExists(atPath: directory.path) {
+            if StackProjects.existing(directory) != nil {
                 let link = LinkButton(path, font: .systemFont(ofSize: 12)) { [weak self] in self?.onOpen?(directory) }
                 link.toolTip = String(localized: "Show this folder on your Mac", comment: "Inspector, Mounts: tooltip")
                 value = link
@@ -202,7 +202,7 @@ final class ContainerInspectorView: NSView {
             column.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
         }
-        if let folder = shown.directory, FileManager.default.fileExists(atPath: folder.path) {
+        if let folder = shown.directory.flatMap(StackProjects.existing) {
             let row = FlowView(spacing: 6, lineSpacing: 6)
             let terminal = ActionButton(String(localized: "Open in Terminal", comment: "Menu command: open a shell in the selected folder"), symbol: "terminal") {
                 guard let app = Prefs.terminalURL else { return NSSound.beep() }
@@ -238,7 +238,7 @@ final class ContainerInspectorView: NSView {
     @objc private func openStackWith(_ sender: NSPopUpButton) {
         defer { sender.selectItem(at: 0) }
         guard let app = sender.selectedItem?.representedObject as? URL, case .stack(let shown) = display,
-              let folder = shown.directory, FileManager.default.fileExists(atPath: folder.path) else { return }
+              let folder = shown.directory.flatMap(StackProjects.existing) else { return }
         ProjectEditors.open(folder, with: app)
     }
 
