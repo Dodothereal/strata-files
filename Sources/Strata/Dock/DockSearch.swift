@@ -367,9 +367,23 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     }
 }
 
-/// A borderless panel that can take typing without making Strata the active app.
+/// A borderless panel that takes typing without making Strata the active app, but only once you've clicked it: on its
+/// own it never becomes the key window (macOS would otherwise pick it when Strata comes to the front from the Dock, and
+/// open the results).
 final class DockSearchPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
+    private var clicked = false
+
+    override var canBecomeKey: Bool { clicked }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown || event.type == .rightMouseDown { clicked = true }
+        super.sendEvent(event)
+    }
+
+    override func resignKey() {
+        super.resignKey()
+        clicked = false
+    }
 }
 
 // MARK: - What it finds
