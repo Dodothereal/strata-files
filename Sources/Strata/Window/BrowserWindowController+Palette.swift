@@ -22,10 +22,11 @@ extension BrowserWindowController {
         palette.show(in: window, items: paletteItems())
     }
 
-    /// Anything on disk, from the index; ranked below folders you use and items in this folder.
+    /// Anything on disk, from the index (plain English understood: "pdfs from last week"); ranked below folders you use
+    /// and items in this folder.
     private func indexItems(_ query: String) async -> [PaletteItem] {
         guard query.count >= 2, !query.hasPrefix("/"), !query.hasPrefix("~"),
-              let result = await FileIndex.shared.search(query, limit: 30) else { return [] }
+              let result = await FileIndex.shared.understand(query, limit: 30) else { return [] }
         let folderIcon = NSWorkspace.shared.icon(for: .folder)
         return result.hits.map { hit in
             let entry = FileEntry(hit: hit)

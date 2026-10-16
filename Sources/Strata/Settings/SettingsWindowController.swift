@@ -127,6 +127,11 @@ private struct GeneralSettings: View {
                            caption: "Reads every copied file back and compares it with the original. Slower, but catches failing disks and cables.",
                            get: { Prefs.verifyCopies }, set: { Prefs.verifyCopies = $0 })
             }
+            Section("Dock") {
+                PrefToggle(title: "Search box in the Dock",
+                           caption: "A search box next to Strata in the Dock finds apps, files and folders as you type. Strata needs Accessibility access to place it, and keeps a few empty tiles in the Dock for it.",
+                           get: { Prefs.dockSearch }, set: { Prefs.dockSearch = $0; DockSearch.shared.apply() })
+            }
             Section {
                 Toggle(isOn: Binding(get: { isFileViewer }, set: { isFileViewer = $0; FileViewer.setStrata($0) })) {
                     Text("Open “Reveal in Finder” in Strata")

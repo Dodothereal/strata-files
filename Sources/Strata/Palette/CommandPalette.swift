@@ -9,6 +9,7 @@ struct PaletteItem {
         case path = "Go to"
         case match = "File"
         case workspace = "Workspace"
+        case app = "Application"
 
         /// What the row says at its end when it has no shortcut.
         var label: String {
@@ -19,6 +20,7 @@ struct PaletteItem {
             case .path: String(localized: "Go to", comment: "Command palette row tag: go to the typed path")
             case .match: String(localized: "palette.tag.file", defaultValue: "File", comment: "Command palette row tag: a file found on disk (not the File menu)")
             case .workspace: String(localized: "Workspace", comment: "Command palette row tag: a saved set of tabs and panes")
+            case .app: String(localized: "Application", comment: "Kind of item")
             }
         }
     }
@@ -47,11 +49,14 @@ final class CommandPalette: NSObject {
     private let table = NSTableView()
     private let scroll = NSScrollView()
     private var heightConstraint: NSLayoutConstraint!
-    private var source: [PaletteItem] = []
-    private var results: [(item: PaletteItem, matches: [Int])] = []
-    private var scored: [(item: PaletteItem, matches: [Int], score: Int)] = []
-    private var lateResults: Task<Void, Never>?
+    private let ranker = PaletteRanker()
+    private var results: [(item: PaletteItem, matches: [Int])] { ranker.results }
     private weak var parent: NSWindow?
+    private var pendingUpdate: DispatchWorkItem?
+    /// What the table shows, to leave it alone when an update brings the same rows.
+    private var shownRows: [String] = []
+    /// Rows the list has room for: while you type it grows but doesn't shrink (no jumping).
+    private var listRows = 0
 
     private static let rowHeight: CGFloat = 46
     private static let maxVisibleRows = 8
@@ -64,10 +69,24 @@ final class CommandPalette: NSObject {
         super.init()
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        // The glass draws its own shadow (see `ShadowedGlass`): the window's would ring a focused panel in dark ink.
+        panel.hasShadow = false
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = true
         panel.delegate = self
+        ranker.emptyResults = { source in
+            let workspaces: [PaletteItem] = Array(source.filter { $0.kind == .workspace }.prefix(3))
+            let folders: [PaletteItem] = Array(source.filter { $0.kind == .folder }.prefix(7))
+            let commands: [PaletteItem] = Array(source.filter { $0.kind == .action }.prefix(5))
+            return workspaces + folders + commands
+        }
+        ranker.lateArrived = { [weak self] keeping in self?.showResults(keeping: keeping) }
+        // The index once typing pauses (a keystroke meanwhile cancels it); names as you type.
+        ranker.lateDelay = .milliseconds(120)
+        ranker.selectedTitle = { [weak self] in
+            guard let self, table.selectedRow >= 0, table.selectedRow < results.count else { return nil }
+            return results[table.selectedRow].item.title
+        }
         buildContent()
     }
 
@@ -75,13 +94,18 @@ final class CommandPalette: NSObject {
 
     func show(in window: NSWindow, items: [PaletteItem]) {
         parent = window
-        source = items
+        ranker.source = items
         field.stringValue = ""
+        pendingUpdate?.cancel()
+        shownRows = []
+        listRows = 0
         update()
         let frame = window.frame
         let height = panel.frame.height
-        panel.setFrame(NSRect(x: frame.midX - Self.width / 2, y: frame.maxY - 110 - height, width: Self.width, height: height),
-                       display: false)
+        // The glass's top edge 110 points below the window's; the panel holds a margin for the shadow around it.
+        let margin = ShadowedGlass.margin
+        panel.setFrame(NSRect(x: frame.midX - Self.width / 2 - margin, y: frame.maxY - 110 + margin - height,
+                              width: Self.width + margin * 2, height: height), display: false)
         window.addChildWindow(panel, ordered: .above)
         panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
@@ -102,8 +126,8 @@ final class CommandPalette: NSObject {
     // MARK: - Layout
 
     private func buildContent() {
-        let glass = NSGlassEffectView()
-        glass.cornerRadius = 22
+        let chrome = ShadowedGlass(cornerRadius: 22)
+        let glass = chrome.glass
 
         let content = NSView()
         let icon = NSImageView(image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)!)
@@ -170,93 +194,75 @@ final class CommandPalette: NSObject {
             scroll.bottomAnchor.constraint(equalTo: content.bottomAnchor),
         ])
         glass.contentView = content
-        panel.contentView = glass
+        panel.contentView = chrome
     }
 
     // MARK: - Results
 
     private func update() {
-        let query = field.stringValue.trimmingCharacters(in: .whitespaces)
-        lateResults?.cancel()
-        if query.isEmpty {
-            scored = []
-            results = source.filter { $0.kind == .workspace }.prefix(3).map { ($0, []) }
-                + source.filter { $0.kind == .folder }.prefix(7).map { ($0, []) }
-                + source.filter { $0.kind == .action }.prefix(5).map { ($0, []) }
-        } else {
-            scored = []
-            if let path = pathItem(for: query) { scored.append((path, [], 1000)) }
-            if PathQuery.isPathQuery(query) {
-                for item in queryItems?(query) ?? [] { scored.append((item, item.titleMatches, item.fixedScore ?? 0)) }
-            }
-            for item in source {
-                if let match = Fuzzy.match(query, item.title) {
-                    scored.append((item, match.indices, match.score + item.boost))
-                } else if item.kind == .folder, let match = Fuzzy.match(query, item.subtitle) {
-                    scored.append((item, [], match.score / 2 + item.boost - 10))
-                } else if let match = item.keywords.lazy.compactMap({ Fuzzy.match(query, $0) }).first {
-                    scored.append((item, [], match.score / 2 + item.boost - 10))
-                }
-            }
-            scored.sort { $0.score > $1.score }
-            results = scored.prefix(60).map { ($0.item, $0.matches) }
-            if let lateItems {
-                lateResults = Task { [weak self] in
-                    let extra = await lateItems(query)
-                    guard let self, !Task.isCancelled,
-                          self.field.stringValue.trimmingCharacters(in: .whitespaces) == query else { return }
-                    self.merge(extra)
-                }
-            }
-        }
+        pendingUpdate?.cancel()
+        pendingUpdate = nil
+        ranker.rank(field.stringValue)
         showResults()
     }
 
-    private func merge(_ extra: [PaletteItem]) {
-        let known = Set(scored.compactMap { $0.item.url?.standardizedFileURL.path })
-        let fresh = extra.filter { item in item.url.map { !known.contains($0.standardizedFileURL.path) } ?? true }
-        guard !fresh.isEmpty else { return }
-        let selectedTitle = table.selectedRow >= 0 && table.selectedRow < results.count ? results[table.selectedRow].item.title : nil
-        scored += fresh.map { ($0, $0.titleMatches, $0.fixedScore ?? 0) }
-        scored.sort { $0.score > $1.score }
-        results = scored.prefix(60).map { ($0.item, $0.matches) }
-        showResults(keeping: selectedTitle)
+    /// Keystrokes in quick succession rank once, after the last of them.
+    private func scheduleUpdate() {
+        pendingUpdate?.cancel()
+        let work = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.update() } }
+        pendingUpdate = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(50), execute: work)
+    }
+
+    /// Return and the arrows act on what was typed, not on the results from a keystroke before.
+    private func finishTyping() {
+        if pendingUpdate != nil { update() }
     }
 
     private func showResults(keeping selectedTitle: String? = nil) {
-        table.reloadData()
+        let keys = results.map { "\($0.item.title)\u{1}\($0.item.subtitle)\u{1}\($0.matches)" }
+        // The same rows again (a keystroke that changed nothing shown): no redraw.
+        if keys != shownRows {
+            shownRows = keys
+            table.reloadData()
+        }
         let keep = selectedTitle.flatMap { title in results.firstIndex { $0.item.title == title } } ?? 0
-        if !results.isEmpty { table.selectRowIndexes([keep], byExtendingSelection: false) }
+        if !results.isEmpty, table.selectedRow != keep { table.selectRowIndexes([keep], byExtendingSelection: false) }
         table.scrollRowToVisible(keep)
 
-        let rows = CGFloat(min(results.count, Self.maxVisibleRows))
+        let typing = !field.stringValue.trimmingCharacters(in: .whitespaces).isEmpty
+        let count = min(results.count, Self.maxVisibleRows)
+        listRows = typing ? max(listRows, count) : count
+        let rows = CGFloat(listRows)
         let height = Self.fieldHeight + (rows > 0 ? rows * Self.rowHeight + 14 : 0)
+        guard heightConstraint.constant != height || panel.frame.height != height + ShadowedGlass.margin * 2 else { return }
         heightConstraint.constant = height
+        // The top stays put as the list grows or shrinks.
         var frame = panel.frame
-        frame.origin.y += frame.height - height
-        frame.size.height = height
+        let panelHeight = height + ShadowedGlass.margin * 2
+        frame.origin.y += frame.height - panelHeight
+        frame.size.height = panelHeight
         panel.setFrame(frame, display: true)
     }
 
-    /// Typing a path (`~/…` or `/…`) offers to go straight there.
-    private func pathItem(for query: String) -> PaletteItem? {
-        guard query.hasPrefix("/") || query.hasPrefix("~") else { return nil }
-        let path = (query as NSString).expandingTildeInPath
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return nil }
-        let url = URL(fileURLWithPath: path)
-        return PaletteItem(title: Format.tildePath(url), subtitle: isDirectory.boolValue ? String(localized: "Open folder") : String(localized: "Reveal file"),
-                           icon: IconCache.shared.icon(forPath: path), kind: .path) { [weak self] in self?.goToPath?(url) }
+    /// Set by the owner: navigates to a typed path (folders open, files are revealed).
+    var goToPath: ((URL) -> Void)? {
+        get { ranker.goToPath }
+        set { ranker.goToPath = newValue }
+    }
+    /// Set by the owner: items computed for the current query, such as `github/acme` path lookups.
+    var queryItems: ((String) -> [PaletteItem])? {
+        get { ranker.queryItems }
+        set { ranker.queryItems = newValue }
+    }
+    /// Set by the owner: slower items (index search) merged in when they arrive.
+    var lateItems: ((String) async -> [PaletteItem])? {
+        get { ranker.lateItems }
+        set { ranker.lateItems = newValue }
     }
 
-    /// Set by the owner: navigates to a typed path (folders open, files are revealed).
-    var goToPath: ((URL) -> Void)?
-    /// Set by the owner: items computed for the current query, such as `github/acme` path lookups.
-    var queryItems: ((String) -> [PaletteItem])?
-    /// Set by the owner: slower items (index search) merged in when they arrive.
-    var lateItems: ((String) async -> [PaletteItem])?
-
     private func runSelected() {
+        finishTyping()
         let row = table.selectedRow
         guard row >= 0, row < results.count else { return }
         let item = results[row].item
@@ -269,6 +275,7 @@ final class CommandPalette: NSObject {
     }
 
     private func moveSelection(_ delta: Int) {
+        finishTyping()
         guard !results.isEmpty else { return }
         let row = max(0, min(results.count - 1, table.selectedRow + delta))
         table.selectRowIndexes([row], byExtendingSelection: false)
@@ -278,7 +285,7 @@ final class CommandPalette: NSObject {
 
 extension CommandPalette: NSTextFieldDelegate, NSWindowDelegate {
     func controlTextDidChange(_ notification: Notification) {
-        update()
+        scheduleUpdate()
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
@@ -324,7 +331,9 @@ final class PalettePanel: NSPanel {
     override var canBecomeKey: Bool { true }
 }
 
-private final class PaletteCell: NSTableCellView {
+/// A palette row: icon, title (fuzzy matches highlighted), subtitle, and its kind or shortcut. The Dock's search box
+/// shows the same rows.
+final class PaletteCell: NSTableCellView {
     private let icon = NSImageView()
     private let title = NSTextField(labelWithString: "")
     private let subtitle = NSTextField(labelWithString: "")
@@ -415,5 +424,135 @@ private final class PaletteCell: NSTableCellView {
         titleCentered.isActive = item.subtitle.isEmpty
         accessory.stringValue = item.shortcut ?? item.kind.label
         accessory.textColor = selected ? secondary : .tertiaryLabelColor
+    }
+}
+
+/// ⌘K's ranking, shared with the Dock's search box: a typed path first, then fuzzy matches over the items (frequent
+/// folders boosted), path lookups (`github/acme`), and slower items (the index) merged in when they arrive.
+final class PaletteRanker {
+    var source: [PaletteItem] = []
+    var queryItems: ((String) -> [PaletteItem])?
+    var lateItems: ((String) async -> [PaletteItem])?
+    var goToPath: ((URL) -> Void)?
+    /// What shows with nothing typed (nothing, when not set).
+    var emptyResults: (([PaletteItem]) -> [PaletteItem])?
+    /// Late items were merged in; the title of the row to keep selected.
+    var lateArrived: ((String?) -> Void)?
+    /// For the selection kept when late items arrive.
+    var selectedTitle: () -> String? = { nil }
+    /// How long typing must pause before the slow search starts (the index, documents' text): a keystroke in the
+    /// meantime cancels it before it does any work.
+    var lateDelay: Duration = .zero
+    /// A slow search is waiting or running.
+    var isSearching: Bool { late != nil }
+
+    private(set) var results: [(item: PaletteItem, matches: [Int])] = []
+    private var scored: [(item: PaletteItem, matches: [Int], score: Int)] = []
+    private var late: Task<Void, Never>?
+    private var query = ""
+
+    func rank(_ text: String) {
+        query = text.trimmingCharacters(in: .whitespaces)
+        late?.cancel()
+        late = nil
+        scored = []
+        guard !query.isEmpty else {
+            results = (emptyResults?(source) ?? []).map { (item: $0, matches: [Int]()) }
+            return
+        }
+        let query = self.query
+        if let path = pathItem(for: query) { scored.append((path, [], 1000)) }
+        if PathQuery.isPathQuery(query) {
+            for item in queryItems?(query) ?? [] { scored.append((item, item.titleMatches, item.fixedScore ?? 0)) }
+        }
+        for item in source {
+            if let match = Fuzzy.match(query, item.title) {
+                scored.append((item, match.indices, match.score + item.boost))
+            } else if item.kind == .folder, let match = Fuzzy.match(query, item.subtitle) {
+                scored.append((item, [], match.score / 2 + item.boost - 10))
+            } else if let match = item.keywords.lazy.compactMap({ Fuzzy.match(query, $0) }).first {
+                scored.append((item, [], match.score / 2 + item.boost - 10))
+            }
+        }
+        scored.sort { $0.score > $1.score }
+        results = scored.prefix(60).map { ($0.item, $0.matches) }
+        guard let lateItems else { return }
+        let asked = query
+        let delay = lateDelay
+        late = Task { [weak self] in
+            if delay > .zero { try? await Task.sleep(for: delay) }
+            guard !Task.isCancelled else { return }
+            let extra = await lateItems(asked)
+            guard let self, !Task.isCancelled, self.query == asked else { return }
+            self.late = nil
+            self.merge(extra)
+        }
+    }
+
+    func cancel() {
+        late?.cancel()
+        late = nil
+        query = ""
+        scored = []
+        results = []
+    }
+
+    private func merge(_ extra: [PaletteItem]) {
+        let known = Set(scored.compactMap { $0.item.url?.standardizedFileURL.path })
+        let fresh = extra.filter { item in item.url.map { !known.contains($0.standardizedFileURL.path) } ?? true }
+        guard !fresh.isEmpty else { return lateArrived?(selectedTitle()) ?? () }
+        let keeping = selectedTitle()
+        scored += fresh.map { ($0, $0.titleMatches, $0.fixedScore ?? 0) }
+        scored.sort { $0.score > $1.score }
+        results = scored.prefix(60).map { ($0.item, $0.matches) }
+        lateArrived?(keeping)
+    }
+
+    /// Typing a path (`~/…` or `/…`) offers to go straight there.
+    private func pathItem(for query: String) -> PaletteItem? {
+        guard let goToPath, query.hasPrefix("/") || query.hasPrefix("~") else { return nil }
+        let path = (query as NSString).expandingTildeInPath
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return nil }
+        let url = URL(fileURLWithPath: path)
+        return PaletteItem(title: Format.tildePath(url), subtitle: isDirectory.boolValue ? String(localized: "Open folder") : String(localized: "Reveal file"),
+                           icon: IconCache.shared.icon(forPath: path), kind: .path, url: url) { goToPath(url) }
+    }
+}
+
+/// Liquid Glass with a soft shadow of its own, inset by `margin` in its borderless panel. The window's own shadow
+/// follows the panel and, on a focused one, rings it in dark ink; this one follows the glass's rounded shape.
+final class ShadowedGlass: NSView {
+    static let margin: CGFloat = 28
+    let glass = NSGlassEffectView()
+    private let shadowView = NSView()
+    private let cornerRadius: CGFloat
+
+    init(cornerRadius: CGFloat) {
+        self.cornerRadius = cornerRadius
+        super.init(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
+        glass.cornerRadius = cornerRadius
+        shadowView.wantsLayer = true
+        shadowView.layer?.shadowColor = NSColor.black.cgColor
+        shadowView.layer?.shadowOpacity = 0.28
+        shadowView.layer?.shadowRadius = 18
+        shadowView.layer?.shadowOffset = CGSize(width: 0, height: -6)
+        for view in [shadowView, glass] as [NSView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(view)
+            NSLayoutConstraint.activate([
+                view.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.margin),
+                view.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.margin),
+                view.topAnchor.constraint(equalTo: topAnchor, constant: Self.margin),
+                view.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.margin),
+            ])
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        shadowView.layer?.shadowPath = CGPath(roundedRect: shadowView.bounds, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
     }
 }

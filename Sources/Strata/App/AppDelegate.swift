@@ -56,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             LazyCopies.removeClipboardStaging()
         }
         if windowControllers.isEmpty, !restoreSession() { openWindow(at: startLocation) }
+        DockSearch.shared.apply(atLaunch: true)
         if !Privacy.hasFullDiskAccess, !UserDefaults.standard.bool(forKey: "welcomeShown"),
            let window = windowControllers.first?.window {
             let sheet = WelcomeSheetController()
@@ -84,6 +85,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let count = list.numberOfItems
         let urls = count == 0 ? [list.fileURLValue].compactMap { $0 } : (1...count).compactMap { list.atIndex($0)?.fileURLValue }
         reveal(urls)
+    }
+
+    /// Shows `folder` in the window in front (or a new one), from outside a window: the search box in the Dock.
+    func showFolder(_ folder: URL) {
+        if let controller = ((NSApp.keyWindow ?? NSApp.mainWindow)?.windowController as? BrowserWindowController) ?? windowControllers.first {
+            controller.navigate(to: folder)
+            controller.showWindow(nil)
+        } else {
+            openWindow(at: folder)
+        }
+        NSApp.activate()
+    }
+
+    /// Shows items selected in their folders, from outside a window: the search box in the Dock.
+    func revealInStrata(_ urls: [URL]) { reveal(urls) }
+
+    /// The window in front, or a new one when there's none: for commands run from outside a window.
+    func frontController() -> BrowserWindowController {
+        let front = ((NSApp.keyWindow ?? NSApp.mainWindow)?.windowController as? BrowserWindowController) ?? windowControllers.first
+        if let front {
+            front.showWindow(nil)
+            return front
+        }
+        return openWindow(at: startLocation)
     }
 
     /// Opens each file's folder with the file selected (folders themselves open).
@@ -167,7 +192,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag { openWindow(at: startLocation) }
+        // Strata's own windows, not the search box in the Dock (which is always showing).
+        if !windowControllers.contains(where: { $0.window?.isVisible == true }) { openWindow(at: startLocation) }
         return true
     }
 

@@ -33,6 +33,7 @@ enum Prefs {
         static let sortColumn = "sortColumn"
         static let sortAscending = "sortAscending"
         static let hiddenListColumns = "hiddenListColumns"
+        static let dockSearch = "dockSearch"
     }
 
     static func register() {
@@ -155,6 +156,12 @@ enum Prefs {
     static var sortAscending: Bool {
         get { defaults.object(forKey: Key.sortAscending) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.sortAscending) }
+    }
+
+    /// Settings ▸ General ▸ Search box in the Dock (see `DockSearch`). Off until you turn it on.
+    static var dockSearch: Bool {
+        get { defaults.bool(forKey: Key.dockSearch) }
+        set { defaults.set(newValue, forKey: Key.dockSearch) }
     }
 
     /// The list columns you've hidden, by identifier. Date Created starts hidden, as in Finder.
