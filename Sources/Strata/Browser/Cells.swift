@@ -119,6 +119,9 @@ final class NameCellView: NSTableCellView {
         let font = FileViewStyle.nameFont
         // The field's own font too: renaming edits at the size the name is shown.
         label.font = font
+        // Being renamed: the field holds what's typed. The row's highlight changes as the field takes focus and gives it
+        // back, and redrawing the old name then would undo the rename before it's read.
+        guard !label.isEditable else { return }
         // Attributed strings ignore the field's line break mode; without this, long names wrap onto clipped lines.
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byTruncatingMiddle

@@ -135,6 +135,9 @@ final class BrowserViewController: NSViewController {
     /// Renamed (inline) once the folder shows it: a new folder.
     var pendingRename: URL?
     private var renaming: FileNode?
+    private weak var renamingField: NSTextField?
+    /// The folder read again while a name was being edited in place: shown once the edit ends.
+    private var deferredApply: (entries: [FileEntry], preservingState: Bool, fromTop: Bool)?
     private var resortWork: DispatchWorkItem?
     /// Showing search results or Recents instead of a folder's contents.
     private(set) var isShowingResults = false
@@ -394,6 +397,12 @@ final class BrowserViewController: NSViewController {
 
     /// Shows `entries`. `fromTop`: a folder just opened, shown from its top before anything it selects is scrolled to.
     private func apply(_ entries: [FileEntry], preservingState: Bool, fromTop: Bool = false) {
+        // Reloading the list would end a rename in progress, half typed.
+        if isRenamingInPlace {
+            deferredApply = (entries, preservingState, fromTop)
+            return
+        }
+        deferredApply = nil
         let previous = preservingState ? nodesByPath : [:]
         let expanded = preservingState ? nodes.filter { outlineView.isItemExpanded($0) } : []
         nodes = entries.map { entry in
@@ -584,7 +593,7 @@ final class BrowserViewController: NSViewController {
             let row = outlineView.row(forItem: node)
             if row >= 0 { rowsToReload.insert(row) }
         }
-        outlineView.reloadData(forRowIndexes: rowsToReload, columnIndexes: IndexSet(integersIn: 0..<outlineView.numberOfColumns))
+        outlineView.reloadData(forRowIndexes: exceptRenaming(rowsToReload), columnIndexes: IndexSet(integersIn: 0..<outlineView.numberOfColumns))
         delegate?.browserContentDidChange(self)
         if changed.contains(where: { outlineView.selectedRowIndexes.contains(outlineView.row(forItem: $0.0)) }) {
             delegate?.browserSelectionDidChange(self)
@@ -1236,8 +1245,21 @@ final class BrowserViewController: NSViewController {
     @objc private func clipboardChanged() {
         let visible = outlineView.rows(in: outlineView.visibleRect)
         guard visible.length > 0 else { return }
-        outlineView.reloadData(forRowIndexes: IndexSet(integersIn: visible.location..<NSMaxRange(visible)),
+        outlineView.reloadData(forRowIndexes: exceptRenaming(IndexSet(integersIn: visible.location..<NSMaxRange(visible))),
                                columnIndexes: IndexSet(integersIn: 0..<outlineView.numberOfColumns))
+    }
+
+    /// Whether a name in the list is being edited right now.
+    private var isRenamingInPlace: Bool { renaming != nil && renamingField?.currentEditor() != nil }
+
+    /// `rows` without the one whose name is being edited: reloading a row gives it a new cell, which ends the edit.
+    private func exceptRenaming(_ rows: IndexSet) -> IndexSet {
+        guard isRenamingInPlace, let renaming else { return rows }
+        let row = outlineView.row(forItem: renaming)
+        guard row >= 0 else { return rows }
+        var rows = rows
+        rows.remove(row)
+        return rows
     }
 
     /// Copies and moves go through the transfer queue: progress, pause, conflicts asked up front, undo.
@@ -1343,6 +1365,7 @@ final class BrowserViewController: NSViewController {
         guard let cell = outlineView.view(atColumn: column, row: row, makeIfNecessary: true) as? NSTableCellView,
               let field = cell.textField else { return }
         renaming = node
+        renamingField = field
         field.isEditable = true
         field.isSelectable = true
         field.drawsBackground = true
@@ -1788,13 +1811,18 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 extension BrowserViewController: NSTextFieldDelegate {
     func controlTextDidEndEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField, let node = renaming else { return }
+        let newName = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         renaming = nil
+        renamingField = nil
         field.isEditable = false
         field.isSelectable = false
         field.drawsBackground = false
-        let newName = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let row = outlineView.row(forItem: node)
-        if row >= 0 { outlineView.reloadData(forRowIndexes: [row], columnIndexes: [outlineView.column(withIdentifier: .name)]) }
+        if let deferred = deferredApply {
+            apply(deferred.entries, preservingState: deferred.preservingState, fromTop: deferred.fromTop)
+        } else {
+            let row = outlineView.row(forItem: node)
+            if row >= 0 { outlineView.reloadData(forRowIndexes: [row], columnIndexes: [outlineView.column(withIdentifier: .name)]) }
+        }
         view.window?.makeFirstResponder(outlineView)
         guard !newName.isEmpty, newName != node.entry.name else { return }
         renameItem(node.url, to: newName)
