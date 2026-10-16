@@ -125,8 +125,9 @@ final class InspectorViewController: NSViewController {
             stack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
             stack.topAnchor.constraint(equalTo: document.topAnchor),
             stack.bottomAnchor.constraint(equalTo: document.bottomAnchor),
-            previewBox.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
-            previewBox.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
+            // A little in from the Inspector's edges.
+            previewBox.leadingAnchor.constraint(equalTo: stack.leadingAnchor, constant: 5),
+            previewBox.trailingAnchor.constraint(equalTo: stack.trailingAnchor, constant: -5),
             richBackdrop.leadingAnchor.constraint(equalTo: previewBox.leadingAnchor),
             richBackdrop.trailingAnchor.constraint(equalTo: previewBox.trailingAnchor),
             richBackdrop.topAnchor.constraint(equalTo: previewBox.topAnchor),
