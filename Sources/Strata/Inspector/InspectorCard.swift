@@ -120,10 +120,12 @@ final class InspectorCard: NSView {
         chevron.image = NSImage(systemSymbolName: collapsed ? "chevron.right" : "chevron.down", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
         chevron.setAccessibilityValue(collapsed ? String(localized: "Collapsed") : String(localized: "Expanded"))
-        // Collapsed: the body takes no room (its content stays laid out, just hidden).
+        // Collapsed: the body takes no room (its content stays laid out, just hidden). The constraint going away goes
+        // first: for a moment both would ask for different heights, and AppKit reports the conflict.
         content.isHidden = collapsed
-        contentBottom?.isActive = !collapsed
-        bodyHeightWhenCollapsed?.isActive = collapsed
+        let (off, on) = collapsed ? (contentBottom, bodyHeightWhenCollapsed) : (bodyHeightWhenCollapsed, contentBottom)
+        off?.isActive = false
+        on?.isActive = true
         bodyTop?.constant = collapsed ? 0 : 8
         if animated {
             NSAnimationContext.runAnimationGroup { context in

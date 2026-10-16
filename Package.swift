@@ -1,6 +1,16 @@
 // swift-tools-version: 6.2
 import PackageDescription
 
+// Swift 6.3's hop-to-executor optimization drops the hop back to the caller's actor at the end of some nonisolated async
+// functions (with NonisolatedNonsendingByDefault they run on their caller's actor, and must return there): code on the
+// main actor that awaited one then carries on off it, and crashes (Refresh in a container's folder, after
+// `LazyCopies.invalidate`). The pass is off with those compilers; the hops it would save cost nothing measurable.
+#if compiler(>=6.3)
+let compilerWorkarounds: [SwiftSetting] = [.unsafeFlags(["-Xllvm", "-sil-disable-pass=optimize-hop-to-executor"])]
+#else
+let compilerWorkarounds: [SwiftSetting] = []
+#endif
+
 let package = Package(
     name: "Strata",
     platforms: [.macOS(.v26)],
@@ -17,7 +27,7 @@ let package = Package(
                 .defaultIsolation(MainActor.self),
                 .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
                 .enableUpcomingFeature("InferIsolatedConformances"),
-            ],
+            ] + compilerWorkarounds,
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("NetFS"),
