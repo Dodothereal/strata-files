@@ -38,7 +38,8 @@ struct ShortcutSettings: View {
                     }
                 }
             }
-            .frame(height: 420)
+            // The list scrolls itself; the pane stays inside the Settings window's height without a scroll of its own.
+            .frame(height: 360)
             HStack {
                 Text("Click a shortcut, then press the keys. ⌫ removes it; esc keeps it.")
                     .font(.caption)

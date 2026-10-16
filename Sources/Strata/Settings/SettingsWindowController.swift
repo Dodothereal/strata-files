@@ -14,7 +14,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         func pane(_ title: String.LocalizationValue, _ symbol: String, _ view: some View) -> NSTabViewItem {
             let title = String(localized: title)
             // Each pane reports its own height, so the window resizes to fit it (like System Settings panes) instead of
-            // leaving short panes floating; a pane taller than the screen has room for scrolls. Its title names it.
+            // leaving short panes floating; a longer pane scrolls (see `fitToScreen`). Its title names it.
             let host = NSHostingController(rootView: SettingsPaneView(room: room, content: view))
             host.sizingOptions = [.preferredContentSize]
             host.title = title
@@ -47,21 +47,25 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         fitToScreen()
     }
 
-    /// How tall a pane may be: what the screen the window is on has room for, under the title and the tabs.
+    /// The tallest a pane gets on a big screen: a settings window, not a page; a longer pane scrolls.
+    private static let tallestPane: CGFloat = 520
+
+    /// How tall a pane may be: `tallestPane`, or less when the screen the window is on has less room under the title
+    /// and the tabs.
     private func fitToScreen() {
         guard let window, let screen = window.screen ?? NSScreen.main else { return }
         let chrome = window.frame.height - window.contentLayoutRect.height
-        let height = max(240, screen.visibleFrame.height - chrome)
+        let height = max(240, min(Self.tallestPane, screen.visibleFrame.height - chrome))
         if room.height != height { room.height = height }
     }
 }
 
 /// The tallest a Settings pane may be (see `SettingsWindowController.fitToScreen`).
 private final class SettingsRoom: ObservableObject {
-    @Published var height: CGFloat = 640
+    @Published var height: CGFloat = 520
 }
 
-/// A Settings pane: as tall as its form, up to the room the screen has, scrolling past that.
+/// A Settings pane: as tall as its form, up to `room`, scrolling past that.
 private struct SettingsPaneView<Content: View>: View {
     @ObservedObject var room: SettingsRoom
     let content: Content
