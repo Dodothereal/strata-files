@@ -51,9 +51,15 @@ struct DeleteScopeTests {
                                              "waiting.txt": .waitingToUpload, "only cloud.txt": .cloudOnly]
         let urls = tree.snapshot().map(tree.url)
         #expect(CloudActions.removable(urls) { status[$0.lastPathComponent] } == [tree.url("cloud.txt"), tree.url("here.txt")])
-        // Outside a cloud folder, asking anyway changes nothing: each item is reported, and stays.
-        #expect(CloudActions.removeDownload([tree.url("plain.txt")]).map(\.0) == [tree.url("plain.txt")])
-        #expect(tree.text("plain.txt") == "plain.txt")
+        // Outside a cloud folder, asking anyway changes nothing: each item is reported, and stays (a folder with all in
+        // it, a link and what it points to).
+        try FileManager.default.createDirectory(at: tree.url("folder/inner"), withIntermediateDirectories: true)
+        try Data("in".utf8).write(to: tree.url("folder/inner/in.txt"))
+        try FileManager.default.createSymbolicLink(at: tree.url("link"), withDestinationURL: tree.url("plain.txt"))
+        let asked = [tree.url("plain.txt"), tree.url("folder"), tree.url("link")]
+        #expect(CloudActions.removeDownload(asked).map(\.0) == asked)
+        #expect(tree.text("plain.txt") == "plain.txt" && tree.text("folder/inner/in.txt") == "in")
+        #expect(tree.snapshot().contains("link -> plain.txt"))
     }
 
     @Test func testsKeepToCachesOfTheirOwn() {
@@ -85,24 +91,54 @@ extension S3Tests {
     nonisolated final class Bucket: @unchecked Sendable {
         var keys: Set<String>
         var sloppy = false
+        /// Keys whose copy fails (the service answers with an error).
+        var failingCopies: Set<String> = []
         init(_ keys: Set<String>) { self.keys = keys }
     }
 
     /// Nonisolated: URLSession asks from its own thread.
     nonisolated private func serve(_ bucket: Bucket) {
         FakeS3.answer = { request in
-            let key = String((request.url?.path ?? "/").dropFirst())
+            // As sent: a folder's marker keeps its trailing "/".
+            let path = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.percentEncodedPath } ?? "/"
+            let key = String(path.dropFirst()).removingPercentEncoding ?? ""
             switch request.httpMethod {
             case "HEAD":
                 return (bucket.keys.contains(key) ? 200 : 404, ["Content-Length": "1"], Data())
             case "DELETE":
                 bucket.keys.remove(key)
                 return (204, [:], Data())
+            case "PUT":
+                // A copy names its source ("/bucket/key"); anything else is an upload (or a folder's marker).
+                guard let source = request.value(forHTTPHeaderField: "x-amz-copy-source") else {
+                    bucket.keys.insert(key)
+                    return (200, [:], Data())
+                }
+                let from = String(source.drop { $0 == "/" }.drop { $0 != "/" }.dropFirst()).removingPercentEncoding ?? ""
+                guard bucket.keys.contains(from), !bucket.failingCopies.contains(from) else {
+                    return (500, [:], Data("<Error><Code>InternalError</Code></Error>".utf8))
+                }
+                bucket.keys.insert(key)
+                return (200, [:], Data("<CopyObjectResult><ETag>x</ETag></CopyObjectResult>".utf8))
             default:
                 let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
                 let prefix = query.first { $0.name == "prefix" }?.value ?? ""
                 let listed = bucket.keys.sorted().filter { bucket.sloppy || $0.hasPrefix(prefix) }
-                let contents = listed.map { "<Contents><Key>\($0)</Key><Size>1</Size></Contents>" }.joined()
+                // With a delimiter, what's in subfolders comes back as those folders, once each.
+                let grouped = query.contains { $0.name == "delimiter" } && !bucket.sloppy
+                var folders: [String] = []
+                var files: [String] = []
+                for key in listed {
+                    let rest = key.dropFirst(prefix.count)
+                    if grouped, let slash = rest.firstIndex(of: "/") {
+                        let folder = prefix + rest[...slash]
+                        if !folders.contains(folder) { folders.append(folder) }
+                    } else {
+                        files.append(key)
+                    }
+                }
+                let contents = files.map { "<Contents><Key>\($0)</Key><Size>1</Size></Contents>" }.joined()
+                    + folders.map { "<CommonPrefixes><Prefix>\($0)</Prefix></CommonPrefixes>" }.joined()
                 return (200, [:], Data("<ListBucketResult><IsTruncated>false</IsTruncated>\(contents)</ListBucketResult>".utf8))
             }
         }
@@ -126,6 +162,69 @@ extension S3Tests {
         // A file and a folder of the same name: deleting the file leaves the folder.
         try await S3Backend(client: client()).remove("/photos")
         #expect(bucket.keys == ["photos/a.jpg"])
+    }
+
+    @Test func renamingAFolderMovesExactlyItsKeys() async throws {
+        let bucket = Bucket(["a/x.txt", "a/sub/y.txt", "ab/z.txt", "a.txt", "other/a/w.txt"])
+        serve(bucket)
+        try await S3Backend(client: client()).rename("/a", to: "/c")
+        #expect(bucket.keys == ["c/x.txt", "c/sub/y.txt", "ab/z.txt", "a.txt", "other/a/w.txt"])
+        // A service whose listings ignore the prefix makes every name look taken: nothing is renamed rather than guessed.
+        let sloppy = Bucket(["a/x.txt", "ab/z.txt"])
+        sloppy.sloppy = true
+        serve(sloppy)
+        await #expect(throws: (any Error).self) { try await S3Backend(client: client()).rename("/a", to: "/c") }
+        #expect(sloppy.keys == ["a/x.txt", "ab/z.txt"])
+    }
+
+    @Test func renamingOnS3NeverReplacesAnything() async throws {
+        let keys: Set<String> = ["a.txt", "b.txt", "folder/c.txt", "d/e.txt"]
+        let bucket = Bucket(keys)
+        serve(bucket)
+        let s3 = S3Backend(client: client())
+        for (from, to) in [("/a.txt", "/b.txt"), ("/a.txt", "/folder"), ("/d", "/folder"), ("/d", "/b.txt"), ("/a.txt", "/"), ("/", "/x")] {
+            await #expect(throws: (any Error).self, "\(from) \(to)") { try await s3.rename(from, to: to) }
+        }
+        #expect(bucket.keys == keys)
+        try await s3.rename("/a.txt", to: "/z.txt")
+        #expect(bucket.keys == ["z.txt", "b.txt", "folder/c.txt", "d/e.txt"])
+    }
+
+    @Test func aCopyThatFailsLeavesTheOriginal() async throws {
+        let bucket = Bucket(["f.txt", "a/x.txt", "a/y.txt"])
+        bucket.failingCopies = ["f.txt", "a/y.txt"]
+        serve(bucket)
+        let s3 = S3Backend(client: client())
+        await #expect(throws: (any Error).self) { try await s3.rename("/f.txt", to: "/g.txt") }
+        // A folder is copied whole before anything of it is removed.
+        await #expect(throws: (any Error).self) { try await s3.rename("/a", to: "/c") }
+        #expect(bucket.keys.isSuperset(of: ["f.txt", "a/x.txt", "a/y.txt"]) && !bucket.keys.contains("g.txt"))
+    }
+
+    @Test func uploadsAndFoldersNeverTakeTheBucketsTop() async throws {
+        let tree = try TestTree("a.txt")
+        let bucket = Bucket(["b.txt"])
+        serve(bucket)
+        let s3 = S3Backend(client: client())
+        await #expect(throws: (any Error).self) {
+            try await s3.upload(tree.url("a.txt"), to: "/", modified: nil, progress: { _ in }, stop: StopFlag())
+        }
+        await #expect(throws: (any Error).self) { try await s3.makeFolder("/") }
+        try await s3.upload(tree.url("a.txt"), to: "/in/a.txt", modified: nil, progress: { _ in }, stop: StopFlag())
+        #expect(bucket.keys == ["b.txt", "in/a.txt"])
+    }
+
+    @Test func whatsTakenIsSeenBeforeCopyingOntoIt() async throws {
+        // Asking before replacing relies on these: a folder's names, and what a name is.
+        let bucket = Bucket(["photos/a.jpg", "photos/sub/b.jpg", "photos-old/c.jpg", "photos.txt", "empty/"])
+        serve(bucket)
+        let s3 = S3Backend(client: client())
+        #expect(try await s3.list("/photos").map(\.name).sorted() == ["a.jpg", "sub"])
+        #expect(try await s3.kind(of: "/photos.txt") == .file)
+        #expect(try await s3.kind(of: "/photos") == .folder)
+        #expect(try await s3.kind(of: "/empty") == .folder)
+        #expect(try await s3.kind(of: "/photo") == nil)
+        #expect(try await s3.kind(of: "/photos/a") == nil)
     }
 
     @Test func theBucketItselfIsNeverDeleted() async {

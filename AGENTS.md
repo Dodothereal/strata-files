@@ -44,6 +44,9 @@ path without tests isn't done. The tests must show that:
 - **Every view hands commands exactly its selection** (List incl. open folders, Icons, Columns incl. deeper columns,
   Gallery, Disk Usage, results, both panes), and it stays the same items when the folder changes.
 
+`docs/destructive-actions.md` lists every destructive action with the code that does it and its tests. Add a row for a
+new one, and keep the rows true when code moves.
+
 Make the decision a plain function separate from the alert or UI (`BrowserViewController.deletionPlan`,
 `FileOps.canTrash`, `FileDrop.operation(_:into:mask:option:)`, `PlanValidator.validate`, `TransferEngine.mergePlan`,
 `FolderCompare.defaultAction` and `syncPlan`) so tests call it directly. Prove a
@@ -65,7 +68,12 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
   it's refused: test the decision (`FileOps.canTrash`, `deletionPlan`) instead. Don't use `NSPasteboard.general` or
   Strata's preferences in tests: clipboard tests set `Clipboard.pasteboard` to a named pasteboard of their own.
 - Suites run in parallel and CI machines are slower: poll for a condition, never a fixed sleep; never compare listings
-  of shared folders like `$TMPDIR`. Suites sharing global state (`RemoteRegistry`, `TransferEngine.hooks`) run as one
+  of shared folders like `$TMPDIR`. `for _ in 0..<n where !done() { sleep }` skips rather than stops, so it only
+  works for a condition that stays true once met: after ⌘Z or ⇧⌘Z, whose steps pass through states that can equal the
+  one expected, `await FileOps.undoWork?.value` instead (undo and redo work runs there, in order).
+- A test helper that blocks (a `Process`, a semaphore) runs on a Dispatch queue, never on the main thread or in a
+  `@concurrent` function: other suites' file work waits on those (see `ScratchVolume`, a disk image for moves across
+  disks). Suites sharing global state (`RemoteRegistry`, `TransferEngine.hooks`) run as one
   `.serialized` suite.
 - The temporary folder is `/private/var/...`. Spell URLs the way `DirectoryLoader` lists them (`TestTree.root` is
   already resolved); `standardizedFileURL` and `resolvingSymlinksInPath` drop the `/private`.

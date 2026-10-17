@@ -229,8 +229,9 @@ enum ProjectActions {
         return text.isEmpty ? "Strata" : String(text.prefix(80))
     }
 
-    /// The files delete themselves when they run; this catches any that never ran.
-    private static func removeStaleCommandFiles(in folder: URL) {
+    /// The files delete themselves when they run; this catches any that never ran (each in a folder of its own, left
+    /// for an hour). Anything else in `folder` is removed as itself, never through a link.
+    static func removeStaleCommandFiles(in folder: URL) {
         let fm = FileManager.default
         let cutoff = Date().addingTimeInterval(-3600)
         for url in (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [] {

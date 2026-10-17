@@ -69,14 +69,15 @@ nonisolated enum RemoteCopies {
     }
 
     /// Moves every copy aside (instantly) for `removeSetAside` to delete: at quit, and at launch for what a crash left.
-    static func setAsideForRemoval() {
-        guard FileManager.default.fileExists(atPath: root.path) else { return }
-        let aside = root.deletingLastPathComponent().appending(path: "Servers-removed-\(UUID().uuidString).noindex")
-        try? FileManager.default.moveItem(at: root, to: aside)
+    /// `folder`: the copies' folder (another one in tests).
+    static func setAsideForRemoval(_ folder: URL = root) {
+        guard FileManager.default.fileExists(atPath: folder.path) else { return }
+        let aside = folder.deletingLastPathComponent().appending(path: "Servers-removed-\(UUID().uuidString).noindex")
+        try? FileManager.default.moveItem(at: folder, to: aside)
     }
 
-    static func removeSetAside() {
-        let parent = root.deletingLastPathComponent()
+    /// Removes what was set aside (beside the copies' folder, `parent`).
+    static func removeSetAside(in parent: URL = root.deletingLastPathComponent()) {
         for name in (try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? [] where name.hasPrefix("Servers-removed-") {
             Archiver.removeTree(parent.appending(path: name))
         }
