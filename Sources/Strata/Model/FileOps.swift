@@ -37,9 +37,12 @@ enum FileOps {
         guard !pairs.contains(where: { ReadOnlyCopies.contains($0.from) || ReadOnlyCopies.contains($0.to) }) else {
             throw insideArchiveError
         }
+        let landed = Landed()
+        for pair in pairs { landed.expect(pair.from, at: pair.to) }
         let (done, error) = await moveAll(pairs)
+        done.forEach { landed.arrived($0.to) }
         let entry = record ? OperationLog.shared.recordMove(actionName, done) : nil
-        registerMoveUndo(done, actionName, undo, entry: entry)
+        registerMoveUndo(done, actionName, undo, entry: entry, landed: landed)
         if let error { throw error }
     }
 
@@ -252,9 +255,11 @@ enum FileOps {
     /// Moves `urls` to the Trash off the main thread (a big selection or a slow disk would freeze the window), then
     /// records and registers undo like `trash`. Items on disks without a Trash come back in `NoTrash`.
     static func trashInBackground(_ urls: [URL], undo: UndoManager?) async throws {
-        let (moved, noTrash, failure) = await trashItems(urls)
+        let (moved, identities, noTrash, failure) = await trashItems(urls)
         let entry = OperationLog.shared.recordMove("Move to Trash", moved)
-        registerMoveUndo(moved, "Move to Trash", undo, entry: entry)
+        let landed = Landed()
+        for (move, identity) in zip(moved, identities) { landed.set(identity, at: move.to) }
+        registerMoveUndo(moved, "Move to Trash", undo, entry: entry, landed: landed)
         if !moved.isEmpty {
             trashSound?.stop()
             trashSound?.play()
@@ -272,21 +277,25 @@ enum FileOps {
     }
 
     @concurrent
-    private static func trashItems(_ urls: [URL]) async -> (moved: [Move], noTrash: [URL], failure: Error?) {
+    private static func trashItems(_ urls: [URL]) async -> (moved: [Move], identities: [String?], noTrash: [URL], failure: Error?) {
         var moved: [Move] = []
+        var identities: [String?] = []
         var noTrash: [URL] = []
         for url in urls where canTrash(url) {
             var result: NSURL?
             do {
                 try FileManager.default.trashItem(at: url, resultingItemURL: &result)
-                if let result { moved.append((from: url, to: result as URL)) }
+                if let result {
+                    moved.append((from: url, to: result as URL))
+                    identities.append(OperationLog.identity(result.path ?? ""))
+                }
             } catch let error as CocoaError where error.code == .featureUnsupported {
                 noTrash.append(url)
             } catch {
-                return (moved, noTrash, error)
+                return (moved, identities, noTrash, error)
             }
         }
-        return (moved, noTrash, nil)
+        return (moved, identities, noTrash, nil)
     }
 
     /// `name 2.txt`, `name 3.txt`… or Finder's `name copy.txt`, `name copy 2.txt`… for copies next to the original.
@@ -321,22 +330,39 @@ enum FileOps {
         contentsOfFile: "/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/finder/move to trash.aif",
         byReference: true)
 
-    /// Where items landed and what they are there (see `OperationLog.identity`), recorded once an operation is done,
-    /// so its undo moves or trashes only those very items: never one put in an item's place since, however alike its
-    /// name.
+    /// Where items landed and what they are there (see `OperationLog.identity`), so an operation's undo moves or trashes
+    /// only those very items: never one put in an item's place since, however alike its name. Each is recorded as it
+    /// lands (or, for a move on one disk, before it starts), never later, when something else may already be there.
     final class Landed {
         private var identities: [String: String] = [:]
 
+        /// What's at each of `urls` now: for items that have just landed there.
         init(_ urls: [URL] = []) { record(urls) }
 
         func record(_ urls: [URL]) {
             for url in urls { identities[url.path] = OperationLog.identity(url.path) }
         }
 
-        /// What's at `url` now, expected at `destination` once it's moved there (a move on one disk keeps what an item
-        /// is): its undo works even before the move is done.
+        /// `identity`, read when the item landed at `url`.
+        func set(_ identity: String?, at url: URL) {
+            identities[url.path] = identity
+        }
+
+        /// The item at `url` is about to move to `destination`: a move on one disk keeps what it is, so it's expected
+        /// there already. Call `arrived` once it's moved.
         func expect(_ url: URL, at destination: URL) {
             identities[destination.path] = OperationLog.identity(url.path)
+        }
+
+        /// An expected item has moved to `destination`. Moved across disks, it's a new file there, recorded now; on one
+        /// disk the expectation stands, so a file swapped in meanwhile is never taken for it.
+        func arrived(_ destination: URL) {
+            guard let expected = identities[destination.path], let now = OperationLog.identity(destination.path) else { return }
+            if Self.volume(expected) != Self.volume(now) { identities[destination.path] = now }
+        }
+
+        private static func volume(_ identity: String) -> Substring {
+            identity[..<(identity.lastIndex(of: "/") ?? identity.endIndex)]
         }
 
         func holds(_ url: URL) -> Bool {
@@ -413,7 +439,7 @@ enum FileOps {
                         throw insideArchiveError
                     }
                     let (done, error) = await moveAll(back)
-                    returned.record(done.map(\.to))
+                    done.forEach { returned.arrived($0.to) }
                     if let error { throw error }
                     if let entry { OperationLog.shared.setUndone(entry, marksUndone) }
                 } catch {

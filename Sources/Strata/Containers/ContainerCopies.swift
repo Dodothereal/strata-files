@@ -41,9 +41,7 @@ nonisolated struct EngineRecord: Codable, Sendable, Equatable {
 /// in that container, never one on this Mac. Everything is removed when Strata quits.
 nonisolated enum ContainerCopies {
     static let root: URL = {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        return caches.appending(path: Bundle.main.bundleIdentifier ?? "dev.strata.app", directoryHint: .isDirectory)
-            .appending(path: "Containers.noindex", directoryHint: .isDirectory).standardizedFileURL
+        SecureStorage.caches.appending(path: "Containers.noindex", directoryHint: .isDirectory).standardizedFileURL
     }()
 
     private static let rootPath = root.path

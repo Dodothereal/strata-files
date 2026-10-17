@@ -11,9 +11,7 @@ import Foundation
 /// are removed, and the whole cache is kept under a size limit, least recently opened first.
 nonisolated enum ArchiveCache {
     static let root: URL = {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        return caches.appending(path: Bundle.main.bundleIdentifier ?? "dev.strata.app", directoryHint: .isDirectory)
-            .appending(path: "Archives", directoryHint: .isDirectory).standardizedFileURL
+        SecureStorage.caches.appending(path: "Archives", directoryHint: .isDirectory).standardizedFileURL
     }()
 
     private static let rootPath = root.path

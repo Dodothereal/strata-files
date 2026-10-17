@@ -19,7 +19,7 @@ struct PlanSafetyTests {
     }
 
     private func wait(until condition: () -> Bool) async {
-        for _ in 0..<60 where !condition() { try? await Task.sleep(for: .milliseconds(50)) }
+        for _ in 0..<200 where !condition() { try? await Task.sleep(for: .milliseconds(50)) }
     }
 
     @Test func stepsOnItemsOutsideTheSelectionAreLeftOut() async throws {
@@ -109,5 +109,45 @@ struct PlanSafetyTests {
         undo.undo()
         await wait { tree.snapshot().contains("a.txt") && !tree.snapshot().contains("Done/") }
         #expect(tree.snapshot() == ["Old/", "Old/x.txt", "a.txt", "b.txt", "c.txt", "d.txt", "keep.txt"])
+    }
+
+    @Test func undoAndRedoOfAPlanTouchOnlyItsOwnItems() async throws {
+        let tree = try TestTree("a.txt", "c.txt", "d.txt", "keep.txt")
+        defer { tree.removeFromTrash() }
+        func swap(_ path: String) throws {
+            try FileManager.default.removeItem(at: tree.url(path))
+            try Data("someone else's".utf8).write(to: tree.url(path))
+        }
+        let plan = await validate([.trash(tree.url("a.txt")), .move(tree.url("c.txt"), into: "Done"), .rename(tree.url("d.txt"), to: "dee.txt")],
+                                  selecting: ["a.txt", "c.txt", "d.txt"], in: tree)
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        undo.beginUndoGrouping()
+        _ = await PlanExecutor.apply(plan, actionName: "AI Changes", undo: undo)
+        undo.endUndoGrouping()
+        #expect(tree.snapshot() == ["Done/", "Done/c.txt", "dee.txt", "keep.txt"])
+        // "dee.txt" is swapped for another file: undo leaves it, and puts back the rest.
+        try swap("dee.txt")
+        undo.undo()
+        await wait { tree.snapshot() == ["a.txt", "c.txt", "dee.txt", "keep.txt"] }
+        #expect(tree.snapshot() == ["a.txt", "c.txt", "dee.txt", "keep.txt"])
+        #expect(tree.text("dee.txt") == "someone else's")
+        // "c.txt" is swapped before redo: redo leaves it (and makes no folder for it), and redoes the rest.
+        try swap("c.txt")
+        undo.redo()
+        await wait { !tree.snapshot().contains("a.txt") }
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(tree.snapshot() == ["c.txt", "dee.txt", "keep.txt"])
+        #expect(tree.text("c.txt") == "someone else's")
+        // Undone once more, "a.txt" is back from the Trash, and nothing of the test is left there.
+        undo.undo()
+        await wait { tree.snapshot().contains("a.txt") }
+        #expect(tree.snapshot() == ["a.txt", "c.txt", "dee.txt", "keep.txt"])
+        // Swapped before the next redo, it isn't trashed: what's there now isn't the plan's.
+        try swap("a.txt")
+        undo.redo()
+        try? await Task.sleep(for: .milliseconds(300))
+        #expect(tree.snapshot() == ["a.txt", "c.txt", "dee.txt", "keep.txt"])
+        #expect(tree.text("a.txt") == "someone else's")
     }
 }

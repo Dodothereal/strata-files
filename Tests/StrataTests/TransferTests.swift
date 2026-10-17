@@ -67,6 +67,34 @@ import Testing
         #expect(FileManager.default.fileExists(atPath: added.path))
     }
 
+    @Test func undoingACopyLeavesAFileSwappedInWhileTheJobRan() async throws {
+        let tree = try TestTree("a.txt", "b.txt", "to/")
+        // While the job checks its copy of "b.txt", the copy of "a.txt" it made a moment before is swapped for another file.
+        let swapped = tree.url("to/a.txt")
+        TransferEngine.hooks.beforeVerify = { copy in
+            guard copy.lastPathComponent.contains("b.txt") else { return }
+            Thread.sleep(forTimeInterval: 0.3)
+            try? FileManager.default.removeItem(at: swapped)
+            try? Data("someone else's".utf8).write(to: swapped)
+        }
+        defer { TransferEngine.hooks = .init() }
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        undo.beginUndoGrouping()
+        await TransferQueue.shared.enqueue([tree.url("a.txt"), tree.url("b.txt")], to: tree.url("to"), mode: .copy,
+                                           options: .init(verify: true, clone: false), undo: undo, conflicts: .keepBoth).finished()
+        undo.endUndoGrouping()
+        #expect(tree.snapshot() == ["a.txt", "b.txt", "to/", "to/a.txt", "to/b.txt"])
+        undo.undo()
+        for _ in 0..<100 where tree.snapshot().contains("to/b.txt") { try? await Task.sleep(for: .milliseconds(30)) }
+        #expect(tree.snapshot() == ["a.txt", "b.txt", "to/", "to/a.txt"])
+        #expect(tree.text("to/a.txt") == "someone else's")
+        // Redo brings the copy of "b.txt" back out of the Trash (nothing of the test stays there).
+        undo.redo()
+        for _ in 0..<100 where !tree.snapshot().contains("to/b.txt") { try? await Task.sleep(for: .milliseconds(30)) }
+        #expect(tree.snapshot() == ["a.txt", "b.txt", "to/", "to/a.txt", "to/b.txt"])
+    }
+
     @Test func replacingSwapsOnlyTheNamedItemAndKeepsTheOldInTheTrash() throws {
         let tree = try TestTree("from/", "from/a.txt", "to/", "to/a.txt", "to/b.txt")
         let result = run(TransferItem(source: tree.url("from/a.txt"), destination: tree.url("to/a.txt"), operation: .copy,

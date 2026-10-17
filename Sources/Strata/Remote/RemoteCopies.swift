@@ -7,9 +7,7 @@ import Foundation
 /// into a copy would be swept away, so the copies count as read-only everywhere else. Removed when Strata quits.
 nonisolated enum RemoteCopies {
     static let root: URL = {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        return caches.appending(path: Bundle.main.bundleIdentifier ?? "dev.strata.app", directoryHint: .isDirectory)
-            .appending(path: "Servers.noindex", directoryHint: .isDirectory).standardizedFileURL
+        SecureStorage.caches.appending(path: "Servers.noindex", directoryHint: .isDirectory).standardizedFileURL
     }()
 
     private static let rootPath = root.path

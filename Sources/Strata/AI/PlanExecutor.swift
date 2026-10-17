@@ -53,6 +53,11 @@ final class PlanTransaction {
     private var created: [URL] = []
     private var done: [Pair] = []
     private var trashed: [Pair] = []
+    /// What `perform` left where, and what `revert` put back: undo and redo each touch only those very items, never
+    /// one put in an item's place since. Nil before the first undo: the plan first runs on the items it was checked
+    /// against.
+    private var applied = FileOps.Landed()
+    private var restored: FileOps.Landed?
     private var queue: Task<Void, Never>?
 
     init(plan: Plan) {
@@ -61,13 +66,17 @@ final class PlanTransaction {
             guard step.kind == .rename || step.kind == .move, let from = step.source, let to = step.destination else { return nil }
             return (from, to)
         }
-        // Only the folders an enabled move needs (or that were asked for explicitly), outermost first.
-        let needed = Set(moves.map { PlanValidator.key($0.to.deletingLastPathComponent()) })
-        folders = enabled.filter { $0.kind == .createFolder }.compactMap(\.destination).filter { folder in
-            needed.contains { $0 == PlanValidator.key(folder) || $0.hasPrefix(PlanValidator.key(folder) + "/") }
-        }
+        folders = Self.needed(enabled.filter { $0.kind == .createFolder }.compactMap(\.destination), by: moves)
         self.moves = moves
         trashItems = enabled.filter { $0.kind == .trash }.compactMap(\.source)
+    }
+
+    /// Of `folders`, only those `moves` need (outermost first, as given).
+    private static func needed(_ folders: [URL], by moves: [Pair]) -> [URL] {
+        let needed = Set(moves.map { PlanValidator.key($0.to.deletingLastPathComponent()) })
+        return folders.filter { folder in
+            needed.contains { $0 == PlanValidator.key(folder) || $0.hasPrefix(PlanValidator.key(folder) + "/") }
+        }
     }
 
     var hasChanges: Bool { !created.isEmpty || !done.isEmpty || !trashed.isEmpty }
@@ -82,6 +91,11 @@ final class PlanTransaction {
         created = []
         done = []
         trashed = []
+        applied = FileOps.Landed()
+        // Redone: only what undo put back, still there.
+        let moves = restored.map { restored in self.moves.filter { restored.holds($0.from) } } ?? self.moves
+        let trashItems = restored.map { restored in self.trashItems.filter(restored.holds) } ?? self.trashItems
+        let folders = restored == nil ? self.folders : Self.needed(self.folders, by: moves)
         let fm = FileManager.default
         for folder in folders where !fm.fileExists(atPath: folder.path) {
             do {
@@ -101,21 +115,28 @@ final class PlanTransaction {
             do {
                 var result: NSURL?
                 try fm.trashItem(at: url, resultingItemURL: &result)
-                if let result { trashed.append((url, result as URL)) }
+                if let result {
+                    trashed.append((url, result as URL))
+                    applied.record([result as URL])
+                }
             } catch {
                 outcome.failures.append(String(localized: "“\(url.lastPathComponent)” couldn’t be moved to the Trash: \(error.localizedDescription)"))
             }
         }
         if FileOps.isChain(moves.map { (from: $0.from, to: $0.to) }) {
             // Swaps and chains move together, through temporary names.
+            for pair in moves { applied.expect(pair.from, at: pair.to) }
             let (moved, error) = await FileOps.moveAll(moves.map { (from: $0.from, to: $0.to) })
+            moved.forEach { applied.arrived($0.to) }
             done = moved.map { ($0.from, $0.to) }
             outcome.results += moved.map(\.to)
             if let error { outcome.failures.append(error.localizedDescription) }
         } else {
             for pair in moves {
                 do {
+                    applied.expect(pair.from, at: pair.to)
                     try await Self.move(pair)
+                    applied.arrived(pair.to)
                     done.append(pair)
                     outcome.results.append(pair.to)
                 } catch {
@@ -129,14 +150,27 @@ final class PlanTransaction {
     }
 
     func revert() async {
-        // The reverse of `perform`: moves back first (freeing names), then the Trash.
-        let back = done.reversed().map { (from: $0.to, to: $0.from) }
-        if FileOps.isChain(back) {
-            _ = await FileOps.moveAll(back)
-        } else {
-            for pair in back { try? await Self.move((pair.from, pair.to)) }
+        // The reverse of `perform`: moves back first (freeing names), then the Trash. Only items still where it put
+        // them; what's back is recorded as it lands, for redo.
+        let restored = FileOps.Landed()
+        self.restored = restored
+        func moveBack(_ pairs: [Pair]) async {
+            for pair in pairs { restored.expect(pair.from, at: pair.to) }
+            let moved: [Pair]
+            if FileOps.isChain(pairs) {
+                moved = await FileOps.moveAll(pairs).done.map { ($0.from, $0.to) }
+            } else {
+                var done: [Pair] = []
+                for pair in pairs where (try? await Self.move(pair)) != nil { done.append(pair) }
+                moved = done
+            }
+            let arrived = Set(moved.map(\.to.path))
+            for pair in pairs {
+                if arrived.contains(pair.to.path) { restored.arrived(pair.to) } else { restored.set(nil, at: pair.to) }
+            }
         }
-        for pair in trashed.reversed() { try? await Self.move((pair.to, pair.from)) }
+        await moveBack(done.filter { applied.holds($0.to) }.reversed().map { (from: $0.to, to: $0.from) })
+        await moveBack(trashed.reversed().filter { applied.holds($0.to) }.map { (from: $0.to, to: $0.from) })
         let fm = FileManager.default
         for folder in created.reversed() {
             // Only remove what is (still) empty: never delete something the user put there meanwhile.

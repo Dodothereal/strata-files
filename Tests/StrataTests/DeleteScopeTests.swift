@@ -56,6 +56,15 @@ struct DeleteScopeTests {
         #expect(tree.text("plain.txt") == "plain.txt")
     }
 
+    @Test func testsKeepToCachesOfTheirOwn() {
+        // The app's caches hold the copies it has open (archives, servers, containers): tests never prune, sweep or
+        // set aside those.
+        let own = SecureStorage.directory.standardizedFileURL.path + "/"
+        for root in [ArchiveCache.root, RemoteCopies.root, ContainerCopies.root, LazyCopies.clipboardRoot] {
+            #expect(root.standardizedFileURL.path.hasPrefix(own), "\(root.path)")
+        }
+    }
+
     @Test func theCommandReplacesOnlyItsOwnLink() throws {
         let tree = try TestTree("tool", "folder/", "old -> /Applications/Strata.app/Contents/Helpers/strata",
                                 "moved -> /Users/someone/Apps/Strata Beta.app/Contents/Helpers/strata",

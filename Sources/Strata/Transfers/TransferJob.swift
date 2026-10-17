@@ -70,6 +70,8 @@ final class TransferJob {
     private var journalCreated: [URL] = []
     private var journalMoved: [TransferMove] = []
     private var journalReplaced: [TransferMove] = []
+    /// What each item is where it landed, recorded as it lands (for undo; see `FileOps.Landed`).
+    let landed = FileOps.Landed()
 
     // Throughput: rates over a sliding window of recent samples.
     private var samples: [(time: TimeInterval, work: Double, bytes: Int64)] = []
@@ -538,6 +540,7 @@ final class TransferJob {
         switch result.outcome {
         case .done, .partial:
             placed.insert(result.destination.standardizedFileURL.path.lowercased())
+            landed.record([result.destination] + [result.replaced?.to].compactMap { $0 })
             // A move whose original couldn't be (or wasn't) removed leaves the only complete copy at the destination:
             // undo must not trash it.
             let originalKept = mode == .move && result.failures.contains { $0.stage == .removeSource }
@@ -615,7 +618,7 @@ final class TransferJob {
         let movedDestinations = Set(moved.map(\.to))
         TransferUndo.register(created: created.filter { !movedDestinations.contains($0) }, moved: moved,
                               replaced: replaced, actionName: actionName ?? (mode == .copy ? "Copy" : "Move"), undo: undoManager,
-                              logHistory: logsHistory, containers: containers)
+                              logHistory: logsHistory, containers: containers, landed: landed)
     }
 
     // MARK: - Progress

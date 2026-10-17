@@ -266,8 +266,9 @@ enum TransferUndo {
     }
 
     /// `containers`: folders made for the moved items; undo removes them once they're empty again, redo makes them.
+    /// `landed`: what the items are where they went, recorded as each landed (else read now).
     static func register(created: [URL], moved: [TransferMove], replaced: [TransferMove], actionName: String,
-                         undo: UndoManager?, logHistory: Bool = true, containers: [URL] = []) {
+                         undo: UndoManager?, logHistory: Bool = true, containers: [URL] = [], landed: FileOps.Landed? = nil) {
         let entry = logHistory
             ? OperationLog.shared.recordTransfer(actionName, created: created, moved: moved.map { (from: $0.from, to: $0.to) },
                                                  replaced: replaced.map { (from: $0.from, to: $0.to) }, containers: containers)
@@ -275,7 +276,7 @@ enum TransferUndo {
         guard let undo, !(created.isEmpty && moved.isEmpty && replaced.isEmpty) else { return }
         if let entry { FileOps.registerLogMark(entry, undone: true, undo) }
         // Undo touches only these very items: never one put in an item's place since.
-        let landed = FileOps.Landed(created + moved.map(\.to) + replaced.map(\.to))
+        let landed = landed ?? FileOps.Landed(created + moved.map(\.to) + replaced.map(\.to))
         undo.registerUndo(withTarget: undo) { undo in
             MainActor.assumeIsolated {
                 let existing = created.filter(landed.holds)
@@ -318,11 +319,8 @@ enum TransferUndo {
             // Part of an undo or redo: History already has the operation.
             let job = TransferQueue.shared.enqueue(moves: moves, mode: .move, undo: nil, conflicts: .keepBoth,
                                                    logHistory: false)
-            let landed = FileOps.Landed()
-            job.onFinish = { job in
-                landed.record(job.completedMoves.map(\.to))
-                if case .remove(let folders) = containers { FileOps.removeEmptyFolders(folders) }
-            }
+            if case .remove(let folders) = containers { job.onFinish = { _ in FileOps.removeEmptyFolders(folders) } }
+            let landed = job.landed
             guard let undo else { return }
             // Clashes may rename items on the way, so the inverse uses where they actually landed.
             undo.registerUndo(withTarget: undo) { undo in

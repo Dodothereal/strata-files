@@ -35,6 +35,13 @@ nonisolated enum SecureStorage {
         return url
     }()
 
+    /// Strata's caches (`~/Library/Caches/dev.strata.app`): archives opened as folders, servers' and containers' copies.
+    /// A test run's are in its own folder, so tests never touch the app's (which it may have open).
+    static let caches: URL = isTestRun
+        ? directory.appending(path: "Caches", directoryHint: .isDirectory)
+        : FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appending(path: Bundle.main.bundleIdentifier ?? "dev.strata.app", directoryHint: .isDirectory)
+
     /// A file or folder inside `directory`. Subfolders are created owner-only.
     static func url(_ relative: String, isDirectory: Bool = false) -> URL {
         let url = directory.appending(path: relative, directoryHint: isDirectory ? .isDirectory : .notDirectory)
