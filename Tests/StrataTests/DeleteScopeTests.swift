@@ -28,6 +28,34 @@ struct DeleteScopeTests {
         }
     }
 
+    @Test func aTrashIsNeverTrashedOrDeletedItself() throws {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let tree = try TestTree("a.txt", ".Trash/", "trash link -> \(Trash.home.path)", "home link -> \(home.path)")
+        // The Trash however it's spelled (through a link to the home folder too), and anything in it.
+        for url in [Trash.home, home.appending(path: ".TRASH"), home.appending(path: "./.Trash"), tree.url("home link/.Trash"),
+                    Trash.home.appending(path: "a.txt")] {
+            #expect(!FileOps.canTrash(url), "\(url.path)")
+        }
+        // A folder only named like one, and a link to it, are ordinary items.
+        for path in ["a.txt", ".Trash", "trash link"] { #expect(FileOps.canTrash(tree.url(path)), "\(path)") }
+        // Delete Immediately refuses it up front, and goes on with the rest.
+        let plan = BrowserViewController.deletionPlan([Trash.home, tree.url("home link/.Trash"), tree.url("a.txt")])
+        #expect(plan.refused.map(\.standardizedFileURL.path) == [Trash.home, tree.url("home link/.Trash")].map(\.standardizedFileURL.path))
+        #expect(plan.candidates.map(\.path) == [tree.url("a.txt").standardizedFileURL.path])
+        #expect(tree.snapshot() == [".Trash/", "a.txt", "home link -> \(home.path)", "trash link -> \(Trash.home.path)"])
+    }
+
+    @Test func removeDownloadFreesOnlyWhatsAlsoInTheCloud() throws {
+        let tree = try TestTree("here.txt", "cloud.txt", "uploading.txt", "waiting.txt", "only cloud.txt", "plain.txt")
+        let status: [String: CloudStatus] = ["here.txt": .downloaded, "cloud.txt": .downloaded, "uploading.txt": .uploading,
+                                             "waiting.txt": .waitingToUpload, "only cloud.txt": .cloudOnly]
+        let urls = tree.snapshot().map(tree.url)
+        #expect(CloudActions.removable(urls) { status[$0.lastPathComponent] } == [tree.url("cloud.txt"), tree.url("here.txt")])
+        // Outside a cloud folder, asking anyway changes nothing: each item is reported, and stays.
+        #expect(CloudActions.removeDownload([tree.url("plain.txt")]).map(\.0) == [tree.url("plain.txt")])
+        #expect(tree.text("plain.txt") == "plain.txt")
+    }
+
     @Test func theCommandReplacesOnlyItsOwnLink() throws {
         let tree = try TestTree("tool", "folder/", "old -> /Applications/Strata.app/Contents/Helpers/strata",
                                 "moved -> /Users/someone/Apps/Strata Beta.app/Contents/Helpers/strata",

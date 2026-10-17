@@ -263,13 +263,19 @@ enum FileOps {
         if !noTrash.isEmpty { throw NoTrash(urls: noTrash) }
     }
 
+    /// Whether Move to Trash may take `url`. Never a Trash itself, nor what's already in one (trashing it again would
+    /// lose where it came from), however either's path is spelled; nor anything inside an archive opened as a folder
+    /// (a temporary copy). A link to a Trash is only a link.
+    nonisolated static func canTrash(_ url: URL) -> Bool {
+        !Trash.isTrash(anySpelling: url) && !Trash.isInTrash(url) && !Trash.isInTrash(url.resolvingSymlinksInPath())
+            && !ReadOnlyCopies.contains(url)
+    }
+
     @concurrent
     private static func trashItems(_ urls: [URL]) async -> (moved: [Move], noTrash: [URL], failure: Error?) {
         var moved: [Move] = []
         var noTrash: [URL] = []
-        // Trashing what's already in a Trash again would lose where it came from (however its path is spelled).
-        // Nor is anything inside an archive opened as a folder trashed (it's a temporary copy).
-        for url in urls where !Trash.isInTrash(url) && !Trash.isInTrash(url.resolvingSymlinksInPath()) && !ReadOnlyCopies.contains(url) {
+        for url in urls where canTrash(url) {
             var result: NSURL?
             do {
                 try FileManager.default.trashItem(at: url, resultingItemURL: &result)
@@ -388,10 +394,11 @@ enum FileOps {
 
 /// Finder-compatible file clipboard, plus cut: ⌘X marks the items and the next paste moves them.
 enum Clipboard {
+    /// The general pasteboard; tests use one of their own.
+    static var pasteboard = NSPasteboard.general
     private static var cut: (urls: Set<URL>, changeCount: Int)?
 
     static func write(_ urls: [URL], cut isCut: Bool) {
-        let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.writeObjects(urls as [NSURL])
         cut = isCut ? (Set(urls), pasteboard.changeCount) : nil
@@ -399,13 +406,12 @@ enum Clipboard {
     }
 
     static func read() -> (urls: [URL], isCut: Bool) {
-        let pasteboard = NSPasteboard.general
         let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         return (urls, cut?.changeCount == pasteboard.changeCount)
     }
 
     static func isCut(_ url: URL) -> Bool {
-        guard let cut, cut.changeCount == NSPasteboard.general.changeCount else { return false }
+        guard let cut, cut.changeCount == pasteboard.changeCount else { return false }
         return cut.urls.contains(url)
     }
 
@@ -415,6 +421,6 @@ enum Clipboard {
     }
 
     static var hasFiles: Bool {
-        NSPasteboard.general.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+        pasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
     }
 }

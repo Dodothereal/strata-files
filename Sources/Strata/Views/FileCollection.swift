@@ -184,6 +184,12 @@ enum FileDrop {
     }
 
     static func operation(_ urls: [URL], into target: URL, info: NSDraggingInfo) -> NSDragOperation {
+        operation(urls, into: target, mask: info.draggingSourceOperationMask, option: NSEvent.modifierFlags.contains(.option))
+    }
+
+    /// What dropping `urls` on `target` does, given what the source allows and whether Option is held: a move, a copy,
+    /// or nothing (into itself, back where it is, into a copy that can't change).
+    static func operation(_ urls: [URL], into target: URL, mask: NSDragOperation, option: Bool) -> NSDragOperation {
         guard let first = urls.first else { return [] }
         let targetPath = target.standardizedFileURL.path
         if isInside(urls, target) { return [] }
@@ -193,15 +199,14 @@ enum FileDrop {
             guard let sameServer = RemoteCopies.server(containing: target)?.server.id else { return [] }
             if urls.allSatisfy({ RemoteCopies.server(containing: $0)?.server.id == sameServer }) {
                 // Within one server: a move there, or a copy with Option, as on this Mac.
-                if NSEvent.modifierFlags.contains(.option) { return .copy }
+                if option { return .copy }
                 return urls.allSatisfy({ $0.deletingLastPathComponent().standardizedFileURL.path == targetPath }) ? [] : .move
             }
-            return info.draggingSourceOperationMask.contains(.copy) || info.draggingSourceOperationMask.contains(.generic) ? .copy : []
+            return mask.contains(.copy) || mask.contains(.generic) ? .copy : []
         }
         // An archive opened as a folder isn't changed; what's dragged out of one is copied.
         if ReadOnlyCopies.contains(target) { return [] }
-        let mask = info.draggingSourceOperationMask
-        let wantsCopy = NSEvent.modifierFlags.contains(.option) || !sameVolume(first, target) || urls.contains(where: ReadOnlyCopies.contains)
+        let wantsCopy = option || !sameVolume(first, target) || urls.contains(where: ReadOnlyCopies.contains)
         let operation: NSDragOperation
         if wantsCopy || !mask.contains(.move) {
             operation = mask.contains(.copy) || mask.contains(.generic) ? .copy : []

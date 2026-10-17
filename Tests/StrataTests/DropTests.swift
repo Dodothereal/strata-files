@@ -1,0 +1,67 @@
+import AppKit
+import Foundation
+import Testing
+@testable import Strata
+
+/// Drag and drop, as every view decides it: a move on the same disk, a copy with Option or out of a read-only copy, and
+/// nothing at all into the item itself, back where it is, or into a copy that can't change. Dropping on the sidebar's
+/// Trash trashes only what can be trashed.
+struct DropTests {
+    private let every = NSDragOperation.every
+
+    @Test func aDropMovesOnTheSameDiskAndCopiesWithOption() throws {
+        let tree = try TestTree("a.txt", "to/")
+        let urls = [tree.url("a.txt")]
+        #expect(FileDrop.operation(urls, into: tree.url("to"), mask: every, option: false) == .move)
+        #expect(FileDrop.operation(urls, into: tree.url("to"), mask: every, option: true) == .copy)
+        // What the source allows decides too: a copy when it can't be moved, nothing when neither.
+        #expect(FileDrop.operation(urls, into: tree.url("to"), mask: .copy, option: false) == .copy)
+        #expect(FileDrop.operation(urls, into: tree.url("to"), mask: .move, option: true) == [])
+        #expect(FileDrop.operation(urls, into: tree.url("to"), mask: .link, option: false) == [])
+        #expect(FileDrop.operation([], into: tree.url("to"), mask: every, option: false) == [])
+        #expect(tree.snapshot() == ["a.txt", "to/"])
+    }
+
+    @Test func nothingGoesIntoItselfOrBackWhereItIs() throws {
+        let tree = try TestTree("dir/", "dir/sub/", "dir/f.txt", "other/")
+        // However the target is spelled (/var is /private/var), and when it's one of several items.
+        let spelled = URL(fileURLWithPath: tree.url("dir/sub").path.replacingOccurrences(of: "/private/var/", with: "/var/"))
+        for option in [false, true] {
+            #expect(FileDrop.operation([tree.url("dir")], into: tree.url("dir"), mask: every, option: option) == [])
+            #expect(FileDrop.operation([tree.url("dir")], into: tree.url("dir/sub"), mask: every, option: option) == [])
+            #expect(FileDrop.operation([tree.url("other"), tree.url("dir")], into: spelled, mask: every, option: option) == [])
+        }
+        // Moved back into its own folder, nothing happens; Option there makes a copy beside it, as in Finder.
+        #expect(FileDrop.operation([tree.url("dir/f.txt")], into: tree.url("dir"), mask: every, option: false) == [])
+        #expect(FileDrop.operation([tree.url("dir/f.txt")], into: tree.url("dir"), mask: every, option: true) == .copy)
+        #expect(tree.snapshot() == ["dir/", "dir/f.txt", "dir/sub/", "other/"])
+    }
+
+    @Test func aReadOnlyCopyTakesNothingAndGivesOnlyCopies() throws {
+        let tree = try TestTree("a.txt", "to/")
+        // A real archive copy (on the same disk as the tree, so only being read-only makes it a copy).
+        let copy = ArchiveCache.root.appending(path: "test-\(UUID().uuidString)/contents", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: copy, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: copy.deletingLastPathComponent()) }
+        try Data("x".utf8).write(to: copy.appending(path: "x.txt"))
+        #expect(FileDrop.operation([tree.url("a.txt")], into: copy, mask: every, option: false) == [])
+        #expect(FileDrop.operation([copy.appending(path: "x.txt")], into: tree.url("to"), mask: every, option: false) == .copy)
+        // Strata's Servers folder, or a server that's gone: nothing goes there.
+        #expect(FileDrop.operation([tree.url("a.txt")], into: RemoteCopies.root, mask: every, option: false) == [])
+        let gone = RemoteCopies.root.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        #expect(FileDrop.operation([tree.url("a.txt")], into: gone, mask: every, option: false) == [])
+        #expect(tree.snapshot() == ["a.txt", "to/"])
+    }
+
+    @Test func theSidebarsTrashTakesOnlyWhatCanBeTrashed() throws {
+        let tree = try TestTree("a.txt", "trash link -> \(Trash.home.path)")
+        #expect(SidebarViewController.canTrash([tree.url("a.txt")]))
+        // A link to the Trash is only a link.
+        #expect(SidebarViewController.canTrash([tree.url("trash link")]))
+        for urls in [[], [Trash.home], [tree.url("a.txt"), Trash.home], [Trash.home.appending(path: "x.txt")],
+                     [URL(fileURLWithPath: "/")], [ArchiveCache.root.appending(path: "x/contents/a.txt")]] {
+            #expect(!SidebarViewController.canTrash(urls), "\(urls.map(\.path))")
+        }
+        #expect(tree.snapshot() == ["a.txt", "trash link -> \(Trash.home.path)"])
+    }
+}

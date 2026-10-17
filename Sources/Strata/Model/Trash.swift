@@ -61,6 +61,12 @@ enum Trash {
         return (try? volume.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
     }
 
+    /// Whether `url` is a Trash however its path is spelled: through a link to a folder on the way, say. A link to a
+    /// Trash is only a link.
+    nonisolated static func isTrash(anySpelling url: URL) -> Bool {
+        isTrash(url) || isTrash(url.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: url.lastPathComponent))
+    }
+
     /// Whether `item` sits directly in a Trash (things inside a trashed folder can't be put back on their own).
     nonisolated static func contains(_ item: URL) -> Bool {
         isTrash(item.deletingLastPathComponent())

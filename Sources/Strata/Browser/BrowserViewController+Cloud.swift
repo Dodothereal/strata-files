@@ -17,7 +17,7 @@ extension BrowserViewController {
     }
 
     @objc func removeDownload(_ sender: Any?) {
-        let urls = selectedURLs.filter { CloudStore.shared.status(for: $0) == .downloaded }
+        let urls = CloudActions.removable(selectedURLs) { CloudStore.shared.status(for: $0) }
         guard !urls.isEmpty else { return }
         let failures = CloudActions.removeDownload(urls)
         if !failures.isEmpty { Self.report(failures.map { (url: $0.0, error: $0.1) }, .removeDownload, in: view.window) }

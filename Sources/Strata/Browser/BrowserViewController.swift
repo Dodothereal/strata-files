@@ -904,7 +904,7 @@ final class BrowserViewController: NSViewController {
         // In the Trash, ⌘⌫ puts things back (Finder does the same). Trashing what's already in a Trash again would lose
         // where it came from.
         if urls.allSatisfy(Trash.contains) { return putBack(sender) }
-        guard !urls.contains(where: Trash.isInTrash) else { return NSSound.beep() }
+        guard urls.allSatisfy(FileOps.canTrash) else { return NSSound.beep() }
         // Keep the cursor where it was: select the row that slides into the first removed one's place.
         let removed = Set(urls.map(Self.key))
         let survivors = rows.filter { !removed.contains(Self.key($0.url)) }
@@ -1916,7 +1916,7 @@ extension BrowserViewController: NSMenuItemValidation {
             // Finder's File menu says Put Back for things in the Trash, and won't trash what's inside a trashed folder.
             let inTrash = hasSelection && selectedEntries.allSatisfy { Trash.contains($0.url) }
             item.title = inTrash ? String(localized: "Put Back") : String(localized: "Move to Trash")
-            return hasSelection && (inTrash || !selectedEntries.contains { Trash.isInTrash($0.url) })
+            return hasSelection && (inTrash || !selectedEntries.contains { Trash.isInTrash($0.url) || Trash.isTrash(anySpelling: $0.url) })
         case #selector(putBack(_:)):
             return hasSelection && selectedEntries.allSatisfy { Trash.contains($0.url) }
         case #selector(checkAppsForUpdates(_:)):

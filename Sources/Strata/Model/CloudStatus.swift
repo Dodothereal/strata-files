@@ -72,6 +72,12 @@ enum CloudActions {
         }
     }
 
+    /// What Remove Download frees: only items that are both here and in the cloud. One still uploading, or waiting to,
+    /// exists only here.
+    static func removable(_ urls: [URL], status: (URL) -> CloudStatus?) -> [URL] {
+        urls.filter { status($0) == .downloaded }
+    }
+
     static func removeDownload(_ urls: [URL]) -> [(URL, Error)] {
         urls.compactMap { url in
             do { try FileManager.default.evictUbiquitousItem(at: url) } catch { return (url, error) }

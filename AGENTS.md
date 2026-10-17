@@ -45,7 +45,8 @@ path without tests isn't done. The tests must show that:
   Gallery, Disk Usage, results, both panes), and it stays the same items when the folder changes.
 
 Make the decision a plain function separate from the alert or UI (`BrowserViewController.deletionPlan`,
-`PlanValidator.validate`, `TransferEngine.mergePlan`, `FolderCompare.defaultAction`) so tests call it directly. Prove a
+`FileOps.canTrash`, `FileDrop.operation(_:into:mask:option:)`, `PlanValidator.validate`, `TransferEngine.mergePlan`,
+`FolderCompare.defaultAction` and `syncPlan`) so tests call it directly. Prove a
 new test guards its rule: break the rule once, watch the test fail, restore it.
 
 ## Writing tests
@@ -60,8 +61,9 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
 - Test runs never touch your History, index or keychain: in a debug build that isn't Strata itself,
   `SecureStorage.isTestRun` puts the stores in a temporary folder with a throwaway key. Keep it that way.
 - Tests that use the real Trash remove exactly what they put there (`tree.removeFromTrash()`). Never empty the real
-  Trash: `Trash.empty(_:)` takes the folders, so pass a fake one. Don't use `NSPasteboard.general` or Strata's
-  preferences in tests.
+  Trash: `Trash.empty(_:)` takes the folders, so pass a fake one. Never trash or delete a real Trash, even to show
+  it's refused: test the decision (`FileOps.canTrash`, `deletionPlan`) instead. Don't use `NSPasteboard.general` or
+  Strata's preferences in tests: clipboard tests set `Clipboard.pasteboard` to a named pasteboard of their own.
 - Suites run in parallel and CI machines are slower: poll for a condition, never a fixed sleep; never compare listings
   of shared folders like `$TMPDIR`. Suites sharing global state (`RemoteRegistry`, `TransferEngine.hooks`) run as one
   `.serialized` suite.

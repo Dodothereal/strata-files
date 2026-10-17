@@ -4,7 +4,7 @@ import AppKit
 extension BrowserViewController {
     /// Whether this pane (its active column, in Columns) shows a Trash folder, not search results.
     var isShowingTrash: Bool {
-        !isShowingResults && targetDirectory.map(Trash.isTrash) == true
+        !isShowingResults && targetDirectory.map { Trash.isTrash($0) } == true
     }
 
     /// The selected items that sit directly in a Trash.
@@ -105,17 +105,18 @@ extension BrowserViewController {
         }
     }
 
-    /// What deleting `urls` for good deletes, and what it refuses. Disks, and items in folders you can't change, are
-    /// refused up front: deleting one would remove its contents before failing on the item itself. Items inside other
-    /// selected items are left to their parent.
+    /// What deleting `urls` for good deletes, and what it refuses. Disks, Trashes, and items in folders you can't change
+    /// are refused up front: deleting one would remove its contents before failing on the item itself. Items inside
+    /// other selected items are left to their parent.
     static func deletionPlan(_ urls: [URL]) -> (candidates: [URL], refused: [URL]) {
         var refused: [URL] = []
         let candidates = outermost(urls).filter { url in
-            let isVolume = (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
+            // A Trash is emptied, never deleted itself.
+            let fixed = (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true || Trash.isTrash(anySpelling: url)
             // An archive opened as a folder isn't changed either.
             let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url)
-            if isVolume || !changeable { refused.append(url) }
-            return !isVolume && changeable
+            if fixed || !changeable { refused.append(url) }
+            return !fixed && changeable
         }
         return (candidates, refused)
     }

@@ -742,8 +742,7 @@ extension SidebarViewController: NSMenuDelegate {
     /// Not what's already in a Trash, a Trash itself, a read-only copy or a whole disk.
     static func canTrash(_ urls: [URL]) -> Bool {
         !urls.isEmpty && !urls.contains { url in
-            Trash.isInTrash(url) || Trash.isTrash(url) || ReadOnlyCopies.contains(url)
-                || (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
+            !FileOps.canTrash(url) || (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
         }
     }
 
