@@ -379,20 +379,9 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
 
     @objc private func sync(_ sender: Any?) {
         guard lastResult?.isComplete == true else { return }
-        var toRight: [TransferMove] = [], toLeft: [TransferMove] = [], trashLeft: [URL] = [], trashRight: [URL] = []
-        var replacesOtherKind = 0
-        for difference in differences {
-            let l = left.appending(path: difference.leftPath), r = right.appending(path: difference.rightPath)
-            let action = actions[difference.id] ?? .skip
-            if difference.kind == .kindsDiffer, action == .copyRight || action == .copyLeft { replacesOtherKind += 1 }
-            switch action {
-            case .copyRight: toRight.append(TransferMove(from: l, to: r))
-            case .copyLeft: toLeft.append(TransferMove(from: r, to: l))
-            case .trashLeft: trashLeft.append(l)
-            case .trashRight: trashRight.append(r)
-            case .skip: break
-            }
-        }
+        let plan = FolderCompare.syncPlan(differences, actions: actions, left: left, right: right)
+        let (toRight, toLeft, trashLeft, trashRight) = (plan.toRight, plan.toLeft, plan.trashLeft, plan.trashRight)
+        let replacesOtherKind = plan.replacesOtherKind
         let trash = trashLeft + trashRight
         guard !(toRight.isEmpty && toLeft.isEmpty && trash.isEmpty), let window = view.window else { return }
         let count = toRight.count + toLeft.count + trash.count

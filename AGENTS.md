@@ -53,6 +53,10 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
 - `TestTree("a/", "a/b.txt", "link -> a")` makes a throwaway tree (`"x/"` folder, `"x -> y"` link; targets starting
   with `/` or `.` are written as is). `snapshot()` lists it without following links: assert the whole listing, so any
   unexpected change fails. `TestTree.listing(of:)` does the same for any folder.
+- Keep a `TestTree` alive until the checks are done: never discard it (`let (_, …) =`), and assert on it last. Swift
+  frees it after its last use and its folder goes with it, so a test that only expects refusals passes without
+  checking anything.
+- If a check you broke on purpose still passes, `touch` the file and run again: the build can miss quick edits.
 - Test runs never touch your History, index or keychain: in a debug build that isn't Strata itself,
   `SecureStorage.isTestRun` puts the stores in a temporary folder with a throwaway key. Keep it that way.
 - Tests that use the real Trash remove exactly what they put there (`tree.removeFromTrash()`). Never empty the real

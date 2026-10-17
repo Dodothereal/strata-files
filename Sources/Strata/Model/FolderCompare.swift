@@ -312,4 +312,36 @@ nonisolated enum FolderCompare {
         case (.rightToLeft, _): .copyLeft
         }
     }
+
+    /// What a sync does, as paths: the copies each way, and what it moves to the Trash on each side.
+    struct SyncPlan: Sendable, Equatable {
+        var toRight: [TransferMove] = []
+        var toLeft: [TransferMove] = []
+        var trashLeft: [URL] = []
+        var trashRight: [URL] = []
+        /// Copies that put a file where a folder is, or a folder where a file is.
+        var replacesOtherKind = 0
+
+        var isEmpty: Bool { toRight.isEmpty && toLeft.isEmpty && trashLeft.isEmpty && trashRight.isEmpty }
+    }
+
+    /// The sync of `left` and `right` that `actions` ask for (by difference ID; none is skip). Each side's items are
+    /// spelled as on that side, and an action a difference doesn't allow (`actions(for:)`) is skipped.
+    static func syncPlan(_ differences: [Difference], actions: [String: Action], left: URL, right: URL) -> SyncPlan {
+        var plan = SyncPlan()
+        for difference in differences {
+            let action = actions[difference.id] ?? .skip
+            guard Self.actions(for: difference.kind).contains(action) else { continue }
+            let l = left.appending(path: difference.leftPath), r = right.appending(path: difference.rightPath)
+            if difference.kind == .kindsDiffer, action == .copyRight || action == .copyLeft { plan.replacesOtherKind += 1 }
+            switch action {
+            case .copyRight: plan.toRight.append(TransferMove(from: l, to: r))
+            case .copyLeft: plan.toLeft.append(TransferMove(from: r, to: l))
+            case .trashLeft: plan.trashLeft.append(l)
+            case .trashRight: plan.trashRight.append(r)
+            case .skip: break
+            }
+        }
+        return plan
+    }
 }
