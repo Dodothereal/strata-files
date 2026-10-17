@@ -28,6 +28,13 @@ final class NewFileTests {
         #expect(bare.lastPathComponent == "untitled")
     }
 
+    @Test func newFolderNeverTakesAnExistingOne() throws {
+        let tree = try TestTree("untitled folder/", "untitled folder/mine.txt")
+        let made = try FileOps.newFolder(in: tree.root, undo: nil)
+        #expect(made.lastPathComponent == "untitled folder 2")
+        #expect(tree.snapshot() == ["untitled folder 2/", "untitled folder/", "untitled folder/mine.txt"])
+    }
+
     @Test func neverOverAFileOrALink() throws {
         try Data("keep".utf8).write(to: folder.appending(path: "untitled.txt"))
         // A link to nothing still takes the name, and nothing is made where it points.

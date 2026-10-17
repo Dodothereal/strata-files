@@ -6,10 +6,6 @@ import Testing
 /// moves those very items back, never something that took their place since. The Trash tests use your real Trash and
 /// take back out exactly what they put in; History is a test run's own (see `SecureStorage.isTestRun`).
 struct TrashUndoTests {
-    private func wait(until condition: () -> Bool) async {
-        for _ in 0..<200 where !condition() { try? await Task.sleep(for: .milliseconds(50)) }
-    }
-
     /// The last History entry for items of `tree`.
     private func entry(for tree: TestTree) -> OperationLog.Entry? {
         OperationLog.shared.entries.last { $0.pairs.contains { $0[0].hasPrefix(tree.root.path + "/") } }
@@ -31,7 +27,7 @@ struct TrashUndoTests {
         #expect(trashed.pairs.allSatisfy { Trash.isInTrash(URL(fileURLWithPath: $0[1])) })
 
         undo.undo()
-        await wait { tree.snapshot().count == 5 }
+        await FileOps.undoWork?.value
         #expect(tree.snapshot() == ["a.txt", "ab.txt", "b/", "b/c.txt", "d.txt"])
         #expect(tree.text("b/c.txt") == "b/c.txt")
     }
@@ -134,7 +130,7 @@ struct TrashUndoTests {
         // Something is saved into "Other" meanwhile: that folder stays when the items go back.
         try Data("mine".utf8).write(to: tree.url("Other/mine.txt"))
         undo.undo()
-        await wait { tree.snapshot().contains("trashed/b.txt") && !tree.snapshot().contains("Made/") }
+        await FileOps.undoWork?.value
         #expect(tree.snapshot() == ["Other/", "Other/mine.txt", "trashed/", "trashed/a.txt", "trashed/b.txt"])
     }
 
@@ -158,18 +154,19 @@ struct TrashUndoTests {
 
     @Test func undoingACopyTrashesOnlyItsOwnCopies() async throws {
         let tree = try TestTree("a.txt", "b.txt", "to/", "to/keep.txt")
+        defer { tree.removeFromTrash() }
         let undo = await undoable { undo in
             await TransferQueue.shared.enqueue([tree.url("a.txt"), tree.url("b.txt")], to: tree.url("to"), mode: .copy,
                                                options: .init(verify: false, clone: false), undo: undo, conflicts: .keepBoth).finished()
         }
         try swap(tree, "to/b.txt")
         undo.undo()
-        await wait { !tree.snapshot().contains("to/a.txt") }
+        await FileOps.undoWork?.value
         #expect(tree.snapshot() == ["a.txt", "b.txt", "to/", "to/b.txt", "to/keep.txt"])
         #expect(tree.text("to/b.txt") == "someone else's")
         // Redo brings the copy back out of the Trash (and leaves nothing of the test there).
         undo.redo()
-        await wait { tree.snapshot().contains("to/a.txt") }
+        await FileOps.undoWork?.value
         #expect(tree.snapshot() == ["a.txt", "b.txt", "to/", "to/a.txt", "to/b.txt", "to/keep.txt"])
     }
 
@@ -181,7 +178,7 @@ struct TrashUndoTests {
         try FileManager.default.createDirectory(at: tree.url(made), withIntermediateDirectories: false)
         try Data("theirs".utf8).write(to: tree.url(made + "theirs.txt"))
         undo.undo()
-        try? await Task.sleep(for: .milliseconds(200))
+        await FileOps.undoWork?.value
         #expect(tree.snapshot() == ["keep.txt", made, made + "theirs.txt"])
     }
 
@@ -193,13 +190,13 @@ struct TrashUndoTests {
         }
         try swap(tree, "b.txt")
         undo.undo()
-        await wait { tree.snapshot().contains("c.txt") }
+        await FileOps.undoWork?.value
         // "d.txt" was the renamed file: it goes back. "b.txt" isn't any more: it stays.
         #expect(tree.snapshot() == ["b.txt", "c.txt"])
         #expect(tree.text("b.txt") == "someone else's")
         // Redo renames again exactly what undo moved back.
         undo.redo()
-        await wait { tree.snapshot().contains("d.txt") }
+        await FileOps.undoWork?.value
         #expect(tree.snapshot() == ["b.txt", "d.txt"])
         #expect(tree.text("d.txt") == "c.txt")
     }
@@ -236,6 +233,20 @@ struct TrashUndoTests {
         #expect(tree.snapshot() == ["a.txt"] && tree.text("a.txt") == "a.txt")
     }
 
+    @Test func undoingAMoveJobPutsAnItemBackBesideANewcomer() async throws {
+        let tree = try TestTree("from/", "from/a.txt", "to/")
+        let undo = await undoable { undo in
+            await TransferQueue.shared.enqueue([tree.url("from/a.txt")], to: tree.url("to"), mode: .move,
+                                               options: .init(verify: false, clone: false), undo: undo, conflicts: .keepBoth).finished()
+        }
+        // Something new is saved where the item was: undo puts the item back beside it, under the next free name.
+        try Data("someone else's".utf8).write(to: tree.url("from/a.txt"))
+        undo.undo()
+        await FileOps.undoWork?.value
+        #expect(tree.snapshot() == ["from/", "from/a 2.txt", "from/a.txt", "to/"])
+        #expect(tree.text("from/a.txt") == "someone else's" && tree.text("from/a 2.txt") == "from/a.txt")
+    }
+
     @Test func undoingAMoveJobMovesBackOnlyItsOwnItems() async throws {
         let tree = try TestTree("from/", "from/a.txt", "from/b.txt", "to/")
         let undo = await undoable { undo in
@@ -244,18 +255,18 @@ struct TrashUndoTests {
         }
         try swap(tree, "to/b.txt")
         undo.undo()
-        await wait { tree.snapshot().contains("from/a.txt") }
+        await FileOps.undoWork?.value
         #expect(tree.snapshot() == ["from/", "from/a.txt", "to/", "to/b.txt"])
         #expect(tree.text("to/b.txt") == "someone else's")
         undo.redo()
-        await wait { tree.snapshot().contains("to/a.txt") }
+        await FileOps.undoWork?.value
         #expect(tree.snapshot() == ["from/", "to/", "to/a.txt", "to/b.txt"])
         // Undone again, then swapped before the redo: redo leaves that file where it is.
         undo.undo()
-        await wait { tree.snapshot().contains("from/a.txt") }
+        await FileOps.undoWork?.value
         try swap(tree, "from/a.txt")
         undo.redo()
-        try? await Task.sleep(for: .milliseconds(200))
+        await FileOps.undoWork?.value
         #expect(tree.snapshot() == ["from/", "from/a.txt", "to/", "to/b.txt"])
         #expect(tree.text("from/a.txt") == "someone else's")
     }

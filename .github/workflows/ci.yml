@@ -7,10 +7,10 @@ on:
   push:
     branches: [main]
     paths: ["Sources/**", "Tests/**", "Package.swift", "docs/destructive-actions.md", "scripts/audit-destructive.py",
-            ".github/workflows/ci.yml"]
+            "scripts/mutate.py", ".github/workflows/ci.yml"]
   pull_request:
     paths: ["Sources/**", "Tests/**", "Package.swift", "docs/destructive-actions.md", "scripts/audit-destructive.py",
-            ".github/workflows/ci.yml"]
+            "scripts/mutate.py", ".github/workflows/ci.yml"]
 
 permissions:
   contents: read
@@ -35,6 +35,9 @@ jobs:
 
       - name: Every destructive action is listed with its tests
         run: python3 scripts/audit-destructive.py --check
+
+      - name: Mutation runner and audit checks
+        run: python3 -m unittest discover -s Tests -p 'test_*.py'
 
       - name: Select Xcode ${{ env.XCODE_VERSION }}
         run: |

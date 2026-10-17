@@ -39,7 +39,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 |---|---|---|
 | Rename (inline, click to rename, Rename menu) | `FileOps.rename` | `InlineRenameTests/*`; `RenameTests/*` |
 | Batch rename, swaps and chains | `RenameRules`, `FileOps.moveAll` | `RenameTests/*` |
-| New Folder / New File | `FileOps.newFolder`, `newFile` | `NewFileTests/*`; `TrashUndoTests/undoingANewFolderLeavesOneMadeInItsPlace` |
+| New Folder / New File | `FileOps.newFolder`, `newFile` | `NewFileTests/*` (incl. `newFolderNeverTakesAnExistingOne`); `TrashUndoTests/undoingANewFolderLeavesOneMadeInItsPlace` |
 
 ## Metadata
 
@@ -54,9 +54,10 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 |---|---|---|
 | Sync (copies and extras to the Trash) | `FolderCompare.defaultAction`, `syncPlan` | `FolderSyncTests/*` |
 | Compress | `Archiver.compress`, `place` | `MetadataEditTests/compressingAddsOneArchiveAndNeverReplacesOne`, `aLinkIsArchivedAsALink` |
-| Extract | `Archiver.extract*` | `ArchiveSafetyTests/*` |
+| Extract and browse an archive | `Archiver.extract`, `extractContents` | `ArchiveSafetyTests/*`, including `browsingAnArchiveNeverReplacesAnExistingFolder` for the copy used to browse |
 | Ask Strata plans (rename, move, trash, new folders), their undo and redo | `PlanValidator`, `PlanExecutor`, `PlanTransaction` | `PlanSafetyTests/*` |
-| Project cleanup | `ProjectCleanup` | `ProjectCleanupTests/*` |
+| Project cleanup | `ProjectDetector.detectSync`, `isRealDirectory` | `ProjectCleanupTests/*` |
+| Git for status badges (a browsed repository's own commands never run, and a disabled driver is no longer required) | `GitRunner.runBlocking`, `hardening`, `repositoryFilterOverrides` | `GitSafetyTests/*` |
 
 ## Servers (SFTP, S3)
 
@@ -98,8 +99,40 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 `Tests/mutations.json` holds, for every action row above, at least one mutation: a one-line change to the code that
 breaks the rule (skips a check, reads it late, applies it to the wrong item), and the tests that must then fail.
 `scripts/mutate.py` applies each alone, runs those tests, and restores the file; the **Mutations** workflow runs it
-weekly and on request. A row whose tests pass with the rule broken isn't covered, whatever the map says, so a new test
-comes with a mutation, and a mutation whose text no longer matches the code is updated, not dropped.
+weekly and on request. The runner first checks that the unmodified tests pass. Each run has a five-minute limit;
+a timeout, a build failure, or no tests never counts as caught, and stopping the runner restores the source. The
+SFTP rename mutation removes both the preflight check and the protocol’s refusal to replace, so the tests reach the
+rule instead of passing on the second defense. A row whose tests pass with the rule broken isn't covered, whatever the
+map says, so a new test comes with a mutation, and a mutation whose text no longer matches the code is updated, not dropped.
+
+## Not mutated, and why
+
+Functions the audit lists that no mutation reaches, each with the reason. `scripts/audit-destructive.py --check` fails
+on any function that is in neither this table nor a mutation.
+
+| Functions | Why no mutation |
+|---|---|
+| `AI/PlanGenerator :: (top level)`, `recipe`, `init`, `expand`; `AI/PlanModel :: init`; `AI/PlanValidator :: validate`, `needFolder`; `AI/RenameRules :: plan` | `rename` here is a plan step's name, not a file call. The steps are carried out by `PlanExecutor` (mutated). |
+| `App/MainMenu :: build`, `menuNeedsUpdate`, `rename`; `Window/Workspaces :: rename`, `askToRename` | A workspace's name in saved settings, and the menu items for it. No files. |
+| `Browser/BrowserViewController :: resortAnimated` | Moves rows of a table. |
+| `Browser/BrowserViewController :: renameItem`; `Views/ClickToRename :: clicked`; `Browser/BrowserViewController+Servers :: renameOnServer` | Hand the typed name to `FileOps.rename` or `RemoteFiles.rename` (both mutated), which hold every check. |
+| `Model/Places :: eject`; `Sidebar/SidebarViewController :: menuNeedsUpdate`, `ejectItem`; `Window/BrowserWindowController :: focusSearch`, `ejectVolume`, `validateMenuItem` | Hand a disk to macOS to eject. Nothing of the user's changes. |
+| `Dock/DockSearch :: restartDock` | Relaunches the Dock (`killall Dock`). No files. |
+| `Index/IndexStore :: remove`, `unlink` | An in-memory tree, not files. |
+| `Dev/GitRepository :: execute` | Runs git with the arguments `runBlocking` hardened (mutated); git's own commands here (`status`, `config`, `ls-files`) change nothing. |
+| `Dev/ProjectActions :: openCommandFile` | Writes its own script into a fresh folder in the temporary directory; what the script runs is tested (`theTerminalScriptQuotesEverything`). |
+| `Previews/ArchiveLister :: run` | Lists an archive (`zipinfo -l`, `tar -tvf`); writes nothing. |
+| `Browser/BrowserViewController+ArchiveBrowsing :: unpackForBrowsing`; `Browser/BrowserViewController+Trash :: putBack`; `Containers/ContainerCopies :: prepare`, `stackFolder`, `record`, `setAttribute`; `Containers/ContainerFiles :: makeFolders`, `makePlaceholder`, `setLinkTimes`, `remember`, `restoreTimes`, `setTimes`, `markDownloaded`, `systemQuarantine`; `Remote/RemoteCopies :: prepare`; `Remote/RemoteFiles :: list`, `fetch`; `Remote/LazyCopies :: newFolder`; `Model/SecureStorage :: url`, `init`; `Model/ArchiveCache :: touch`; `Transfers/Archiver :: unpack` | Make or mark Strata's own folders, placeholders and temporary files inside its copies and caches (Put Back remakes the folders `Trash.location`, mutated, leads to). Nothing of the user's. |
+| `Containers/ContainerFiles :: place`, `bringDown`, `write` | Arrange Strata's copy of a container's files (`theContainersFolderFollowsTheEngine`, `composeProjectsGroupTheirContainers`, `aLeftoverFolderNamedLikeAProjectMakesWay`; `aContainersFolderIsWrittenOnlyIntoItsCopy`). The copy is Strata's own; what comes out of it is covered above. |
+| `Model/FileOps :: trash` | Called only by undo, with items an operation itself created (filtered by `Landed`, mutated). What users trash goes through `canTrash` and `deletionPlan` (both mutated). |
+| `Model/SecureStorage :: removeLegacy`, `commit` | Remove the old store names Strata itself used; swap its own temporary into place with `rename()`, which replaces a planted link without following it (`savingAStoreReplacesOnlyItsOwnFile`). |
+| `Model/TagStore :: apply`, `write` | `canTag` (mutated) keeps links and read-only copies out; tags are the item's own metadata. |
+| `Model/Trash :: removeTree` | A link in the Trash is unlinked first and never opened; its `O_NOFOLLOW` guards the instant between those two calls, which no test can time. Links in a Trash are tested (`emptyingATrashDeletesWhatsInItAndNothingElse`). |
+| `Remote/RemoteFiles :: makeFile`, `place`; `Remote/RemoteSession :: upload` | Refuse a taken name, then rename under the server's own refusal (`SFTPBackend.rename`, mutated); swap a fetched file over its placeholder inside the copy; replace a file or link as asked (`uploadingOverALinkReplacesTheLink`), never a folder. |
+| `Remote/S3Client :: download`; `Remote/SFTPClient :: init`, `rename`, `setTimes`, `download`, `upload` | Protocol calls and the copy's own temporary files; the refusals live in the backends (mutated). |
+| `Settings/SettingsWindowController :: install` | Goes ahead only when `mayReplace` (mutated) allows. |
+| `Transfers/Archiver :: clearAccessList`, `markQuarantined`, `run` | Act on the extracted copy in Strata's scratch folder before `check` (mutated) and `place` (mutated). |
+| `Transfers/TransferEngine :: removeIfPresent`, `removeSource` | Remove the incomplete copy the engine made itself; remove the original only after `changedSinceCopy` (mutated) and verification (mutated) pass. |
 
 ## Where the system is stood in for
 

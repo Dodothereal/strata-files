@@ -51,7 +51,10 @@ the rows true when code moves: CI runs the script and fails when a function isn'
 A new destructive-action test comes with an entry in `Tests/mutations.json`: a one-line change that breaks its rule
 (skip the check, read it late, apply it to the wrong item) and the tests that must then fail. Run
 `python3 scripts/mutate.py <a word from the rule>` and see it caught before committing; the Mutations workflow runs
-them all weekly. When code moves and an entry's text no longer matches, update the entry.
+them all weekly. When code moves and an entry's text no longer matches, update the entry. Every function the audit
+finds must be reached by a mutation, or listed under "Not mutated, and why" in the map with its reason (it makes
+Strata's own scratch files, hands work to a function that is mutated, or guards an instant no test can time); CI fails
+otherwise.
 
 Make the decision a plain function separate from the alert or UI (`BrowserViewController.deletionPlan`,
 `FileOps.canTrash`, `FileDrop.operation(_:into:mask:option:)`, `PlanValidator.validate`, `TransferEngine.mergePlan`,

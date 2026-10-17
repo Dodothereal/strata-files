@@ -10,8 +10,10 @@ names a test that exists (the mutations themselves run weekly, in the Mutations 
 A function only reaches the map by being read: add its row (or add it to one) with the tests that cover it.
 """
 import collections
+import difflib
 import glob
 import os
+from pathlib import Path
 import re
 import sys
 
@@ -44,7 +46,7 @@ def audit():
 
 
 def named_in_map():
-    text = open("docs/destructive-actions.md").read()
+    text = Path("docs/destructive-actions.md").read_text()
     table = text[text.index("## Every function, by file"):]
     names = set()
     for row in table.splitlines():
@@ -69,6 +71,82 @@ def named_in_map():
     return names
 
 
+def function_at(source, index):
+    """The function (as `audit` names it) holding the character at `index` of `source`."""
+    function = "(top level)"
+    for line in source[:index].splitlines():
+        match = FUNCTION.search(line.split("//")[0])
+        if match:
+            function = match.group(1) or match.group(2)
+    return function
+
+
+def mutated_functions():
+    """Every (file, function) some mutation in Tests/mutations.json changes."""
+    import json
+    covered = set()
+    for m in json.loads(Path("Tests/mutations.json").read_text()):
+        path = os.path.join("Sources", m["file"])
+        if not os.path.exists(path):
+            continue
+        source = Path(path).read_text()
+        for edit in m.get("edits") or [{"find": m["find"], "replace": m["replace"]}]:
+            index = source.find(edit["find"])
+            if index >= 0:
+                # A find may start in the preceding function or at the declaration of this one. Attribute the
+                # changed lines themselves, rather than the unchanged context used to locate them.
+                for tag, first, last, _, _ in difflib.SequenceMatcher(None, edit["find"], edit.get("replace", "")).get_opcodes():
+                    if tag != "equal":
+                        covered.add((m["file"].removesuffix(".swift"), function_at(source, index + first)))
+    return covered
+
+
+def exempt_functions():
+    """Functions the map lists under "Not mutated, and why", with a reason each."""
+    text = Path("docs/destructive-actions.md").read_text()
+    if "## Not mutated, and why" not in text:
+        return set()
+    section = text[text.index("## Not mutated, and why"):]
+    end = section.find("\n## ", 1)
+    section = section if end < 0 else section[:end]
+    exempt = set()
+    for row in section.splitlines():
+        if not row.startswith("| `"):
+            continue
+        if not row.split("|")[2].strip():
+            continue
+        exempt |= functions_in(row.split("|")[1])
+    return exempt
+
+
+def functions_in(cell):
+    """`File :: a`, `b`, `c`; `Other :: d` — each file with the functions that follow it, up to the next file."""
+    names = set()
+    for match in re.finditer(r"`([\w/+]+) :: (\(top level\)|\w+)`", cell):
+        file, first = match.group(1), match.group(2)
+        names.add((file, first))
+        rest = cell[match.end():]
+        next_file = re.search(r"`[\w/+]+ ::", rest)
+        if next_file:
+            rest = rest[: next_file.start()]
+        for function in re.findall(r"`(\(top level\)|\w+)`", rest):
+            names.add((file, function))
+    return names
+
+
+def unguarded(found):
+    """Audited functions no mutation reaches and the map doesn't exempt."""
+    covered = mutated_functions()
+    exempt = exempt_functions()
+    missing = []
+    for file, function in found:
+        short = file.removeprefix("Strata/")
+        if (short, function) in covered or (short, function) in exempt or (file, function) in covered or (file, function) in exempt:
+            continue
+        missing.append(f"{short} :: {function}")
+    return missing
+
+
 def mutation_problems():
     """Entries of Tests/mutations.json that no longer fit the code or the tests."""
     import json
@@ -76,18 +154,18 @@ def mutation_problems():
     # A test belongs to the suites its file declares or extends (AcrossDisksTests.swift extends TransferTests).
     tests = set()
     for path in glob.glob("Tests/StrataTests/*.swift"):
-        text = open(path).read()
+        text = Path(path).read_text()
         suites = set(re.findall(r"^(?:@Suite[^\n]*\n)?\s*(?:struct|extension|final class|class)\s+(\w+)", text, re.M))
         suites.add(path.split("/")[-1].removesuffix(".swift"))
         for name in re.findall(r"@Test func (\w+)", text):
             for suite in suites:
                 tests.add((suite, name))
-    for m in json.load(open("Tests/mutations.json")):
+    for m in json.loads(Path("Tests/mutations.json").read_text()):
         source_path = os.path.join("Sources", m["file"])
         if not os.path.exists(source_path):
             problems.append(f"{m['rule']}: no file Sources/{m['file']}")
             continue
-        source = open(source_path).read()
+        source = Path(source_path).read_text()
         for edit in m.get("edits") or [{"find": m["find"]}]:
             n = source.count(edit["find"])
             if n != 1:
@@ -127,9 +205,16 @@ def main():
         print("Tests/mutations.json no longer fits:")
         for item in problems:
             print("  " + item)
-    if missing or problems:
+    not_guarded = unguarded(found)
+    if not_guarded:
+        print("No mutation reaches these, and docs/destructive-actions.md doesn't say why (add one, or a row under")
+        print("\"Not mutated, and why\"):")
+        for item in not_guarded:
+            print("  " + item)
+    if missing or problems or not_guarded:
         sys.exit(1)
-    print(f"docs/destructive-actions.md names all {len(found)} functions the audit found; Tests/mutations.json fits the code.")
+    print(f"docs/destructive-actions.md names all {len(found)} functions the audit found; every one is reached by a mutation "
+          f"or exempted with a reason; Tests/mutations.json fits the code.")
 
 
 if __name__ == "__main__":

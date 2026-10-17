@@ -7,6 +7,7 @@ import Testing
 // One at a time: they share the saved servers (`RemoteRegistry`) and the copies' folder.
 @Suite(.serialized)
 struct RemoteFilesTests {
+    let sandbox: TestTree
     let server: URL
     let remote: RemoteServer
     let files: RemoteFiles
@@ -15,12 +16,11 @@ struct RemoteFilesTests {
 
     init() throws {
         let fm = FileManager.default
-        let made = fm.temporaryDirectory.appending(path: "strata-remote-\(UUID().uuidString)")
-        try fm.createDirectory(at: made.appending(path: "docs"), withIntermediateDirectories: true)
-        try fm.createDirectory(at: made.appending(path: "sub/deep"), withIntermediateDirectories: true)
-        guard let real = realpath(made.path, nil) else { throw CocoaError(.fileNoSuchFile) }
-        server = URL(fileURLWithPath: String(cString: real), isDirectory: true)
-        free(real)
+        let sandbox = try TestTree("server/")
+        self.sandbox = sandbox
+        server = sandbox.url("server")
+        try fm.createDirectory(at: server.appending(path: "docs"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: server.appending(path: "sub/deep"), withIntermediateDirectories: true)
         try Data("hello".utf8).write(to: server.appending(path: "note.txt"))
         try Data("inside".utf8).write(to: server.appending(path: "docs/inside.txt"))
         try Data("deep".utf8).write(to: server.appending(path: "sub/deep/file.txt"))

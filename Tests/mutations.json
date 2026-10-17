@@ -102,7 +102,7 @@
     "find": "                let existing = created.filter(landed.holds)",
     "replace": "                let existing = created.filter { TransferEngine.exists($0) }",
     "rule": "Undo of a copy trashes a file swapped in since",
-    "tests": "TrashUndoTests|TransferTests/undoingACopy|TransferTests/aFileSwappedTheMomentItLandsIsNever"
+    "tests": "TrashUndoTests/undoingACopyTrashesOnlyItsOwnCopies"
   },
   {
     "file": "Strata/Transfers/TransferQueue.swift",
@@ -546,5 +546,190 @@
     "replace": "contentModificationDate, date < Date() {",
     "rule": "Stale script cleanup removes a script just written",
     "tests": "CacheRemovalTests/staleScript"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Trash.swift",
+    "find": "            do { try FileManager.default.removeItem(at: url) } catch { failures.append((url, error)) }",
+    "replace": "            do { try FileManager.default.removeItem(at: url.resolvingSymlinksInPath()) } catch { failures.append((url, error)) }",
+    "rule": "Delete Immediately follows a link to what it points to",
+    "tests": "DeleteTests"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "        try FileManager.default.trashItem(at: url, resultingItemURL: &result)",
+    "replace": "        try FileManager.default.removeItem(at: url)",
+    "rule": "A replaced item is deleted instead of moved to the Trash",
+    "tests": "TransferTests/replacingSwaps|TransferTests/aMoveThatReplaces"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "edits": [
+      {
+        "find": "        guard !exists(destination) else {",
+        "replace": "        guard true else {"
+      },
+      {
+        "find": "var flags = COPYFILE_ALL | COPYFILE_RECURSIVE | COPYFILE_NOFOLLOW_SRC | COPYFILE_EXCL",
+        "replace": "var flags = COPYFILE_ALL | COPYFILE_RECURSIVE | COPYFILE_NOFOLLOW_SRC"
+      }
+    ],
+    "rule": "A copy writes over what has its name without asking",
+    "tests": "TransferTests/nothingIsWrittenOver"
+  },
+  {
+    "file": "Strata/Containers/ContainerCopies.swift",
+    "find": "            guard lstat(path, &info) == 0, isFromCopy(path, relative, info) else { return false }",
+    "replace": "            guard lstat(path, &info) == 0 else { return false }",
+    "rule": "Copying out of a copy changes the folder's own items",
+    "tests": "RemoteFilesTests/mergingOut"
+  },
+  {
+    "file": "Strata/Containers/ContainerCopies.swift",
+    "find": "        try? FileManager.default.moveItem(at: folder, to: aside)",
+    "replace": "        try? FileManager.default.moveItem(at: folder.deletingLastPathComponent(), to: aside)",
+    "rule": "Quitting sets aside the whole caches folder, not the containers' copies",
+    "tests": "CacheRemovalTests/settingCopies"
+  },
+  {
+    "file": "Strata/Remote/RemoteCopies.swift",
+    "find": "        try? FileManager.default.moveItem(at: folder, to: aside)",
+    "replace": "        try? FileManager.default.moveItem(at: folder.deletingLastPathComponent(), to: aside)",
+    "rule": "Quitting sets aside the whole caches folder, not the servers' copies",
+    "tests": "CacheRemovalTests/settingCopies"
+  },
+  {
+    "file": "Strata/Containers/ContainerDrag.swift",
+    "find": "                try FileManager.default.copyItem(at: source, to: url)",
+    "replace": "                try? FileManager.default.removeItem(at: url); try FileManager.default.copyItem(at: source, to: url)",
+    "rule": "An item dragged out of a container replaces what's at the drop",
+    "tests": "ContainerTests/aDraggedOut"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "if let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path), names == [\".DS_Store\"] {",
+    "replace": "if let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path), names.contains(\".DS_Store\") {",
+    "rule": "Finder's records are removed from a folder that holds other things",
+    "tests": "TrashUndoTests/onlyEmptyFolders"
+  },
+  {
+    "file": "Strata/Model/ArchiveCache.swift",
+    "find": "for other in copies() where other.top.standardizedFileURL != folder.standardizedFileURL && other.source == source {",
+    "replace": "for other in copies() where other.top.standardizedFileURL != folder.standardizedFileURL {",
+    "rule": "A finished archive copy removes other archives' copies",
+    "tests": "CacheRemovalTests/aNewCopy"
+  },
+  {
+    "file": "Strata/Model/CloudStatus.swift",
+    "find": "            do { try evict(url) } catch { return (url, error) }",
+    "replace": "            do { try evict(url) } catch { return nil }",
+    "rule": "Remove Download hides an item it couldn't free",
+    "tests": "DeleteScopeTests/removeDownloadAsks"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "        guard fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else { return }\n        if info.st_mode & S_IFMT == S_IFDIR {\n            fchmodat(fd, name, 0o755, 0)\n            let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)",
+    "replace": "        guard fstatat(fd, name, &info, 0) == 0 else { return }\n        if info.st_mode & S_IFMT == S_IFDIR {\n            fchmodat(fd, name, 0o755, 0)\n            let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_CLOEXEC)",
+    "rule": "Sweeping a container's copy follows links out of it",
+    "tests": "ContainerTests/aContainersFolder"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "        for entry in entries where ContainerCopies.isSafeName(entry.name) && !entry.name.hasPrefix(tempPrefix) {",
+    "replace": "        for entry in entries where !entry.name.hasPrefix(tempPrefix) {",
+    "rule": "A container's listing writes a name that escapes the folder",
+    "tests": "ContainerTests/listingsAreWritten"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "        guard isChain(pairs) else {",
+    "replace": "        guard false else {",
+    "rule": "Swaps and chains of renames are done one at a time and fail",
+    "tests": "RenameTests/swapRunsOnDisk"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "let target = TransferEngine.exists(move.to) ? FileOps.available(move.to, copyStyle: false) : move.to",
+    "replace": "let target = move.to",
+    "rule": "Undo of a job can't put an item back beside a newcomer",
+    "tests": "TrashUndoTests/undoingAMoveJobPutsAnItemBackBeside"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "edits": [
+      {
+        "find": "        let url = available(directory.appending(path: name), copyStyle: false)",
+        "replace": "        let url = directory.appending(path: name)"
+      },
+      {
+        "find": "        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)",
+        "replace": "        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)"
+      }
+    ],
+    "rule": "New Folder takes an existing folder as its own",
+    "tests": "NewFileTests/newFolderNever"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "        for url in urls where canTrash(url) {",
+    "replace": "        for url in urls {",
+    "rule": "Move to Trash takes items inside a read-only copy",
+    "tests": "DeleteScopeTests/nothingInAReadOnlyCopy"
+  },
+  {
+    "file": "Strata/Dev/GitRepository.swift",
+    "find": "\"-c\", \"core.fsmonitor=false\", ",
+    "replace": "",
+    "rule": "A browsed repository's fsmonitor command runs",
+    "tests": "GitSafetyTests"
+  },
+  {
+    "file": "Strata/Dev/GitRepository.swift",
+    "find": "        return execute(hardening + overrides + arguments, in: directory, timeout: timeout, start: start)",
+    "replace": "        return execute(hardening + arguments, in: directory, timeout: timeout, start: start)",
+    "rule": "A browsed repository's filter drivers run",
+    "tests": "GitSafetyTests"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "rule": "A rename on a server replaces what has the new name",
+    "tests": "RemoteFilesTests/renamingOnAServer|RemoteFilesTests/newFilesAreMade",
+    "edits": [
+      {
+        "find": "            if (try? client.lstat(newPath)) != nil { throw RemoteError.exists(RemotePath.name(newPath)) }\n",
+        "replace": ""
+      },
+      {
+        "find": "            try client.rename(path, to: newPath)",
+        "replace": "            try client.replace(newPath, with: path)"
+      }
+    ]
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "        guard path != \"/\" else { throw RemoteError.refused(String(localized: \"The server’s top folder can’t be renamed.\")) }\n",
+    "replace": "",
+    "rule": "A server's top folder can be renamed",
+    "tests": "RemoteFilesTests/theServersTop"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "    func rename(_ url: URL, to name: String) async throws -> URL {\n        guard ContainerCopies.isSafeName(name) else {",
+    "replace": "    func rename(_ url: URL, to name: String) async throws -> URL {\n        guard true else {",
+    "rule": "A rename on a server accepts a path and moves the item",
+    "tests": "RemoteFilesTests/renamingOnAServer"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "find": "        guard renamex_np(root.path, destination.path, UInt32(RENAME_EXCL)) == 0 else {",
+    "replace": "        guard rename(root.path, destination.path) == 0 else {",
+    "rule": "Extraction places its folder over what's already there",
+    "tests": "ArchiveSafetyTests/browsingAnArchiveNeverReplaces"
+  },
+  {
+    "file": "Strata/Dev/GitRepository.swift",
+    "find": " + [\"-c\", \"\\(driver).required=false\"]",
+    "replace": "",
+    "rule": "A disabled repository filter is still required and browsing fails",
+    "tests": "GitSafetyTests"
   }
 ]

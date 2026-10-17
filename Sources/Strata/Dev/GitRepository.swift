@@ -196,7 +196,8 @@ nonisolated enum GitRunner {
             drivers.insert(String(key[..<dot]))
         }
         return drivers.sorted().flatMap { driver in
-            ["clean", "smudge", "process"].flatMap { ["-c", "\(driver).\($0)="] }
+            // Git must also stop requiring the disabled driver, or hashing a changed file fails.
+            ["clean", "smudge", "process"].flatMap { ["-c", "\(driver).\($0)="] } + ["-c", "\(driver).required=false"]
         }
     }
 

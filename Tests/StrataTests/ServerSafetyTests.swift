@@ -39,14 +39,15 @@ extension RemoteFilesTests {
         defer { cleanUp() }
         await files.refresh(folder)
         let before = onServer
+        let whole = sandbox.snapshot()
         for name in ["../escape.txt", "a/b.txt", "..", ""] {
             await #expect(throws: (any Error).self, "\(name)") { _ = try await files.rename(folder.appending(path: "note.txt"), to: name) }
         }
         await #expect(throws: (any Error).self) { _ = try await files.rename(folder.appending(path: "note.txt"), to: "big.bin") }
         #expect(onServer == before)
-        // Nothing landed beside the server's folder.
-        #expect(!FileManager.default.fileExists(atPath: server.deletingLastPathComponent().appending(path: "escape.txt").path))
         #expect((try FileManager.default.attributesOfItem(atPath: server.appending(path: "big.bin").path)[.size] as? Int) == 2_000_000)
+        // The server's parent belongs to this test too: nothing can escape into the shared temporary folder.
+        #expect(sandbox.snapshot() == whole)
     }
 
     // MARK: - Never at all
@@ -58,6 +59,7 @@ extension RemoteFilesTests {
         let top = RemoteCopies.top(of: remote.id)
         try await recorded.delete([top, top.appending(path: "chosen.txt")])
         _ = try await recorded.move([top], into: top.appending(path: "inside"))
+        _ = try? await recorded.rename(top, to: "renamed")
         #expect(recorder.changes == ["remove /chosen.txt"])
     }
 

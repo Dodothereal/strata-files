@@ -82,6 +82,25 @@ struct DeleteScopeTests {
         #expect(tree.snapshot().contains("link -> plain.txt"))
     }
 
+    @Test func nothingInAReadOnlyCopyIsEverTrashed() async throws {
+        // An archive opened as a folder is a temporary copy: Move to Trash on something inside it changes nothing.
+        let copy = ArchiveCache.root.appending(path: "test-\(UUID().uuidString)/contents", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: copy, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: copy.deletingLastPathComponent()) }
+        let inside = copy.appending(path: "a.txt")
+        try Data("x".utf8).write(to: inside)
+        try await FileOps.trashInBackground([inside], undo: nil)
+        // Whatever went to the Trash despite this comes back out.
+        defer {
+            for entry in OperationLog.shared.entries {
+                for pair in entry.pairs where pair[0] == inside.path && Trash.isInTrash(URL(fileURLWithPath: pair[1])) {
+                    try? FileManager.default.removeItem(atPath: pair[1])
+                }
+            }
+        }
+        #expect(TestTree.listing(of: copy) == ["a.txt"])
+    }
+
     @Test func testsKeepToCachesOfTheirOwn() {
         // The app's caches hold the copies it has open (archives, servers, containers): tests never prune, sweep or
         // set aside those.

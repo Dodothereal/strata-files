@@ -60,6 +60,22 @@ struct ArchiveSafetyTests {
         #expect(tree.text("dest/one 2.txt") == "payload/one.txt")
     }
 
+    @Test func browsingAnArchiveNeverReplacesAnExistingFolder() async throws {
+        let tree = try TestTree("dest/", "dest/copy/", "dest/copy.txt", "dest/copy2/", "payload/", "payload/one.txt")
+        let archive = try tar(tree, "payload", named: "one.tar")
+        let before = tree.snapshot()
+        let destination = tree.url("dest/copy")
+        let identity = try #require(OperationLog.identity(destination.path))
+        let inspection = await Archiver.inspect(archive, kind: .tar)
+        // An empty folder matters too: plain rename would silently replace it with the extracted contents.
+        #expect(throws: (any Error).self) {
+            try Archiver.extractContents(archive, kind: .tar, inspection: inspection, to: destination,
+                                         control: Archiver.Control())
+        }
+        #expect(OperationLog.identity(destination.path) == identity)
+        #expect(tree.snapshot() == before)
+    }
+
     @Test func specialFilesAndSetuidBitsAreDropped() throws {
         let tree = try TestTree("box/", "box/tool", "box/sub/")
         #expect(mkfifo(tree.url("box/sub/pipe").path, 0o644) == 0)
