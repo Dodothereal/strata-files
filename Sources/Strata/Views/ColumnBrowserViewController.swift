@@ -303,6 +303,10 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         return false
     }
 
+    fileprivate func renameClicked(_ url: URL) {
+        fileDelegate?.fileView(self, renameClicked: url)
+    }
+
     fileprivate func menu(for pane: ColumnPane) -> NSMenu? {
         if let index = panes.firstIndex(where: { $0 === pane }) { activeIndex = index }
         reportSelection(force: true)
@@ -710,6 +714,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     fileprivate func moveRight() { controller?.moveRight(from: self) }
     fileprivate func moveLeft() { controller?.moveLeft(from: self) }
     fileprivate func becameFirstResponder() { controller?.paneBecameActive(self) }
+    fileprivate func renameClicked(_ url: URL) { controller?.renameClicked(url) }
     fileprivate func contextMenu() -> NSMenu? { controller?.menu(for: self) }
 }
 
@@ -717,8 +722,22 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
 /// Return/Space/Escape go to the browser like the list.
 final class ColumnTableView: NSTableView {
     fileprivate weak var pane: ColumnPane?
+    private let clickToRename = ClickToRename()
+
+    override func mouseDown(with event: NSEvent) {
+        let url = ClickToRename.nameRow(in: self, column: 0, for: event).flatMap { row in
+            pane.flatMap { row < $0.entries.count ? $0.entries[row].url : nil }
+        }
+        super.mouseDown(with: event)
+        clickToRename.clicked(event, armed: url != nil, in: self) { [weak self] in
+            guard let self, let url, let pane, window?.isKeyWindow == true, window?.firstResponder === self,
+                  pane.selectedEntries.map(\.url) == [url] else { return }
+            pane.renameClicked(url)
+        }
+    }
 
     override func keyDown(with event: NSEvent) {
+        clickToRename.cancel()
         guard let pane else { return super.keyDown(with: event) }
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let plain = mods.isDisjoint(with: [.command, .control])
@@ -773,6 +792,7 @@ final class ColumnTableView: NSTableView {
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
+        clickToRename.cancel()
         let row = self.row(at: convert(event.locationInWindow, from: nil))
         window?.makeFirstResponder(self)
         if row >= 0, !selectedRowIndexes.contains(row) {

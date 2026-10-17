@@ -228,4 +228,8 @@ extension BrowserViewController: FileCollectionViewDelegate {
     func fileView(_ view: NSViewController, rename entry: FileEntry, to name: String) {
         renameItem(entry.url, to: name)
     }
+
+    func fileView(_ view: NSViewController, renameClicked url: URL) {
+        renameClicked(url)
+    }
 }

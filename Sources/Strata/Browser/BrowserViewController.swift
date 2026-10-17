@@ -263,6 +263,10 @@ final class BrowserViewController: NSViewController {
             guard let self else { return }
             if filter.isEmpty && !Prefs.returnOpens { renameSelection(nil) } else { openSelection(nil) }
         }
+        ov.onNameClick = { [weak self] row in
+            guard let self, let node = outlineView.item(atRow: row) as? FileNode, node.groupTitle == nil else { return }
+            renameClicked(node.url)
+        }
         ov.onSpace = { [weak self] in
             guard let self else { return }
             if filter.isEmpty { toggleQuickLook(nil) } else { setFilter(filter + " ") }
@@ -973,6 +977,14 @@ final class BrowserViewController: NSViewController {
     @objc func renameSelection(_ sender: Any?) {
         if selectedEntries.count > 1 { return renameItems() }
         guard selectedEntries.count == 1, let url = selectedURLs.first else { return }
+        beginRename(url)
+    }
+
+    /// A second, slower click on the name of the only selected item (Finder's click to rename): renamed in place
+    /// wherever File ▸ Rename is allowed (not in an archive opened as a folder, Disk Usage or a folder still loading).
+    func renameClicked(_ url: URL) {
+        let rename = NSMenuItem(title: "", action: #selector(renameSelection(_:)), keyEquivalent: "")
+        guard selectedURLs.count == 1, validateMenuItem(rename) else { return }
         beginRename(url)
     }
 

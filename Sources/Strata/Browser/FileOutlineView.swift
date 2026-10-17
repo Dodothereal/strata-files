@@ -13,6 +13,21 @@ final class FileOutlineView: NSOutlineView {
     var onTab: (() -> Bool)?
     /// A drag left the list or ended.
     var onDragEnd: (() -> Void)?
+    /// A second, slower click on the name of the only selected row (Finder's click to rename).
+    var onNameClick: ((Int) -> Void)?
+    private let clickToRename = ClickToRename()
+
+    override func mouseDown(with event: NSEvent) {
+        // The name is the outline column's (the one with the disclosure triangles).
+        let nameColumn = outlineTableColumn.map { column(withIdentifier: $0.identifier) } ?? -1
+        let item = ClickToRename.nameRow(in: self, column: nameColumn, for: event).flatMap { self.item(atRow: $0) as AnyObject? }
+        super.mouseDown(with: event)
+        clickToRename.clicked(event, armed: item != nil, in: self) { [weak self] in
+            guard let self, let item, window?.isKeyWindow == true, window?.firstResponder === self else { return }
+            let row = row(forItem: item)
+            if row >= 0, selectedRowIndexes == IndexSet(integer: row) { onNameClick?(row) }
+        }
+    }
 
     override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session)
@@ -30,6 +45,7 @@ final class FileOutlineView: NSOutlineView {
     }
 
     override func keyDown(with event: NSEvent) {
+        clickToRename.cancel()
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let plain = mods.isDisjoint(with: [.command, .control])
         switch event.keyCode {
@@ -57,6 +73,7 @@ final class FileOutlineView: NSOutlineView {
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
+        clickToRename.cancel()
         let row = self.row(at: convert(event.locationInWindow, from: nil))
         if row >= 0, !selectedRowIndexes.contains(row) {
             selectRowIndexes([row], byExtendingSelection: false)

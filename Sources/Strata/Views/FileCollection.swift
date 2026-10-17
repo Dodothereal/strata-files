@@ -28,6 +28,8 @@ protocol FileCollectionViewDelegate: AnyObject {
     func fileView(_ view: NSViewController, handle key: FileViewKey) -> Bool
     /// Inline rename finished with a new, non-empty name that differs from the old one.
     func fileView(_ view: NSViewController, rename entry: FileEntry, to name: String)
+    /// A second, slower click on the name of the only selected item (see `ClickToRename`): rename it if it may be.
+    func fileView(_ view: NSViewController, renameClicked url: URL)
     /// A drag rested on `folder` long enough to spring it open; `drag` is the drag's sequence number.
     func fileView(_ view: NSViewController, springLoad folder: URL, drag: Int)
     /// Whether `folder` may spring open (readable, no privacy prompt).
@@ -37,6 +39,7 @@ protocol FileCollectionViewDelegate: AnyObject {
 extension FileCollectionViewDelegate {
     func fileView(_ view: NSViewController, handle key: FileViewKey) -> Bool { false }
     func fileView(_ view: NSViewController, rename entry: FileEntry, to name: String) {}
+    func fileView(_ view: NSViewController, renameClicked url: URL) {}
     func fileView(_ view: NSViewController, springLoad folder: URL, drag: Int) {}
     func fileView(_ view: NSViewController, canSpringLoad folder: URL) -> Bool { false }
 }

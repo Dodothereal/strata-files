@@ -356,6 +356,22 @@ final class GridViewController: NSViewController, FileCollectionController {
         openSelection()
     }
 
+    /// The item whose name `event` hit, when it's the only one selected: a click there renames it (Finder's click to
+    /// rename). The name's area is its lines as drawn, so a click on the icon only selects.
+    fileprivate func nameClicked(_ event: NSEvent) -> URL? {
+        guard ClickToRename.isPlainClickInFocus(event, on: collectionView) else { return nil }
+        let path = layout.index(at: collectionView.convert(event.locationInWindow, from: nil)).map { IndexPath(item: $0, section: 0) }
+        guard let path, collectionView.selectionIndexPaths == [path], path.item < entries.count,
+              let item = collectionView.item(at: path) as? GridItem,
+              item.itemView.nameRect.contains(item.itemView.convert(event.locationInWindow, from: nil)) else { return nil }
+        return entries[path.item].url
+    }
+
+    fileprivate func renameClicked(_ url: URL) {
+        guard selectedEntries.map(\.url) == [url] else { return }
+        fileDelegate?.fileView(self, renameClicked: url)
+    }
+
     fileprivate func focusChanged() { refreshVisibleItems() }
 
     fileprivate func noteClickSelection() {
@@ -508,6 +524,7 @@ final class GridCollectionView: NSCollectionView {
 
     fileprivate weak var controller: GridViewController?
     fileprivate var lastMouseDownPoint: NSPoint?
+    private let clickToRename = ClickToRename()
 
     var isEmphasized: Bool {
         guard let window else { return false }
@@ -515,6 +532,7 @@ final class GridCollectionView: NSCollectionView {
     }
 
     override func keyDown(with event: NSEvent) {
+        clickToRename.cancel()
         guard let controller else { return super.keyDown(with: event) }
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let plain = mods.isDisjoint(with: [.command, .control])
@@ -553,11 +571,17 @@ final class GridCollectionView: NSCollectionView {
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         lastMouseDownPoint = point
+        let url = controller?.nameClicked(event)
         super.mouseDown(with: event)
         if event.clickCount == 2 { controller?.doubleClicked(at: point) }
+        clickToRename.clicked(event, armed: url != nil, in: self) { [weak self] in
+            guard let self, let url, window?.isKeyWindow == true, window?.firstResponder === self else { return }
+            controller?.renameClicked(url)
+        }
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
+        clickToRename.cancel()
         window?.makeFirstResponder(self)
         return controller?.contextMenu(at: convert(event.locationInWindow, from: nil))
     }
