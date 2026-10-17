@@ -72,15 +72,22 @@ enum CloudActions {
         }
     }
 
-    /// What Remove Download frees: only items that are both here and in the cloud. One still uploading, or waiting to,
-    /// exists only here.
+    /// What Remove Download frees: only items that are both here and in the cloud (one still uploading, or waiting to,
+    /// exists only here), never through a link (that would free what it points to), each once.
     static func removable(_ urls: [URL], status: (URL) -> CloudStatus?) -> [URL] {
-        urls.filter { status($0) == .downloaded }
+        var seen = Set<String>()
+        return urls.filter { url in
+            var info = stat()
+            guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT != S_IFLNK, status(url) == .downloaded else { return false }
+            return seen.insert(url.standardizedFileURL.path).inserted
+        }
     }
 
-    static func removeDownload(_ urls: [URL]) -> [(URL, Error)] {
+    /// Asks for each item's space to be freed, going on past failures. `evict` is the system's (a test's records).
+    static func removeDownload(_ urls: [URL],
+                               evict: (URL) throws -> Void = { try FileManager.default.evictUbiquitousItem(at: $0) }) -> [(URL, Error)] {
         urls.compactMap { url in
-            do { try FileManager.default.evictUbiquitousItem(at: url) } catch { return (url, error) }
+            do { try evict(url) } catch { return (url, error) }
             return nil
         }
     }

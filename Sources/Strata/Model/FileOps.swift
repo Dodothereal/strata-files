@@ -40,7 +40,7 @@ enum FileOps {
         let landed = Landed()
         for pair in pairs { landed.expect(pair.from, at: pair.to) }
         let (done, error) = await moveAll(pairs)
-        done.forEach { landed.arrived($0.to) }
+        done.forEach { landed.arrived($0.to); TransferEngine.hooks.afterLanding?($0.to) }
         let entry = record ? OperationLog.shared.recordMove(actionName, done) : nil
         registerMoveUndo(done, actionName, undo, entry: entry, landed: landed)
         if let error { throw error }

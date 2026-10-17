@@ -95,6 +95,69 @@ import Testing
         #expect(tree.snapshot() == ["a.txt", "b.txt", "to/", "to/a.txt", "to/b.txt"])
     }
 
+    @Test func aFileSwappedTheMomentItLandsIsNeverUndone() async throws {
+        // The narrowest window there is: the item has just been placed and recorded, nothing else has happened yet.
+        let tree = try TestTree("a.txt", "b.txt", "to/")
+        TransferEngine.hooks.afterLanding = { landed in
+            guard landed.lastPathComponent == "a.txt" else { return }
+            try? FileManager.default.removeItem(at: landed)
+            try? Data("someone else's".utf8).write(to: landed)
+        }
+        defer { TransferEngine.hooks = .init() }
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        undo.beginUndoGrouping()
+        await TransferQueue.shared.enqueue([tree.url("a.txt"), tree.url("b.txt")], to: tree.url("to"), mode: .copy,
+                                           options: .init(verify: false, clone: false), undo: undo, conflicts: .keepBoth).finished()
+        undo.endUndoGrouping()
+        TransferEngine.hooks = .init()
+        undo.undo()
+        await FileOps.undoWork?.value
+        for _ in 0..<200 where tree.snapshot().contains("to/b.txt") { try? await Task.sleep(for: .milliseconds(30)) }
+        #expect(tree.snapshot() == ["a.txt", "b.txt", "to/", "to/a.txt"])
+        #expect(tree.text("to/a.txt") == "someone else's")
+        // The same for a move (a rename on one disk): the swapped file isn't moved back either.
+        let moved = try TestTree("from/", "from/c.txt", "from/d.txt", "to/")
+        TransferEngine.hooks.afterLanding = { landed in
+            guard landed.lastPathComponent == "c.txt" else { return }
+            try? FileManager.default.removeItem(at: landed)
+            try? Data("someone else's".utf8).write(to: landed)
+        }
+        let undo2 = UndoManager()
+        undo2.groupsByEvent = false
+        undo2.beginUndoGrouping()
+        await TransferQueue.shared.enqueue([moved.url("from/c.txt"), moved.url("from/d.txt")], to: moved.url("to"), mode: .move,
+                                           options: .init(verify: false, clone: false), undo: undo2, conflicts: .keepBoth).finished()
+        undo2.endUndoGrouping()
+        TransferEngine.hooks = .init()
+        undo2.undo()
+        await FileOps.undoWork?.value
+        for _ in 0..<200 where !moved.snapshot().contains("from/d.txt") { try? await Task.sleep(for: .milliseconds(30)) }
+        #expect(moved.snapshot() == ["from/", "from/d.txt", "to/", "to/c.txt"])
+        #expect(moved.text("to/c.txt") == "someone else's")
+    }
+
+    @Test func aRenamedFileSwappedTheMomentItLandsIsNeverUndone() async throws {
+        let tree = try TestTree("a.txt", "c.txt")
+        TransferEngine.hooks.afterLanding = { landed in
+            guard landed.lastPathComponent == "b.txt" else { return }
+            try? FileManager.default.removeItem(at: landed)
+            try? Data("someone else's".utf8).write(to: landed)
+        }
+        defer { TransferEngine.hooks = .init() }
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        undo.beginUndoGrouping()
+        try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt")), (from: tree.url("c.txt"), to: tree.url("d.txt"))],
+                               actionName: "Rename", undo: undo)
+        undo.endUndoGrouping()
+        TransferEngine.hooks = .init()
+        undo.undo()
+        await FileOps.undoWork?.value
+        #expect(tree.snapshot() == ["b.txt", "c.txt"])
+        #expect(tree.text("b.txt") == "someone else's")
+    }
+
     @Test func replacingSwapsOnlyTheNamedItemAndKeepsTheOldInTheTrash() throws {
         let tree = try TestTree("from/", "from/a.txt", "to/", "to/a.txt", "to/b.txt")
         let result = run(TransferItem(source: tree.url("from/a.txt"), destination: tree.url("to/a.txt"), operation: .copy,

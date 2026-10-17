@@ -45,6 +45,26 @@ struct DeleteScopeTests {
         #expect(tree.snapshot() == [".Trash/", "a.txt", "home link -> \(home.path)", "trash link -> \(Trash.home.path)"])
     }
 
+    @Test func removeDownloadAsksToFreeExactlyTheItemsChosen() throws {
+        let tree = try TestTree("a.txt", "ab.txt", "folder/", "folder/a.txt", "waiting.txt", "link -> a.txt", "folder link -> folder")
+        // As the provider reports them: everything here is downloaded but the one waiting to upload (links included,
+        // which would be what they point to).
+        let status = { (url: URL) -> CloudStatus? in url.lastPathComponent == "waiting.txt" ? .waitingToUpload : .downloaded }
+        let chosen = [tree.url("a.txt"), tree.url("folder"), tree.url("waiting.txt"), tree.url("link"), tree.url("folder link"),
+                      tree.url("a.txt")]
+        let removable = CloudActions.removable(chosen, status: status)
+        #expect(removable == [tree.url("a.txt"), tree.url("folder")])
+        // Exactly those are asked for, in order, going on past one that fails.
+        var asked: [URL] = []
+        let failures = CloudActions.removeDownload(removable + [tree.url("ab.txt")]) { url in
+            asked.append(url)
+            if url == tree.url("a.txt") { throw CocoaError(.fileWriteUnknown) }
+        }
+        #expect(asked == [tree.url("a.txt"), tree.url("folder"), tree.url("ab.txt")])
+        #expect(failures.map(\.0) == [tree.url("a.txt")])
+        #expect(tree.snapshot() == ["a.txt", "ab.txt", "folder link -> folder", "folder/", "folder/a.txt", "link -> a.txt", "waiting.txt"])
+    }
+
     @Test func removeDownloadFreesOnlyWhatsAlsoInTheCloud() throws {
         let tree = try TestTree("here.txt", "cloud.txt", "uploading.txt", "waiting.txt", "only cloud.txt", "plain.txt")
         let status: [String: CloudStatus] = ["here.txt": .downloaded, "cloud.txt": .downloaded, "uploading.txt": .uploading,
@@ -91,6 +111,8 @@ extension S3Tests {
     nonisolated final class Bucket: @unchecked Sendable {
         var keys: Set<String>
         var sloppy = false
+        /// Listings without a delimiter (a folder's every key) ignore the prefix, but others don't.
+        var sloppyDeep = false
         /// Keys whose copy fails (the service answers with an error).
         var failingCopies: Set<String> = []
         init(_ keys: Set<String>) { self.keys = keys }
@@ -123,9 +145,10 @@ extension S3Tests {
             default:
                 let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
                 let prefix = query.first { $0.name == "prefix" }?.value ?? ""
-                let listed = bucket.keys.sorted().filter { bucket.sloppy || $0.hasPrefix(prefix) }
-                // With a delimiter, what's in subfolders comes back as those folders, once each.
                 let grouped = query.contains { $0.name == "delimiter" } && !bucket.sloppy
+                let ignoresPrefix = bucket.sloppy || (bucket.sloppyDeep && !grouped)
+                let listed = bucket.keys.sorted().filter { ignoresPrefix || $0.hasPrefix(prefix) }
+                // With a delimiter, what's in subfolders comes back as those folders, once each.
                 var folders: [String] = []
                 var files: [String] = []
                 for key in listed {
@@ -175,6 +198,12 @@ extension S3Tests {
         serve(sloppy)
         await #expect(throws: (any Error).self) { try await S3Backend(client: client()).rename("/a", to: "/c") }
         #expect(sloppy.keys == ["a/x.txt", "ab/z.txt"])
+        // One that answers the folder's own listing with keys from elsewhere: only the folder's keys move.
+        let deep = Bucket(["a/x.txt", "ab/z.txt", "other.txt"])
+        deep.sloppyDeep = true
+        serve(deep)
+        try await S3Backend(client: client()).rename("/a", to: "/c")
+        #expect(deep.keys == ["c/x.txt", "ab/z.txt", "other.txt"])
     }
 
     @Test func renamingOnS3NeverReplacesAnything() async throws {

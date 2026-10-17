@@ -127,6 +127,9 @@ nonisolated enum TransferEngine {
     struct Hooks: Sendable {
         var throttleBytesPerSecond: Int64?
         var beforeVerify: (@Sendable (URL) -> Void)?
+        /// Called with an item's place the moment it has landed there and been recorded (for undo), before anything
+        /// else happens to it: a test swaps the file right then.
+        var afterLanding: (@Sendable (URL) -> Void)?
     }
 
     nonisolated(unsafe) static var hooks = Hooks()
@@ -160,6 +163,7 @@ nonisolated enum TransferEngine {
             let code = rename(item.source, to: item.destination)
             if code == 0 {
                 result.landed = identity
+                hooks.afterLanding?(item.destination)
                 if let trashed { result.replaced = TransferMove(from: item.destination, to: trashed) }
                 progress.update {
                     $0.files += item.files
@@ -193,6 +197,7 @@ nonisolated enum TransferEngine {
             }
         }
         result.landed = FileOps.Landed.identity(target.path)
+        hooks.afterLanding?(target)
         var failures = copy.errors.map { error in
             TransferFailure(item: index, stage: .copy, source: URL(fileURLWithPath: error.source),
                             destination: replacing ? nil : URL(fileURLWithPath: error.destination), message: error.message)

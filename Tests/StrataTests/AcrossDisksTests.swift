@@ -56,6 +56,35 @@ extension TransferTests {
         await volume.eject()
     }
 
+    @Test func aFileSwappedTheMomentItLandsAcrossDisksIsNeverUndone() async throws {
+        let volume = try await ScratchVolume.make()
+        let tree = try TestTree("a.txt", "b.txt")
+        let to = volume.url("to")
+        try FileManager.default.createDirectory(at: to, withIntermediateDirectories: false)
+        TransferEngine.hooks.afterLanding = { landed in
+            guard landed.lastPathComponent == "a.txt" else { return }
+            try? FileManager.default.removeItem(at: landed)
+            try? Data("someone else's".utf8).write(to: landed)
+        }
+        defer { TransferEngine.hooks = .init() }
+        let undo = await undoable { undo in
+            await TransferQueue.shared.enqueue([tree.url("a.txt"), tree.url("b.txt")], to: to, mode: .move,
+                                               options: .init(verify: false, clone: false), undo: undo, conflicts: .keepBoth).finished()
+        }
+        TransferEngine.hooks = .init()
+        // The copy no longer matches its original, so the move keeps the original rather than remove it: nothing is lost.
+        #expect(tree.snapshot() == ["a.txt"] && tree.text("a.txt") == "a.txt")
+        #expect(TestTree.listing(of: to) == ["a.txt", "b.txt"])
+        undo.undo()
+        await FileOps.undoWork?.value
+        await settle { tree.snapshot().contains("b.txt") }
+        // Undo brings back only the job's own item; the swapped-in file stays across the disk.
+        #expect(tree.snapshot() == ["a.txt", "b.txt"] && TestTree.listing(of: to) == ["a.txt"])
+        #expect(try String(contentsOf: to.appending(path: "a.txt"), encoding: .utf8) == "someone else's")
+        #expect(tree.text("a.txt") == "a.txt")
+        await volume.eject()
+    }
+
     @Test func aRenameAcrossDisksUndoesAndRedoes() async throws {
         let volume = try await ScratchVolume.make()
         let tree = try TestTree("a.txt")
