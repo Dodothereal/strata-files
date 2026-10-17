@@ -20,7 +20,7 @@ watching it fail. A change to any of these, or a new one, comes with tests and a
 | Action | Code | Tests |
 |---|---|---|
 | ⌘Z / ⇧⌘Z of moves, renames, Move to Trash | `FileOps.registerMoveUndo`, `FileOps.Landed` | `TrashUndoTests/undoingARenameLeavesAFileSwappedInSince`, `undoAndRedoPressedAtOnceHappenInOrder`, `undoingTwoOperationsAtOnceUndoesBoth`; `AcrossDisksTests/aRenameAcrossDisksUndoesAndRedoes` |
-| ⌘Z / ⇧⌘Z of copies, duplicates, move jobs | `TransferUndo.register`, `TransferUndo.perform`, `TransferJob.landed` | `TrashUndoTests/undoingACopyTrashesOnlyItsOwnCopies`, `undoingAMoveJobMovesBackOnlyItsOwnItems`; `TransferTests/undoingACopyLeavesAFileSwappedInWhileTheJobRan`; `AcrossDisksTests/aMoveJobAcrossDisksUndoesAndRedoesOnlyItsOwnItems`, `undoAndRedoPressedAtOnceAcrossDisksBothHappenInOrder` |
+| ⌘Z / ⇧⌘Z of copies, duplicates, move jobs | `TransferUndo.register`, `TransferUndo.perform`, `TransferJob.landed` | `TrashUndoTests/undoingACopyTrashesOnlyItsOwnCopies`, `undoingAMoveJobMovesBackOnlyItsOwnItems`; `TransferTests/undoingACopyLeavesAFileSwappedInWhileTheJobRan`, `aFileSwappedTheMomentItLandsIsNeverUndone`, `aRenamedFileSwappedTheMomentItLandsIsNeverUndone`; `AcrossDisksTests/aMoveJobAcrossDisksUndoesAndRedoesOnlyItsOwnItems`, `undoAndRedoPressedAtOnceAcrossDisksBothHappenInOrder`, `aFileSwappedTheMomentItLandsAcrossDisksIsNeverUndone` |
 | ⌘Z of New Folder / New File | `FileOps.registerTrashUndo` | `TrashUndoTests/undoingANewFolderLeavesOneMadeInItsPlace` |
 | Undo from History | `OperationLog.undo`, `holdsOriginal` | `TrashUndoTests/historyUndoBringsBackWhatWasTrashedAndOnlyThat`, `undoLeavesAloneWhatTookTheOldPlace`, `undoNeverMovesBackAnItemThatWasSwappedForAnother`, `undoMovesBackOnlyTheMovedItems` |
 
@@ -81,7 +81,7 @@ watching it fail. A change to any of these, or a new one, comes with tests and a
 
 | Action | Code | Tests |
 |---|---|---|
-| Remove Download | `CloudActions.removable`, `removeDownload` | `DeleteScopeTests/removeDownloadFreesOnlyWhatsAlsoInTheCloud` |
+| Remove Download | `CloudActions.removable`, `removeDownload` (the system's evict injected) | `DeleteScopeTests/removeDownloadFreesOnlyWhatsAlsoInTheCloud`, `removeDownloadAsksToFreeExactlyTheItemsChosen` |
 
 ## The `strata` command, Strata's own data
 
@@ -93,12 +93,64 @@ watching it fail. A change to any of these, or a new one, comes with tests and a
 | Stores (History, index), content index reset, script files | `SecureStorage.write`, `SemanticIndex.reset`, `ProjectActions.removeStaleCommandFiles` | `CacheRemovalTests/savingAStoreReplacesOnlyItsOwnFile`, `resettingTheContentIndexRemovesOnlyItsStore`, `staleScriptFilesGoOnlyFromTheirFolder` |
 | Tests never touch your data | `SecureStorage.isTestRun`, `caches` | `DeleteTests/testRunsKeepHistoryAndIndexesOutOfYourOwn`; `DeleteScopeTests/testsKeepToCachesOfTheirOwn` |
 
-## What tests can't reach
+## Where the system is stood in for
 
-- **Real iCloud eviction.** It needs a signed-in iCloud account. What's chosen is tested, and so is macOS refusing to
-  evict a file, folder or link that isn't in the cloud.
-- **An item swapped in at the very moment it lands.** Closed by design rather than timed in a test: an item is
-  expected where it goes before a move on one disk starts, and recorded as it lands otherwise. Undo and redo pressed
-  quickly are tested: each waits for the one before.
+- **iCloud eviction.** `evictUbiquitousItem` needs a signed-in account, so `CloudActions.removeDownload` takes the
+  evict call and the test records exactly which items it's asked to free, in which order, and that it goes on past a
+  refusal. What macOS does with an item not in the cloud is tested too: it refuses, and the item stays.
+- **The moment an item lands.** `TransferEngine.hooks.afterLanding` is called the instant an item has been placed
+  and recorded for undo, before anything else happens to it. Tests swap the file right then, for a copy, a rename
+  and a move across disks, and show the undo leaves the swapped file alone. (A move across disks keeps its original
+  too: the copy no longer matches it.)
 - **Alerts and sheets.** What they decide is a plain function, and that function is tested (`deletionPlan`,
   `uploadChoice`, `FolderCompare.syncPlan`, `CommandLineTool.mayReplace`).
+- **Disks.** Moves across disks run against a disk image each test attaches and detaches (`ScratchVolume`). Ejecting
+  a disk (`Places.eject`, the sidebar's and the menu's Eject) only hands the volume to macOS; nothing of the user's
+  changes, and it isn't tested.
+
+## Every function, by file
+
+What the audit found (`scripts/audit-destructive.py` lists each function in `Sources/` holding a call that can delete,
+move, rename, overwrite, truncate, evict or change metadata, or that runs a tool), and what covers it. Functions that
+only write Strata's own new files where nothing was (`createDirectory`, a temporary name) are listed with what they
+belong to.
+
+| File :: function | Covered by |
+|---|---|
+| `AI/PlanExecutor :: perform`, `moveBack` | `PlanSafetyTests/runningAPlanDoesOnlyItsCheckedSteps`, `undoKeepsAFolderThePlanMadeOnceSomethingElseIsInIt`, `undoAndRedoOfAPlanTouchOnlyItsOwnItems` |
+| `AI/PlanGenerator :: (top level)`, `recipe`, `init`, `expand`; `AI/PlanModel :: init`; `AI/PlanValidator :: validate`, `needFolder`; `AI/RenameRules :: plan` (`rename` here is a plan step's name, not a file call) | `PlanSafetyTests/*`, `RenameTests/*` |
+| `AI/SemanticIndex :: reset` | `CacheRemovalTests/resettingTheContentIndexRemovesOnlyItsStore` |
+| `App/MainMenu :: build`, `menuNeedsUpdate`, `rename` (menu items; `rename` is a workspace's name) | `WorkspaceTests/*` |
+| `Browser/BrowserViewController+ArchiveBrowsing :: unpackForBrowsing` (makes the copy's folder) | `ArchiveSafetyTests/*` |
+| `Browser/BrowserViewController+Servers :: renameOnServer` | `ServerSafetyTests/renamingOnAServerStaysInTheFolderAndReplacesNothing` |
+| `Browser/BrowserViewController+Trash :: putBack` (remakes missing folders), `deleteAll` | `PutBackTests/*`, `TrashUndoTests/undoingAPutBackRemovesOnlyTheFoldersItMadeOnceEmpty`; `DeleteTests/*` |
+| `Browser/BrowserViewController :: resortAnimated` (rows in a table, not files), `renameItem` | `InlineRenameTests/*` |
+| `Containers/ContainerCopies :: prepare`, `stackFolder`, `record`, `setAttribute`, `finish`, `setAsideForRemoval` | `ContainerTests/theContainersFolderFollowsTheEngine` … `aContainerCalledLikeAProjectKeepsItsFiles`; `RemoteFilesTests/copiedOutLinksLeadingOutsideAreDropped`, `mergingOutLeavesWhatWasThereAlone`; `CacheRemovalTests/settingCopiesAsideRemovesOnlyThemAtQuit` |
+| `Containers/ContainerDrag :: filePromiseProvider` | `ContainerCopyTests/aDraggedOutItemNeverReplacesWhatsAtTheDrop` |
+| `Containers/ContainerFiles :: place`, `bringDown`, `apply`, `makeFolders`, `folderFD`, `write`, `makePlaceholder`, `remember`, `restoreTimes`, `setTimes`, `setLinkTimes`, `markDownloaded`, `systemQuarantine` (a probe file of its own), `removeAt` | `ContainerCopyTests/aContainersFolderIsWrittenOnlyIntoItsCopy`, `aCopyThatIsALinkIsNotWrittenThrough`; `ContainerTests/listingsAreWrittenWithoutEscapingTheFolder`, `linksAlwaysResolveInsideTheCopy`, `composeProjectsGroupTheirContainers`, `aLeftoverFolderNamedLikeAProjectMakesWay` |
+| `Containers/ContainerFiles :: fetchFile` | `ContainerCopyTests/aFetchedFileTakesOnlyItsPlaceholdersPlace`, `aFetchThatIsntAFileOrFindsSomethingElseChangesNothing` |
+| `Dev/GitRepository :: execute` (runs `git`, reads only: `status`, `config`, `ls-files`, hardened against the repository's own config) | `ProjectCleanupTests/*` for what's offered; git's own commands change nothing |
+| `Dev/ProjectActions :: openCommandFile` (its own script file), `removeStaleCommandFiles` | `CacheRemovalTests/staleScriptFilesGoOnlyFromTheirFolder`; `ContainerTests/theTerminalScriptQuotesEverything`, `terminalFileNamesArePlainASCII` |
+| `Dock/DockSearch :: restartDock` (`killall Dock`: the Dock relaunches, no files) | `DockSearchTests/*` for what's changed in its list |
+| `Index/IndexStore :: remove`, `unlink` (an in-memory tree, not files) | `PathQueryTests/*` |
+| `Model/ArchiveCache :: finish`, `touch` | `CacheRemovalTests/aNewCopyReplacesOnlyOlderCopiesOfTheSameArchive`, `pruningTakesOnlyStaleCopies` |
+| `Model/CloudStatus :: removeDownload` | `DeleteScopeTests/removeDownloadAsksToFreeExactlyTheItemsChosen`, `removeDownloadFreesOnlyWhatsAlsoInTheCloud` |
+| `Model/FileInfoEditing :: setComment`, `setLocked`, `setAccess` | `MetadataEditTests/aCommentChangesOnlyTheComment`, `lockingTouchesOnlyThatItem`, `permissionsChangeOnlyThatAccessOnThatItem` |
+| `Model/FileOps :: rename`, `moveAll`, `moveItem`, `newFolder`, `newFile`, `trash`, `trashItems`, `removeEmptyFolders`, `registerMoveUndo` | `InlineRenameTests/*`, `RenameTests/*`, `NewFileTests/*`, `TrashUndoTests/*`, `AcrossDisksTests/*` |
+| `Model/Places :: eject` (hands the disk to macOS) | not a file change; see above |
+| `Model/SecureStorage :: (top level)`, `url`, `removeLegacy`, `sweepStaleTemporaries`, `init`, `commit` | `CacheRemovalTests/savingAStoreReplacesOnlyItsOwnFile`; `DeleteTests/testRunsKeepHistoryAndIndexesOutOfYourOwn`; `DeleteScopeTests/testsKeepToCachesOfTheirOwn` |
+| `Model/TagStore :: apply`, `write` | `MetadataEditTests/tagsGoOnTheChosenFilesOnly` |
+| `Model/Trash :: removeTree` | `DeleteTests/emptyingATrashDeletesWhatsInItAndNothingElse`, `aTrashThatIsALinkIsNeverFollowed`, `aLockedItemInTheTrashIsReportedAndTheRestGo` |
+| `Previews/ArchiveLister :: run` (`zipinfo -l`, `tar -tvf`: listings, nothing written) | `ArchiveSafetyTests/*` for what extraction then does |
+| `Remote/LazyCopies :: newFolder` (stages a clipboard copy) | `RemoteFilesTests/theClipboardGetsAFinishedCopy` |
+| `Remote/RemoteCopies :: prepare`, `setAsideForRemoval` | `RemoteFilesTests/listsIntoTheCopy`; `CacheRemovalTests/settingCopiesAsideRemovesOnlyThemAtQuit` |
+| `Remote/RemoteFiles :: list`, `makeFile`, `rename`, `move`, `fetch`, `place` | `RemoteFilesTests/*`; `ServerSafetyTests/*` |
+| `Remote/RemoteSession :: rename`, `upload` (S3) | `S3Tests` rows above (in `DeleteScopeTests`) |
+| `Remote/S3Client :: download`, `Remote/SFTPClient :: init`, `rename`, `setTimes`, `download`, `upload` | `S3Tests/downloadsStopAtTheListedSize`; `SFTPClientTests/*` |
+| `Settings/SettingsWindowController :: install` | `DeleteScopeTests/theCommandReplacesOnlyItsOwnLink` |
+| `Sidebar/SidebarViewController :: menuNeedsUpdate`, `ejectItem`; `Window/BrowserWindowController :: focusSearch`, `ejectVolume`, `validateMenuItem` (Eject) | not a file change; see above |
+| `Transfers/Archiver :: compress`, `extractContents`, `unpack`, `check`, `clearAccessList`, `markQuarantined`, `place`, `removeEntry`, `run` (`ditto`, `tar`) | `MetadataEditTests/compressingAddsOneArchiveAndNeverReplacesOne`, `aLinkIsArchivedAsALink`; `ArchiveSafetyTests/*`; `CacheRemovalTests/removingATreeNeverFollowsALinkOut` |
+| `Transfers/TransferEngine :: fail`, `copy`, `copyfile`, `rename`, `trash`, `removeIfPresent`, `removeSource` | `TransferTests/*` |
+| `Transfers/TransferQueue :: start` (undo's moves) | `TrashUndoTests/undoingAMoveJobMovesBackOnlyItsOwnItems`, `AcrossDisksTests/*` |
+| `Views/ClickToRename :: clicked` | `InlineRenameTests/*` |
+| `Window/Workspaces :: rename`, `askToRename` (a workspace's name, saved settings) | `WorkspaceTests/*` |

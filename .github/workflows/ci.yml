@@ -1,13 +1,16 @@
 name: CI
 
 # Builds Strata and runs its tests (Swift Testing, which comes with Xcode) on every push to main and every pull
-# request that touches the code.
+# request that touches the code. First, every function that can change a file must be named in
+# docs/destructive-actions.md with the tests that cover it.
 on:
   push:
     branches: [main]
-    paths: ["Sources/**", "Tests/**", "Package.swift", ".github/workflows/ci.yml"]
+    paths: ["Sources/**", "Tests/**", "Package.swift", "docs/destructive-actions.md", "scripts/audit-destructive.py",
+            ".github/workflows/ci.yml"]
   pull_request:
-    paths: ["Sources/**", "Tests/**", "Package.swift", ".github/workflows/ci.yml"]
+    paths: ["Sources/**", "Tests/**", "Package.swift", "docs/destructive-actions.md", "scripts/audit-destructive.py",
+            ".github/workflows/ci.yml"]
 
 permissions:
   contents: read
@@ -29,6 +32,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Every destructive action is listed with its tests
+        run: python3 scripts/audit-destructive.py --check
 
       - name: Select Xcode ${{ env.XCODE_VERSION }}
         run: |

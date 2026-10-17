@@ -44,8 +44,10 @@ path without tests isn't done. The tests must show that:
 - **Every view hands commands exactly its selection** (List incl. open folders, Icons, Columns incl. deeper columns,
   Gallery, Disk Usage, results, both panes), and it stays the same items when the folder changes.
 
-`docs/destructive-actions.md` lists every destructive action with the code that does it and its tests. Add a row for a
-new one, and keep the rows true when code moves.
+`docs/destructive-actions.md` lists every destructive action with the code that does it and its tests, and, at the
+end, every function `scripts/audit-destructive.py` finds holding a file-changing call. Add a row for a new one, and keep
+the rows true when code moves: CI runs the script and fails when a function isn't named. Prove a new test with several
+breaks, not one: break the rule a different way each time (skip the check, read it late, apply it to the wrong item).
 
 Make the decision a plain function separate from the alert or UI (`BrowserViewController.deletionPlan`,
 `FileOps.canTrash`, `FileDrop.operation(_:into:mask:option:)`, `PlanValidator.validate`, `TransferEngine.mergePlan`,
