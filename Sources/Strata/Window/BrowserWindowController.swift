@@ -40,6 +40,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     let palette = CommandPalette()
     var pathQuery = PathQuery()
     var browser: BrowserViewController { pane.browser }
+    /// In dual pane, the pane that isn't focused (Copy and Move to Other Pane send there).
+    var otherBrowser: BrowserViewController? { panes.first { $0 !== pane }?.browser }
     var splitController: NSSplitViewController { split }
     var isDualPane: Bool { panes.count > 1 }
 

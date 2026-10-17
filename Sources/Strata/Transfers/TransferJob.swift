@@ -55,6 +55,8 @@ final class TransferJob {
     private(set) var completedMoves: [TransferMove] = []
     private weak var queue: TransferQueue?
     private var rememberedDecision: ConflictDecision?
+    /// Where this job has put items so far (lowercased paths): a later item of the job never replaces one of them.
+    private var placed: Set<String> = []
     private var decisionTask: Task<ConflictResolution, Never>?
     private var heldDisk: dev_t?
     /// The disk a paused job gave up, to take back when it resumes.
@@ -334,6 +336,7 @@ final class TransferJob {
                 : String(localized: "A folder can’t be moved into itself"))
         } else if mode == .move, sameFolder, item.destination.lastPathComponent == source.lastPathComponent {
             items[index].outcome = .done   // Already there.
+            placed.insert(item.destination.standardizedFileURL.path.lowercased())
         } else if mode == .copy {
             items[index].operation = .copy
             items[index].copyStyleName = sameFolder && item.destination.lastPathComponent == source.lastPathComponent
@@ -453,9 +456,13 @@ final class TransferJob {
     /// (another app, or two sources with the same name). Returns false when the item shouldn't be written.
     private func prepare(_ index: Int) async -> Bool {
         let item = items[index]
+        // Two of the job's own items with one name (from different folders, say): the later one goes beside the one
+        // this job just put there, whatever was decided for the name; replacing it would trash one of your originals.
+        let placedByThisJob = placed.contains(item.destination.standardizedFileURL.path.lowercased())
         if item.copyStyleName {
             items[index].destination = FileOps.available(item.destination, copyStyle: true)
-        } else if item.decision == .keepBoth {
+        } else if item.decision == .keepBoth || placedByThisJob {
+            items[index].decision = .keepBoth
             items[index].destination = FileOps.available(item.destination, copyStyle: false)
         } else if item.decision == .replace {
             if !TransferEngine.exists(item.destination) { items[index].decision = nil }
@@ -530,6 +537,7 @@ final class TransferJob {
         failures += result.failures
         switch result.outcome {
         case .done, .partial:
+            placed.insert(result.destination.standardizedFileURL.path.lowercased())
             // A move whose original couldn't be (or wasn't) removed leaves the only complete copy at the destination:
             // undo must not trash it.
             let originalKept = mode == .move && result.failures.contains { $0.stage == .removeSource }
