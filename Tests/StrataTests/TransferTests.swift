@@ -158,6 +158,19 @@ import Testing
         #expect(tree.text("b.txt") == "someone else's")
     }
 
+    @Test func anOriginalThatChangedWhileBeingCopiedIsKeptWithoutVerifying() throws {
+        // With Verify copies off, only the check of the original against its copy stands between a file saved into
+        // the original mid-move and its loss.
+        let tree = try TestTree("from/", "from/a/", "from/a/inner.txt", "to/")
+        let added = tree.url("from/a/saved meanwhile.txt")
+        TransferEngine.hooks.afterLanding = { _ in try? Data("new".utf8).write(to: added) }
+        defer { TransferEngine.hooks = .init() }
+        let result = run(TransferItem(source: tree.url("from/a"), destination: tree.url("to/a"), operation: .copyThenDelete))
+        #expect(result.outcome != .done && !result.sourceRemoved)
+        #expect(tree.snapshot() == ["from/", "from/a/", "from/a/inner.txt", "from/a/saved meanwhile.txt", "to/", "to/a/", "to/a/inner.txt"])
+        #expect(tree.text("from/a/inner.txt") == "from/a/inner.txt" && tree.text("from/a/saved meanwhile.txt") == "new")
+    }
+
     @Test func replacingSwapsOnlyTheNamedItemAndKeepsTheOldInTheTrash() throws {
         let tree = try TestTree("from/", "from/a.txt", "to/", "to/a.txt", "to/b.txt")
         let result = run(TransferItem(source: tree.url("from/a.txt"), destination: tree.url("to/a.txt"), operation: .copy,

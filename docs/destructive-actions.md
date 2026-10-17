@@ -2,8 +2,8 @@
 
 Every way Strata deletes, trashes, moves, renames, overwrites, evicts, or changes the permissions or metadata of
 files, on this Mac, on a server, in a container's copy, or in its own stores, with the code that does it and the tests
-that cover it (`TestFile/test`, under `Tests/StrataTests`). Each test was checked by breaking the rule it guards and
-watching it fail. A change to any of these, or a new one, comes with tests and a row here (see AGENTS.md).
+that cover it (`TestFile/test`, under `Tests/StrataTests`). Each test is proven by a mutation that breaks its rule (see
+The proof, below). A change to any of these, or a new one, comes with tests and a row here (see AGENTS.md).
 
 ## Delete and the Trash
 
@@ -22,7 +22,7 @@ watching it fail. A change to any of these, or a new one, comes with tests and a
 | ⌘Z / ⇧⌘Z of moves, renames, Move to Trash | `FileOps.registerMoveUndo`, `FileOps.Landed` | `TrashUndoTests/undoingARenameLeavesAFileSwappedInSince`, `undoAndRedoPressedAtOnceHappenInOrder`, `undoingTwoOperationsAtOnceUndoesBoth`; `AcrossDisksTests/aRenameAcrossDisksUndoesAndRedoes` |
 | ⌘Z / ⇧⌘Z of copies, duplicates, move jobs | `TransferUndo.register`, `TransferUndo.perform`, `TransferJob.landed` | `TrashUndoTests/undoingACopyTrashesOnlyItsOwnCopies`, `undoingAMoveJobMovesBackOnlyItsOwnItems`; `TransferTests/undoingACopyLeavesAFileSwappedInWhileTheJobRan`, `aFileSwappedTheMomentItLandsIsNeverUndone`, `aRenamedFileSwappedTheMomentItLandsIsNeverUndone`; `AcrossDisksTests/aMoveJobAcrossDisksUndoesAndRedoesOnlyItsOwnItems`, `undoAndRedoPressedAtOnceAcrossDisksBothHappenInOrder`, `aFileSwappedTheMomentItLandsAcrossDisksIsNeverUndone` |
 | ⌘Z of New Folder / New File | `FileOps.registerTrashUndo` | `TrashUndoTests/undoingANewFolderLeavesOneMadeInItsPlace` |
-| Undo from History | `OperationLog.undo`, `holdsOriginal` | `TrashUndoTests/historyUndoBringsBackWhatWasTrashedAndOnlyThat`, `undoLeavesAloneWhatTookTheOldPlace`, `undoNeverMovesBackAnItemThatWasSwappedForAnother`, `undoMovesBackOnlyTheMovedItems` |
+| Undo from History | `OperationLog.undo`, `holdsOriginal`, `sameIdentity` | `TrashUndoTests/historyUndoBringsBackWhatWasTrashedAndOnlyThat`, `undoLeavesAloneWhatTookTheOldPlace`, `undoNeverMovesBackAnItemThatWasSwappedForAnother`, `undoMovesBackOnlyTheMovedItems`, `historyUndoChecksIdentitiesSavedByOlderVersions` |
 
 ## Copy, move, drop, paste
 
@@ -92,6 +92,14 @@ watching it fail. A change to any of these, or a new one, comes with tests and a
 | Containers' and servers' copies (remove, set aside at quit) | `ContainerCopies.remove`, `RemoteCopies.remove`, `setAsideForRemoval`, `removeSetAside` | `CacheRemovalTests/aContainersOwnFilesAreNeverRemovedAsAFolder`, `settingCopiesAsideRemovesOnlyThemAtQuit` |
 | Stores (History, index), content index reset, script files | `SecureStorage.write`, `SemanticIndex.reset`, `ProjectActions.removeStaleCommandFiles` | `CacheRemovalTests/savingAStoreReplacesOnlyItsOwnFile`, `resettingTheContentIndexRemovesOnlyItsStore`, `staleScriptFilesGoOnlyFromTheirFolder` |
 | Tests never touch your data | `SecureStorage.isTestRun`, `caches` | `DeleteTests/testRunsKeepHistoryAndIndexesOutOfYourOwn`; `DeleteScopeTests/testsKeepToCachesOfTheirOwn` |
+
+## The proof: mutations
+
+`Tests/mutations.json` holds, for every action row above, at least one mutation: a one-line change to the code that
+breaks the rule (skips a check, reads it late, applies it to the wrong item), and the tests that must then fail.
+`scripts/mutate.py` applies each alone, runs those tests, and restores the file; the **Mutations** workflow runs it
+weekly and on request. A row whose tests pass with the rule broken isn't covered, whatever the map says, so a new test
+comes with a mutation, and a mutation whose text no longer matches the code is updated, not dropped.
 
 ## Where the system is stood in for
 

@@ -116,14 +116,20 @@ extension TransferTests {
                                                options: .init(verify: false, clone: false), undo: undo, conflicts: .keepBoth).finished()
         }
         // Redo straight after undo, before its job has moved anything back: it waits for the undo, then moves the
-        // items across again.
+        // items across again. Each crossing makes a new file, so the ones in `to` at the end aren't the ones there
+        // now: that, not the listing alone, shows both steps happened (the listing looks the same before the undo
+        // has done anything).
+        let before = FileOps.Landed.identity(to.appending(path: "a.txt").path)
         undo.undo()
         undo.redo()
-        // The redo waits for the undo's job, then starts its own.
         await FileOps.undoWork?.value
-        await settle { TestTree.listing(of: to) == ["a.txt", "b.txt"] }
-        // Every item once, whole.
+        await settle {
+            tree.snapshot().isEmpty && TestTree.listing(of: to) == ["a.txt", "b.txt"]
+                && FileOps.Landed.identity(to.appending(path: "a.txt").path) != before
+        }
+        // Every item once, whole, and new there.
         #expect(tree.snapshot().isEmpty && TestTree.listing(of: to) == ["a.txt", "b.txt"])
+        #expect(FileOps.Landed.identity(to.appending(path: "a.txt").path) != before)
         #expect(try String(contentsOf: to.appending(path: "a.txt"), encoding: .utf8) == "a.txt")
         await volume.eject()
     }

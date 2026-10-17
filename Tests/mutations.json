@@ -1,0 +1,550 @@
+[
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "        !Trash.isTrash(anySpelling: url) && !Trash.isInTrash(url)",
+    "replace": "        !Trash.isInTrash(url)",
+    "rule": "Move to Trash takes the Trash itself",
+    "tests": "DeleteScopeTests|DropTests"
+  },
+  {
+    "file": "Strata/Model/Trash.swift",
+    "find": "        isTrash(url) || isTrash(url.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: url.lastPathComponent))",
+    "replace": "        isTrash(url)",
+    "rule": "A Trash spelled through a link isn't recognized",
+    "tests": "DeleteScopeTests"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Trash.swift",
+    "find": "|| Trash.isTrash(anySpelling: url)",
+    "replace": "",
+    "rule": "Delete Immediately deletes a Trash",
+    "tests": "DeleteScopeTests"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Trash.swift",
+    "find": "        for path in paths where !kept.contains(where: { path == $0 || path.hasPrefix($0 == \"/\" ? \"/\" : $0 + \"/\") }) {",
+    "replace": "        for path in paths {",
+    "rule": "Delete handles an item and something inside it twice",
+    "tests": "DeleteTests"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Trash.swift",
+    "find": "            if fixed || !changeable { refused.append(url) }\n            return !fixed && changeable",
+    "replace": "            if fixed { refused.append(url) }\n            return !fixed",
+    "rule": "Delete goes ahead in a folder that can't be changed",
+    "tests": "DeleteTests"
+  },
+  {
+    "file": "Strata/Model/Trash.swift",
+    "find": "            let fd = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)",
+    "replace": "            let fd = open(folder.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)",
+    "rule": "Empty Trash follows a Trash that is a link",
+    "tests": "DeleteTests"
+  },
+  {
+    "file": "Strata/Model/Trash.swift",
+    "find": "              !names.contains(where: { $0 == \".\" || $0 == \"..\" || $0.contains(\"\\0\") }),",
+    "replace": "              !names.contains(where: { $0.contains(\"\\0\") }),",
+    "rule": "Put Back follows a record with dot names",
+    "tests": "PutBackTests"
+  },
+  {
+    "file": "Strata/Model/Trash.swift",
+    "find": "            guard info.st_mode & S_IFMT == S_IFDIR, info.st_dev == device else { return nil }",
+    "replace": "            guard info.st_dev == device else { return nil }",
+    "rule": "Put Back goes through a link on the way",
+    "tests": "PutBackTests"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "            !FileOps.canTrash(url) || (try?",
+    "replace": "            (try?",
+    "rule": "The sidebar's Trash takes anything dropped",
+    "tests": "DropTests"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "                let back = moves.filter { landed.holds($0.to) }.reversed().map { (from: $0.to, to: $0.from) }",
+    "replace": "                let back = moves.reversed().map { (from: $0.to, to: $0.from) }",
+    "rule": "Undo of a rename moves back a file swapped in since",
+    "tests": "TrashUndoTests|TransferTests/aRenamedFile"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "        let task = Task {\n            await previous?.value\n            await work()\n        }",
+    "replace": "        let task = Task {\n            await work()\n        }",
+    "rule": "Undo steps don't wait for the one before",
+    "tests": "TrashUndoTests/undoingTwoOperations|TrashUndoTests/undoAndRedoPressed"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "            if Self.disk(expected) != Self.disk(now) { identities[destination.path] = now }",
+    "replace": "",
+    "rule": "Redo across disks loses track of the item",
+    "tests": "TransferTests/aRenameAcross"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "                let made = created.filter(landed.holds)",
+    "replace": "                let made = created",
+    "rule": "Undo of New Folder trashes a folder made in its place",
+    "tests": "TrashUndoTests"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "        done.forEach { landed.arrived($0.to); TransferEngine.hooks.afterLanding?($0.to) }",
+    "replace": "        done.forEach { TransferEngine.hooks.afterLanding?($0.to); landed.record([$0.to]) }",
+    "rule": "A moved item's identity is read after it lands",
+    "tests": "TransferTests/aRenamedFile"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "                let existing = created.filter(landed.holds)",
+    "replace": "                let existing = created.filter { TransferEngine.exists($0) }",
+    "rule": "Undo of a copy trashes a file swapped in since",
+    "tests": "TrashUndoTests|TransferTests/undoingACopy|TransferTests/aFileSwappedTheMomentItLandsIsNever"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "                let back = moved.filter { landed.holds($0.to) }.reversed().map(\\.reversed)",
+    "replace": "                let back = moved.reversed().map(\\.reversed)",
+    "rule": "Undo of a move job moves back a file swapped in since",
+    "tests": "TrashUndoTests|TransferTests/aMoveJobAcross"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "                await job.finished()\n                return job.completedMoves.filter { job.landed.holds($0.to) }",
+    "replace": "                return job.completedMoves.filter { job.landed.holds($0.to) }",
+    "rule": "A redo doesn't wait for the undo's job",
+    "tests": "TransferTests/undoAndRedoPressedAtOnceAcrossDisks"
+  },
+  {
+    "file": "Strata/Transfers/TransferJob.swift",
+    "find": "                              logHistory: logsHistory, containers: containers, landed: landed)",
+    "replace": "                              logHistory: logsHistory, containers: containers)",
+    "rule": "A job records its items only when done, not as they land",
+    "tests": "TransferTests/undoingACopyLeavesAFileSwappedInWhileTheJobRan"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "                result.landed = identity\n                hooks.afterLanding?(item.destination)",
+    "replace": "                hooks.afterLanding?(item.destination)\n                result.landed = FileOps.Landed.identity(item.destination.path)",
+    "rule": "A renamed item's identity is read after it lands",
+    "tests": "TransferTests/aFileSwapped"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "        result.landed = FileOps.Landed.identity(target.path)\n        hooks.afterLanding?(target)",
+    "replace": "        hooks.afterLanding?(target)\n        result.landed = FileOps.Landed.identity(target.path)",
+    "rule": "A copied item's identity is read after it lands",
+    "tests": "TransferTests/aFileSwapped"
+  },
+  {
+    "file": "Strata/Model/OperationLog.swift",
+    "find": "        return recorded == \"\\(info.st_dev):\\(info.st_ino)\"",
+    "replace": "        return true",
+    "rule": "History's undo trusts identities saved by older versions",
+    "tests": "TrashUndoTests/historyUndoChecksIdentities"
+  },
+  {
+    "file": "Strata/Model/OperationLog.swift",
+    "find": "        guard recorded.contains(\":\"), !recorded.contains(\"/\") else { return identity(path) == recorded }",
+    "replace": "        guard recorded.contains(\":\"), !recorded.contains(\"/\") else { return true }",
+    "rule": "History's undo skips the identity check for current entries",
+    "tests": "TrashUndoTests"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "        if renamex_np(source.path, destination.path, UInt32(RENAME_EXCL)) == 0 { return 0 }",
+    "replace": "        if Darwin.rename(source.path, destination.path) == 0 { return 0 }",
+    "rule": "A move replaces what has its name without asking",
+    "tests": "TransferTests|TransferJobTests"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "            // Anything saved into the original while it was being copied isn't in the copy: keep the original then.\n            if let change = changedSinceCopy(item.source, copy: item.destination) {",
+    "replace": "            // Anything saved into the original while it was being copied isn't in the copy: keep the original then.\n            if let change = Optional<String>.none {",
+    "rule": "A move removes an original that gained a file during the copy",
+    "tests": "TransferTests/anOriginalThatChanged"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "            for mismatch in check.mismatches {\n                // A bad copy is worse than none: drop it so a retry starts clean.",
+    "replace": "            for mismatch in check.mismatches where false {\n                // A bad copy is worse than none: drop it so a retry starts clean.",
+    "rule": "A replace swaps in a copy that failed to verify",
+    "tests": "TransferTests/aCopyThatFailsToVerify"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "        let moves = moves.filter { !ReadOnlyCopies.contains($0.to) }\n",
+    "replace": "",
+    "rule": "A transfer goes into a read-only copy",
+    "tests": "TransferJobTests/aReadOnly"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "let mode = mode == .move && moves.contains(where: { ReadOnlyCopies.contains($0.from) }) ? .copy : mode",
+    "replace": "let mode = mode",
+    "rule": "A move out of a read-only copy removes from it",
+    "tests": "TransferJobTests/aReadOnly"
+  },
+  {
+    "file": "Strata/Transfers/TransferJob.swift",
+    "find": "        } else if item.decision == .keepBoth || placedByThisJob {",
+    "replace": "        } else if item.decision == .keepBoth {",
+    "rule": "Two items of one job with the same name replace each other",
+    "tests": "TransferJobTests/twoItemsWithTheSameName"
+  },
+  {
+    "file": "Strata/Views/FileCollection.swift",
+    "find": "        if isInside(urls, target) { return [] }\n",
+    "replace": "",
+    "rule": "A drop into the item itself is allowed",
+    "tests": "DropTests"
+  },
+  {
+    "file": "Strata/Views/FileCollection.swift",
+    "find": "        if ReadOnlyCopies.contains(target) { return [] }\n",
+    "replace": "",
+    "rule": "A drop into a read-only copy is allowed",
+    "tests": "DropTests"
+  },
+  {
+    "file": "Strata/Views/FileCollection.swift",
+    "find": "let wantsCopy = option ||",
+    "replace": "let wantsCopy =",
+    "rule": "Option doesn't make a drop copy",
+    "tests": "DropTests"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "        return (urls, cut?.changeCount == pasteboard.changeCount)",
+    "replace": "        return (urls, cut != nil)",
+    "rule": "A Cut survives another app's copy and the next paste moves",
+    "tests": "ClipboardTests"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "        if isCut { Clipboard.clearCut() }\n",
+    "replace": "",
+    "rule": "A Cut isn't used up by the paste",
+    "tests": "ClipboardTests"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "rule": "Rename takes a name another item has",
+    "tests": "InlineRenameTests|RenameTests",
+    "edits": [
+      {
+        "find": "        if TransferEngine.exists(destination), destination.path.lowercased() != url.path.lowercased() {",
+        "replace": "        if false {"
+      },
+      {
+        "find": "        try FileManager.default.moveItem(at: from, to: to)",
+        "replace": "        if Darwin.rename(from.path, to.path) != 0 { try FileManager.default.moveItem(at: from, to: to) }"
+      }
+    ]
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "        guard !name.isEmpty, name != \".\", name != \"..\", !name.contains(\"/\") else {",
+    "replace": "        guard !name.isEmpty else {",
+    "rule": "Rename accepts a path and moves the item",
+    "tests": "InlineRenameTests"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "rule": "New File writes over a file or link with its name",
+    "tests": "NewFileTests",
+    "edits": [
+      {
+        "find": "        var url = available(directory.appending(path: name), copyStyle: false)",
+        "replace": "        var url = directory.appending(path: name)"
+      },
+      {
+        "find": "                try Data().write(to: url, options: .withoutOverwriting)",
+        "replace": "                try Data().write(to: url)"
+      }
+    ]
+  },
+  {
+    "file": "Strata/Model/FileInfoEditing.swift",
+    "find": "        if lchflags(path, flags) != 0 { throw posixError(path) }",
+    "replace": "        if chflags(path, flags) != 0 { throw posixError(path) }",
+    "rule": "Locking a link locks what it points to",
+    "tests": "MetadataEditTests"
+  },
+  {
+    "file": "Strata/Model/FileInfoEditing.swift",
+    "find": "        guard info.st_mode & S_IFMT != S_IFLNK else { throw CocoaError(.fileWriteUnsupportedScheme) }\n",
+    "replace": "",
+    "rule": "Permissions can be set on a link",
+    "tests": "MetadataEditTests"
+  },
+  {
+    "file": "Strata/Model/FileInfoEditing.swift",
+    "find": "        let result = data.withUnsafeBytes { setxattr(path, commentAttribute, $0.baseAddress, data.count, 0, XATTR_NOFOLLOW) }",
+    "replace": "        let result = data.withUnsafeBytes { setxattr(path, commentAttribute, $0.baseAddress, data.count, 0, 0) }",
+    "rule": "A comment on a link goes on what it points to",
+    "tests": "MetadataEditTests"
+  },
+  {
+    "file": "Strata/Model/TagStore.swift",
+    "find": "return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT != S_IFLNK && !ReadOnlyCopies.contains(url)",
+    "replace": "return lstat(url.path, &info) == 0 && !ReadOnlyCopies.contains(url)",
+    "rule": "Tags go on links",
+    "tests": "MetadataEditTests"
+  },
+  {
+    "file": "Strata/Model/FolderCompare.swift",
+    "find": "            guard Self.actions(for: difference.kind).contains(action) else { continue }\n",
+    "replace": "",
+    "rule": "Sync carries out an action the difference doesn't allow",
+    "tests": "FolderSyncTests"
+  },
+  {
+    "file": "Strata/Model/FolderCompare.swift",
+    "find": "r = right.appending(path: difference.rightPath)",
+    "replace": "r = right.appending(path: difference.leftPath)",
+    "rule": "Sync uses the left side's spelling on the right",
+    "tests": "FolderSyncTests"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "find": "            if renamex_np(item.path, destination.path, UInt32(RENAME_EXCL)) == 0 { return destination }",
+    "replace": "            if rename(item.path, destination.path) == 0 { return destination }",
+    "rule": "Compress or extract replaces an existing item",
+    "tests": "MetadataEditTests|ArchiveSafetyTests"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "find": "        if items.count == 1, !isSymlink(first) {",
+    "replace": "        if items.count == 1 {",
+    "rule": "Compressing a lone link follows it",
+    "tests": "MetadataEditTests"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "find": "                      resolve(target, from: parent, in: rootPath, hops: 0, budget: &budget) != nil else {",
+    "replace": "                      true else {",
+    "rule": "Extraction keeps a link that leads outside the archive",
+    "tests": "ArchiveSafetyTests"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "find": "        guard fstatat(parent, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else { return }",
+    "replace": "        guard fstatat(parent, name, &info, 0) == 0 else { return }",
+    "rule": "Removing a cache tree follows links out of it",
+    "tests": "CacheRemovalTests"
+  },
+  {
+    "file": "Strata/AI/PlanValidator.swift",
+    "find": "            let named = names(instruction, text) || names(instruction, folder.path)\n                || names(instruction, (folder.path as NSString).abbreviatingWithTildeInPath)",
+    "replace": "            let named = instruction.localizedCaseInsensitiveContains(text)",
+    "rule": "A plan moves into a folder the instruction only partly names",
+    "tests": "PlanSafetyTests"
+  },
+  {
+    "file": "Strata/AI/PlanExecutor.swift",
+    "find": "        await moveBack(done.filter { applied.holds($0.to) }.reversed()",
+    "replace": "        await moveBack(done.reversed()",
+    "rule": "Undo of a plan moves back a file swapped in since",
+    "tests": "PlanSafetyTests"
+  },
+  {
+    "file": "Strata/AI/PlanExecutor.swift",
+    "find": "        let trashItems = restored.map { restored in self.trashItems.filter(restored.holds) } ?? self.trashItems",
+    "replace": "        let trashItems = self.trashItems",
+    "rule": "Redo of a plan trashes a file swapped in since",
+    "tests": "PlanSafetyTests"
+  },
+  {
+    "file": "Strata/AI/PlanExecutor.swift",
+    "find": "            if contents.allSatisfy({ $0 == \".DS_Store\" }) { try? fm.removeItem(at: folder) }",
+    "replace": "            try? fm.removeItem(at: folder)",
+    "rule": "Undo of a plan removes a folder something was put in",
+    "tests": "PlanSafetyTests"
+  },
+  {
+    "file": "Strata/Dev/ProjectDetector.swift",
+    "find": "                guard isRealDirectory(step.path) else { return }",
+    "replace": "",
+    "rule": "Project cleanup offers a folder reached through a link",
+    "tests": "ProjectCleanupTests"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "        guard try client.lstat(root).isDirectory else { return try client.removeFile(root) }",
+    "replace": "        guard try client.stat(root).isDirectory else { return try client.removeFile(root) }",
+    "rule": "Deleting a link on a server deletes what it points to",
+    "tests": "RemoteFilesTests/deletingALink"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "            guard path != \"/\", destination != path, !destination.hasPrefix(path + \"/\") else { continue }",
+    "replace": "            guard path != \"/\" else { continue }",
+    "rule": "A folder on a server is moved into itself",
+    "tests": "RemoteFilesTests/movesOnAServer"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Servers.swift",
+    "find": "return canAsk ? .ask : .upload(skipping: Set(clashing))",
+    "replace": "return canAsk ? .ask : .upload(skipping: [])",
+    "rule": "An upload replaces taken names when there's no window to ask in",
+    "tests": "RemoteFilesTests/copyingOnto"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "        let from = try Self.changeable(path), to = try Self.changeable(newPath)\n        if try await exists(newPath) { throw RemoteError.exists(RemotePath.name(newPath)) }",
+    "replace": "        let from = try Self.changeable(path), to = try Self.changeable(newPath)",
+    "rule": "An S3 rename replaces a key that's there",
+    "tests": "S3Tests/renamingOnS3"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "        for item in items { try await client.copy(item.key, to: toPrefix + item.key.dropFirst(fromPrefix.count)) }\n        if items.isEmpty { try await client.makeFolder(toPrefix) }\n        for item in items { try await client.delete(item.key) }",
+    "replace": "        for item in items {\n            try await client.copy(item.key, to: toPrefix + item.key.dropFirst(fromPrefix.count))\n            try await client.delete(item.key)\n        }\n        if items.isEmpty { try await client.makeFolder(toPrefix) }",
+    "rule": "An S3 folder's keys are deleted before all are copied",
+    "tests": "S3Tests/aCopyThatFails"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "let items = try await client.listAll(fromPrefix).filter { $0.key.hasPrefix(fromPrefix) }",
+    "replace": "let items = try await client.listAll(fromPrefix)",
+    "rule": "An S3 rename trusts a listing that ignores the prefix",
+    "tests": "S3Tests/renamingAFolder"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "        for item in try await client.listAll(prefix) where item.key.hasPrefix(prefix) {",
+    "replace": "        for item in try await client.listAll(prefix) {",
+    "rule": "An S3 delete trusts a listing that ignores the prefix",
+    "tests": "S3Tests/deletingAFolder"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "        guard !key.isEmpty else { throw RemoteError.refused(String(localized: \"The bucket itself can’t be changed from Strata.\")) }",
+    "replace": "        guard true else { throw RemoteError.refused(String(localized: \"The bucket itself can’t be changed from Strata.\")) }",
+    "rule": "The bucket's top is deleted or written to",
+    "tests": "S3Tests/theBucketItself|S3Tests/uploadsAndFolders"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "guard !parts.isEmpty, entry.kind != .other,\n                          parts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) })",
+    "replace": "guard !parts.isEmpty, entry.kind != .other,\n                          parts.allSatisfy({ !$0.hasPrefix(tempPrefix) })",
+    "rule": "A container's tar entry with dot-dot parts is written",
+    "tests": "ContainerTests/aContainersFolder"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "            guard !targetParts.isEmpty, targetParts.allSatisfy(ContainerCopies.isSafeName) else { continue }",
+    "replace": "            guard !targetParts.isEmpty else { continue }",
+    "rule": "A container's hard link leads out of the copy",
+    "tests": "ContainerTests/aContainersFolder"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "        let rootFD = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)\n        guard rootFD >= 0 else { throw CocoaError(.fileReadNoPermission) }\n        /// The folders open along",
+    "replace": "        let rootFD = open(folder.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)\n        guard rootFD >= 0 else { throw CocoaError(.fileReadNoPermission) }\n        /// The folders open along",
+    "rule": "A container copy that is a link is written through",
+    "tests": "ContainerTests/aCopyThat"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "                    guard out >= 0, !done else { return }",
+    "replace": "                    guard out >= 0 else { return }",
+    "rule": "A fetched file holds data from later entries",
+    "tests": "ContainerTests/aFetched"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "        guard fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFREG,\n              renameat(fd, temp, fd, name) == 0 else {",
+    "replace": "        guard renameat(fd, temp, fd, name) == 0 else {",
+    "rule": "A fetched file replaces a folder or link now at its place",
+    "tests": "ContainerTests/aFetchThat"
+  },
+  {
+    "file": "Strata/Containers/ContainerCopies.swift",
+    "find": "        if depth == 3, source(of: folder.deletingLastPathComponent()) != nil { return }\n",
+    "replace": "",
+    "rule": "A folder inside a container's own files is removed",
+    "tests": "CacheRemovalTests/aContainers"
+  },
+  {
+    "file": "Strata/Containers/ContainerCopies.swift",
+    "find": "where name.hasPrefix(\"Containers-removed-\") {",
+    "replace": "where name.hasPrefix(\"Containers-removed\") {",
+    "rule": "Quitting removes a folder only named like a set-aside one",
+    "tests": "CacheRemovalTests/settingCopies"
+  },
+  {
+    "file": "Strata/Model/CloudStatus.swift",
+    "find": "guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT != S_IFLNK, status(url) == .downloaded else { return false }",
+    "replace": "guard lstat(url.path, &info) == 0, status(url) == .downloaded else { return false }",
+    "rule": "Remove Download evicts through a link",
+    "tests": "DeleteScopeTests/removeDownload"
+  },
+  {
+    "file": "Strata/Model/CloudStatus.swift",
+    "find": "guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT != S_IFLNK, status(url) == .downloaded else { return false }",
+    "replace": "guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT != S_IFLNK, status(url) != .cloudOnly else { return false }",
+    "rule": "Remove Download evicts what's still uploading",
+    "tests": "DeleteScopeTests/removeDownload"
+  },
+  {
+    "file": "Strata/Settings/SettingsWindowController.swift",
+    "find": "        return lstat(link, &info) != 0 && errno == ENOENT",
+    "replace": "        return true",
+    "rule": "Installing the command replaces whatever is at its path",
+    "tests": "DeleteScopeTests/theCommand"
+  },
+  {
+    "file": "Strata/Model/ArchiveCache.swift",
+    "find": "guard path.hasPrefix(rootPath + \"/\"), !path.dropFirst(rootPath.count + 1).contains(\"/\") else { return }",
+    "replace": "guard path.hasPrefix(rootPath + \"/\") else { return }",
+    "rule": "An archive copy's inner folder is removed from the cache",
+    "tests": "CacheRemovalTests/aCopyIsRemoved"
+  },
+  {
+    "file": "Strata/Model/ArchiveCache.swift",
+    "find": "            if idle > age || sourceGone {",
+    "replace": "            if sourceGone {",
+    "rule": "Pruning keeps copies not opened for a day",
+    "tests": "CacheRemovalTests/pruning"
+  },
+  {
+    "file": "Strata/Model/ArchiveCache.swift",
+    "find": "            if keep.contains(copy.top.standardizedFileURL.path) { continue }\n",
+    "replace": "",
+    "rule": "Pruning removes a copy that's on show",
+    "tests": "CacheRemovalTests/pruning"
+  },
+  {
+    "file": "Strata/AI/SemanticIndex.swift",
+    "find": "        try? FileManager.default.removeItem(at: storeURL)",
+    "replace": "        try? FileManager.default.removeItem(at: configuration.storeDirectory)",
+    "rule": "Resetting the content index removes its whole folder",
+    "tests": "CacheRemovalTests/resetting"
+  },
+  {
+    "file": "Strata/Model/SecureStorage.swift",
+    "find": "for name in names where name.hasPrefix(prefix) && name.hasSuffix(\".tmp\") {",
+    "replace": "for name in names where name.hasSuffix(\".tmp\") {",
+    "rule": "Saving a store sweeps another store's temporary files",
+    "tests": "CacheRemovalTests/savingAStore"
+  },
+  {
+    "file": "Strata/Model/SecureStorage.swift",
+    "find": "    static let caches: URL = isTestRun",
+    "replace": "    static let caches: URL = false",
+    "rule": "Tests use the app's own caches",
+    "tests": "DeleteScopeTests/testsKeep"
+  },
+  {
+    "file": "Strata/Dev/ProjectActions.swift",
+    "find": "contentModificationDate, date < cutoff {",
+    "replace": "contentModificationDate, date < Date() {",
+    "rule": "Stale script cleanup removes a script just written",
+    "tests": "CacheRemovalTests/staleScript"
+  }
+]

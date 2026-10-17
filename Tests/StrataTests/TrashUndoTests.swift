@@ -81,6 +81,23 @@ struct TrashUndoTests {
         #expect(tree.text("b.txt") == "someone else's")
     }
 
+    @Test func historyUndoChecksIdentitiesSavedByOlderVersions() async throws {
+        let tree = try TestTree("a.txt")
+        try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt"))], actionName: "Rename", undo: nil)
+        var renamed = try #require(entry(for: tree))
+        // History saved before volume UUIDs were used recorded each item as "device:inode".
+        var info = stat()
+        #expect(lstat(tree.url("b.txt").path, &info) == 0)
+        renamed.identities[tree.url("b.txt").path] = "\(info.st_dev):\(info.st_ino)"
+        #expect(OperationLog.shared.canUndo(renamed))
+        // Swapped for another file, it's no longer the one the rename left: undo refuses and moves nothing.
+        try FileManager.default.removeItem(at: tree.url("b.txt"))
+        try Data("someone else's".utf8).write(to: tree.url("b.txt"))
+        #expect(!OperationLog.shared.canUndo(renamed))
+        await #expect(throws: (any Error).self) { try await OperationLog.shared.undo(renamed, undoManager: nil) }
+        #expect(tree.snapshot() == ["b.txt"] && tree.text("b.txt") == "someone else's")
+    }
+
     @Test func undoMovesBackOnlyTheMovedItems() async throws {
         let tree = try TestTree("from/", "from/a.txt", "from/b.txt", "from/stays.txt", "to/", "to/there.txt")
         try await FileOps.move([(from: tree.url("from/a.txt"), to: tree.url("to/a.txt")),

@@ -1,0 +1,51 @@
+name: Mutations
+
+# Proves the destructive-action tests guard their rules: each entry in Tests/mutations.json breaks one rule in the code,
+# and its tests must fail. Every entry is a build and a test run, so this runs weekly and on request, not on every push.
+# It also catches entries whose text no longer matches the code (the code moved: update the entry).
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      rules:
+        description: "Only mutations whose rule mentions these words (space separated); empty for all"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutations-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  XCODE_VERSION: "26.6"
+
+jobs:
+  mutate:
+    runs-on: macos-26
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode ${{ env.XCODE_VERSION }}
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app"
+          swift --version
+
+      - name: Build once, so each mutation rebuilds only what it changed
+        run: swift build --build-tests
+
+      - name: Every mutation is caught by its tests
+        env:
+          RULES: ${{ inputs.rules }}
+        run: |
+          set -euo pipefail
+          read -r -a words <<< "${RULES:-}"
+          python3 scripts/mutate.py "${words[@]}"

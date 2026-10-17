@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Lists every function in Sources/ that holds a call able to delete, move, rename, overwrite, truncate, evict or
-change the metadata of a file, or that runs a tool, and checks each is named in docs/destructive-actions.md.
+change the metadata of a file, or that runs a tool, and checks each is named in docs/destructive-actions.md. Also checks
+Tests/mutations.json still fits the code: each file exists, each `find` occurs exactly once, and each `tests` filter
+names a test that exists (the mutations themselves run weekly, in the Mutations workflow).
 
     python3 scripts/audit-destructive.py          # the list, then any function the map doesn't name
     python3 scripts/audit-destructive.py --check  # only the check (CI); exits 1 when the map falls behind
@@ -9,6 +11,7 @@ A function only reaches the map by being read: add its row (or add it to one) wi
 """
 import collections
 import glob
+import os
 import re
 import sys
 
@@ -66,6 +69,38 @@ def named_in_map():
     return names
 
 
+def mutation_problems():
+    """Entries of Tests/mutations.json that no longer fit the code or the tests."""
+    import json
+    problems = []
+    # A test belongs to the suites its file declares or extends (AcrossDisksTests.swift extends TransferTests).
+    tests = set()
+    for path in glob.glob("Tests/StrataTests/*.swift"):
+        text = open(path).read()
+        suites = set(re.findall(r"^(?:@Suite[^\n]*\n)?\s*(?:struct|extension|final class|class)\s+(\w+)", text, re.M))
+        suites.add(path.split("/")[-1].removesuffix(".swift"))
+        for name in re.findall(r"@Test func (\w+)", text):
+            for suite in suites:
+                tests.add((suite, name))
+    for m in json.load(open("Tests/mutations.json")):
+        source_path = os.path.join("Sources", m["file"])
+        if not os.path.exists(source_path):
+            problems.append(f"{m['rule']}: no file Sources/{m['file']}")
+            continue
+        source = open(source_path).read()
+        for edit in m.get("edits") or [{"find": m["find"]}]:
+            n = source.count(edit["find"])
+            if n != 1:
+                problems.append(f"{m['rule']}: `find` occurs {n} times in {m['file']} (update the entry)")
+        # "Suite/namePrefix|Other" — each alternative must match a test: by suite (any file holding that suite's tests
+        # or extensions of it) and name prefix, or by suite alone.
+        for alternative in m["tests"].split("|"):
+            suite, _, prefix = alternative.partition("/")
+            if not any(s == suite and name.startswith(prefix) for s, name in tests):
+                problems.append(f"{m['rule']}: tests `{alternative}` match no test")
+    return problems
+
+
 def main():
     check_only = "--check" in sys.argv
     found = audit()
@@ -87,8 +122,14 @@ def main():
         print("Not in docs/destructive-actions.md:")
         for item in missing:
             print("  " + item)
+    problems = mutation_problems()
+    if problems:
+        print("Tests/mutations.json no longer fits:")
+        for item in problems:
+            print("  " + item)
+    if missing or problems:
         sys.exit(1)
-    print(f"docs/destructive-actions.md names all {len(found)} functions the audit found.")
+    print(f"docs/destructive-actions.md names all {len(found)} functions the audit found; Tests/mutations.json fits the code.")
 
 
 if __name__ == "__main__":
