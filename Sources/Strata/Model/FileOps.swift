@@ -321,12 +321,39 @@ enum FileOps {
         contentsOfFile: "/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/finder/move to trash.aif",
         byReference: true)
 
+    /// Where items landed and what they are there (see `OperationLog.identity`), recorded once an operation is done,
+    /// so its undo moves or trashes only those very items: never one put in an item's place since, however alike its
+    /// name.
+    final class Landed {
+        private var identities: [String: String] = [:]
+
+        init(_ urls: [URL] = []) { record(urls) }
+
+        func record(_ urls: [URL]) {
+            for url in urls { identities[url.path] = OperationLog.identity(url.path) }
+        }
+
+        /// What's at `url` now, expected at `destination` once it's moved there (a move on one disk keeps what an item
+        /// is): its undo works even before the move is done.
+        func expect(_ url: URL, at destination: URL) {
+            identities[destination.path] = OperationLog.identity(url.path)
+        }
+
+        func holds(_ url: URL) -> Bool {
+            guard let identity = identities[url.path] else { return false }
+            return OperationLog.identity(url.path) == identity
+        }
+    }
+
     /// Undo for something just made: it goes to the Trash; redoing brings it back. History follows both.
     private static func registerTrashUndo(_ created: [URL], _ actionName: String, _ undo: UndoManager?, entry: UUID?) {
         guard !created.isEmpty else { return }
+        let landed = Landed(created)
         register(actionName, undo) { undo in
             do {
-                try trash(created, undo: undo, record: false, entry: entry, marksUndone: false)
+                let made = created.filter(landed.holds)
+                guard !made.isEmpty else { return }
+                try trash(made, undo: undo, record: false, entry: entry, marksUndone: false)
                 if let entry { OperationLog.shared.setUndone(entry, true) }
             } catch {
                 reportUndoFailure(actionName, error)
@@ -362,22 +389,32 @@ enum FileOps {
         undo.setActionName(OperationLog.displayName(actionName))
     }
 
-    /// Undo for completed moves: move everything back. The inverse is registered right away, inside the undo
-    /// handler, so it lands on the redo stack (registering it later from a task would put it back on the undo stack).
-    /// History entry `entry` is marked `marksUndone` only once the moves have worked (the inverse flips it back);
-    /// `folders` are recreated first if they've gone (the folders an AI plan made, removed by undoing it).
+    /// Undo for completed moves: move the items back, those still where they went. The inverse is registered right
+    /// away, inside the undo handler, so it lands on the redo stack (registering it later from a task would put it
+    /// back on the undo stack); what it moves is recorded once the moves are done (`landed`). History entry `entry` is
+    /// marked `marksUndone` only once the moves have worked (the inverse flips it back); `folders` are recreated first
+    /// if they've gone (the folders an AI plan made, removed by undoing it).
     static func registerMoveUndo(_ moves: [Move], _ actionName: String, _ undo: UndoManager?, entry: UUID? = nil,
-                                 marksUndone: Bool = true, recreating folders: [URL] = []) {
+                                 marksUndone: Bool = true, recreating folders: [URL] = [], landed: Landed? = nil) {
         guard !moves.isEmpty else { return }
+        let landed = landed ?? Landed(moves.map(\.to))
         register(actionName, undo) { undo in
-            let back = moves.reversed().map { (from: $0.to, to: $0.from) }
-            registerMoveUndo(back, actionName, undo, entry: entry, marksUndone: !marksUndone)
+            let back = moves.filter { landed.holds($0.to) }.reversed().map { (from: $0.to, to: $0.from) }
+            guard !back.isEmpty else { return }
+            let returned = Landed()
+            for pair in back { returned.expect(pair.from, at: pair.to) }
+            registerMoveUndo(back, actionName, undo, entry: entry, marksUndone: !marksUndone, landed: returned)
             Task {
                 do {
                     for folder in folders where !FileManager.default.fileExists(atPath: folder.path) {
                         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                     }
-                    try await move(back, actionName: actionName, undo: nil, record: false)
+                    guard !back.contains(where: { ReadOnlyCopies.contains($0.from) || ReadOnlyCopies.contains($0.to) }) else {
+                        throw insideArchiveError
+                    }
+                    let (done, error) = await moveAll(back)
+                    returned.record(done.map(\.to))
+                    if let error { throw error }
                     if let entry { OperationLog.shared.setUndone(entry, marksUndone) }
                 } catch {
                     reportUndoFailure(actionName, error)

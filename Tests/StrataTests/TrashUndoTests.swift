@@ -90,4 +90,94 @@ struct TrashUndoTests {
         try await OperationLog.shared.undo(moved, undoManager: nil)
         #expect(tree.snapshot() == ["from/", "from/a.txt", "from/b.txt", "from/stays.txt", "to/", "to/there.txt"])
     }
+
+    // MARK: - ⌘Z, after something took an item's place
+
+    /// Runs `body` as one undo group, as one command would be.
+    private func undoable(_ body: (UndoManager) async throws -> Void) async rethrows -> UndoManager {
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        undo.beginUndoGrouping()
+        try await body(undo)
+        undo.endUndoGrouping()
+        return undo
+    }
+
+    /// Swaps the item at `path` for another file of that name.
+    private func swap(_ tree: TestTree, _ path: String) throws {
+        try FileManager.default.removeItem(at: tree.url(path))
+        try Data("someone else's".utf8).write(to: tree.url(path))
+    }
+
+    @Test func undoingACopyTrashesOnlyItsOwnCopies() async throws {
+        let tree = try TestTree("a.txt", "b.txt", "to/", "to/keep.txt")
+        let undo = await undoable { undo in
+            await TransferQueue.shared.enqueue([tree.url("a.txt"), tree.url("b.txt")], to: tree.url("to"), mode: .copy,
+                                               options: .init(verify: false, clone: false), undo: undo, conflicts: .keepBoth).finished()
+        }
+        try swap(tree, "to/b.txt")
+        undo.undo()
+        await wait { !tree.snapshot().contains("to/a.txt") }
+        #expect(tree.snapshot() == ["a.txt", "b.txt", "to/", "to/b.txt", "to/keep.txt"])
+        #expect(tree.text("to/b.txt") == "someone else's")
+        // Redo brings the copy back out of the Trash (and leaves nothing of the test there).
+        undo.redo()
+        await wait { tree.snapshot().contains("to/a.txt") }
+        #expect(tree.snapshot() == ["a.txt", "b.txt", "to/", "to/a.txt", "to/b.txt", "to/keep.txt"])
+    }
+
+    @Test func undoingANewFolderLeavesOneMadeInItsPlace() async throws {
+        let tree = try TestTree("keep.txt")
+        let undo = try await undoable { undo in _ = try FileOps.newFolder(in: tree.root, undo: undo) }
+        let made = try #require(tree.snapshot().first { $0.hasSuffix("/") })
+        try FileManager.default.removeItem(at: tree.url(made))
+        try FileManager.default.createDirectory(at: tree.url(made), withIntermediateDirectories: false)
+        try Data("theirs".utf8).write(to: tree.url(made + "theirs.txt"))
+        undo.undo()
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(tree.snapshot() == ["keep.txt", made, made + "theirs.txt"])
+    }
+
+    @Test func undoingARenameLeavesAFileSwappedInSince() async throws {
+        let tree = try TestTree("a.txt", "c.txt")
+        let undo = try await undoable { undo in
+            try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt")), (from: tree.url("c.txt"), to: tree.url("d.txt"))],
+                                   actionName: "Rename", undo: undo)
+        }
+        try swap(tree, "b.txt")
+        undo.undo()
+        await wait { tree.snapshot().contains("c.txt") }
+        // "d.txt" was the renamed file: it goes back. "b.txt" isn't any more: it stays.
+        #expect(tree.snapshot() == ["b.txt", "c.txt"])
+        #expect(tree.text("b.txt") == "someone else's")
+        // Redo renames again exactly what undo moved back.
+        undo.redo()
+        await wait { tree.snapshot().contains("d.txt") }
+        #expect(tree.snapshot() == ["b.txt", "d.txt"])
+        #expect(tree.text("d.txt") == "c.txt")
+    }
+
+    @Test func undoingAMoveJobMovesBackOnlyItsOwnItems() async throws {
+        let tree = try TestTree("from/", "from/a.txt", "from/b.txt", "to/")
+        let undo = await undoable { undo in
+            await TransferQueue.shared.enqueue([tree.url("from/a.txt"), tree.url("from/b.txt")], to: tree.url("to"), mode: .move,
+                                               options: .init(verify: false, clone: false), undo: undo, conflicts: .keepBoth).finished()
+        }
+        try swap(tree, "to/b.txt")
+        undo.undo()
+        await wait { tree.snapshot().contains("from/a.txt") }
+        #expect(tree.snapshot() == ["from/", "from/a.txt", "to/", "to/b.txt"])
+        #expect(tree.text("to/b.txt") == "someone else's")
+        undo.redo()
+        await wait { tree.snapshot().contains("to/a.txt") }
+        #expect(tree.snapshot() == ["from/", "to/", "to/a.txt", "to/b.txt"])
+        // Undone again, then swapped before the redo: redo leaves that file where it is.
+        undo.undo()
+        await wait { tree.snapshot().contains("from/a.txt") }
+        try swap(tree, "from/a.txt")
+        undo.redo()
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(tree.snapshot() == ["from/", "from/a.txt", "to/", "to/b.txt"])
+        #expect(tree.text("from/a.txt") == "someone else's")
+    }
 }

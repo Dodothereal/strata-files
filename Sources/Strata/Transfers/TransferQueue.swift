@@ -274,12 +274,15 @@ enum TransferUndo {
             : nil
         guard let undo, !(created.isEmpty && moved.isEmpty && replaced.isEmpty) else { return }
         if let entry { FileOps.registerLogMark(entry, undone: true, undo) }
+        // Undo touches only these very items: never one put in an item's place since.
+        let landed = FileOps.Landed(created + moved.map(\.to) + replaced.map(\.to))
         undo.registerUndo(withTarget: undo) { undo in
             MainActor.assumeIsolated {
-                let existing = created.filter { TransferEngine.exists($0) }
+                let existing = created.filter(landed.holds)
                 if !existing.isEmpty { _ = try? FileOps.trash(existing, undo: undo, record: false) }
                 // Moved items go back first, then whatever they replaced comes out of the Trash into the freed spots.
-                let back = moved.reversed().map(\.reversed) + replaced.reversed().map(\.reversed)
+                let back = moved.filter { landed.holds($0.to) }.reversed().map(\.reversed)
+                    + replaced.filter { landed.holds($0.to) }.reversed().map(\.reversed)
                 perform(back, actionName: actionName, undo: undo, containers: containers.isEmpty ? .none : .remove(containers))
                 undo.setActionName(OperationLog.displayName(actionName))
             }
@@ -315,13 +318,17 @@ enum TransferUndo {
             // Part of an undo or redo: History already has the operation.
             let job = TransferQueue.shared.enqueue(moves: moves, mode: .move, undo: nil, conflicts: .keepBoth,
                                                    logHistory: false)
-            if case .remove(let folders) = containers { job.onFinish = { _ in FileOps.removeEmptyFolders(folders) } }
+            let landed = FileOps.Landed()
+            job.onFinish = { job in
+                landed.record(job.completedMoves.map(\.to))
+                if case .remove(let folders) = containers { FileOps.removeEmptyFolders(folders) }
+            }
             guard let undo else { return }
             // Clashes may rename items on the way, so the inverse uses where they actually landed.
             undo.registerUndo(withTarget: undo) { undo in
                 MainActor.assumeIsolated {
-                    perform(job.completedMoves.reversed().map(\.reversed), actionName: actionName, undo: undo,
-                            containers: containers.inverse)
+                    perform(job.completedMoves.filter { landed.holds($0.to) }.reversed().map(\.reversed), actionName: actionName,
+                            undo: undo, containers: containers.inverse)
                 }
             }
             undo.setActionName(OperationLog.displayName(actionName))
@@ -329,8 +336,11 @@ enum TransferUndo {
         }
         guard let undo, !done.isEmpty else { return }
         let inverse = done.reversed().map(\.reversed)
+        let landed = FileOps.Landed(done.map(\.to))
         undo.registerUndo(withTarget: undo) { undo in
-            MainActor.assumeIsolated { perform(inverse, actionName: actionName, undo: undo, containers: containers.inverse) }
+            MainActor.assumeIsolated {
+                perform(inverse.filter { landed.holds($0.from) }, actionName: actionName, undo: undo, containers: containers.inverse)
+            }
         }
         undo.setActionName(OperationLog.displayName(actionName))
     }

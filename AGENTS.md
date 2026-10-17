@@ -90,7 +90,10 @@ sheet's text before clicking a destructive button. Both builds share preferences
   inline comments only for decisions that aren't obvious. Match the density of the code around you.
 - User-facing text goes through `String(localized:comment:)`; plurals carry `comment: "plural"`; quotes are curly.
 - Safety idioms already in use: `lstat`, `O_NOFOLLOW`, `renamex_np(RENAME_EXCL)`, deleting relative to an open folder,
-  device+inode identity checks before undo. Reuse them.
+  identity checks before undo (`FileOps.Landed` for ⌘Z, `OperationLog.identity` for History). Reuse them: an undo
+  that trashes or moves items must check each is still the one the operation left there.
+- A decision that needs a window to ask in must not go ahead when there's none (it closed meanwhile): fall back to
+  what changes nothing, as `uploadChoice` does.
 
 ## Commits and releases
 
