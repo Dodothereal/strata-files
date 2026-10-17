@@ -101,6 +101,8 @@ breaks the rule (skips a check, reads it late, applies it to the wrong item), an
 `scripts/mutate.py` applies each alone, runs those tests, and restores the file; the **Mutations** workflow runs it
 weekly and on request. The runner first checks that the unmodified tests pass. Each run has a five-minute limit;
 a timeout, a build failure, or no tests never counts as caught, and stopping the runner restores the source. The
+workflow splits the selected rules across four isolated checkouts; together they run every rule exactly once. An
+empty rule input selects all rules. Local runs keep using one working tree and apply mutations in order. The
 SFTP rename mutation removes both the preflight check and the protocol’s refusal to replace, so the tests reach the
 rule instead of passing on the second defense. A row whose tests pass with the rule broken isn't covered, whatever the
 map says, so a new test comes with a mutation, and a mutation whose text no longer matches the code is updated, not dropped.

@@ -10,6 +10,8 @@ from git before the next.
 Exit 1 when a mutation isn't caught (its tests still pass), its text isn't found in the file (the code moved: update
 `find`), or a restore fails. The working tree must be clean for the files mutated; the script refuses otherwise.
 The unmodified tests must pass first. Each run has a five-minute limit; a timeout never counts as caught.
+CI sets STRATA_MUTATION_RULES to optional space-separated words and STRATA_MUTATION_SHARD to a part such as 1/4.
+Each shard needs its own checkout; never run them together in one working tree.
 
 A mutation names: `file` (under Sources/), `find` (text that occurs exactly once), `replace`, `rule` (what it breaks, in
 the user's words) and `tests` (a `swift test --filter` pattern). A rule with layered defenses (a check, and a second
@@ -77,14 +79,27 @@ def main():
     # Progress shows as it happens, in a log file or CI as well as a terminal.
     sys.stdout.reconfigure(line_buffering=True)
     mutations = json.loads(Path(ROOT, "Tests", "mutations.json").read_text())
-    words = [a for a in sys.argv[1:] if not a.startswith("--")]
+    words = [a for a in sys.argv[1:] if not a.startswith("--")] or os.environ.get("STRATA_MUTATION_RULES", "").split()
     if words:
         mutations = [m for m in mutations if any(w.lower() in m["rule"].lower() for w in words)]
+    selected = len(mutations)
+    shard = os.environ.get("STRATA_MUTATION_SHARD", "")
+    if shard:
+        try:
+            part, total = map(int, shard.split("/"))
+            if not 1 <= part <= total:
+                raise ValueError()
+        except ValueError:
+            sys.exit("STRATA_MUTATION_SHARD must name a part such as 1/4 (parts start at 1).")
+        mutations = mutations[part - 1::total]
     if "--list" in sys.argv:
         for m in mutations:
             print(f"{m['file']}: {m['rule']}  →  {m['tests']}")
         return
     if not mutations:
+        if shard and selected:
+            print(f"No mutations assigned to shard {shard}.")
+            return
         print("No mutations match these rules.")
         sys.exit(1)
     files = sorted({m["file"] for m in mutations})
