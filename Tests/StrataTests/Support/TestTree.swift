@@ -54,7 +54,10 @@ final class TestTree {
 
     /// Every item, sorted: folders end in "/", links read "name -> target" (the target relative to the tree when it's
     /// inside it).
-    func snapshot() -> [String] {
+    func snapshot() -> [String] { Self.listing(of: root) }
+
+    /// `snapshot` for any folder (a test server's, say).
+    static func listing(of root: URL) -> [String] {
         var items: [String] = []
         func walk(_ folder: String) {
             let names = (try? FileManager.default.contentsOfDirectory(atPath: root.appending(path: folder).path)) ?? []

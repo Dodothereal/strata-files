@@ -38,13 +38,13 @@ struct RemoteFilesTests {
         folder = RemoteCopies.url(forRemotePath: server.path, top: RemoteCopies.top(of: remote.id))
     }
 
-    private func cleanUp() {
+    func cleanUp() {
         client.close()
         RemoteCopies.remove(remote.id)
         try? FileManager.default.removeItem(at: server)
     }
 
-    private func waitUntil(_ condition: () -> Bool) async {
+    func waitUntil(_ condition: () -> Bool) async {
         for _ in 0..<100 where !condition() { try? await Task.sleep(for: .milliseconds(50)) }
     }
 
