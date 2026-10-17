@@ -60,20 +60,10 @@ extension BrowserViewController {
         Self.confirmDelete(selectedURLs, in: view.window) { [weak self] in self?.refresh() }
     }
 
-    /// Asks, then deletes `urls` for good. `noTrash`: they were headed for the Trash, but their disk has none.
-    ///
-    /// Disks, and items in folders you can't change, are refused up front: deleting one would remove its contents before
-    /// failing on the item itself. Items inside other selected items are left to their parent. Everything else is
-    /// tried, and whatever couldn't be deleted is listed.
+    /// Asks, then deletes `urls` for good (see `deletionPlan`): everything it may delete is tried, and whatever couldn't
+    /// be deleted is listed. `noTrash`: they were headed for the Trash, but their disk has none.
     static func confirmDelete(_ urls: [URL], in window: NSWindow?, noTrash: Bool = false, then done: @escaping () -> Void) {
-        var refused: [URL] = []
-        let candidates = outermost(urls).filter { url in
-            let isVolume = (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
-            // An archive opened as a folder isn't changed either.
-            let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url)
-            if isVolume || !changeable { refused.append(url) }
-            return !isVolume && changeable
-        }
+        let (candidates, refused) = deletionPlan(urls)
         guard let first = candidates.first else {
             if let item = refused.first {
                 let alert = NSAlert()
@@ -113,6 +103,21 @@ extension BrowserViewController {
                 if !failures.isEmpty { report(failures, .delete, in: window) }
             }
         }
+    }
+
+    /// What deleting `urls` for good deletes, and what it refuses. Disks, and items in folders you can't change, are
+    /// refused up front: deleting one would remove its contents before failing on the item itself. Items inside other
+    /// selected items are left to their parent.
+    static func deletionPlan(_ urls: [URL]) -> (candidates: [URL], refused: [URL]) {
+        var refused: [URL] = []
+        let candidates = outermost(urls).filter { url in
+            let isVolume = (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
+            // An archive opened as a folder isn't changed either.
+            let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url)
+            if isVolume || !changeable { refused.append(url) }
+            return !isVolume && changeable
+        }
+        return (candidates, refused)
     }
 
     /// What couldn't be done, for `report`: a whole sentence for one item (by name) and one for several (a count).
@@ -203,7 +208,7 @@ extension BrowserViewController {
     }
 
     @concurrent
-    private static func deleteAll(_ urls: [URL]) async -> [(url: URL, error: Error)] {
+    static func deleteAll(_ urls: [URL]) async -> [(url: URL, error: Error)] {
         var failures: [(url: URL, error: Error)] = []
         for url in urls {
             do { try FileManager.default.removeItem(at: url) } catch { failures.append((url, error)) }

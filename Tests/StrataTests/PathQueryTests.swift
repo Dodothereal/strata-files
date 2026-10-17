@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Strata
 
-struct PathQueryTests {
+final class PathQueryTests {
     let root: URL
 
     init() throws {
@@ -11,6 +11,10 @@ struct PathQueryTests {
             try FileManager.default.createDirectory(at: root.appending(path: dir), withIntermediateDirectories: true)
         }
         FileManager.default.createFile(atPath: root.appending(path: "Documents/GitHub/atlas/README.md").path, contents: Data())
+    }
+
+    deinit {
+        try? FileManager.default.removeItem(at: root)
     }
 
     private var github: URL { root.appending(path: "Documents/GitHub") }

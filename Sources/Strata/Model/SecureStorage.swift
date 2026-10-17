@@ -11,9 +11,24 @@ import os
 nonisolated enum SecureStorage {
     private static let log = Logger(subsystem: "dev.strata.app", category: "storage")
 
-    /// `~/Library/Application Support/Strata`, owner-only.
+    /// Running as the test runner instead of as Strata, in a debug build: stores go to a folder of their own with a key
+    /// made for the run, so tests never read or change your History, index or keychain. Release builds always use the
+    /// real ones, and the app is told apart by its bundle, not by anything in its environment.
+    static let isTestRun: Bool = {
+        #if DEBUG
+        return Bundle.main.bundleIdentifier != "dev.strata.app"
+        #else
+        return false
+        #endif
+    }()
+
+    /// `~/Library/Application Support/Strata`, owner-only (a temporary folder for a test run).
     static let directory: URL = {
-        let url = URL.applicationSupportDirectory.appending(path: "Strata", directoryHint: .isDirectory)
+        let url = isTestRun
+            ? FileManager.default.temporaryDirectory.appending(path: "strata-tests-\(getpid())", directoryHint: .isDirectory)
+            : URL.applicationSupportDirectory.appending(path: "Strata", directoryHint: .isDirectory)
+        // A test run's stores go with it.
+        if isTestRun { atexit { try? FileManager.default.removeItem(at: SecureStorage.directory) } }
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true,
                                                  attributes: [.posixPermissions: 0o700])
         chmod(url.path, 0o700)
@@ -41,8 +56,9 @@ nonisolated enum SecureStorage {
 
     // MARK: Key
 
-    /// The key, created on first use. Nil if the keychain can't provide one; stores then aren't saved at all.
-    static let key: SymmetricKey? = loadOrCreateKey()
+    /// The key, created on first use. Nil if the keychain can't provide one; stores then aren't saved at all. A test run's
+    /// is made for the run and never stored.
+    static let key: SymmetricKey? = isTestRun ? SymmetricKey(size: .bits256) : loadOrCreateKey()
 
     private static let service = "Strata Safe Storage"
     private static let account = "dev.strata.app"
