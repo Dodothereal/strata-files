@@ -100,7 +100,7 @@ struct S3Tests {
 
     // MARK: - Against a stand-in service
 
-    private func client() -> S3Client {
+    func client() -> S3Client {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [FakeS3.self]
         return S3Client(host: "s3.us-east-1.amazonaws.com", bucket: "my-bucket", region: "us-east-1", pathStyle: false,

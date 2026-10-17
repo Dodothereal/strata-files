@@ -296,6 +296,9 @@ enum CommandLineTool {
         let alert = NSAlert()
         if (try? FileManager.default.destinationOfSymbolicLink(atPath: link)) == tool {
             alert.messageText = String(localized: "The strata command is already installed.")
+        } else if !mayReplace(link) {
+            alert.messageText = String(localized: "Another “strata” is installed.")
+            alert.informativeText = String(localized: "/usr/local/bin/strata isn’t Strata’s command, so it was left as it is. Remove or rename it, then install again.")
         } else if FileManager.default.isWritableFile(atPath: "/usr/local/bin") {
             try? FileManager.default.removeItem(atPath: link)
             do {
@@ -319,5 +322,15 @@ enum CommandLineTool {
             return
         }
         alert.runModal()
+    }
+
+    /// Whether what's at `link` may make way for the command: nothing, or a link to the command inside an app (an
+    /// older or moved copy of Strata). Anything else belongs to someone else and is never removed.
+    static func mayReplace(_ link: String) -> Bool {
+        if let target = try? FileManager.default.destinationOfSymbolicLink(atPath: link) {
+            return target.hasSuffix(".app/Contents/Helpers/strata")
+        }
+        var info = stat()
+        return lstat(link, &info) != 0 && errno == ENOENT
     }
 }

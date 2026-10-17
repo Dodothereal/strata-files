@@ -240,6 +240,11 @@ nonisolated final class S3Backend: RemoteBackend {
                           credentials: S3Credentials(accessKeyID: keyID, secretAccessKey: secret))
     }
 
+    /// Over `client` as it is (tests answer its requests themselves).
+    init(client: S3Client) {
+        self.client = client
+    }
+
     var isAlive: Bool { true }
     func close() {}
 
