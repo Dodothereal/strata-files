@@ -129,7 +129,11 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
             return
         }
         pendingReveal.removeFirst()
+        // Already selected (revealing went back to this column): selecting it again changes nothing, so its column
+        // wouldn't open and the reveal would stop here, the columns after it gone.
+        let wasSelected = pane.selectedEntries.map(\.url.fileViewKey) == [next.fileViewKey]
         pane.select([next], scroll: true)
+        if wasSelected { selectionChanged(in: pane) }
         if pendingReveal.isEmpty {
             view.window?.makeFirstResponder(pane.tableView)
         }
