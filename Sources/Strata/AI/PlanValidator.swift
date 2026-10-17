@@ -231,8 +231,8 @@ nonisolated enum PlanValidator {
         let folder: URL
         if text.hasPrefix("~") || text.hasPrefix("/") {
             folder = URL(fileURLWithPath: (text as NSString).expandingTildeInPath).standardizedFileURL
-            let named = instruction.localizedCaseInsensitiveContains(text)
-                || instruction.localizedCaseInsensitiveContains(folder.path)
+            let named = names(instruction, text) || names(instruction, folder.path)
+                || names(instruction, (folder.path as NSString).abbreviatingWithTildeInPath)
             if !isInside(folder, base), !named {
                 return .failure(Problem(message: String(localized: "Outside “\(base.lastPathComponent)” and not named in your request")))
             }
@@ -251,6 +251,27 @@ nonisolated enum PlanValidator {
             return .failure(Problem(message: String(localized: "“\(existing.lastPathComponent)” links outside “\(base.lastPathComponent)”")))
         }
         return .success(folder)
+    }
+
+    /// Whether `instruction` names the folder `path` as a whole. Only a mention that ends there counts (at a space, the
+    /// end, closing punctuation, or a "/" or full stop with nothing after it): "~/Archive/2024" doesn't name
+    /// "~/Archive" above it, nor "~/Archive/20".
+    static func names(_ instruction: String, _ path: String) -> Bool {
+        guard !path.isEmpty else { return false }
+        let opening: Set<Character> = ["\"", "'", "“", "‘", "(", "[", "<"]
+        let closing: Set<Character> = [",", ";", "!", "?", ")", "]", ">", "\"", "'", "”", "’"]
+        var start = instruction.startIndex
+        while let found = instruction.range(of: path, options: .caseInsensitive, range: start..<instruction.endIndex) {
+            start = instruction.index(after: found.lowerBound)
+            if found.lowerBound > instruction.startIndex {
+                let before = instruction[instruction.index(before: found.lowerBound)]
+                guard before.isWhitespace || opening.contains(before) else { continue }
+            }
+            let rest = instruction[found.upperBound...].drop { "/.:".contains($0) }
+            guard let next = rest.first else { return true }
+            if next.isWhitespace || closing.contains(next) { return true }
+        }
+        return false
     }
 
     static func isInside(_ url: URL, _ folder: URL) -> Bool {

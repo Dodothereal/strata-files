@@ -132,13 +132,19 @@ final class RenameTests {
         #expect(outcome.failures.isEmpty)
         #expect(try text("one.txt") == "two.txt" && text("two.txt") == "one.txt")
         #expect(try contents() == ["one.txt", "two.txt"])
-        // ⌘Z swaps them back, ⌘⇧Z again (the undo runs a task: give it a moment).
+        // ⌘Z swaps them back, ⌘⇧Z again. The undo runs a task, parking one of them under a hidden name on the way:
+        // wait for the swap to finish (a busy machine can take a while), never a fixed time.
+        func swapped(_ one: String, _ two: String) async -> Bool {
+            for _ in 0..<100 {
+                if (try? text("one.txt")) == one, (try? text("two.txt")) == two, (try? contents()) == ["one.txt", "two.txt"] { return true }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            return false
+        }
         undo.undo()
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(try text("one.txt") == "one.txt" && text("two.txt") == "two.txt")
+        #expect(await swapped("one.txt", "two.txt"))
         undo.redo()
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(try text("one.txt") == "two.txt" && text("two.txt") == "one.txt")
+        #expect(await swapped("two.txt", "one.txt"))
         #expect(try contents() == ["one.txt", "two.txt"])
     }
 

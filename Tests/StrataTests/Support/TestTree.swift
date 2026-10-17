@@ -1,4 +1,5 @@
 import Foundation
+@testable import Strata
 
 /// A folder of files made for one test and removed after it. `snapshot` lists everything in it (links as links, never
 /// followed), so a test can check that an operation changed what it was meant to and nothing else.
@@ -77,6 +78,18 @@ final class TestTree {
         }
         walk("")
         return items.sorted()
+    }
+
+    /// Takes back out of your Trash exactly what this tree's items were moved to it as (History, a test run's own, has
+    /// where each went; replaced items too).
+    func removeFromTrash() {
+        let prefix = root.path + "/"
+        for entry in OperationLog.shared.entries {
+            for pair in entry.pairs + entry.replaced where pair[0].hasPrefix(prefix) {
+                let trashed = URL(fileURLWithPath: pair[1])
+                if Trash.isInTrash(trashed) { try? FileManager.default.removeItem(at: trashed) }
+            }
+        }
     }
 
     /// What a file says (each file starts out holding its own path).

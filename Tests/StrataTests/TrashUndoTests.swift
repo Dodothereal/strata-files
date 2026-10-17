@@ -15,21 +15,11 @@ struct TrashUndoTests {
         OperationLog.shared.entries.last { $0.pairs.contains { $0[0].hasPrefix(tree.root.path + "/") } }
     }
 
-    /// Takes out of the Trash exactly what this test put there.
-    private func removeFromTrash(_ tree: TestTree) {
-        for entry in OperationLog.shared.entries {
-            for pair in entry.pairs where pair[0].hasPrefix(tree.root.path + "/") {
-                let trashed = URL(fileURLWithPath: pair[1])
-                if Trash.isInTrash(trashed) { try? FileManager.default.removeItem(at: trashed) }
-            }
-        }
-    }
-
     // MARK: - Move to Trash
 
     @Test func onlyTheSelectionGoesAndUndoPutsItBack() async throws {
         let tree = try TestTree("a.txt", "ab.txt", "b/", "b/c.txt", "d.txt")
-        defer { removeFromTrash(tree) }
+        defer { tree.removeFromTrash() }
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
@@ -48,14 +38,14 @@ struct TrashUndoTests {
 
     @Test func aLinkGoesToTheTrashNotWhatItPointsTo() async throws {
         let tree = try TestTree("target/", "target/precious.txt", "link -> target")
-        defer { removeFromTrash(tree) }
+        defer { tree.removeFromTrash() }
         try await FileOps.trashInBackground([tree.url("link")], undo: nil)
         #expect(tree.snapshot() == ["target/", "target/precious.txt"])
     }
 
     @Test func historyUndoBringsBackWhatWasTrashedAndOnlyThat() async throws {
         let tree = try TestTree("a.txt", "b.txt", "c.txt")
-        defer { removeFromTrash(tree) }
+        defer { tree.removeFromTrash() }
         try await FileOps.trashInBackground([tree.url("a.txt"), tree.url("b.txt")], undo: nil)
         let trashed = try #require(entry(for: tree))
         #expect(OperationLog.shared.canUndo(trashed))
