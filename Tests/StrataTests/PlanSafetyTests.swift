@@ -111,6 +111,24 @@ struct PlanSafetyTests {
         #expect(tree.snapshot() == ["Old/", "Old/x.txt", "a.txt", "b.txt", "c.txt", "d.txt", "keep.txt"])
     }
 
+    @Test func undoKeepsAFolderThePlanMadeOnceSomethingElseIsInIt() async throws {
+        let tree = try TestTree("c.txt", "e.txt")
+        let plan = await validate([.move(tree.url("c.txt"), into: "Done"), .move(tree.url("e.txt"), into: "Later")],
+                                  selecting: ["c.txt", "e.txt"], in: tree)
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        undo.beginUndoGrouping()
+        _ = await PlanExecutor.apply(plan, actionName: "AI Organize", undo: undo)
+        undo.endUndoGrouping()
+        #expect(tree.snapshot() == ["Done/", "Done/c.txt", "Later/", "Later/e.txt"])
+        // Something is saved into "Done" meanwhile; "Later" only gets Finder's records.
+        try Data("mine".utf8).write(to: tree.url("Done/mine.txt"))
+        try Data().write(to: tree.url("Later/.DS_Store"))
+        undo.undo()
+        await wait { tree.snapshot().contains("c.txt") && !tree.snapshot().contains("Later/") }
+        #expect(tree.snapshot() == ["Done/", "Done/mine.txt", "c.txt", "e.txt"])
+    }
+
     @Test func undoAndRedoOfAPlanTouchOnlyItsOwnItems() async throws {
         let tree = try TestTree("a.txt", "c.txt", "d.txt", "keep.txt")
         defer { tree.removeFromTrash() }

@@ -295,6 +295,61 @@ enum TransferUndo {
     /// Same-disk moves are instant renames done here; anything crossing disks becomes a queued job with progress.
     static func perform(_ moves: [TransferMove], actionName: String, undo: UndoManager?, containers: Containers = .none) {
         guard !moves.isEmpty else { return }
+        let step = Step()
+        step.settle(start(moves, containers: containers))
+        guard let undo else { return }
+        registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse)
+    }
+
+    /// One step of undo or redo and what it moved: known at once for renames on one disk, once its job is done across
+    /// disks. The step undoing it waits for that, so an undo or redo pressed meanwhile still moves exactly what landed.
+    final class Step {
+        fileprivate enum Outcome {
+            case renamed([TransferMove], FileOps.Landed)
+            case moving(TransferJob)
+            case nothing
+        }
+
+        private var outcome: Outcome?
+        private var waiters: [CheckedContinuation<Void, Never>] = []
+
+        fileprivate func settle(_ outcome: Outcome) {
+            self.outcome = outcome
+            waiters.forEach { $0.resume() }
+            waiters = []
+        }
+
+        /// What it moved that's still where it went (clashes may have renamed items on the way).
+        func landed() async -> [TransferMove] {
+            if outcome == nil { await withCheckedContinuation { waiters.append($0) } }
+            switch outcome {
+            case .renamed(let done, let landed): return done.filter { landed.holds($0.to) }
+            case .moving(let job):
+                await job.finished()
+                return job.completedMoves.filter { job.landed.holds($0.to) }
+            case .nothing, nil: return []
+            }
+        }
+    }
+
+    /// Registers undoing `step` (moving back what it moved, once that's known), with `containers` for those moves. The
+    /// undo's own inverse is registered while it runs, so it lands on the right stack.
+    private static func registerInverse(of step: Step, actionName: String, undo: UndoManager, containers: Containers) {
+        undo.registerUndo(withTarget: undo) { undo in
+            MainActor.assumeIsolated {
+                let next = Step()
+                registerInverse(of: next, actionName: actionName, undo: undo, containers: containers.inverse)
+                FileOps.afterUndoWork {
+                    let back = await step.landed().reversed().map(\.reversed)
+                    next.settle(start(back, containers: containers))
+                }
+            }
+        }
+        undo.setActionName(OperationLog.displayName(actionName))
+    }
+
+    fileprivate static func start(_ moves: [TransferMove], containers: Containers) -> Step.Outcome {
+        guard !moves.isEmpty else { return .nothing }
         // Made first, so the destination's disk can be told (a missing folder has none).
         if case .make(let folders) = containers {
             for folder in folders.sorted(by: { $0.path.count < $1.path.count }) where !TransferEngine.exists(folder) {
@@ -304,43 +359,23 @@ enum TransferUndo {
         let sameDisk = moves.allSatisfy {
             TransferEngine.device($0.from) == TransferEngine.device($0.to.deletingLastPathComponent())
         }
-        var done = moves
-        if sameDisk {
-            done = []
-            for move in moves {
-                let target = TransferEngine.exists(move.to) ? FileOps.available(move.to, copyStyle: false) : move.to
-                if TransferEngine.rename(move.from, to: target) == 0 { done.append(TransferMove(from: move.from, to: target)) }
-            }
-            if case .remove(let folders) = containers { FileOps.removeEmptyFolders(folders) }
-            for folder in Set(done.flatMap { [$0.from, $0.to] }.map { $0.deletingLastPathComponent() }) {
-                FolderSizer.invalidate(folder)
-            }
-        } else {
+        guard sameDisk else {
             // Part of an undo or redo: History already has the operation.
             let job = TransferQueue.shared.enqueue(moves: moves, mode: .move, undo: nil, conflicts: .keepBoth,
                                                    logHistory: false)
             if case .remove(let folders) = containers { job.onFinish = { _ in FileOps.removeEmptyFolders(folders) } }
-            let landed = job.landed
-            guard let undo else { return }
-            // Clashes may rename items on the way, so the inverse uses where they actually landed.
-            undo.registerUndo(withTarget: undo) { undo in
-                MainActor.assumeIsolated {
-                    perform(job.completedMoves.filter { landed.holds($0.to) }.reversed().map(\.reversed), actionName: actionName,
-                            undo: undo, containers: containers.inverse)
-                }
-            }
-            undo.setActionName(OperationLog.displayName(actionName))
-            return
+            return .moving(job)
         }
-        guard let undo, !done.isEmpty else { return }
-        let inverse = done.reversed().map(\.reversed)
-        let landed = FileOps.Landed(done.map(\.to))
-        undo.registerUndo(withTarget: undo) { undo in
-            MainActor.assumeIsolated {
-                perform(inverse.filter { landed.holds($0.from) }, actionName: actionName, undo: undo, containers: containers.inverse)
-            }
+        var done: [TransferMove] = []
+        for move in moves {
+            let target = TransferEngine.exists(move.to) ? FileOps.available(move.to, copyStyle: false) : move.to
+            if TransferEngine.rename(move.from, to: target) == 0 { done.append(TransferMove(from: move.from, to: target)) }
         }
-        undo.setActionName(OperationLog.displayName(actionName))
+        if case .remove(let folders) = containers { FileOps.removeEmptyFolders(folders) }
+        for folder in Set(done.flatMap { [$0.from, $0.to] }.map { $0.deletingLastPathComponent() }) {
+            FolderSizer.invalidate(folder)
+        }
+        return .renamed(done, FileOps.Landed(done.map(\.to)))
     }
 }
 

@@ -287,7 +287,7 @@ enum FileOps {
                 try FileManager.default.trashItem(at: url, resultingItemURL: &result)
                 if let result {
                     moved.append((from: url, to: result as URL))
-                    identities.append(OperationLog.identity(result.path ?? ""))
+                    identities.append(Landed.identity(result.path ?? ""))
                 }
             } catch let error as CocoaError where error.code == .featureUnsupported {
                 noTrash.append(url)
@@ -330,20 +330,28 @@ enum FileOps {
         contentsOfFile: "/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/finder/move to trash.aif",
         byReference: true)
 
-    /// Where items landed and what they are there (see `OperationLog.identity`), so an operation's undo moves or trashes
-    /// only those very items: never one put in an item's place since, however alike its name. Each is recorded as it
-    /// lands (or, for a move on one disk, before it starts), never later, when something else may already be there.
+    /// Where items landed and what they are there, so an operation's undo moves or trashes only those very items: never
+    /// one put in an item's place since, however alike its name. Each is recorded as it lands (or, for a move on one
+    /// disk, before it starts), never later, when something else may already be there. Kept for this run only, so an
+    /// item is its disk, file number and birth time, read without following a link (History's `OperationLog.identity`
+    /// also outlives a disk being plugged in again).
     final class Landed {
         private var identities: [String: String] = [:]
 
         /// What's at each of `urls` now: for items that have just landed there.
         init(_ urls: [URL] = []) { record(urls) }
 
-        func record(_ urls: [URL]) {
-            for url in urls { identities[url.path] = OperationLog.identity(url.path) }
+        nonisolated static func identity(_ path: String) -> String? {
+            var info = stat()
+            guard lstat(path, &info) == 0 else { return nil }
+            return "\(info.st_dev):\(info.st_ino):\(info.st_birthtimespec.tv_sec).\(info.st_birthtimespec.tv_nsec)"
         }
 
-        /// `identity`, read when the item landed at `url`.
+        func record(_ urls: [URL]) {
+            for url in urls { identities[url.path] = Self.identity(url.path) }
+        }
+
+        /// `identity` (from `Landed.identity`), read when the item landed at `url`.
         func set(_ identity: String?, at url: URL) {
             identities[url.path] = identity
         }
@@ -351,23 +359,23 @@ enum FileOps {
         /// The item at `url` is about to move to `destination`: a move on one disk keeps what it is, so it's expected
         /// there already. Call `arrived` once it's moved.
         func expect(_ url: URL, at destination: URL) {
-            identities[destination.path] = OperationLog.identity(url.path)
+            identities[destination.path] = Self.identity(url.path)
         }
 
         /// An expected item has moved to `destination`. Moved across disks, it's a new file there, recorded now; on one
         /// disk the expectation stands, so a file swapped in meanwhile is never taken for it.
         func arrived(_ destination: URL) {
-            guard let expected = identities[destination.path], let now = OperationLog.identity(destination.path) else { return }
-            if Self.volume(expected) != Self.volume(now) { identities[destination.path] = now }
-        }
-
-        private static func volume(_ identity: String) -> Substring {
-            identity[..<(identity.lastIndex(of: "/") ?? identity.endIndex)]
+            guard let expected = identities[destination.path], let now = Self.identity(destination.path) else { return }
+            if Self.disk(expected) != Self.disk(now) { identities[destination.path] = now }
         }
 
         func holds(_ url: URL) -> Bool {
             guard let identity = identities[url.path] else { return false }
-            return OperationLog.identity(url.path) == identity
+            return Self.identity(url.path) == identity
+        }
+
+        private static func disk(_ identity: String) -> Substring {
+            identity.prefix { $0 != ":" }
         }
     }
 
@@ -415,22 +423,38 @@ enum FileOps {
         undo.setActionName(OperationLog.displayName(actionName))
     }
 
+    /// ⌘Z and ⇧⌘Z work that moves items, done one step at a time in the order pressed, however quickly: each step
+    /// finds the items where the one before left them (`undoWork` is the latest; tests wait for it).
+    static var undoWork: Task<Void, Never>?
+
+    /// Runs `work` after every undo and redo step before it.
+    @discardableResult
+    static func afterUndoWork(_ work: @escaping () async -> Void) -> Task<Void, Never> {
+        let previous = undoWork
+        let task = Task {
+            await previous?.value
+            await work()
+        }
+        undoWork = task
+        return task
+    }
+
     /// Undo for completed moves: move the items back, those still where they went. The inverse is registered right
     /// away, inside the undo handler, so it lands on the redo stack (registering it later from a task would put it
-    /// back on the undo stack); what it moves is recorded once the moves are done (`landed`). History entry `entry` is
-    /// marked `marksUndone` only once the moves have worked (the inverse flips it back); `folders` are recreated first
-    /// if they've gone (the folders an AI plan made, removed by undoing it).
+    /// back on the undo stack); the moves run after the steps before (`undoWork`) and take only what's still where
+    /// they left it (`landed`, recorded as each lands). History entry `entry` is marked `marksUndone` only once the
+    /// moves have worked (the inverse flips it back); `folders` are recreated first if they've gone (the folders an AI
+    /// plan made, removed by undoing it).
     static func registerMoveUndo(_ moves: [Move], _ actionName: String, _ undo: UndoManager?, entry: UUID? = nil,
                                  marksUndone: Bool = true, recreating folders: [URL] = [], landed: Landed? = nil) {
         guard !moves.isEmpty else { return }
         let landed = landed ?? Landed(moves.map(\.to))
         register(actionName, undo) { undo in
-            let back = moves.filter { landed.holds($0.to) }.reversed().map { (from: $0.to, to: $0.from) }
-            guard !back.isEmpty else { return }
             let returned = Landed()
-            for pair in back { returned.expect(pair.from, at: pair.to) }
-            registerMoveUndo(back, actionName, undo, entry: entry, marksUndone: !marksUndone, landed: returned)
-            Task {
+            afterUndoWork {
+                let back = moves.filter { landed.holds($0.to) }.reversed().map { (from: $0.to, to: $0.from) }
+                guard !back.isEmpty else { return }
+                for pair in back { returned.expect(pair.from, at: pair.to) }
                 do {
                     for folder in folders where !FileManager.default.fileExists(atPath: folder.path) {
                         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -446,6 +470,8 @@ enum FileOps {
                     reportUndoFailure(actionName, error)
                 }
             }
+            registerMoveUndo(moves.reversed().map { (from: $0.to, to: $0.from) }, actionName, undo, entry: entry,
+                             marksUndone: !marksUndone, landed: returned)
         }
     }
 

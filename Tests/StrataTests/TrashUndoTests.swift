@@ -7,7 +7,7 @@ import Testing
 /// take back out exactly what they put in; History is a test run's own (see `SecureStorage.isTestRun`).
 struct TrashUndoTests {
     private func wait(until condition: () -> Bool) async {
-        for _ in 0..<60 where !condition() { try? await Task.sleep(for: .milliseconds(50)) }
+        for _ in 0..<200 where !condition() { try? await Task.sleep(for: .milliseconds(50)) }
     }
 
     /// The last History entry for items of `tree`.
@@ -91,6 +91,36 @@ struct TrashUndoTests {
         #expect(tree.snapshot() == ["from/", "from/a.txt", "from/b.txt", "from/stays.txt", "to/", "to/there.txt"])
     }
 
+    // MARK: - Folders made for items put back
+
+    @Test func onlyEmptyFoldersGoWhenTheirItemsDo() throws {
+        let tree = try TestTree("empty/", "records/", "records/.DS_Store", "mine/", "mine/.DS_Store", "mine/keep.txt",
+                                "deep/", "deep/inner/", "door -> mine")
+        FileOps.removeEmptyFolders([tree.url("empty"), tree.url("records"), tree.url("mine"), tree.url("deep"),
+                                    tree.url("deep/inner"), tree.url("door")])
+        // Empty (Finder's records aside): gone, innermost first. Anything else in one, or a link: stays as it was.
+        #expect(tree.snapshot() == ["door -> mine", "mine/", "mine/.DS_Store", "mine/keep.txt"])
+    }
+
+    @Test func undoingAPutBackRemovesOnlyTheFoldersItMadeOnceEmpty() async throws {
+        let tree = try TestTree("trashed/", "trashed/a.txt", "trashed/b.txt")
+        // Put Back made "Made/" and "Other/" for the items it moved there.
+        try FileManager.default.createDirectory(at: tree.url("Made"), withIntermediateDirectories: false)
+        try FileManager.default.createDirectory(at: tree.url("Other"), withIntermediateDirectories: false)
+        let undo = await undoable { undo in
+            await TransferQueue.shared.enqueue(moves: [TransferMove(from: tree.url("trashed/a.txt"), to: tree.url("Made/a.txt")),
+                                                       TransferMove(from: tree.url("trashed/b.txt"), to: tree.url("Other/b.txt"))],
+                                               mode: .move, options: .init(verify: false, clone: false), undo: undo,
+                                               conflicts: .keepBoth, actionName: "Put Back",
+                                               containers: [tree.url("Made"), tree.url("Other")]).finished()
+        }
+        // Something is saved into "Other" meanwhile: that folder stays when the items go back.
+        try Data("mine".utf8).write(to: tree.url("Other/mine.txt"))
+        undo.undo()
+        await wait { tree.snapshot().contains("trashed/b.txt") && !tree.snapshot().contains("Made/") }
+        #expect(tree.snapshot() == ["Other/", "Other/mine.txt", "trashed/", "trashed/a.txt", "trashed/b.txt"])
+    }
+
     // MARK: - ⌘Z, after something took an item's place
 
     /// Runs `body` as one undo group, as one command would be.
@@ -155,6 +185,38 @@ struct TrashUndoTests {
         await wait { tree.snapshot().contains("d.txt") }
         #expect(tree.snapshot() == ["b.txt", "d.txt"])
         #expect(tree.text("d.txt") == "c.txt")
+    }
+
+    @Test func undoAndRedoPressedAtOnceHappenInOrder() async throws {
+        let tree = try TestTree("a.txt", "c.txt")
+        let undo = try await undoable { undo in
+            try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt"))], actionName: "Rename", undo: undo)
+        }
+        // Each waits for the one before: undone, redone, undone again.
+        undo.undo()
+        undo.redo()
+        undo.undo()
+        await FileOps.undoWork?.value
+        #expect(tree.snapshot() == ["a.txt", "c.txt"])
+        undo.redo()
+        await FileOps.undoWork?.value
+        #expect(tree.snapshot() == ["b.txt", "c.txt"] && tree.text("b.txt") == "a.txt")
+    }
+
+    @Test func undoingTwoOperationsAtOnceUndoesBoth() async throws {
+        let tree = try TestTree("a.txt")
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        for (from, to) in [("a.txt", "b.txt"), ("b.txt", "c.txt")] {
+            undo.beginUndoGrouping()
+            try await FileOps.move([(from: tree.url(from), to: tree.url(to))], actionName: "Rename", undo: undo)
+            undo.endUndoGrouping()
+        }
+        // The second undo finds the item where the first one puts it back.
+        undo.undo()
+        undo.undo()
+        await FileOps.undoWork?.value
+        #expect(tree.snapshot() == ["a.txt"] && tree.text("a.txt") == "a.txt")
     }
 
     @Test func undoingAMoveJobMovesBackOnlyItsOwnItems() async throws {

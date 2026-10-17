@@ -111,6 +111,8 @@ nonisolated struct TransferItemResult: Sendable {
     var replaced: TransferMove?
     /// The original is gone (move finished).
     var sourceRemoved = false
+    /// What the item is where it landed (see `FileOps.Landed`), read as it was put there: for undo.
+    var landed: String?
 }
 
 /// The blocking work behind transfers. Everything here runs on a job's worker queue.
@@ -153,8 +155,11 @@ nonisolated enum TransferEngine {
             if replacing {
                 do { trashed = try trash(item.destination) } catch { return fail(trashMessage(item.destination, error)) }
             }
+            // A rename keeps what the item is.
+            let identity = FileOps.Landed.identity(item.source.path)
             let code = rename(item.source, to: item.destination)
             if code == 0 {
+                result.landed = identity
                 if let trashed { result.replaced = TransferMove(from: item.destination, to: trashed) }
                 progress.update {
                     $0.files += item.files
@@ -187,6 +192,7 @@ nonisolated enum TransferEngine {
                 $0.bytes += item.bytes
             }
         }
+        result.landed = FileOps.Landed.identity(target.path)
         var failures = copy.errors.map { error in
             TransferFailure(item: index, stage: .copy, source: URL(fileURLWithPath: error.source),
                             destination: replacing ? nil : URL(fileURLWithPath: error.destination), message: error.message)

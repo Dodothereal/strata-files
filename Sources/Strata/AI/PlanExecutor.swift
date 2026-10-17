@@ -221,10 +221,9 @@ final class PlanTransaction {
     }
 
     /// Runs file work in order even if the user presses ⌘Z ⇧⌘Z quickly.
+    /// In the order pressed, after any other undo or redo step before it (`FileOps.undoWork`).
     private func enqueue(_ work: @escaping () async -> Void) {
-        let previous = queue
-        queue = Task {
-            await previous?.value
+        queue = FileOps.afterUndoWork { [self] in
             await work()
             NotificationCenter.default.post(name: .planTransactionDidFinish, object: self)
         }
