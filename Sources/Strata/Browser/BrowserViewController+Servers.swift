@@ -112,6 +112,19 @@ extension BrowserViewController {
         }
     }
 
+    enum UploadChoice: Equatable {
+        case upload(skipping: Set<String>)
+        case ask
+    }
+
+    /// Whether to ask before copying into a server folder where `clashing` names are already taken. Replacing there
+    /// can't be undone: with no window to ask in (it closed while the names were read), what's there stays and only
+    /// the rest is copied.
+    static func uploadChoice(clashing: [String], canAsk: Bool) -> UploadChoice {
+        guard !clashing.isEmpty else { return .upload(skipping: []) }
+        return canAsk ? .ask : .upload(skipping: Set(clashing))
+    }
+
     private func askAndUpload(_ urls: [URL], into folder: URL, clashing: [String]) {
         let upload = { [weak self] (skipping: Set<String>) in
             let job = RemoteUploadJob(urls, into: folder, skipping: skipping)
@@ -124,7 +137,9 @@ extension BrowserViewController {
             }
             TransferQueue.shared.add(job)
         }
-        guard !clashing.isEmpty, let window = view.window else { return upload([]) }
+        let window = view.window
+        if case .upload(let skipping) = Self.uploadChoice(clashing: clashing, canAsk: window != nil) { return upload(skipping) }
+        guard let window else { return }
         let alert = NSAlert()
         alert.messageText = clashing.count == 1
             ? String(localized: "“\(clashing[0])” is already on “\(serverName)”", comment: "An item, then a server's name")
