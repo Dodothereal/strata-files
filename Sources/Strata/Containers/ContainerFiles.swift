@@ -779,7 +779,8 @@ nonisolated enum CopyWriter {
                         try markDownloaded(out)
                     }
                 case .data(let data):
-                    guard out >= 0 else { return }
+                    // Only the first entry's: anything after it in the stream isn't this file.
+                    guard out >= 0, !done else { return }
                     try writeAll(data, to: out)
                 case .end:
                     done = entry != nil

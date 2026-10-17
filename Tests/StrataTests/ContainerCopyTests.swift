@@ -55,4 +55,62 @@ extension ContainerTests {
         }
         #expect(tree.snapshot() == ["outside/", "outside/secret.txt", "root/", "root/data -> ../outside"])
     }
+
+    // MARK: - One file
+
+    /// A file not fetched yet, as a listing leaves it: a regular file without permissions.
+    private func placeholder(_ url: URL) {
+        FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0])
+    }
+
+    @Test func aFetchedFileTakesOnlyItsPlaceholdersPlace() throws {
+        let tree = try TestTree("copy/", "copy/other.txt", "outside/", "outside/secret.txt")
+        placeholder(tree.url("copy/hosts"))
+        // Only the stream's first entry counts; nothing else in it is written anywhere.
+        let stream = Self.tarFile("hosts", "127.0.0.1 localhost\n") + Self.tarFile("../escape.txt", "x") + Self.tarFile("other.txt", "x")
+        try CopyWriter.fetchFile(try Self.archive(stream), id: Self.id, containerPath: "/etc/hosts", to: tree.url("copy/hosts"), stop: StopFlag())
+        #expect(tree.text("copy/hosts") == "127.0.0.1 localhost\n" && tree.text("copy/other.txt") == "copy/other.txt")
+        #expect(tree.snapshot() == ["copy/", "copy/hosts", "copy/other.txt", "outside/", "outside/secret.txt"])
+    }
+
+    @Test func aFetchThatIsntAFileOrFindsSomethingElseChangesNothing() throws {
+        let tree = try TestTree("copy/", "copy/now a folder/", "copy/now a folder/inside.txt", "copy/now a link -> ../outside/secret.txt",
+                                "outside/", "outside/secret.txt")
+        placeholder(tree.url("copy/hosts"))
+        // The container sends a link (or a folder) where a file was listed: nothing is written.
+        let link = Self.tarHeader("hosts", type: UInt8(ascii: "2"), link: "/etc/passwd")
+        #expect(throws: (any Error).self) {
+            try CopyWriter.fetchFile(try Self.archive(link), id: Self.id, containerPath: "/etc/hosts", to: tree.url("copy/hosts"), stop: StopFlag())
+        }
+        // Listed again meanwhile, the placeholder is a folder now: the fetched file doesn't replace it.
+        for name in ["now a folder", "now a link"] {
+            try CopyWriter.fetchFile(try Self.archive(Self.tarFile(name, "x")), id: Self.id, containerPath: "/x",
+                                     to: tree.url("copy/" + name), stop: StopFlag())
+        }
+        #expect(tree.snapshot() == ["copy/", "copy/hosts", "copy/now a folder/", "copy/now a folder/inside.txt",
+                                    "copy/now a link -> ../outside/secret.txt", "outside/", "outside/secret.txt"])
+        #expect(tree.text("outside/secret.txt") == "outside/secret.txt")
+        #expect(TestTree.listing(of: tree.url("copy")).allSatisfy { !$0.hasPrefix(".strata-") })
+    }
+
+    // MARK: - Dragged out
+
+    @Test func aDraggedOutItemNeverReplacesWhatsAtTheDrop() async throws {
+        let tree = try TestTree("from/", "from/item/", "from/item/a.txt", "from/item/out -> /etc", "to/", "to/item/", "to/item/mine.txt")
+        let item = ContainerDragItem(source: tree.url("from/item"))
+        // The provider blocks until it's written, as on the drag's own queue: on a thread of its own here too.
+        func write(to url: URL) async -> Error? {
+            await withCheckedContinuation { done in
+                DispatchQueue.global().async {
+                    ContainerPromises.shared.filePromiseProvider(item, writePromiseTo: url) { done.resume(returning: $0) }
+                }
+            }
+        }
+        // Where the receiving app asked for it, something is already there: it stays as it was.
+        #expect(await write(to: tree.url("to/item")) != nil)
+        #expect(await write(to: tree.url("to/fresh")) == nil)
+        // Written fresh, a link that would lead out of what was copied is dropped.
+        #expect(tree.snapshot() == ["from/", "from/item/", "from/item/a.txt", "from/item/out -> /etc", "to/", "to/fresh/", "to/fresh/a.txt",
+                                    "to/item/", "to/item/mine.txt"])
+    }
 }
