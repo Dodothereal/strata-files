@@ -16,6 +16,10 @@ enum FileOps {
 
     static func rename(_ url: URL, to name: String, undo: UndoManager?) async throws -> URL {
         guard !ReadOnlyCopies.contains(url) else { throw insideArchiveError }
+        // A name, never a path: whatever is typed, the item stays in its folder.
+        guard !name.isEmpty, name != ".", name != "..", !name.contains("/") else {
+            throw CocoaError(.fileWriteInvalidFileName, userInfo: [NSFilePathErrorKey: name])
+        }
         let destination = url.deletingLastPathComponent().appending(path: name)
         if TransferEngine.exists(destination), destination.path.lowercased() != url.path.lowercased() {
             throw CocoaError(.fileWriteFileExists, userInfo: [

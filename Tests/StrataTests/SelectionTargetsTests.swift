@@ -98,4 +98,39 @@ struct SelectionTargetsTests {
         #expect(browser.outlineView.numberOfRows == 6)
         #expect(selected(browser) == ["c.txt"])
     }
+    // MARK: - Results (search, Recents, Large Files, Duplicates)
+
+    private func results(_ tree: TestTree) -> BrowserViewController {
+        let browser = BrowserViewController()
+        browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
+        return browser
+    }
+
+    @Test func inResultsTheExactItemIsTargetedAmongSameNames() throws {
+        let tree = try TestTree("x/", "x/report.pdf", "y/", "y/report.pdf", "z/", "z/notes.txt")
+        let browser = results(tree)
+        let entries = ["x/report.pdf", "y/report.pdf", "z/notes.txt"].compactMap { FileEntry(url: tree.url($0)) }
+        browser.showResults(entries, total: entries.count)
+        #expect(browser.itemCount == 3)
+        browser.select([tree.url("y/report.pdf")])
+        #expect(browser.selectedURLs.map(\.path) == [tree.url("y/report.pdf").path])
+        browser.select([tree.url("x/report.pdf"), tree.url("z/notes.txt")])
+        #expect(Set(browser.selectedURLs.map(\.path)) == [tree.url("x/report.pdf").path, tree.url("z/notes.txt").path])
+    }
+
+    @Test func inDuplicatesOnlyFilesAreEverTargeted() throws {
+        let tree = try TestTree("x/", "x/a.jpg", "x/b.jpg", "y/", "y/a.jpg", "z/", "z/b.jpg")
+        let browser = results(tree)
+        func entries(_ paths: [String]) -> [FileEntry] { paths.compactMap { FileEntry(url: tree.url($0)) } }
+        browser.showGroups([(title: "a.jpg", detail: "2 copies", entries: entries(["x/a.jpg", "y/a.jpg"])),
+                            (title: "b.jpg", detail: "2 copies", entries: entries(["x/b.jpg", "z/b.jpg"]))], summary: "")
+        browser.select([tree.url("y/a.jpg")])
+        #expect(browser.selectedURLs.map(\.path) == [tree.url("y/a.jpg").path])
+        // Select All: every file once, and nothing for the group rows.
+        browser.outlineView.selectAll(nil)
+        let all = browser.selectedURLs.map(\.path)
+        #expect(all.count == Set(all).count)
+        #expect(Set(all) == Set(["x/a.jpg", "y/a.jpg", "x/b.jpg", "z/b.jpg"].map { tree.url($0).path }))
+    }
 }
+
