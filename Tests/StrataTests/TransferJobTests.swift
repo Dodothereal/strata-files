@@ -100,6 +100,20 @@ import Testing
         }
     }
 
+    @Test func aReadOnlyCopyTakesNothingAndWhatLeavesItIsCopied() async throws {
+        let tree = try TestTree("a.txt", "to/")
+        let copy = ArchiveCache.root.appending(path: "test-\(UUID().uuidString)/contents", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: copy, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: copy.deletingLastPathComponent()) }
+        try Data("x".utf8).write(to: copy.appending(path: "x.txt"))
+        // Into it, nothing goes: an archive opened as a folder is a temporary copy.
+        _ = await run([tree.url("a.txt")], to: copy, .move)
+        #expect(TestTree.listing(of: copy) == ["x.txt"] && tree.snapshot() == ["a.txt", "to/"])
+        // Out of it, a move is a copy: the copy keeps its file.
+        _ = await run([copy.appending(path: "x.txt")], to: tree.url("to"), .move)
+        #expect(TestTree.listing(of: copy) == ["x.txt"] && tree.snapshot() == ["a.txt", "to/", "to/x.txt"])
+    }
+
     // MARK: - Dual pane
 
     @Test func otherPaneCommandsSendOnlyTheFocusedPanesSelection() async throws {
