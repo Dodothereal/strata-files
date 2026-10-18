@@ -14,6 +14,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 | Empty Trash | `Trash.empty`, `Trash.folders` | `DeleteTests/emptyingATrashDeletesWhatsInItAndNothingElse`, `aTrashThatIsALinkIsNeverFollowed`, `aLockedItemInTheTrashIsReportedAndTheRestGo`; `DeleteScopeTests/emptyTrashOnlyEverEmptiesTrashFolders`, `noOtherFolderCountsAsATrash` |
 | Put Back | `putBack`, `Trash.location`, `FileOps.removeEmptyFolders` | `PutBackTests/*`; `TrashUndoTests/onlyEmptyFoldersGoWhenTheirItemsDo`, `undoingAPutBackRemovesOnlyTheFoldersItMadeOnceEmpty` |
 | Drop on the sidebar's Trash | `SidebarViewController.canTrash` | `DropTests/theSidebarsTrashTakesOnlyWhatCanBeTrashed` |
+| Commands on localized names (every view, results and both panes) | `FileEntry.url`, `BrowserViewController.selectedURLs`; labels use `FileEntry.displayName` | `LocalizedNamesTests/everyViewRenamesTheSelectedURLRatherThanItsTranslatedLabelAndUndoRestoresIt`, `resultsAndBothPanesKeepDifferentItemsWithTheSameLabel`; `SelectionTargetsTests/*` |
 
 ## Undo and History
 

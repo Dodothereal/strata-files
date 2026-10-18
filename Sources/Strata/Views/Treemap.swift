@@ -19,7 +19,7 @@ nonisolated struct TreemapItem: Sendable, Hashable {
     }
 
     init(entry: FileEntry, bytes: Int64?) {
-        self.init(url: entry.url, name: entry.name, bytes: bytes ?? (entry.isDirectory ? nil : entry.size ?? 0),
+        self.init(url: entry.url, name: entry.displayName, bytes: bytes ?? (entry.isDirectory ? nil : entry.size ?? 0),
                   isFolder: entry.isFolder, contentType: entry.contentType)
     }
 

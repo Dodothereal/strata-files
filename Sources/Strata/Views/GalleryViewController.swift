@@ -306,8 +306,8 @@ final class GalleryViewController: NSViewController, FileCollectionController {
             detailLabel.stringValue = ""
             return
         }
-        nameLabel.stringValue = entry.name
-        nameLabel.setAccessibilityLabel(entry.name)
+        nameLabel.stringValue = entry.displayName
+        nameLabel.setAccessibilityLabel(entry.displayName)
         var detail = [entry.kind]
         if let size = entry.size, !entry.isDirectory { detail.append(Format.bytes(size)) }
         if let modified = entry.modified { detail.append(Format.longDate(modified)) }
@@ -736,8 +736,8 @@ final class GalleryThumbnailItem: NSCollectionViewItem {
         FileThumbnails.shared.cancel(ticket)
         ticket = nil
         self.entry = entry
-        view.setAccessibilityLabel(entry.name)
-        view.toolTip = entry.name
+        view.setAccessibilityLabel(entry.displayName)
+        view.toolTip = entry.displayName
         let canThumbnail = FileThumbnails.canThumbnail(entry)
         let cached = canThumbnail ? FileThumbnails.shared.cached(entry, size: size, scale: scale) : nil
         thumbnail.image = cached?.image ?? IconCache.shared.icon(for: entry)

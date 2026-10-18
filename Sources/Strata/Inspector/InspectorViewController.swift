@@ -231,9 +231,9 @@ final class InspectorViewController: NSViewController {
             let containerPath = container.flatMap { ContainerCopies.containerPath(of: entry.url, top: $0.top) }
             let server = RemoteCopies.server(containing: entry.url)
             let serverPath = server.flatMap { RemoteCopies.remotePath(of: entry.url, top: $0.top) }
-            titleLabel.stringValue = serverPath == "/" ? server?.server.name ?? entry.name
-                : containerPath == "/" ? container?.source.name ?? entry.name
-                : ContainerCopies.engineFolder(entry.url) != nil ? Places.displayName(entry.url) : apparent?.lastPathComponent ?? entry.name
+            titleLabel.stringValue = serverPath == "/" ? server?.server.name ?? entry.displayName
+                : containerPath == "/" ? container?.source.name ?? entry.displayName
+                : ContainerCopies.engineFolder(entry.url) != nil ? Places.displayName(entry.url) : apparent.map(Places.displayName) ?? entry.displayName
             let size = entry.isDirectory ? folderSize(entry.url).map { Format.bytes($0.bytes) } : entry.size.map(Format.bytes)
             subtitleLabel.stringValue = [entry.kind, size].compactMap { $0 }.joined(separator: " · ")
             var rows: [(String, NSView)] = []

@@ -562,6 +562,7 @@ final class BrowserViewController: NSViewController {
         // A search refreshed because the index changed nearly always finds the same files: the list, its selection
         // and the Inspector stay as they are, and only rows whose size or date moved are redrawn.
         if isShowingResults, resultsSummary == nil, loadError == nil, updateResultsInPlace(entries) {
+            localizeResultNames()
             if resultsTotal != total {
                 resultsTotal = total
                 delegate?.browserContentDidChange(self)
@@ -578,6 +579,7 @@ final class BrowserViewController: NSViewController {
         loadError = nil
         isLoaded = true
         nodes = entries.map { FileNode(entry: $0) }
+        localizeResultNames()
         if !outlineView.sortDescriptors.isEmpty { sort(&nodes) }
         rebuildIndex()
         applyFilter()
@@ -634,6 +636,7 @@ final class BrowserViewController: NSViewController {
             header.children = group.entries.map { FileNode(entry: $0, parent: header) }
             return header
         }
+        localizeResultNames()
         rebuildIndex()
         applyFilter()
         outlineView.reloadData()
@@ -641,6 +644,32 @@ final class BrowserViewController: NSViewController {
         updateEmptyState()
         delegate?.browserContentDidChange(self)
         delegate?.browserSelectionDidChange(self)
+    }
+
+    /// Resolve index hits' visible names without blocking search or changing their file identities.
+    private func localizeResultNames() {
+        let gen = generation
+        let targets = nodes.flatMap { $0.children ?? [$0] }.filter { $0.entry.isDirectory || $0.entry.isPackage }
+        guard !targets.isEmpty else { return }
+        let entries = targets.map(\.entry)
+        Task { [weak self] in
+            let localized = await FileEntry.localizedNames(entries)
+            guard let self, isShowingResults, gen == generation, !isRenamingInPlace else { return }
+            let selection = selectedURLs
+            let expanded = nodes.filter { outlineView.isItemExpanded($0) }
+            var changed = false
+            for (node, pair) in zip(targets, zip(entries, localized)) where node.entry == pair.0 && pair.0 != pair.1 {
+                node.entry = pair.1
+                changed = true
+            }
+            guard changed else { return }
+            if !outlineView.sortDescriptors.isEmpty, resultsSummary == nil { sort(&nodes) }
+            applyFilter()
+            outlineView.reloadData()
+            for node in expanded { outlineView.expandItem(node) }
+            select(selection, scroll: false)
+            delegate?.browserSelectionDidChange(self)
+        }
     }
 
     /// Replaces the list with a message while results are being computed.
@@ -708,7 +737,7 @@ final class BrowserViewController: NSViewController {
         if Prefs.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
         let result: ComparisonResult
         switch sortKey {
-        case .name: result = a.name.localizedStandardCompare(b.name)
+        case .name: result = a.displayName.localizedStandardCompare(b.displayName)
         case .modified: result = compare(a.modified ?? .distantPast, b.modified ?? .distantPast)
         case .created: result = compare(a.created ?? .distantPast, b.created ?? .distantPast)
         case .added: result = compare(a.added ?? .distantPast, b.added ?? .distantPast)
@@ -720,7 +749,10 @@ final class BrowserViewController: NSViewController {
         case .height: result = compare(mediaInfo.cached(a)?.height ?? -1, mediaInfo.cached(b)?.height ?? -1)
         case .duration: result = compare(mediaInfo.cached(a)?.duration ?? -1, mediaInfo.cached(b)?.duration ?? -1)
         }
-        if result == .orderedSame { return a.name.localizedStandardCompare(b.name) == .orderedAscending }
+        if result == .orderedSame {
+            let names = a.displayName.localizedStandardCompare(b.displayName)
+            return names == .orderedSame ? a.url.path < b.url.path : names == .orderedAscending
+        }
         return ascending ? result == .orderedAscending : result == .orderedDescending
     }
 
@@ -761,7 +793,7 @@ final class BrowserViewController: NSViewController {
         }
         var scored: [(node: FileNode, score: Int)] = []
         for node in nodes {
-            if let match = Fuzzy.match(filter, node.entry.name) {
+            if let match = node.entry.nameMatch(filter) {
                 node.matchIndices = match.indices
                 scored.append((node, match.score))
             } else {
@@ -770,7 +802,7 @@ final class BrowserViewController: NSViewController {
         }
         rows = scored.sorted {
             $0.score != $1.score ? $0.score > $1.score
-                : $0.node.entry.name.localizedStandardCompare($1.node.entry.name) == .orderedAscending
+                : $0.node.entry.displayName.localizedStandardCompare($1.node.entry.displayName) == .orderedAscending
         }.map(\.node)
     }
 
@@ -1741,7 +1773,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
                 cell.identifier = .nameCell
                 return cell
             }()
-            cell.configure(name: entry.name, icon: IconCache.shared.icon(for: entry), matches: node.matchIndices, dimmed: dimmed,
+            cell.configure(name: entry.displayName, icon: IconCache.shared.icon(for: entry), matches: node.matchIndices, dimmed: dimmed,
                            git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
                            cloud: CloudStore.shared.status(for: entry.url), thumbnail: Prefs.showIconPreviews ? entry : nil,
                            scale: outlineView.window?.backingScaleFactor ?? 2)

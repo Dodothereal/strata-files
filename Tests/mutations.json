@@ -731,5 +731,19 @@
     "replace": "",
     "rule": "A disabled repository filter is still required and browsing fails",
     "tests": "GitSafetyTests"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "    var selectedURLs: [URL] { selectedEntries.map(\\.url) }",
+    "replace": "    var selectedURLs: [URL] { selectedEntries.map { $0.url.deletingLastPathComponent().appending(path: $0.displayName) } }",
+    "rule": "Localized labels never become file command paths",
+    "tests": "LocalizedNamesTests"
+  },
+  {
+    "file": "Strata/Model/FileEntry.swift",
+    "find": "        displayName = values.localizedName ?? name",
+    "replace": "        displayName = name",
+    "rule": "Localized folders and apps use the system display name",
+    "tests": "LocalizedNamesTests"
   }
 ]

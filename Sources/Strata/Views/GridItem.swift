@@ -410,7 +410,7 @@ final class GridItem: NSCollectionViewItem {
         self.dimmed = dimmed
         let showHidden = Prefs.showHidden
         let detail = showsInfo ? folderSizeText ?? ItemInfoLoader.shared.immediate(entry, showHidden: showHidden) : nil
-        itemView.configure(name: entry.name, matches: matches, detail: detail, metrics: metrics)
+        itemView.configure(name: entry.displayName, matches: matches, detail: detail, metrics: metrics)
         itemView.setAccessibilityHelp(entry.kind)
         updateState()
 

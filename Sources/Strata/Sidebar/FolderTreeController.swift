@@ -279,7 +279,7 @@ final class FolderTreeController: NSViewController {
             return values.isDirectory == true && values.isPackage != true && values.isSymbolicLink != true
         }
         .map { ($0.standardizedFileURL, FileManager.default.displayName(atPath: $0.path)) }
-        .sorted { $0.url.lastPathComponent.localizedStandardCompare($1.url.lastPathComponent) == .orderedAscending }
+        .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
 
     /// Whether `url` holds a subfolder (not a package or link), stopping at the first; nil when it can't be read.

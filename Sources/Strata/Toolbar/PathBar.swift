@@ -197,7 +197,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
             if Trash.isTrash(current) {
                 parts.append((String(localized: "Trash", comment: "Path bar: a Trash folder"), current, "trash"))
             } else {
-                parts.append((String(component), current, nil))
+                parts.append((Places.displayName(current), current, nil))
             }
         }
         return parts

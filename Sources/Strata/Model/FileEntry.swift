@@ -5,6 +5,8 @@ import UniformTypeIdentifiers
 nonisolated struct FileEntry: Sendable, Hashable {
     let url: URL
     let name: String
+    /// Finder's localized label. Names used to rename, identify extensions or form paths stay in `name` and `url`.
+    let displayName: String
     let isDirectory: Bool
     let isPackage: Bool
     let isHidden: Bool
@@ -74,15 +76,16 @@ nonisolated struct FileEntry: Sendable, Hashable {
     }
 
     static let resourceKeys: [URLResourceKey] = [
-        .nameKey, .isDirectoryKey, .isPackageKey, .isHiddenKey, .isSymbolicLinkKey, .fileSizeKey,
+        .nameKey, .localizedNameKey, .isDirectoryKey, .isPackageKey, .isHiddenKey, .isSymbolicLinkKey, .fileSizeKey,
         .contentModificationDateKey, .creationDateKey, .addedToDirectoryDateKey, .localizedTypeDescriptionKey,
         .contentTypeKey, .isVolumeKey,
     ]
 
     init(url: URL, name: String, isDirectory: Bool, isPackage: Bool, isHidden: Bool, isSymlink: Bool, isVolume: Bool,
-         size: Int64?, modified: Date?, created: Date?, added: Date?, kind: String, contentType: UTType?) {
+         size: Int64?, modified: Date?, created: Date?, added: Date?, kind: String, contentType: UTType?, displayName: String? = nil) {
         self.url = url
         self.name = name
+        self.displayName = displayName ?? name
         self.isDirectory = isDirectory
         self.isPackage = isPackage
         self.isHidden = isHidden
@@ -99,6 +102,7 @@ nonisolated struct FileEntry: Sendable, Hashable {
     init(url: URL, values: URLResourceValues) {
         self.url = url
         name = values.name ?? url.lastPathComponent
+        displayName = values.localizedName ?? name
         isSymlink = values.isSymbolicLink ?? false
         isVolume = values.isVolume ?? false
         var isDirectory = values.isDirectory ?? false
@@ -120,9 +124,25 @@ nonisolated struct FileEntry: Sendable, Hashable {
     }
 
     /// The same item described as another kind.
-    func with(kind: String) -> FileEntry {
+    func with(kind: String? = nil, displayName: String? = nil) -> FileEntry {
         FileEntry(url: url, name: name, isDirectory: isDirectory, isPackage: isPackage, isHidden: isHidden, isSymlink: isSymlink,
-                  isVolume: isVolume, size: size, modified: modified, created: created, added: added, kind: kind, contentType: contentType)
+                  isVolume: isVolume, size: size, modified: modified, created: created, added: added, kind: kind ?? self.kind,
+                  contentType: contentType, displayName: displayName ?? self.displayName)
+    }
+
+    /// Filtering accepts both the name on disk and the visible label, without highlighting offsets from another name.
+    func nameMatch(_ query: String) -> Fuzzy.Match? {
+        if let match = Fuzzy.match(query, displayName) { return match }
+        return Fuzzy.match(query, name).map { Fuzzy.Match(score: $0.score, indices: []) }
+    }
+
+    /// Index hits keep disk work out of the main thread. Resolve folder and bundle labels once results arrive.
+    @concurrent static func localizedNames(_ entries: [Self]) async -> [Self] {
+        entries.map { entry in
+            guard !Task.isCancelled, entry.isDirectory || entry.isPackage,
+                  let values = try? entry.url.resourceValues(forKeys: [.localizedNameKey]), let name = values.localizedName else { return entry }
+            return entry.with(displayName: name)
+        }
     }
 
     init?(url: URL) {

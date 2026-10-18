@@ -29,7 +29,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     static func defaultOrder(_ a: FileEntry, _ b: FileEntry) -> Bool {
         if Prefs.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
-        return a.name.localizedStandardCompare(b.name) == .orderedAscending
+        return a.displayName.localizedStandardCompare(b.displayName) == .orderedAscending
     }
 
     override func loadView() {
@@ -848,12 +848,12 @@ final class ColumnCellView: NSTableCellView {
     func configure(_ entry: FileEntry, matches: [Int], dimmed: Bool, git: GitBadge? = nil, tags: [FinderTag] = [],
                    cloud: CloudStatus? = nil, scale: CGFloat = 2) {
         isFolder = entry.isFolder
-        nameCell.configure(name: entry.name, icon: IconCache.shared.icon(for: entry), matches: matches, dimmed: dimmed, git: git,
+        nameCell.configure(name: entry.displayName, icon: IconCache.shared.icon(for: entry), matches: matches, dimmed: dimmed, git: git,
                            tags: tags, cloud: cloud, thumbnail: Prefs.showIconPreviews ? entry : nil, scale: scale)
         applyTruncation()
         chevron.isHidden = !entry.isFolder
         setAccessibilityLabel(entry.isFolder
-            ? String(localized: "\(entry.name), folder", comment: "Accessibility label of a folder row; the placeholder is its name") : entry.name)
+            ? String(localized: "\(entry.displayName), folder", comment: "Accessibility label of a folder row; the placeholder is its name") : entry.displayName)
         updateChevron()
     }
 

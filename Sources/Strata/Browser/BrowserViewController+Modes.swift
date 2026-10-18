@@ -112,7 +112,7 @@ extension BrowserViewController {
             grid.directory = directory
             grid.setEntries(shown.map(\.entry), matches: matches)
         case .columns:
-            columns.sortComparator = { [weak self] a, b in self?.ordered(a, b) ?? (a.name.localizedStandardCompare(b.name) == .orderedAscending) }
+            columns.sortComparator = { [weak self] a, b in self?.ordered(a, b) ?? (a.displayName.localizedStandardCompare(b.displayName) == .orderedAscending) }
             columns.setRoot(directory, entries: shown.map(\.entry), matches: matches)
         case .gallery:
             gallery.directory = directory
