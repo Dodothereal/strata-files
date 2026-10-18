@@ -1,0 +1,53 @@
+import AVFoundation
+import Foundation
+import ImageIO
+import UniformTypeIdentifiers
+
+/// Dimensions in display orientation, and a movie or audio file's playing time.
+nonisolated struct MediaInfo: Equatable, Sendable {
+    var width: Int?
+    var height: Int?
+    var duration: Double?
+
+    var dimensions: String? {
+        guard let width, let height, width > 0, height > 0 else { return nil }
+        return "\(width) × \(height)"
+    }
+
+    var pixels: Double { Double(width ?? 0) * Double(height ?? 0) }
+
+    var durationText: String? {
+        guard let duration, duration.isFinite, duration >= 0, duration < Double(Int.max / 2) else { return nil }
+        let seconds = Int(duration.rounded())
+        if seconds >= 3600 { return "\(seconds / 3600):" + String(format: "%02d:%02d", seconds / 60 % 60, seconds % 60) }
+        return "\(seconds / 60):" + String(format: "%02d", seconds % 60)
+    }
+
+    @concurrent
+    static func read(_ url: URL, contentType: UTType?) async -> Self {
+        guard !Task.isCancelled else { return Self() }
+        if contentType?.conforms(to: .image) == true {
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+                  let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                  let width = props[kCGImagePropertyPixelWidth] as? Int,
+                  let height = props[kCGImagePropertyPixelHeight] as? Int else { return Self() }
+            let rotated = (5...8).contains(props[kCGImagePropertyOrientation] as? Int ?? 1)
+            return Self(width: rotated ? height : width, height: rotated ? width : height)
+        }
+        guard contentType?.conforms(to: .audiovisualContent) == true else { return Self() }
+        let asset = AVURLAsset(url: url)
+        let duration = try? await asset.load(.duration).seconds
+        guard !Task.isCancelled else { return Self() }
+        var result = Self(duration: duration.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil })
+        if let track = try? await asset.loadTracks(withMediaType: .video).first,
+           let (size, transform) = try? await track.load(.naturalSize, .preferredTransform) {
+            let displayed = size.applying(transform)
+            let width = abs(displayed.width), height = abs(displayed.height)
+            if width.isFinite, height.isFinite, width > 0, height > 0, width < 1_000_000, height < 1_000_000 {
+                result.width = Int(width.rounded())
+                result.height = Int(height.rounded())
+            }
+        }
+        return result
+    }
+}

@@ -36,13 +36,22 @@ final class FileNode {
 }
 
 enum SortKey: String {
-    case name, modified, created, size, kind
+    case name, modified, created, added, size, kind, dimensions, width, height, duration
+    case fileExtension = "extension"
+
+    var isMedia: Bool { ListColumn(rawValue: rawValue)?.isMedia == true }
 }
 
 private extension NSUserInterfaceItemIdentifier {
     static let name = Self("name")
     static let modified = Self("modified")
     static let created = Self("created")
+    static let added = Self("added")
+    static let dimensions = Self("dimensions")
+    static let width = Self("width")
+    static let height = Self("height")
+    static let duration = Self("duration")
+    static let fileExtension = Self("extension")
     static let size = Self("size")
     static let kind = Self("kind")
     static let location = Self("location")
@@ -76,7 +85,7 @@ final class BrowserViewController: NSViewController {
         let spacing = outlineView.intercellSpacing.width * CGFloat(visible.count + 1)
         var excess = visible.reduce(0) { $0 + $1.width } + spacing - scrollView.contentView.bounds.width
         guard excess > 1 else { return }
-        for id in [NSUserInterfaceItemIdentifier.kind, .location, .created, .modified, .name] {
+        for id in [NSUserInterfaceItemIdentifier.kind, .location, .fileExtension, .dimensions, .width, .height, .duration, .added, .created, .modified, .name] {
             guard excess > 0, let column = outlineView.tableColumn(withIdentifier: id), !column.isHidden else { continue }
             let give = min(excess, column.width - column.minWidth)
             guard give > 0 else { continue }
@@ -106,6 +115,7 @@ final class BrowserViewController: NSViewController {
     private let emptyState = EmptyStateView()
     private let filterPill = FilterPill()
     private let sizer = FolderSizer()
+    let mediaInfo = MediaInfoLoader()
 
     private var nodes: [FileNode] = []
     private var rows: [FileNode] = []
@@ -189,6 +199,7 @@ final class BrowserViewController: NSViewController {
         view = root
 
         sizer.onUpdate = { [weak self] url in self?.folderSizeArrived(url) }
+        mediaInfo.onUpdate = { [weak self] entry in self?.mediaInfoArrived(entry) }
         installActiveView()
         NotificationCenter.default.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged, object: nil)
@@ -228,12 +239,12 @@ final class BrowserViewController: NSViewController {
         ov.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
         ov.draggingDestinationFeedbackStyle = .regular
 
-        addColumn(.name, "Name", width: 340, min: 160, ascending: true)
-        addColumn(.modified, "Date Modified", width: 170, min: 110, ascending: false)
-        addColumn(.created, "Date Created", width: 170, min: 110, ascending: false)
-        addColumn(.size, "Size", width: 84, min: 60, ascending: false, alignment: .right)
-        addColumn(.kind, "Kind", width: 150, min: 80, ascending: true)
-        addColumn(.location, "Where", width: 220, min: 100, ascending: true)
+        addColumn(.name, String(localized: "Name"), width: 340, min: 160, ascending: true)
+        for column in ListColumn.allCases {
+            addColumn(NSUserInterfaceItemIdentifier(column.rawValue), column.title, width: column.preferredWidth,
+                      min: column.minWidth, ascending: column.ascending, alignment: column.alignment)
+        }
+        addColumn(.location, String(localized: "Where"), width: 220, min: 100, ascending: true)
         ov.tableColumn(withIdentifier: .location)?.isHidden = true
         ov.outlineTableColumn = ov.tableColumns.first
         // Right-click the column titles to show or hide a column (Name always shows; Where comes with results).
@@ -280,7 +291,7 @@ final class BrowserViewController: NSViewController {
     }
 
     /// The list columns that can be shown or hidden, in the order of the menu on their titles.
-    private static let optionalColumns: [NSUserInterfaceItemIdentifier] = [.modified, .created, .size, .kind]
+    private static var optionalColumns: [NSUserInterfaceItemIdentifier] { ListColumn.allCases.map { .init($0.rawValue) } }
 
     @objc private func toggleListColumn(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
@@ -302,10 +313,10 @@ final class BrowserViewController: NSViewController {
         if fitName { fitNameColumn() }
     }
 
-    private func addColumn(_ id: NSUserInterfaceItemIdentifier, _ title: String.LocalizationValue, width: CGFloat, min: CGFloat,
+    private func addColumn(_ id: NSUserInterfaceItemIdentifier, _ title: String, width: CGFloat, min: CGFloat,
                            ascending: Bool, alignment: NSTextAlignment = .left) {
         let column = NSTableColumn(identifier: id)
-        column.title = String(localized: title)
+        column.title = title
         column.width = width
         column.minWidth = min
         column.headerCell.alignment = alignment
@@ -325,6 +336,7 @@ final class BrowserViewController: NSViewController {
             filter = ""
             filterPill.update(query: "", matches: 0)
             sizer.cancelPending()
+            mediaInfo.cancelPending()
             watcher = DirectoryWatcher(url: url) { [weak self] in self?.refresh() }
             gitObservation = GitStatusStore.shared.observe(url)
             pendingSelection = select.map { [$0] } ?? []
@@ -677,6 +689,7 @@ final class BrowserViewController: NSViewController {
     // MARK: - Sorting and filtering
 
     private func sort(_ list: inout [FileNode]) {
+        if sortKey.isMedia { for node in list { mediaInfo.request(node.entry) } }
         // Sorting by size needs every folder's size: look them up once per folder, not twice per comparison.
         let ownsMemo = sortKey == .size && sizeMemo == nil
         if ownsMemo {
@@ -698,8 +711,14 @@ final class BrowserViewController: NSViewController {
         case .name: result = a.name.localizedStandardCompare(b.name)
         case .modified: result = compare(a.modified ?? .distantPast, b.modified ?? .distantPast)
         case .created: result = compare(a.created ?? .distantPast, b.created ?? .distantPast)
+        case .added: result = compare(a.added ?? .distantPast, b.added ?? .distantPast)
         case .size: result = compare(sizeValue(a), sizeValue(b))
         case .kind: result = a.kind.localizedStandardCompare(b.kind)
+        case .fileExtension: result = a.url.pathExtension.localizedStandardCompare(b.url.pathExtension)
+        case .dimensions: result = compare(mediaInfo.cached(a)?.pixels ?? -1, mediaInfo.cached(b)?.pixels ?? -1)
+        case .width: result = compare(mediaInfo.cached(a)?.width ?? -1, mediaInfo.cached(b)?.width ?? -1)
+        case .height: result = compare(mediaInfo.cached(a)?.height ?? -1, mediaInfo.cached(b)?.height ?? -1)
+        case .duration: result = compare(mediaInfo.cached(a)?.duration ?? -1, mediaInfo.cached(b)?.duration ?? -1)
         }
         if result == .orderedSame { return a.name.localizedStandardCompare(b.name) == .orderedAscending }
         return ascending ? result == .orderedAscending : result == .orderedDescending
@@ -792,6 +811,17 @@ final class BrowserViewController: NSViewController {
         if mode == .grid { gridController?.reloadItems([url]) }
         if sortKey == .size { scheduleResort() }
         if row >= 0, outlineView.selectedRowIndexes.contains(row) { delegate?.browserContentDidChange(self) }
+    }
+
+    private func mediaInfoArrived(_ entry: FileEntry) {
+        guard let node = node(for: entry.url), node.entry == entry else { return }
+        let row = outlineView.row(forItem: node)
+        let columns = IndexSet(outlineView.tableColumns.indices.filter {
+            let column = outlineView.tableColumns[$0]
+            return !column.isHidden && ListColumn(rawValue: column.identifier.rawValue)?.isMedia == true
+        })
+        if row >= 0, !columns.isEmpty { outlineView.reloadData(forRowIndexes: [row], columnIndexes: columns) }
+        if sortKey.isMedia { scheduleResort() }
     }
 
     // MARK: - Selection
@@ -1725,6 +1755,20 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         switch column.identifier {
         case .modified: cell.configure(Format.date(entry.modified), alignment: .left, dimmed: dimmed)
         case .created: cell.configure(Format.date(entry.created), alignment: .left, dimmed: dimmed)
+        case .added: cell.configure(Format.date(entry.added), alignment: .left, dimmed: dimmed)
+        case .fileExtension: cell.configure(entry.url.pathExtension, alignment: .left, dimmed: dimmed)
+        case .dimensions, .width, .height, .duration:
+            mediaInfo.request(entry)
+            let info = mediaInfo.cached(entry)
+            let text: String?
+            switch column.identifier {
+            case .dimensions: text = info?.dimensions
+            case .width: text = info?.width.map(String.init)
+            case .height: text = info?.height.map(String.init)
+            default: text = info?.durationText
+            }
+            cell.configure(text ?? (info == nil && MediaInfoLoader.canRead(entry) ? "…" : "—"),
+                           alignment: column.headerCell.alignment, dimmed: dimmed)
         case .size: cell.configure(sizeText(node), alignment: .right, dimmed: dimmed)
         case .location: cell.configure(Format.tildePath(entry.url.deletingLastPathComponent()), alignment: .left, dimmed: dimmed)
         default: cell.configure(entry.kind, alignment: .left, dimmed: dimmed)
@@ -1767,10 +1811,13 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     func outlineView(_ outlineView: NSOutlineView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         guard let descriptor = outlineView.sortDescriptors.first, let key = SortKey(rawValue: descriptor.key ?? "") else { return }
+        applySort(key, ascending: descriptor.ascending)
+    }
+
+    func applySort(_ key: SortKey, ascending direction: Bool, remember: Bool = true) {
         sortKey = key
-        ascending = descriptor.ascending
-        Prefs.sortColumn = key.rawValue
-        Prefs.sortAscending = descriptor.ascending
+        ascending = direction
+        if remember { Prefs.sortColumn = key.rawValue; Prefs.sortAscending = direction }
         let selection = selectedURLs
         sort(&nodes)
         applyFilter()

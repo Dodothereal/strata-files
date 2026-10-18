@@ -229,7 +229,7 @@ final class ItemInfoLoader {
         if entry.isFolder { return !entry.isSymlink && !entry.isVolume && !LazyCopies.contains(entry.url) }
         // A container's image not fetched yet: its size for now, its dimensions once it's here (not cached meanwhile).
         if LazyCopies.isPlaceholder(entry.url) { return false }
-        return entry.contentType?.conforms(to: .image) == true
+        return entry.contentType?.conforms(to: .audio) != true && MediaInfoLoader.canRead(entry)
     }
 
     private func key(_ entry: FileEntry, _ showHidden: Bool) -> String {
@@ -247,11 +247,10 @@ final class ItemInfoLoader {
         let ticket = Ticket(key: key, id: nextID)
         waiters[key, default: [:]][ticket.id] = completion
         if tasks[key] == nil {
-            let url = entry.url
             let isFolder = entry.isFolder
             let fallback = entry.size.map(Format.bytes)
             tasks[key] = Task { [weak self] in
-                let text = await Self.load(url, isFolder: isFolder, showHidden: showHidden)
+                let text = await Self.load(entry, isFolder: isFolder, showHidden: showHidden)
                 guard !Task.isCancelled else { return }
                 self?.finish(key, text ?? fallback ?? "")
             }
@@ -276,9 +275,9 @@ final class ItemInfoLoader {
     }
 
     @concurrent
-    private nonisolated static func load(_ url: URL, isFolder: Bool, showHidden: Bool) async -> String? {
+    private nonisolated static func load(_ entry: FileEntry, isFolder: Bool, showHidden: Bool) async -> String? {
         if isFolder {
-            guard let dir = opendir(url.path) else { return nil }
+            guard let dir = opendir(entry.url.path) else { return nil }
             defer { closedir(dir) }
             var count = 0
             while let entry = readdir(dir) {
@@ -292,10 +291,6 @@ final class ItemInfoLoader {
             }
             return String(localized: "\(count) items", comment: "plural")
         }
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
-              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let width = props[kCGImagePropertyPixelWidth] as? Int,
-              let height = props[kCGImagePropertyPixelHeight] as? Int else { return nil }
-        return "\(width) × \(height)"
+        return await MediaInfo.read(entry.url, contentType: entry.contentType).dimensions
     }
 }

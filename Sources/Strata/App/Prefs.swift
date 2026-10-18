@@ -36,6 +36,7 @@ enum Prefs {
         static let sortColumn = "sortColumn"
         static let sortAscending = "sortAscending"
         static let hiddenListColumns = "hiddenListColumns"
+        static let knownListColumns = "knownListColumns"
         static let dockSearch = "dockSearch"
         static let collapsedSidebarSections = "collapsedSidebarSections"
         static let newFileExtension = "newFileExtension"
@@ -197,9 +198,11 @@ enum Prefs {
 
     /// The list columns you've hidden, by identifier. Date Created starts hidden, as in Finder.
     static var hiddenListColumns: Set<String> {
-        get { Set(defaults.stringArray(forKey: Key.hiddenListColumns) ?? ["created"]) }
+        get { ListColumn.hidden(stored: defaults.stringArray(forKey: Key.hiddenListColumns),
+                                known: defaults.stringArray(forKey: Key.knownListColumns)) }
         set {
             defaults.set(newValue.sorted(), forKey: Key.hiddenListColumns)
+            defaults.set(ListColumn.allCases.map(\.rawValue), forKey: Key.knownListColumns)
             NotificationCenter.default.post(name: .listColumnsChanged, object: nil)
         }
     }
