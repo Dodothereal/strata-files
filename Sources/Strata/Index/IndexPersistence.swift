@@ -5,18 +5,20 @@ import Foundation
 nonisolated enum IndexPersistence {
     private static let magic: UInt32 = 0x5354_5258 // "STRX"
     // 5: only app-like packages' contents are noise, plus build output beside its project file; 6: file IDs (a full
-    // rescan picks that up).
-    private static let version: UInt32 = 6
+    // rescan picks that up); 7: a snapshot generation binds its cumulative encrypted changes file.
+    private static let version: UInt32 = 7
 
     struct Header {
         var eventID: UInt64
         var roots: [(id: Int32, path: String)]
         var excluded: [String]
+        var generation: UUID? = nil
     }
 
     /// Streams the columns, encrypted, straight to disk (no in-memory copy of the whole file), then swaps the file in
     /// atomically.
-    static func save(_ store: IndexStore, eventID: UInt64, excluded: [String], to url: URL) throws {
+    static func saveSnapshot(_ store: IndexStore, eventID: UInt64, excluded: [String], to url: URL,
+                             generation: UUID?, beforeCommit: (() throws -> Void)? = nil) throws {
         let writer = try SecureStorage.Writer(url: url)
         func put(_ bytes: UnsafeRawBufferPointer) { writer.write(bytes) }
         func put<T>(_ value: T) { withUnsafeBytes(of: value) { put($0) } }
@@ -30,9 +32,11 @@ nonisolated enum IndexPersistence {
             column.withUnsafeBytes { put($0) }
         }
 
-        store.read {
+        // The persistence session holds the store read lock throughout this write.
+        do {
             put(magic)
-            put(version)
+            put(generation == nil ? UInt32(6) : version)
+            if let generation { put(generation.uuid) }
             put(eventID)
             put(UInt32(store.roots.count))
             for root in store.roots {
@@ -53,10 +57,11 @@ nonisolated enum IndexPersistence {
             putColumn(store.flags)
             putColumn(store.names)
         }
+        try beforeCommit?()
         try writer.commit()
     }
 
-    static func load(from url: URL) throws -> (IndexStore, Header) {
+    static func loadSnapshot(from url: URL) throws -> (IndexStore, Header) {
         let reader = try SecureStorage.Reader(url: url)
         struct Corrupt: Error {}
         func get<T>(_: T.Type) throws -> T {
@@ -73,8 +78,9 @@ nonisolated enum IndexPersistence {
             return String(decoding: bytes, as: UTF8.self)
         }
         func getColumn<T>(_: T.Type) throws -> ContiguousArray<T> {
-            let count = Int(try get(UInt64.self))
-            guard count >= 0, count <= reader.maximumLength / MemoryLayout<T>.stride else { throw Corrupt() }
+            let rawCount = try get(UInt64.self)
+            guard rawCount <= UInt64(reader.maximumLength / MemoryLayout<T>.stride) else { throw Corrupt() }
+            let count = Int(rawCount)
             var failure: Error?
             let column = ContiguousArray<T>(unsafeUninitializedCapacity: count) { buffer, initialized in
                 do {
@@ -89,8 +95,11 @@ nonisolated enum IndexPersistence {
             return column
         }
 
-        guard try get(UInt32.self) == magic, try get(UInt32.self) == version else { throw Corrupt() }
-        var header = Header(eventID: try get(UInt64.self), roots: [], excluded: [])
+        guard try get(UInt32.self) == magic else { throw Corrupt() }
+        let format = try get(UInt32.self)
+        guard format == 6 || format == version else { throw Corrupt() }
+        let generation = format == version ? UUID(uuid: try get(uuid_t.self)) : nil
+        var header = Header(eventID: try get(UInt64.self), roots: [], excluded: [], generation: generation)
         for _ in 0..<Int(try get(UInt32.self)) {
             let id = try get(Int32.self)
             header.roots.append((id, try getString()))

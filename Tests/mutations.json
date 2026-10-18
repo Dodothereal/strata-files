@@ -794,5 +794,54 @@
     "replace": "                    if store.mtime[o] != item.mtime {",
     "rule": "Index performance: parent events ignore activity inside excluded state",
     "tests": "IndexWorkerTests/aCoalescedParentEventDoesNotResaveChangesOnlyInsideExcludedState"
+  },
+  {
+    "file": "Strata/Index/IndexChanges.swift",
+    "find": "                if baseline.revision < policy.maximumSaves,",
+    "replace": "                if false,",
+    "rule": "Incremental index: a small edit writes changed blocks instead of the full snapshot",
+    "tests": "IndexPersistenceTests/aSmallChangeWritesOnlyEncryptedBlocksAndRestartsExactly"
+  },
+  {
+    "file": "Strata/Index/IndexChanges.swift",
+    "find": "difference(store, from: baseline.hashes, current: hashes, budget: budget)",
+    "replace": "difference(store, from: baseline.savedHashes, current: hashes, budget: budget)",
+    "rule": "Incremental index: cumulative changes retain earlier saves across restarts",
+    "tests": "IndexPersistenceTests/repeatedSavesAndRestartsKeepAllEarlierChanges"
+  },
+  {
+    "file": "Strata/Index/IndexChanges.swift",
+    "find": "        guard UUID(uuid: try get(uuid_t.self)) == generation else { return nil }",
+    "replace": "        _ = try get(uuid_t.self)",
+    "rule": "Incremental index: a checkpoint ignores changes from the old snapshot generation",
+    "tests": "IndexPersistenceTests/aCrashAfterCheckpointNeverReplaysChangesFromTheOldGeneration"
+  },
+  {
+    "file": "Strata/Index/IndexChanges.swift",
+    "find": "        try reader.finish()\n        return Changes",
+    "replace": "        return Changes",
+    "rule": "Incremental index: the whole encrypted changes file is authenticated",
+    "tests": "IndexPersistenceTests/corruptOrTruncatedChangesFailClosedAndAnAbsentLogKeepsTheOldWatermark"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        } catch {\n            log.error(\"Index save failed; changes remain pending:",
+    "replace": "        } catch {\n            dirty = false\n            log.error(\"Index save failed; changes remain pending:",
+    "rule": "Incremental index: failed writes stay dirty until a retry succeeds",
+    "tests": "IndexWorkerTests/aFailedWriteRemainsDirtyAndRetriesWithoutAnotherEvent"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        onPhase?(.ready)\n        dirty = true\n        save()",
+    "replace": "        onPhase?(.ready)\n        save()",
+    "rule": "Incremental index: rebuilding replaces an existing saved index",
+    "tests": "IndexWorkerTests/rebuildingAnExistingSnapshotActuallyReplacesIt"
+  },
+  {
+    "file": "Strata/Index/IndexChanges.swift",
+    "find": "            let watermark = min(eventID, replayFrom ?? eventID)",
+    "replace": "            let watermark = eventID",
+    "rule": "Incremental index: a stale writer preserves the older recovery watermark",
+    "tests": "IndexPersistenceTests/twoLoadedInstancesAndExternalReplacementNeverMixTheirBases"
   }
 ]

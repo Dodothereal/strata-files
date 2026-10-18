@@ -30,10 +30,10 @@ struct IndexWorkerTests {
         return Fixture(worker: worker, config: config, store: try #require(store.withLock { $0 }), changes: changes)
     }
 
-    private func save(_ worker: IndexWorker) async {
+    private func save(_ worker: IndexWorker, beforeCommit: (@Sendable () throws -> Void)? = nil) async {
         await withCheckedContinuation { done in
             DispatchQueue.global(qos: .utility).async {
-                worker.saveNow()
+                worker.saveNow(quitting: false, beforeCommit: beforeCommit)
                 done.resume()
             }
         }
@@ -205,5 +205,70 @@ struct IndexWorkerTests {
         #expect(tree.text("private/a.txt") == "private/a.txt")
         #expect(tree.snapshot() == [".state/", ".state/index.sealed", "private-lookalike/", "private-lookalike/b.txt",
                                     "private/", "private/a.txt"])
+    }
+
+    @Test func anEventArrivingDuringSavingIsAppliedAndPersistedAfterwards() async throws {
+        let tree = try TestTree(".state/", "files/a.txt", "files/b.txt")
+        let fixture = try await start(tree)
+        let a = tree.url("files/a.txt"), b = tree.url("files/b.txt"), folder = tree.url("files").path
+        let event = try IndexPersistence.load(from: fixture.config.file).1.eventID + 1
+        try Data("First changed file".utf8).write(to: a)
+        fixture.worker.receive([.init(path: folder, flags: 0, id: event)])
+        await save(fixture.worker, beforeCommit: {
+            try Data("Another change arrives while the first is being saved".utf8).write(to: b)
+            fixture.worker.receive([.init(path: folder, flags: 0, id: event + 1)])
+        })
+        let (first, firstHeader) = try IndexPersistence.load(from: fixture.config.file)
+        let firstB = try #require(first.lookup(b.path))
+        #expect(first.size[Int(firstB)] == "files/b.txt".utf8.count)
+        #expect(firstHeader.eventID == event)
+        await save(fixture.worker)
+        let (second, secondHeader) = try IndexPersistence.load(from: fixture.config.file)
+        let secondB = try #require(second.lookup(b.path))
+        #expect(second.size[Int(secondB)] == "Another change arrives while the first is being saved".utf8.count)
+        #expect(secondHeader.eventID == event + 1)
+        #expect(tree.snapshot() == [".state/", ".state/index.sealed", "files/", "files/a.txt", "files/b.txt"])
+    }
+
+    @Test func aFailedWriteRemainsDirtyAndRetriesWithoutAnotherEvent() async throws {
+        let tree = try TestTree(".state/", "files/a.txt")
+        let fixture = try await start(tree)
+        let event = try IndexPersistence.load(from: fixture.config.file).1.eventID + 1
+        try tree.add(["files/new.txt"])
+        fixture.worker.receive([.init(path: tree.url("files").path, flags: 0, id: event)])
+        let previous = tree.url(".state/previous.sealed")
+        try FileManager.default.moveItem(at: fixture.config.file, to: previous)
+        try FileManager.default.createDirectory(at: fixture.config.file, withIntermediateDirectories: false)
+        await save(fixture.worker)
+        try FileManager.default.removeItem(at: fixture.config.file)
+        try FileManager.default.moveItem(at: previous, to: fixture.config.file)
+        await save(fixture.worker)
+        let (loaded, header) = try IndexPersistence.load(from: fixture.config.file)
+        #expect(loaded.lookup(tree.url("files/new.txt").path) != nil)
+        #expect(header.eventID == event)
+        #expect(tree.snapshot() == [".state/", ".state/index.sealed", "files/", "files/a.txt", "files/new.txt"])
+    }
+
+    @Test func rebuildingAnExistingSnapshotActuallyReplacesIt() async throws {
+        let tree = try TestTree(".state/", "files/a.txt")
+        let fixture = try await start(tree)
+        let old = try Data(contentsOf: fixture.config.file)
+        try tree.add(["files/new.txt"])
+        await withCheckedContinuation { done in fixture.worker.rebuildNow { done.resume() } }
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file)
+        #expect(loaded.lookup(tree.url("files/new.txt").path) != nil)
+        #expect(try Data(contentsOf: fixture.config.file) != old)
+        #expect(tree.snapshot() == [".state/", ".state/index.sealed", "files/", "files/a.txt", "files/new.txt"])
+    }
+
+    @Test func aCorruptChangesFileRebuildsOnceAndIsRemoved() async throws {
+        let tree = try TestTree(".state/", "files/a.txt")
+        let fixture = try await start(tree)
+        try Data("broken changes".utf8).write(to: IndexPersistence.changesURL(for: fixture.config.file))
+        let restarted = try await start(tree)
+        #expect(!FileManager.default.fileExists(atPath: IndexPersistence.changesURL(for: restarted.config.file).path))
+        let (_, header) = try IndexPersistence.load(from: restarted.config.file)
+        #expect(header.generation != nil)
+        #expect(tree.snapshot() == [".state/", ".state/index.sealed", "files/", "files/a.txt"])
     }
 }

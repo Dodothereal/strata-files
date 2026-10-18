@@ -94,6 +94,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 | Archives' copies (remove, replace, prune) | `ArchiveCache`, `Archiver.removeTree` | `CacheRemovalTests/aCopyIsRemovedOnlyAsAWholeEntryOfTheCache`, `aNewCopyReplacesOnlyOlderCopiesOfTheSameArchive`, `pruningTakesOnlyStaleCopies`, `removingATreeNeverFollowsALinkOut` |
 | Containers' and servers' copies (remove, set aside at quit) | `ContainerCopies.remove`, `RemoteCopies.remove`, `setAsideForRemoval`, `removeSetAside` | `CacheRemovalTests/aContainersOwnFilesAreNeverRemovedAsAFolder`, `settingCopiesAsideRemovesOnlyThemAtQuit` |
 | Stores (History, index), content index reset, script files | `SecureStorage.write`, `SemanticIndex.reset`, `ProjectActions.removeStaleCommandFiles` | `CacheRemovalTests/savingAStoreReplacesOnlyItsOwnFile`, `resettingTheContentIndexRemovesOnlyItsStore`, `staleScriptFilesGoOnlyFromTheirFolder` |
+| Incremental index snapshots and changes | `IndexPersistence.save`, `load`; `SecureStorage.Writer` | `IndexPersistenceTests/*`, `IndexWorkerTests/*` (encrypted blocks, atomic replacement, generations, corruption, retries, migration, links and directories) |
 | Tests never touch your data | `SecureStorage.isTestRun`, `caches` | `DeleteTests/testRunsKeepHistoryAndIndexesOutOfYourOwn`; `DeleteScopeTests/testsKeepToCachesOfTheirOwn` |
 
 ## The proof: mutations
@@ -177,6 +178,7 @@ belong to.
 | `Dev/GitRepository :: execute` (runs `git`, reads only: `status`, `config`, `ls-files`, hardened against the repository's own config) | `ProjectCleanupTests/*` for what's offered; git's own commands change nothing |
 | `Dev/ProjectActions :: openCommandFile` (its own script file), `removeStaleCommandFiles` | `CacheRemovalTests/staleScriptFilesGoOnlyFromTheirFolder`; `ContainerTests/theTerminalScriptQuotesEverything`, `terminalFileNamesArePlainASCII` |
 | `Dock/DockSearch :: restartDock` (`killall Dock`: the Dock relaunches, no files) | `DockSearchTests/*` for what's changed in its list |
+| `Index/IndexChanges :: save` (replaces only Strata’s own changes file after committing a full snapshot) | `IndexPersistenceTests/*`, `IndexWorkerTests/*`; the incremental-index mutations guard save volume and generations |
 | `Index/IndexStore :: remove`, `unlink` (an in-memory tree, not files) | `PathQueryTests/*` |
 | `Model/ArchiveCache :: finish`, `touch` | `CacheRemovalTests/aNewCopyReplacesOnlyOlderCopiesOfTheSameArchive`, `pruningTakesOnlyStaleCopies` |
 | `Model/CloudStatus :: removeDownload` | `DeleteScopeTests/removeDownloadAsksToFreeExactlyTheItemsChosen`, `removeDownloadFreesOnlyWhatsAlsoInTheCloud` |

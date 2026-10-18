@@ -51,6 +51,10 @@ nonisolated final class IndexStore: @unchecked Sendable {
     /// Root entries and their absolute paths.
     var roots: [(id: Int32, path: String)] = []
 
+    /// Hashes of the last full snapshot. Saving compares blocks so every mutation, including direct column writes,
+    /// is covered without adding bookkeeping to the scanner or the search path. Protected by the store's lock.
+    var persistence: IndexPersistence.Baseline?
+
     private let lock = UnsafeMutablePointer<pthread_rwlock_t>.allocate(capacity: 1)
 
     init() {

@@ -65,20 +65,20 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         queue.async { self.reconfigure(config) }
     }
 
-    func rebuildNow() {
-        queue.async { self.rebuild() }
+    func rebuildNow(completion: @escaping @Sendable () -> Void = {}) {
+        queue.async { self.rebuild(); completion() }
     }
 
     /// Writes the index now (used at quit). Skipped while a full scan is still running: the scan holds the queue, and
     /// the index on disk (or the next launch's scan) covers it. Never waits much past quit's deadline: work in progress
     /// stops by then, and if the queue is still busy (a disk slow to answer), the next launch catches up from the last
     /// save (saves are atomic, so one cut short by quitting leaves the previous file).
-    func saveNow() {
+    func saveNow(quitting: Bool = true, beforeCommit: (@Sendable () throws -> Void)? = nil) {
         guard !scanning.withLock({ $0 }) else { return }
-        quitDeadline.withLock { $0 = DispatchTime.now().uptimeNanoseconds + 2_000_000_000 }
+        if quitting { quitDeadline.withLock { $0 = DispatchTime.now().uptimeNanoseconds + 2_000_000_000 } }
         let saved = DispatchSemaphore(value: 0)
         queue.async {
-            self.save()
+            self.save(beforeCommit: beforeCommit)
             saved.signal()
         }
         if saved.wait(timeout: .now() + 3) == .timedOut { log.info("Index still busy at quit; the next launch catches up") }
@@ -147,6 +147,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         rescanNeeded = false
         onStore?(fresh)
         onPhase?(.ready)
+        dirty = true
         save()
         // Replays whatever changed during the scan.
         if watchesChanges { events.start(paths: config.roots, since: startEventID) }
@@ -176,15 +177,21 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         markChanged()
     }
 
-    private func save() {
+    private func save(beforeCommit: (() throws -> Void)? = nil) {
         // An invalidated index must not be saved as current: the older file on disk replays the invalidating event
         // at the next launch and rebuilds then. The same goes for one whose catching up was cut short at quit.
         guard !rescanNeeded, !interrupted else { return }
         // Apply events already received first: the saved event ID says they're in the file.
         if !pending.isEmpty { flush() }
         guard !interrupted, let config, let store, dirty || !FileManager.default.fileExists(atPath: config.file.path) else { return }
-        try? IndexPersistence.save(store, eventID: lastEventID, excluded: Array(config.excluded), to: config.file)
-        dirty = false
+        do {
+            try IndexPersistence.save(store, eventID: lastEventID, excluded: Array(config.excluded), to: config.file,
+                                      beforeCommit: beforeCommit)
+            dirty = false
+        } catch {
+            log.error("Index save failed; changes remain pending: \(String(describing: error))")
+            if quitDeadline.withLock({ $0 == nil }) { scheduleSave() }
+        }
     }
 
     // MARK: - Live updates
@@ -274,6 +281,10 @@ nonisolated final class IndexWorker: @unchecked Sendable {
     private func markChanged() {
         dirty = true
         onChange?()
+        scheduleSave()
+    }
+
+    private func scheduleSave() {
         guard !saveScheduled else { return }
         saveScheduled = true
         queue.asyncAfter(deadline: .now() + 120) { [weak self] in
