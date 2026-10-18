@@ -182,7 +182,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
 
     // MARK: - Live updates
 
-    private func receive(_ batch: [FSEventsStream.Event]) {
+    func receive(_ batch: [FSEventsStream.Event]) {
         queue.async {
             for event in batch {
                 self.lastEventID = max(self.lastEventID, event.id)
@@ -194,16 +194,18 @@ nonisolated final class IndexWorker: @unchecked Sendable {
                 }
                 var path = event.path
                 while path.count > 1 && path.hasSuffix("/") { path.removeLast() }
+                if let config = self.config, self.isExcluded(path, config) { continue }
                 self.pending[path] = (self.pending[path] ?? false) || event.mustScanSubdirectories
             }
-            self.scheduleFlush()
+            if self.rescanNeeded || !self.pending.isEmpty { self.scheduleFlush() }
         }
     }
 
     private func scheduleFlush() {
         guard !flushScheduled else { return }
         flushScheduled = true
-        queue.asyncAfter(deadline: .now() + 0.25) {
+        queue.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self else { return }
             self.flushScheduled = false
             self.flush()
         }
@@ -265,7 +267,8 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         onChange?()
         guard !saveScheduled else { return }
         saveScheduled = true
-        queue.asyncAfter(deadline: .now() + 120) {
+        queue.asyncAfter(deadline: .now() + 120) { [weak self] in
+            guard let self else { return }
             self.saveScheduled = false
             self.compactIfNeeded()
             self.save()

@@ -25,13 +25,17 @@ final class FileIndex {
         worker.onStore = { store in Task { @MainActor in FileIndex.shared.store = store } }
         worker.onPhase = { phase in Task { @MainActor in FileIndex.shared.setPhase(phase) } }
         worker.onChange = { Task { @MainActor in FileIndex.shared.changed() } }
-        worker.start(Self.currentConfig())
+        let config = Self.currentConfig()
+        excludedPaths = config.excluded
+        worker.start(config)
     }
 
     /// Re-evaluates what may be indexed (after Full Disk Access changes or a protected folder was opened).
     func refreshConfig() {
         guard started else { return }
-        worker.update(Self.currentConfig())
+        let config = Self.currentConfig()
+        excludedPaths = config.excluded
+        worker.update(config)
     }
 
     /// Number of entries, including ones deleted since the last full scan.
@@ -189,7 +193,7 @@ final class FileIndex {
 
     private var excludedPaths: Set<String> = []
 
-    private static func currentConfig() -> IndexConfig {
+    static func currentConfig() -> IndexConfig {
         let home = realPath(Places.home.path)
         var excluded: Set<String> = []
         if !Privacy.hasFullDiskAccess {
@@ -201,6 +205,8 @@ final class FileIndex {
                 if !Privacy.isKnownAccessible(path) { excluded.insert(path) }
             }
         }
+        // Saving the index must not index that save and trigger another full rewrite of the index.
+        excluded.insert(realPath(SecureStorage.directory.path))
         // Containers' files aren't this Mac's: their not-yet-fetched placeholders would count as their full size.
         excluded.insert(realPath(ContainerCopies.root.path))
         // Servers' copies neither: their files are another machine's, and gone when Strata quits.
@@ -210,7 +216,6 @@ final class FileIndex {
         SecureStorage.removeLegacy(SecureStorage.url("index.bin"))
         let config = IndexConfig(roots: rootPaths, excluded: excluded,
                                  noise: [home + "/Library"], file: SecureStorage.url("index.sealed"))
-        shared.excludedPaths = excluded
         return config
     }
 
