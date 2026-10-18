@@ -307,6 +307,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let current = (NSApp.keyWindow?.windowController as? BrowserWindowController)?.location
         openWindow(at: Prefs.newWindowsAtHome ? Places.home : current ?? Places.home)
     }
+
+    private lazy var dockMenu = DockMenu(favorites: Places.favorites, newWindow: { [weak self] in
+        self?.newWindow(nil)
+        NSApp.activate()
+    }, recents: { [weak self] in
+        self?.frontController().goRecents(nil)
+        NSApp.activate()
+    }, openFolder: { [weak self] in
+        self?.showFolder($0)
+    })
+
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? { dockMenu.build() }
 }
 
 // Makes `validateMenuItem` reachable (it shows the Shelf's state in the Window menu).
