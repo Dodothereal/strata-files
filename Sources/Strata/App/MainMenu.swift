@@ -126,6 +126,7 @@ enum MainMenu {
         ])
         main.addItem(help)
         NSApp.helpMenu = help.submenu
+        MenuImages.show(in: main)
         return main
     }
 
@@ -194,6 +195,23 @@ enum MainMenu {
     }
 }
 
+enum MenuImages {
+    static func show(in menu: NSMenu) {
+        for item in menu.items {
+            if item.image != nil { preferVisible(item) }
+            if let submenu = item.submenu { show(in: submenu) }
+        }
+    }
+
+    static func preferVisible(_ item: NSObject) {
+        // macOS 27 normally hides menu images. Use its public preference through Objective-C so builds with the
+        // macOS 26 SDK also work; 1 is NSMenuItem.ImageVisibility.visible. Older systems keep their usual icons.
+        if item.responds(to: NSSelectorFromString("setPreferredImageVisibility:")) {
+            item.setValue(1, forKey: "preferredImageVisibility")
+        }
+    }
+}
+
 /// Window ▸ Workspaces: save the current window's tabs, update the workspace it came from, reopen, rename or delete.
 final class WorkspaceMenu: NSObject, NSMenuDelegate {
     static let shared = WorkspaceMenu()
@@ -205,6 +223,7 @@ final class WorkspaceMenu: NSObject, NSMenuDelegate {
     private var keyWorkspaceName: String? { keyController?.groupWorkspaceName }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        defer { MenuImages.show(in: menu) }
         menu.removeAllItems()
         let save = NSMenuItem(title: String(localized: "Save Workspace…"), action: #selector(save(_:)), keyEquivalent: "")
         save.target = self
