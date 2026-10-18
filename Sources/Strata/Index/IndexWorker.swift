@@ -36,6 +36,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
     /// launch replays those changes.
     private var interrupted = false
     private let events = FSEventsStream()
+    private let watchesChanges: Bool
 
     /// Called with each new store (after loading or a full rebuild) and every phase change.
     var onStore: (@Sendable (IndexStore) -> Void)?
@@ -43,7 +44,9 @@ nonisolated final class IndexWorker: @unchecked Sendable {
     /// Called after changes were applied (sizes or entries).
     var onChange: (@Sendable () -> Void)?
 
-    init() {
+    /// Recorded batches can be applied without a live stream changing their order in headless tests.
+    init(watchesChanges: Bool = true) {
+        self.watchesChanges = watchesChanges
         events.handler = { [weak self] events in self?.receive(events) }
     }
 
@@ -51,8 +54,11 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         readBuffer.deallocate()
     }
 
-    func start(_ config: IndexConfig) {
-        queue.async { self.boot(config) }
+    func start(_ config: IndexConfig, completion: @escaping @Sendable () -> Void = {}) {
+        queue.async {
+            self.boot(config)
+            completion()
+        }
     }
 
     func update(_ config: IndexConfig) {
@@ -103,7 +109,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
             onPhase?(.ready)
             lastEventID = header.eventID
             // Catch up on everything that changed since the save, then keep listening.
-            events.start(paths: config.roots, since: header.eventID)
+            if watchesChanges { events.start(paths: config.roots, since: header.eventID) }
             if Set(header.excluded) != config.excluded {
                 reconfigure(config, previous: Set(header.excluded))
             }
@@ -143,7 +149,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         onPhase?(.ready)
         save()
         // Replays whatever changed during the scan.
-        events.start(paths: config.roots, since: startEventID)
+        if watchesChanges { events.start(paths: config.roots, since: startEventID) }
     }
 
     private func reconfigure(_ config: IndexConfig, previous: Set<String>? = nil) {
@@ -156,9 +162,10 @@ nonisolated final class IndexWorker: @unchecked Sendable {
             rebuild()
             return
         }
+        guard old != config.excluded else { return }
         // Newly allowed folders get scanned; newly excluded ones are emptied.
         for path in old.subtracting(config.excluded).sorted() {
-            if let id = store.read({ store.lookup(path) }) { refreshFolder(id, path, deep: true) }
+            if let id = store.read({ store.lookup(path) }) { _ = refreshFolder(id, path, deep: true) }
         }
         for path in config.excluded.subtracting(old).sorted() {
             store.write {
@@ -226,6 +233,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         let work = pending.sorted { $0.key < $1.key }
         pending.removeAll()
         var deepRoots: [String] = []
+        var changed = false
         for (path, deep) in work {
             if stopForQuit() { break }
             // A deep refresh of a parent already covers this folder.
@@ -240,9 +248,10 @@ nonisolated final class IndexWorker: @unchecked Sendable {
                 id = store.read { store.lookup(target) }
             }
             guard let id, store.read({ store.isDirectory(id) }) else { continue }
-            refreshFolder(id, target, deep: deep)
+            if refreshFolder(id, target, deep: deep) { changed = true }
         }
-        markChanged()
+        // Coalesced events may cover unchanged folders. Only actual differences need a save and a UI refresh.
+        if changed { markChanged() }
     }
 
     private func isExcluded(_ path: String, _ config: IndexConfig) -> Bool {
@@ -277,25 +286,29 @@ nonisolated final class IndexWorker: @unchecked Sendable {
 
     /// Re-reads one folder and applies the differences. New subfolders are scanned in full; with `deep`, existing
     /// subfolders are refreshed too (FSEvents asks for that when it coalesced too many changes).
-    private func refreshFolder(_ id: Int32, _ path: String, deep: Bool) {
-        guard let config, let store, !stopForQuit() else { return }
+    private func refreshFolder(_ id: Int32, _ path: String, deep: Bool) -> Bool {
+        guard let config, let store, !stopForQuit() else { return false }
         var items: [ScannedItem] = []
         var names: [UInt8] = []
         let error = BulkDirectoryReader.read(path, items: &items, names: &names, buffer: readBuffer) { self.pastQuitDeadline }
         if error == ECANCELED {
             interrupted = true
-            return
+            return false
         }
         if error == ENOENT || error == ENOTDIR {
-            store.write { store.remove(id) }
-            return
+            return store.write {
+                let existed = store.flags[Int(id)] & IndexStore.Flag.deleted == 0
+                store.remove(id)
+                return existed
+            }
         }
-        guard error == 0 else { return }
+        guard error == 0 else { return false }
 
         let prefix = path.hasSuffix("/") ? path : path + "/"
         let ownNoise = names.withUnsafeBytes { IndexStore.ownNoise(items, nameBuffer: $0) }
         var newFolders: [(id: Int32, path: String)] = []
         var existingFolders: [(id: Int32, path: String)] = []
+        var changed = false
         let firstNew: Int32 = store.write {
             let firstNew = Int32(store.count)
             var existing: [String: Int32] = [:]
@@ -323,20 +336,31 @@ nonisolated final class IndexWorker: @unchecked Sendable {
                 let flagsChanged = expectedHidden != (store.flags[o] & IndexStore.Flag.hidden != 0)
                     || item.isSymlink != (store.flags[o] & IndexStore.Flag.symlink != 0)
                 if store.isDirectory(old) != item.isDirectory || noiseChanged || swapped || flagsChanged {
+                    changed = true
                     store.remove(old)
                     additions.append(item)
                     additionNoise.append(ownNoise[index])
                 } else if item.isDirectory {
-                    store.mtime[o] = item.mtime
-                    if deep, !item.isMountPoint, !isExcluded(prefix + name, config) { existingFolders.append((old, prefix + name)) }
+                    // Excluded folders are placeholders; their activity must not dirty a coalesced parent refresh.
+                    let excluded = isExcluded(prefix + name, config)
+                    if !excluded, store.mtime[o] != item.mtime {
+                        changed = true
+                        store.mtime[o] = item.mtime
+                    }
+                    if deep, !item.isMountPoint, !excluded { existingFolders.append((old, prefix + name)) }
                 } else if store.size[o] != item.size || store.mtime[o] != item.mtime {
+                    changed = true
                     store.propagate(from: old, bytes: item.size - store.size[o], files: 0)
                     store.size[o] = item.size
                     store.mtime[o] = item.mtime
                 }
             }
-            store.removeChildren(Array(existing.values), of: id)
+            if !existing.isEmpty {
+                changed = true
+                store.removeChildren(Array(existing.values), of: id)
+            }
             guard !additions.isEmpty else { return firstNew }
+            changed = true
             let ids = names.withUnsafeBytes { store.appendChildren(additions, nameBuffer: $0, of: id, ownNoise: additionNoise) }
             for (offset, item) in additions.enumerated() where item.isDirectory && !item.isMountPoint {
                 let childPath = prefix + String(decoding: names[item.nameOffset..<(item.nameOffset + item.nameLength)], as: UTF8.self)
@@ -358,6 +382,9 @@ nonisolated final class IndexWorker: @unchecked Sendable {
             if scanner.isCancelled { interrupted = true }
         }
         store.write { store.integrateNew(from: firstNew) }
-        for folder in existingFolders { refreshFolder(folder.id, folder.path, deep: true) }
+        for folder in existingFolders {
+            if refreshFolder(folder.id, folder.path, deep: true) { changed = true }
+        }
+        return changed
     }
 }

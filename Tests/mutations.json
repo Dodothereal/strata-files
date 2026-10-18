@@ -766,5 +766,33 @@
     "replace": "        } else if let ancestor = listed.first(where: { _ in false }) {",
     "rule": "Applications columns reach system Utilities through the actual listed folder",
     "tests": "ApplicationsFoldersTests"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        excluded.insert(realPath(SecureStorage.directory.path))\n",
+    "replace": "",
+    "rule": "Index performance: private state stays out of its own index",
+    "tests": "IndexWorkerTests/appConfigurationExcludesItsOwnPrivateState"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        if changed { markChanged() }",
+    "replace": "        markChanged()",
+    "rule": "Index performance: unchanged folder events never rewrite the index",
+    "tests": "IndexWorkerTests/unchangedFolderEventsDoNotNotifyOrRewriteTheIndex"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        guard old != config.excluded else { return }\n",
+    "replace": "",
+    "rule": "Index performance: unchanged settings never rewrite the index",
+    "tests": "IndexWorkerTests/unchangedConfigurationDoesNotRewriteTheIndex"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "                    if !excluded, store.mtime[o] != item.mtime {",
+    "replace": "                    if store.mtime[o] != item.mtime {",
+    "rule": "Index performance: parent events ignore activity inside excluded state",
+    "tests": "IndexWorkerTests/aCoalescedParentEventDoesNotResaveChangesOnlyInsideExcludedState"
   }
 ]
