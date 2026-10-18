@@ -13,6 +13,8 @@ final class GridViewController: NSViewController, FileCollectionController {
     var showsItemInfo = true {
         didSet { if showsItemInfo != oldValue { refreshVisibleItems(reconfigure: true) } }
     }
+    /// Nil uses the usual item count; a value shows the browser's cached or pending folder size.
+    var folderSizeText: ((FileEntry) -> String?)?
 
     /// Icon edge in points (32…256). Setting it relayouts immediately, keeping the item under focus in place.
     var iconSize: CGFloat {
@@ -228,14 +230,15 @@ final class GridViewController: NSViewController, FileCollectionController {
         let cloud = CloudStore.shared.status(for: entry.url)
         if refreshImage {
             item.configure(entry, matches: matches[entry.url.fileViewKey] ?? [], metrics: layout.metrics, showsInfo: showsItemInfo,
-                           dimmed: dimmed, scale: view.window?.backingScaleFactor ?? 2, git: badge, tags: tags, cloud: cloud)
+                           dimmed: dimmed, scale: view.window?.backingScaleFactor ?? 2, git: badge, tags: tags, cloud: cloud,
+                           folderSizeText: showsItemInfo ? folderSizeText?(entry) : nil)
         } else {
             item.dimmed = dimmed
             item.itemView.gitBadge.badge = badge
             item.itemView.cloudBadge.status = cloud
             item.itemView.setTags(tags)
             item.itemView.configure(name: entry.name, matches: matches[entry.url.fileViewKey] ?? [],
-                                    detail: showsItemInfo ? ItemInfoLoader.shared.immediate(entry, showHidden: Prefs.showHidden) : nil,
+                                    detail: showsItemInfo ? folderSizeText?(entry) ?? ItemInfoLoader.shared.immediate(entry, showHidden: Prefs.showHidden) : nil,
                                     metrics: layout.metrics)
             item.updateState()
         }

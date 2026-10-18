@@ -3,6 +3,8 @@ import Quartz
 
 /// List, icons, columns, gallery and disk usage: the other presentations are child view controllers fed the same rows.
 extension BrowserViewController {
+    @objc func showViewOptions(_ sender: Any?) { ViewOptionsWindowController.shared.show() }
+
     /// Results (search, Recents, Duplicates) have no single folder, so they always use the list.
     var effectiveMode: BrowserViewMode { isShowingResults ? .list : mode }
 
@@ -135,8 +137,20 @@ extension BrowserViewController {
         let controller = GridViewController()
         controller.fileDelegate = self
         controller.setIconSize(CGFloat(Prefs.gridIconSize), animated: false)
+        controller.showsItemInfo = Prefs.iconViewOptions.showsInfo
+        controller.folderSizeText = { [weak self] entry in
+            guard Prefs.iconViewOptions.folderInfo == .size else { return nil }
+            return self?.iconFolderSizeText(entry)
+        }
         gridController = controller
         return controller
+    }
+
+    /// Reuses the list's measurements and privacy checks; links and disks are never walked for icon info.
+    func iconFolderSizeText(_ entry: FileEntry) -> String? {
+        guard entry.isFolder else { return nil }
+        guard canMeasure(entry) else { return "—" }
+        return folderSize(entry.url, request: true).map { Format.bytes($0.bytes) } ?? "…"
     }
 
     var columns: ColumnBrowserViewController {

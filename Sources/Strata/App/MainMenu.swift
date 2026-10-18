@@ -66,6 +66,7 @@ enum MainMenu {
             item("Bigger Icons", #selector(BrowserViewController.biggerIcons(_:)), "+", symbol: "plus.magnifyingglass"),
             hidden(item("Bigger Icons", #selector(BrowserViewController.biggerIcons(_:)), "=", symbol: "plus.magnifyingglass")),
             item("Smaller Icons", #selector(BrowserViewController.smallerIcons(_:)), "-", symbol: "minus.magnifyingglass"),
+            item("Show View Options…", #selector(BrowserViewController.showViewOptions(_:)), "j", symbol: "slider.horizontal.3"),
             .separator(),
             sortByMenu(),
             .separator(),

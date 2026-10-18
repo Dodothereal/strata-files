@@ -7,6 +7,7 @@ extension Notification.Name {
     static let favoritesChanged = Notification.Name("StrataFavoritesChanged")
     /// A list column was shown or hidden (right-click the column titles): every list follows.
     static let listColumnsChanged = Notification.Name("StrataListColumnsChanged")
+    static let viewOptionsChanged = Notification.Name("StrataViewOptionsChanged")
     /// A sidebar section was hidden or shown: every window's sidebar follows.
     static let sidebarSectionsCollapsed = Notification.Name("StrataSidebarSectionsCollapsed")
 }
@@ -94,7 +95,18 @@ enum Prefs {
 
     static var gridIconSize: Double {
         get { defaults.double(forKey: Key.gridIconSize) }
-        set { defaults.set(newValue, forKey: Key.gridIconSize) }
+        set {
+            defaults.set(newValue, forKey: Key.gridIconSize)
+            NotificationCenter.default.post(name: .viewOptionsChanged, object: nil)
+        }
+    }
+
+    static var iconViewOptions: IconViewOptions {
+        get { IconViewOptions.read(from: defaults) }
+        set {
+            newValue.save(in: defaults)
+            NotificationCenter.default.post(name: .viewOptionsChanged, object: nil)
+        }
     }
 
     /// The sidebar's favorite folders once you've changed them (nil: the defaults).

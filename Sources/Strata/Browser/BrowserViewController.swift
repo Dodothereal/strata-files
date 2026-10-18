@@ -193,6 +193,7 @@ final class BrowserViewController: NSViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(listColumnsChanged), name: .listColumnsChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(viewOptionsChanged), name: .viewOptionsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
@@ -1222,6 +1223,13 @@ final class BrowserViewController: NSViewController {
         galleryController?.refreshVisibleItems()
     }
 
+    @objc private func viewOptionsChanged() {
+        guard let gridController else { return }
+        gridController.showsItemInfo = Prefs.iconViewOptions.showsInfo
+        gridController.setIconSize(CGFloat(Prefs.gridIconSize), animated: false)
+        gridController.refreshVisibleItems(reconfigure: true)
+    }
+
     /// Index totals moved: refresh visible sizes (and the order, when sorting by size).
     @objc private func indexChanged() {
         // Folder sizes come from the index; a file's is its own.
@@ -1235,7 +1243,7 @@ final class BrowserViewController: NSViewController {
         }
         if sortKey == .size, !outlineView.sortDescriptors.isEmpty { scheduleResort() }
         if effectiveMode == .treemap { pushContent(animated: true) }
-        if effectiveMode == .grid { gridController?.refreshVisibleItems() }
+        if effectiveMode == .grid { gridController?.refreshVisibleItems(reconfigure: true) }
         delegate?.browserContentDidChange(self)
     }
 

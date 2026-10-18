@@ -399,7 +399,9 @@ final class GridItem: NSCollectionViewItem {
     }
 
     func configure(_ entry: FileEntry, matches: [Int], metrics: GridMetrics, showsInfo: Bool, dimmed: Bool, scale: CGFloat,
-                   git: GitBadge? = nil, tags: [FinderTag] = [], cloud: CloudStatus? = nil) {
+                   git: GitBadge? = nil, tags: [FinderTag] = [], cloud: CloudStatus? = nil, folderSizeText: String? = nil) {
+        ItemInfoLoader.shared.cancel(infoTicket)
+        infoTicket = nil
         itemView.gitBadge.badge = git
         itemView.cloudBadge.status = cloud
         itemView.setTags(tags)
@@ -407,7 +409,7 @@ final class GridItem: NSCollectionViewItem {
         self.entry = entry
         self.dimmed = dimmed
         let showHidden = Prefs.showHidden
-        let detail = showsInfo ? ItemInfoLoader.shared.immediate(entry, showHidden: showHidden) : nil
+        let detail = showsInfo ? folderSizeText ?? ItemInfoLoader.shared.immediate(entry, showHidden: showHidden) : nil
         itemView.configure(name: entry.name, matches: matches, detail: detail, metrics: metrics)
         itemView.setAccessibilityHelp(entry.kind)
         updateState()
