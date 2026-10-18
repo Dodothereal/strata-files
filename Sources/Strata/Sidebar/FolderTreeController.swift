@@ -67,7 +67,7 @@ final class FolderTreeController: NSViewController {
     }
     /// Expanded folders are watched for subfolders coming and going; past `maxWatchers` (or `maxWatchersInAll` across
     /// every window's tree: each holds a file descriptor), the longest-watched stops.
-    private var watchers: [String: DirectoryWatcher] = [:]
+    private var watchers: [String: [DirectoryWatcher]] = [:]
     private var watchOrder: [String] = []
     private static let maxWatchers = 48
     private static let maxWatchersInAll = 96
@@ -272,8 +272,8 @@ final class FolderTreeController: NSViewController {
     /// when it can't be read.
     nonisolated private static func subfolders(of url: URL, includeHidden: Bool) -> [(url: URL, title: String)]? {
         let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey]
-        guard let urls = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: keys,
-                                                                      options: includeHidden ? [] : [.skipsHiddenFiles]) else { return nil }
+        guard let urls = try? ApplicationsFolders.standard.contents(of: url, keys: keys,
+                                                                   options: includeHidden ? [] : [.skipsHiddenFiles]) else { return nil }
         return urls.filter { child in
             guard let values = try? child.resourceValues(forKeys: Set(keys)) else { return false }
             return values.isDirectory == true && values.isPackage != true && values.isSymbolicLink != true
@@ -284,6 +284,15 @@ final class FolderTreeController: NSViewController {
 
     /// Whether `url` holds a subfolder (not a package or link), stopping at the first; nil when it can't be read.
     nonisolated private static func hasSubfolder(_ url: URL, includeHidden: Bool) -> Bool? {
+        for (index, folder) in ApplicationsFolders.standard.directories(for: url).enumerated() {
+            let hasFolder = hasPhysicalSubfolder(folder, includeHidden: includeHidden)
+            if hasFolder == true { return true }
+            if index == 0, hasFolder == nil { return nil }
+        }
+        return false
+    }
+
+    nonisolated private static func hasPhysicalSubfolder(_ url: URL, includeHidden: Bool) -> Bool? {
         guard let directory = opendir(url.path) else { return nil }
         defer { closedir(directory) }
         while let entry = readdir(directory) {
@@ -310,34 +319,37 @@ final class FolderTreeController: NSViewController {
     private func watch(_ node: FolderNode) {
         let key = node.url.fileViewKey
         guard node.kind == .folder, watchers[key] == nil else { return }
-        if watchers.count >= Self.maxWatchers || Self.watchersInAll >= Self.maxWatchersInAll {
+        while watchers.count >= Self.maxWatchers || Self.watchersInAll + ApplicationsFolders.standard.directories(for: node.url).count > Self.maxWatchersInAll {
             guard let oldest = watchOrder.first else { return }
             unwatchOne(oldest)
         }
-        guard let watcher = DirectoryWatcher(url: node.url, onChange: { [weak self, weak node] in
-            guard let self, let node else { return }
-            refresh(node)
-        }) else { return }
-        watchers[key] = watcher
+        let sources = ApplicationsFolders.standard.directories(for: node.url).compactMap { folder in
+            DirectoryWatcher(url: folder, onChange: { [weak self, weak node] in
+                guard let self, let node else { return }
+                refresh(node)
+            })
+        }
+        guard !sources.isEmpty else { return }
+        watchers[key] = sources
         watchOrder.append(key)
-        Self.watchersInAll += 1
+        Self.watchersInAll += sources.count
     }
 
     private func unwatchOne(_ key: String) {
-        guard watchers.removeValue(forKey: key) != nil else { return }
+        guard let sources = watchers.removeValue(forKey: key) else { return }
         watchOrder.removeAll { $0 == key }
-        Self.watchersInAll -= 1
+        Self.watchersInAll -= sources.count
     }
 
     /// Stops watching `url` and every folder inside it.
     private func unwatch(below url: URL) {
-        let key = url.fileViewKey
-        let inside: (String) -> Bool = { $0 == key || $0.hasPrefix(key == "/" ? "/" : key + "/") }
+        let keys = ApplicationsFolders.standard.directories(for: url).map(\.fileViewKey)
+        let inside: (String) -> Bool = { path in keys.contains { path == $0 || path.hasPrefix($0 == "/" ? "/" : $0 + "/") } }
         for watched in watchers.keys where inside(watched) { unwatchOne(watched) }
     }
 
     private func unwatchAll() {
-        Self.watchersInAll -= watchers.count
+        Self.watchersInAll -= watchers.values.reduce(0) { $0 + $1.count }
         watchers.removeAll()
         watchOrder.removeAll()
     }

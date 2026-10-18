@@ -153,15 +153,14 @@ nonisolated struct FileEntry: Sendable, Hashable {
 
 nonisolated enum DirectoryLoader {
     @concurrent
-    static func load(_ directory: URL, showHidden: Bool) async throws -> [FileEntry] {
+    static func load(_ directory: URL, showHidden: Bool, applications: ApplicationsFolders = .standard) async throws -> [FileEntry] {
         // A container's files: list the folder from the container first (every view loads folders here).
         if LazyCopies.contains(directory) { await LazyCopies.refresh(directory) }
         // Follow a symlink or Finder alias. FileManager will not list the link itself.
         let directory = FileEntry.openedFolder(directory)
         let isContainersFolder = ContainerCopies.engineFolder(directory) != nil
         let keys = FileEntry.resourceKeys
-        let urls = try FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: keys, options: showHidden ? [] : [.skipsHiddenFiles])
+        let urls = try applications.contents(of: directory, keys: keys, options: showHidden ? [] : [.skipsHiddenFiles])
         let keySet = Set(keys)
         let containerKind = String(localized: "Container", comment: "Kind of item: a Docker container's files")
         let stackKind = String(localized: "Stack", comment: "Kind of item: a Compose project's containers")

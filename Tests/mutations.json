@@ -745,5 +745,26 @@
     "replace": "        displayName = name",
     "rule": "Localized folders and apps use the system display name",
     "tests": "LocalizedNamesTests"
+  },
+  {
+    "file": "Strata/Model/FileEntry.swift",
+    "find": "            let entry = FileEntry(url: url, values: values)",
+    "replace": "            let entry = FileEntry(url: directory.appending(path: url.lastPathComponent), values: values)",
+    "rule": "Applications entries retain each app’s physical URL",
+    "tests": "ApplicationsFoldersTests"
+  },
+  {
+    "file": "Strata/Model/ApplicationsFolders.swift",
+    "find": "        guard directory.standardizedFileURL.path == installed.standardizedFileURL.path,",
+    "replace": "        guard directory.lastPathComponent == installed.lastPathComponent,",
+    "rule": "Applications combines only the configured folder, never another folder with the same name",
+    "tests": "ApplicationsFoldersTests"
+  },
+  {
+    "file": "Strata/Model/ApplicationsFolders.swift",
+    "find": "        } else if let ancestor = listed.first(where: { $0.isFolder && inside(path, $0.url.standardizedFileURL.path) }) {",
+    "replace": "        } else if let ancestor = listed.first(where: { _ in false }) {",
+    "rule": "Applications columns reach system Utilities through the actual listed folder",
+    "tests": "ApplicationsFoldersTests"
   }
 ]

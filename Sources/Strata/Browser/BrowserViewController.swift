@@ -62,6 +62,7 @@ private extension NSUserInterfaceItemIdentifier {
 
 final class BrowserViewController: NSViewController {
     weak var delegate: BrowserViewControllerDelegate?
+    var applicationFolders = ApplicationsFolders.standard
     private(set) var directory: URL?
     private(set) var loadError: Error?
     private(set) var isLoaded = false
@@ -124,7 +125,7 @@ final class BrowserViewController: NSViewController {
     private var generation = 0
     /// Fetching the selection from a container (see `fetchSelectedContainerFiles`).
     var containerFetch: Task<Void, Never>?
-    private var watcher: DirectoryWatcher?
+    private var watchers: [DirectoryWatcher] = []
     /// Keeps git status for the shown folder's repository fresh (FSEvents) while this folder is shown.
     private var gitObservation: GitObservation?
     private var sortKey: SortKey = SortKey(rawValue: Prefs.sortColumn) ?? .name
@@ -337,7 +338,9 @@ final class BrowserViewController: NSViewController {
             filterPill.update(query: "", matches: 0)
             sizer.cancelPending()
             mediaInfo.cancelPending()
-            watcher = DirectoryWatcher(url: url) { [weak self] in self?.refresh() }
+            watchers = applicationFolders.directories(for: FileEntry.openedFolder(url)).compactMap { folder in
+                DirectoryWatcher(url: folder) { [weak self] in self?.refresh() }
+            }
             gitObservation = GitStatusStore.shared.observe(url)
             pendingSelection = select.map { [$0] } ?? []
             opensAtTop = true
@@ -385,7 +388,7 @@ final class BrowserViewController: NSViewController {
         let showHidden = Prefs.showHidden
         Task {
             do {
-                let entries = try await DirectoryLoader.load(url, showHidden: showHidden)
+                let entries = try await DirectoryLoader.load(url, showHidden: showHidden, applications: applicationFolders)
                 guard gen == generation else { return }
                 TagStore.shared.load(entries, in: url)
                 CloudStore.shared.load(entries.map(\.url), in: url)
@@ -461,7 +464,7 @@ final class BrowserViewController: NSViewController {
         let url = node.url
         let showHidden = Prefs.showHidden
         Task {
-            let entries = (try? await DirectoryLoader.load(url, showHidden: showHidden)) ?? []
+            let entries = (try? await DirectoryLoader.load(url, showHidden: showHidden, applications: applicationFolders)) ?? []
             TagStore.shared.load(entries, in: url)
             CloudStore.shared.load(entries.map(\.url), in: url)
             node.isLoadingChildren = false

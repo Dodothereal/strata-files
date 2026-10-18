@@ -15,6 +15,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 | Put Back | `putBack`, `Trash.location`, `FileOps.removeEmptyFolders` | `PutBackTests/*`; `TrashUndoTests/onlyEmptyFoldersGoWhenTheirItemsDo`, `undoingAPutBackRemovesOnlyTheFoldersItMadeOnceEmpty` |
 | Drop on the sidebar's Trash | `SidebarViewController.canTrash` | `DropTests/theSidebarsTrashTakesOnlyWhatCanBeTrashed` |
 | Commands on localized names (every view, results and both panes) | `FileEntry.url`, `BrowserViewController.selectedURLs`; labels use `FileEntry.displayName` | `LocalizedNamesTests/everyViewRenamesTheSelectedURLRatherThanItsTranslatedLabelAndUndoRestoresIt`, `resultsAndBothPanesKeepDifferentItemsWithTheSameLabel`; `SelectionTargetsTests/*` |
+| Commands in the combined Applications listing | `ApplicationsFolders`, `DirectoryLoader.load`, `ColumnBrowserViewController.reveal` and `continueReveal`; entries retain physical URLs | `ApplicationsFoldersTests/*` (duplicate names, exact root, both source folders changing, every view, expanded folders, deeper columns, copy to the other pane and rename/undo) |
 
 ## Undo and History
 

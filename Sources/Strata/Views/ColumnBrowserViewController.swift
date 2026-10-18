@@ -4,6 +4,7 @@ import AppKit
 /// each selected folder opening the next column to the right, and a compact preview after a selected file.
 final class ColumnBrowserViewController: NSViewController, FileCollectionController {
     weak var fileDelegate: FileCollectionViewDelegate?
+    var applicationFolders = ApplicationsFolders.standard
     /// The folder the user is "in": the selected folder, or the folder of the focused column. Drive the path bar
     /// and window title from it (without reloading the browser).
     var onLocationChange: ((URL) -> Void)?
@@ -107,16 +108,8 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     /// Opens the columns down to `url` (inside the root) and selects it.
     func reveal(_ url: URL) {
-        guard let root else { return }
-        let rootPath = root.fileViewKey
-        let path = url.fileViewKey
-        guard path.hasPrefix(rootPath == "/" ? "/" : rootPath + "/") else { return }
-        var chain: [URL] = []
-        var current = URL(fileURLWithPath: path)
-        while current.fileViewKey != rootPath, current.path != "/" {
-            chain.insert(current, at: 0)
-            current = current.deletingLastPathComponent()
-        }
+        guard let root, let first = panes.first,
+              let chain = applicationFolders.revealChain(to: url, from: root, listed: first.entries) else { return }
         pendingReveal = chain
         removeColumns(after: 0)
         continueReveal()
@@ -124,7 +117,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     private func continueReveal() {
         guard let next = pendingReveal.first, let pane = panes.last, pane.isLoaded else { return }
-        guard next.deletingLastPathComponent().fileViewKey == pane.folder.fileViewKey else {
+        guard pane.row(for: next) != nil else {
             pendingReveal = []
             return
         }
@@ -436,7 +429,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private let spinner = NSProgressIndicator()
     /// Shown instead of rows when the folder can't be read.
     private let message = NSTextField(wrappingLabelWithString: "")
-    private var watcher: DirectoryWatcher?
+    private var watchers: [DirectoryWatcher] = []
     private var generation = 0
     private var suppressSelection = false
     private var order: (@MainActor (FileEntry, FileEntry) -> Bool)?
@@ -531,7 +524,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     func tearDown() {
         generation += 1
-        watcher = nil
+        watchers = []
     }
 
     // MARK: Loading
@@ -539,7 +532,9 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     func load(showHidden: Bool, order: @escaping @MainActor (FileEntry, FileEntry) -> Bool) {
         self.order = order
         self.showHidden = showHidden
-        watcher = DirectoryWatcher(url: folder) { [weak self] in self?.reload() }
+        watchers = (controller?.applicationFolders ?? .standard).directories(for: FileEntry.openedFolder(folder)).compactMap { folder in
+            DirectoryWatcher(url: folder) { [weak self] in self?.reload() }
+        }
         reload()
     }
 
@@ -548,6 +543,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         let gen = generation
         let folder = folder
         let showHidden = showHidden
+        let applications = controller?.applicationFolders ?? .standard
         if !isLoaded {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
                 MainActor.assumeIsolated {
@@ -558,7 +554,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         }
         Task { [weak self] in
             let result: Result<[FileEntry], Error>
-            do { result = .success(try await DirectoryLoader.load(folder, showHidden: showHidden)) } catch { result = .failure(error) }
+            do { result = .success(try await DirectoryLoader.load(folder, showHidden: showHidden, applications: applications)) } catch { result = .failure(error) }
             guard let self, gen == self.generation else { return }
             self.spinner.stopAnimation(nil)
             switch result {
