@@ -74,6 +74,18 @@ jobs:
           sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app"
           swift --version
 
+      # Tags run this themselves: publishing cannot bypass the checks on main or a pull request.
+      - name: Require complete and current translations before signing
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s Tests -p 'test_localization.py'
+          python3 scripts/localize.py extract
+          if ! git diff --exit-code -- Localization/en.json; then
+            echo "::error::Localization/en.json is out of date: run scripts/localize.py extract and translate every new string."
+            exit 1
+          fi
+          python3 scripts/localize.py check --all --complete
+
       - name: Work out the version
         id: version
         env:

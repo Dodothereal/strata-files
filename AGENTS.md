@@ -21,12 +21,21 @@ destructive actions below before changing anything that touches files.
 scripts/build.sh debug                  # build/Strata.app (release: scripts/build.sh, --open to launch)
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 python3 scripts/localize.py extract     # after editing Swift files: regenerates Localization/en.json
+python3 scripts/localize.py check --all --complete  # every supported language must be complete
 ```
 
 - `swift test` needs Xcode's toolchain: the Command Line Tools fail with "no such module 'Testing'".
 - `en.json` records each string's `File.swift:line`, so even lines shifting above a `String(localized:)` make the
   Translations workflow fail. Run `extract` and commit `en.json` in the same commit as the code.
-- CI on every push: **CI** (build + `swift test`), **Translations** (`en.json` matches the code); tags run **Release**.
+- When adding or changing user-facing text, update every `Localization/<language>.json` in the same feature commit.
+  Extraction updates only English; it does not translate the other languages. Reuse translations supplied by users.
+  Run `check --all --complete`: missing keys, blank text (including whitespace) and missing required plural forms
+  fail. Text shared with English is valid when intentional (Strata, Finder, Git, shortcuts).
+- The regular `swift test` suite runs the same completeness check locally (`LocalizationTests`), before a commit is
+  merged. Run `python3 -m unittest discover -s Tests -p 'test_*.py'` for the checker and generated-resource regressions.
+- CI on every push: **CI** (build + `swift test`), **Translations** (complete catalogs and `en.json` matches the code).
+  Tags run **Release**, which repeats extraction, completeness and localization regression tests before importing
+  signing credentials, signing or publishing. Do not bypass this gate or release with incomplete translations.
 
 ## Destructive actions: full test coverage is required
 

@@ -4,6 +4,7 @@
   scripts/localize.py extract          Update Localization/en.json from the code (builds with Swift to find every string).
   scripts/localize.py check xx|--all   Report problems: unknown keys, placeholders that don't match, plural forms the
                                        language doesn't use, structure. Exits 1 when something must be fixed.
+                                       Add --complete to also reject missing or blank translations and plural forms.
   scripts/localize.py stats            How complete each language is.
   scripts/localize.py new xx           Start a language: Localization/xx.json with every string to translate.
   scripts/localize.py build OUT        Write OUT/<code>.lproj/Localizable.strings and .stringsdict for every language
@@ -78,8 +79,9 @@ def specifiers(text):
 def english_text(key, source):
     """The English a key stands for: the key itself, or for a named key ("git.status.added") its value in en.json."""
     if isinstance(source, dict):
-        return source.get("other") or key
-    return source or key
+        other = source.get("other")
+        return other if has_text(other) else key
+    return source if has_text(source) else key
 
 
 def placeholder_problem(key, text):
@@ -205,7 +207,11 @@ def extract():
 
 # MARK: - check
 
-def check(code_or_all):
+def has_text(value):
+    return isinstance(value, str) and bool(value.strip())
+
+
+def check(code_or_all, complete=False):
     english = load(SOURCE)["strings"]
     problems = 0
     for key, value in english.items():
@@ -215,13 +221,19 @@ def check(code_or_all):
                 print(f"en: “{key}” has plural forms but no whole-number placeholder")
                 problems += 1
             for category in ("one", "other"):
-                if not value.get(category):
+                if not has_text(value.get(category)):
                     print(f"en: “{key}” needs its English “{category}” form")
                     problems += 1
             for category, form in value.items():
-                if form and (problem := placeholder_problem(english_text(key, value), form)):
+                if not isinstance(form, str):
+                    print(f"en: “{key}” [{category}] must be text")
+                    problems += 1
+                elif form and (problem := placeholder_problem(english_text(key, value), form)):
                     print(f"en: “{key}” [{category}] {problem}")
                     problems += 1
+        elif not has_text(value):
+            print(f"en: “{key}” needs its English text")
+            problems += 1
     paths = language_files() if code_or_all == "--all" else [FOLDER / f"{code_or_all}.json"]
     for path in paths:
         if not path.exists():
@@ -233,6 +245,10 @@ def check(code_or_all):
             problems += 1
             continue
         code = path.stem
+        if not isinstance(data, dict):
+            print(f"{code}: the language file must be an object")
+            problems += 1
+            continue
         for field in ("language", "english", "code", "strings"):
             if field not in data:
                 print(f"{code}: missing “{field}”")
@@ -241,13 +257,23 @@ def check(code_or_all):
             print(f"{code}: “code” is {data.get('code')!r}; it must match the file name")
             problems += 1
         required, optional = plural_rules(code, data)
-        for key, value in data.get("strings", {}).items():
+        strings = data.get("strings", {})
+        if not isinstance(strings, dict):
+            print(f"{code}: “strings” must be an object")
+            problems += 1
+            continue
+        if complete:
+            for key in sorted(english.keys() - strings.keys()):
+                print(f"{code}: “{key}” is missing its translation")
+                problems += 1
+        for key, value in strings.items():
             if key not in english:
                 print(f"{code}: “{key}” isn't in the app (anymore); remove it")
                 problems += 1
                 continue
             source = english[key]
-            if isinstance(source, dict) != isinstance(value, dict):
+            if (not isinstance(value, (str, dict)) or
+                    isinstance(source, dict) != isinstance(value, dict)):
                 kind = "plural forms (an object)" if isinstance(source, dict) else "a plain string"
                 print(f"{code}: “{key}” should be {kind}")
                 problems += 1
@@ -257,15 +283,25 @@ def check(code_or_all):
                 if extra:
                     print(f"{code}: “{key}” has forms {sorted(extra)} that {code} doesn't use (it uses {required + optional})")
                     problems += 1
-                filled = [category for category in required if value.get(category)]
-                if filled and len(filled) != len(required):
-                    print(f"{code}: “{key}” needs every form: {required}")
+                filled = [category for category in required if has_text(value.get(category))]
+                if (complete or filled) and len(filled) != len(required):
+                    missing = [category for category in required if category not in filled]
+                    print(f"{code}: “{key}” needs translated plural forms: {missing}")
                     problems += 1
                 for category, form in value.items():
-                    if form and (problem := placeholder_problem(english_text(key, source), form)):
+                    if not isinstance(form, str):
+                        print(f"{code}: “{key}” [{category}] must be text")
+                        problems += 1
+                    elif complete and not has_text(form) and category not in required:
+                        print(f"{code}: “{key}” [{category}] needs a nonblank translation")
+                        problems += 1
+                    elif has_text(form) and (problem := placeholder_problem(english_text(key, source), form)):
                         print(f"{code}: “{key}” [{category}] {problem}")
                         problems += 1
-            elif value and (problem := placeholder_problem(english_text(key, source), value)):
+            elif complete and not has_text(value):
+                print(f"{code}: “{key}” needs a nonblank translation")
+                problems += 1
+            elif has_text(value) and (problem := placeholder_problem(english_text(key, source), value)):
                 print(f"{code}: “{key}” {problem}")
                 problems += 1
     if problems:
@@ -277,7 +313,9 @@ def check(code_or_all):
 # MARK: - stats
 
 def is_translated(value):
-    return all(value.values()) if isinstance(value, dict) else bool(value)
+    if isinstance(value, dict):
+        return bool(value) and all(has_text(form) for form in value.values())
+    return has_text(value)
 
 
 def stats():
@@ -395,8 +433,8 @@ def main():
     command = args[0]
     if command == "extract":
         extract()
-    elif command == "check" and len(args) == 2:
-        check(args[1])
+    elif command == "check" and (len(args) == 2 or (len(args) == 3 and args[2] == "--complete")):
+        check(args[1], complete=len(args) == 3)
     elif command == "stats":
         stats()
     elif command == "new" and len(args) >= 2:

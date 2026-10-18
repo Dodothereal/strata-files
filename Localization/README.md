@@ -11,14 +11,16 @@ Xcode, no code changes, nothing to register: the build picks up every file here 
    scripts/localize.py new xx        # xx: the language code, like de, pt-BR or zh-Hans
    ```
 
-2. Translate the strings in `Localization/xx.json`. Leave a string empty to keep the English for now.
+2. Translate every string in `Localization/xx.json`, including each required plural form. An empty string can be
+   left in a local draft, but incomplete languages cannot be merged or released.
 3. Check it:
 
    ```sh
-   scripts/localize.py check xx
+   scripts/localize.py check xx --complete
    ```
 
-4. Open a pull request. The checks run again there, and `scripts/localize.py stats` shows how complete each language is.
+4. Open a pull request. The checks require every language to be complete. `scripts/localize.py stats` shows progress;
+   `scripts/localize.py check xx` checks a draft's structure and placeholders while allowing untranslated strings.
 
 To see it in the app, build Strata (`scripts/build.sh`) and pick the language in **Settings ▸ General ▸ Language** (or in
 System Settings ▸ General ▸ Language & Region ▸ Applications).
@@ -73,5 +75,14 @@ String(localized: "Rename \(count) Items…", comment: "plural")
 ```
 
 Then run `scripts/localize.py extract` (it builds once to find every string) and write the English singular in
-`en.json` (`"one": "Rename %lld Item…"`). CI checks that `en.json` is up to date and that every language file is
-valid.
+`en.json` (`"one": "Rename %lld Item…"`). Translate new or changed text in every language in the same feature commit,
+then run `scripts/localize.py check --all --complete`. Missing keys, blank text (including whitespace) and missing
+required plural forms fail. Intentional English names such as Strata, Finder and Git are valid translations.
+
+The regular `swift test` suite runs this completeness check locally too, so missing translations fail before a
+commit is merged. The checker and generated-resource regressions run with
+`python3 -m unittest discover -s Tests -p 'test_*.py'`.
+
+Pull requests and pushes check completeness and that `en.json` is up to date. The Release workflow repeats both
+checks and the localization regression tests on the tagged commit before signing and publishing, so a tag cannot
+bypass them.

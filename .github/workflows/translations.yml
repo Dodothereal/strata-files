@@ -1,13 +1,15 @@
 name: Translations
 
-# Every language file must be valid (keys, placeholders, plural forms), and en.json must list exactly the strings the
-# code has: a change that adds or removes text has to run `scripts/localize.py extract` too.
+# Every language must be complete and valid (keys, placeholders, plural forms), and en.json must list exactly the
+# strings the code has: a change that adds or removes text has to update every language too.
 on:
   push:
     branches: [main]
-    paths: ["Localization/**", "Sources/**", "scripts/localize.py", ".github/workflows/translations.yml"]
+    paths: ["Localization/**", "Sources/**", "scripts/localize.py", "Tests/test_localization.py",
+            ".github/workflows/translations.yml", ".github/workflows/release.yml"]
   pull_request:
-    paths: ["Localization/**", "Sources/**", "scripts/localize.py", ".github/workflows/translations.yml"]
+    paths: ["Localization/**", "Sources/**", "scripts/localize.py", "Tests/test_localization.py",
+            ".github/workflows/translations.yml", ".github/workflows/release.yml"]
 
 permissions:
   contents: read
@@ -29,9 +31,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check every language
+      - name: Test the localization checks and generated resources
+        run: python3 -m unittest discover -s Tests -p 'test_localization.py'
+
+      - name: Check every language is complete
         run: |
-          python3 scripts/localize.py check --all
+          python3 scripts/localize.py check --all --complete
           python3 scripts/localize.py stats
 
       - name: Select Xcode ${{ env.XCODE_VERSION }}
