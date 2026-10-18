@@ -178,6 +178,7 @@ final class BrowserViewController: NSViewController {
         configureOutline()
         scrollView.documentView = outlineView
         scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         emptyState.translatesAutoresizingMaskIntoConstraints = false

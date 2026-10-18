@@ -56,6 +56,22 @@ struct MediaColumnsTests {
         #expect(ListColumn.allCases.allSatisfy { SortKey(rawValue: $0.rawValue) != nil })
     }
 
+    @Test func optionalColumnsRemainReachableInANarrowPane() throws {
+        let browser = BrowserViewController()
+        browser.view.frame = NSRect(x: 0, y: 0, width: 450, height: 500)
+        browser.setMode(.list, remember: false)
+        for column in browser.outlineView.tableColumns where column.identifier.rawValue != "location" { column.isHidden = false }
+        browser.view.layoutSubtreeIfNeeded()
+        let scroll = browser.outlineScrollView
+        #expect(scroll.hasHorizontalScroller)
+        let duration = try #require(browser.outlineView.tableColumn(withIdentifier: .init("duration")))
+        let index = browser.outlineView.column(withIdentifier: duration.identifier)
+        let rect = browser.outlineView.rect(ofColumn: index)
+        #expect(rect.maxX > scroll.contentView.bounds.width)
+        browser.outlineView.scrollToVisible(rect)
+        #expect(scroll.contentView.documentVisibleRect.maxX >= rect.maxX - 1)
+    }
+
     @Test func mediaColumnsLoadAsynchronouslyAndSortNumericallyKeepingSelection() async throws {
         let tree = try TestTree("other.txt")
         try image(tree.url("wide.jpg"), width: 25, height: 6)
