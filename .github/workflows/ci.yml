@@ -6,11 +6,11 @@ name: CI
 on:
   push:
     branches: [main]
-    paths: ["Sources/**", "Tests/**", "Package.swift", "docs/destructive-actions.md", "scripts/audit-destructive.py",
-            "scripts/mutate.py", ".github/workflows/ci.yml"]
+    paths: ["Sources/**", "Tests/**", "Resources/**", "Package.swift", "docs/destructive-actions.md", "scripts/audit-destructive.py",
+            "scripts/mutate.py", "scripts/build.sh", "scripts/build-icon.py", ".github/workflows/ci.yml"]
   pull_request:
-    paths: ["Sources/**", "Tests/**", "Package.swift", "docs/destructive-actions.md", "scripts/audit-destructive.py",
-            "scripts/mutate.py", ".github/workflows/ci.yml"]
+    paths: ["Sources/**", "Tests/**", "Resources/**", "Package.swift", "docs/destructive-actions.md", "scripts/audit-destructive.py",
+            "scripts/mutate.py", "scripts/build.sh", "scripts/build-icon.py", ".github/workflows/ci.yml"]
 
 permissions:
   contents: read
@@ -36,14 +36,14 @@ jobs:
       - name: Every destructive action is listed with its tests
         run: python3 scripts/audit-destructive.py --check
 
-      - name: Mutation runner and audit checks
-        run: python3 -m unittest discover -s Tests -p 'test_*.py'
-
       - name: Select Xcode ${{ env.XCODE_VERSION }}
         run: |
           set -euo pipefail
           sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app"
           swift --version
+
+      - name: Build tooling and safety checks
+        run: python3 -m unittest discover -s Tests -p 'test_*.py'
 
       - name: Build
         run: swift build --product Strata

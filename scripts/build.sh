@@ -50,7 +50,7 @@ fi
 if [[ -n "${STRATA_BUILD_NUMBER:-}" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $STRATA_BUILD_NUMBER" "$app/Contents/Info.plist"
 fi
-if [[ -f Resources/AppIcon.icns ]]; then cp Resources/AppIcon.icns "$app/Contents/Resources/"; fi
+python3 scripts/build-icon.py "$app/Contents/Resources" "$app/Contents/Info.plist"
 
 # Translations: every Localization/<code>.json becomes <code>.lproj (untranslated strings fall back to English), and
 # the bundle lists the languages it has. Adding a language file is all it takes.
