@@ -261,26 +261,23 @@ final class PaneContainerViewController: NSSplitViewController {
     }
 }
 
-/// The line between the panes: a hairline like the app's others, from under the toolbar down (the toolbar spans both
-/// panes, so the line doesn't cut through it).
+/// The line between the panes stays below the toolbar and above the shared status bar.
 private final class PaneSplitView: NSSplitView {
     override var dividerColor: NSColor { .separatorColor }
 
     override func drawDivider(in rect: NSRect) {
-        // Split views are flipped: the safe area's top is the toolbar's bottom (or the search bar's, while it shows).
-        var line = rect
-        line.origin.y = max(rect.minY, safeAreaRect.minY)
-        line.size.height = max(0, rect.maxY - line.minY)
+        let line = rect.intersection(safeAreaRect)
+        guard !line.isEmpty else { return }
         super.drawDivider(in: line)
     }
 
-    /// The toolbar showing or hiding (full screen, the search bar) moves where the line starts.
-    private var drawnTop: CGFloat?
+    /// The toolbar, search bar and status bar can change either end of the line.
+    private var drawnArea: NSRect?
 
     override func layout() {
         super.layout()
-        guard drawnTop != safeAreaInsets.top else { return }
-        drawnTop = safeAreaInsets.top
+        guard drawnArea != safeAreaRect else { return }
+        drawnArea = safeAreaRect
         needsDisplay = true
     }
 }
