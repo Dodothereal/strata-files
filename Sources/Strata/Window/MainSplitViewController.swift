@@ -22,7 +22,21 @@ final class MainSplitViewController: NSSplitViewController {
         sidebarItem.maximumThickness = 320
         sidebarItem.addBottomAlignedAccessoryViewController(SidebarFooterController())
 
-        let contentItem = NSSplitViewItem(viewController: panes)
+        // Keep the split view itself out of the shared footer. Closing a pane can leave its old divider in the
+        // backing layer, which otherwise shows through the footer in Columns and Disk Usage.
+        let content = NSViewController()
+        content.view = NSView()
+        content.addChild(panes)
+        panes.view.translatesAutoresizingMaskIntoConstraints = false
+        panes.view.clipsToBounds = true
+        content.view.addSubview(panes.view)
+        NSLayoutConstraint.activate([
+            panes.view.leadingAnchor.constraint(equalTo: content.view.leadingAnchor),
+            panes.view.trailingAnchor.constraint(equalTo: content.view.trailingAnchor),
+            panes.view.topAnchor.constraint(equalTo: content.view.topAnchor),
+            panes.view.bottomAnchor.constraint(equalTo: content.view.safeAreaLayoutGuide.bottomAnchor),
+        ])
+        let contentItem = NSSplitViewItem(viewController: content)
         contentItem.minimumThickness = 320
         contentItem.addBottomAlignedAccessoryViewController(status)
         scopeBar.isHidden = true

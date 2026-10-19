@@ -829,5 +829,12 @@
     "replace": "initialized = count + headroom",
     "rule": "Memory: spare index capacity is never treated as file entries",
     "tests": "IndexGrowthTests/reservedCapacityIsNeverReadOrSavedAsFileEntries"
+  },
+  {
+    "file": "Strata/Window/MainSplitViewController.swift",
+    "find": "panes.view.bottomAnchor.constraint(equalTo: content.view.safeAreaLayoutGuide.bottomAnchor)",
+    "replace": "panes.view.bottomAnchor.constraint(equalTo: content.view.bottomAnchor)",
+    "rule": "Window: closing a pane keeps its divider out of the shared footer",
+    "tests": "PaneDividerTests"
   }
 ]

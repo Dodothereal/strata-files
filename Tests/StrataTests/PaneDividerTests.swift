@@ -3,6 +3,44 @@ import Testing
 @testable import Strata
 
 struct PaneDividerTests {
+    @Test(arguments: [BrowserViewMode.columns, .treemap, .list, .grid, .gallery])
+    func closingTheOtherPaneKeepsItsDividerOutOfTheSharedFooter(_ mode: BrowserViewMode) async throws {
+        let first = PaneHostViewController(browser: BrowserViewController())
+        first.browser.setMode(mode, remember: false)
+        let controller = MainSplitViewController(firstPane: first)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),
+                              styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        window.contentViewController = controller
+        controller.status.text = "38 items · 1 selected · 285 GB available"
+        defer { window.contentViewController = nil }
+
+        func layout() async {
+            await withCheckedContinuation { done in DispatchQueue.main.async { done.resume() } }
+            window.contentView?.layoutSubtreeIfNeeded()
+        }
+        for width in [1240.0, 960.0, 1240.0] {
+            window.setContentSize(NSSize(width: width, height: 780))
+            let second = PaneHostViewController(browser: BrowserViewController())
+            second.browser.setMode(mode, remember: false)
+            controller.panes.add(second)
+            controller.status.isHidden = true
+            first.setStatus("First pane")
+            second.setStatus("Second pane")
+            await layout()
+            #expect(controller.panes.splitViewItems.count == 2)
+
+            controller.panes.remove(second)
+            controller.status.isHidden = false
+            first.setStatus(nil)
+            await layout()
+            let panes = controller.panes.view.convert(controller.panes.view.bounds, to: controller.view)
+            let footer = controller.status.view.convert(controller.status.view.bounds, to: controller.view)
+            #expect(controller.panes.splitViewItems.count == 1)
+            try #require(panes.height > 100 && footer.height == 28)
+            #expect(!panes.intersects(footer), "The pane split view must end above the shared footer, including its cached divider.")
+        }
+    }
+
     @Test func dividerStaysBetweenTheToolbarAndSharedFooter() throws {
         let panes = PaneContainerViewController(first: PaneHostViewController(browser: BrowserViewController()))
         let split = panes.splitView
