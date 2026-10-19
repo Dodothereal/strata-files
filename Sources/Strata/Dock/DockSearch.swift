@@ -22,6 +22,9 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     private let reader = DockReader()
     private var placed: NSRect?
     private var pendingRank: DispatchWorkItem?
+    private let readTiles: () -> [[String: Any]]?
+    private let writeTiles: ([[String: Any]]) -> Void
+    private let restartDock: () -> Void
     /// Rows the card has room for: it grows as results come in but doesn't shrink while you type (no jumping).
     private var cardRows = 0
     /// What the table shows, to leave it alone when an update brings the same rows.
@@ -31,7 +34,13 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     private static let maxVisibleRows = 8
     private static let resultsWidth: CGFloat = 560
 
-    private override init() {
+    init(notifications: NotificationCenter = .default,
+         readTiles: @escaping () -> [[String: Any]]? = DockGapTiles.read,
+         writeTiles: @escaping ([[String: Any]]) -> Void = DockGapTiles.write,
+         restartDock: @escaping () -> Void = DockGapTiles.restartDock) {
+        self.readTiles = readTiles
+        self.writeTiles = writeTiles
+        self.restartDock = restartDock
         super.init()
         build()
         ranker.queryItems = { [weak self] query in
@@ -52,6 +61,8 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
             guard let self, ranker.results.indices.contains(table.selectedRow) else { return nil }
             return ranker.results[table.selectedRow].item.title
         }
+        // The saved setting stays on for next launch, but the box and its gap only belong to a running Strata.
+        notifications.addObserver(self, selector: #selector(disable), name: NSApplication.willTerminateNotification, object: nil)
     }
 
     // MARK: - On and off
@@ -72,11 +83,11 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
             // kAXTrustedCheckOptionPrompt's value, spelled out (the global isn't concurrency-safe).
             _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
         }
-        if let apps = DockGapTiles.read() {
+        if let apps = readTiles() {
             let changed = DockGapTiles.adding(to: apps, after: Self.bundleID)
             if changed.count != apps.count {
-                DockGapTiles.write(changed)
-                DockGapTiles.restartDock()
+                writeTiles(changed)
+                restartDock()
             }
         }
         guard follower == nil else { return }
@@ -86,17 +97,17 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         follow()
     }
 
-    private func disable() {
+    @objc private func disable() {
         follower?.invalidate()
         follower = nil
         placed = nil
         clear()
         box.orderOut(nil)
-        guard let apps = DockGapTiles.read() else { return }
+        guard let apps = readTiles() else { return }
         let changed = DockGapTiles.removing(from: apps)
         guard changed.count != apps.count else { return }
-        DockGapTiles.write(changed)
-        DockGapTiles.restartDock()
+        writeTiles(changed)
+        restartDock()
     }
 
     private static var bundleID: String { Bundle.main.bundleIdentifier ?? "dev.strata.app" }

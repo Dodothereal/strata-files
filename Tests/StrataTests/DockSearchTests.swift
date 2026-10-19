@@ -86,4 +86,53 @@ struct DockSearchTests {
         #expect(abs(box.maxX - (351 - 6.6)) <= 1)
         #expect(abs(layout.cornerRadius - 8.5) <= 0.5)
     }
+
+    @Test func quittingRemovesTheGapWithoutRestoringAnOldDockLayout() {
+        let notifications = NotificationCenter()
+        var apps = [app(Self.strata, guid: 1)] + gap + [app("com.apple.Notes", guid: 2)]
+        var writes = 0
+        var restarts = 0
+        let search = DockSearch(notifications: notifications, readTiles: { apps }, writeTiles: {
+            apps = $0
+            writes += 1
+        }, restartDock: { restarts += 1 })
+
+        // The user rearranges apps and their own spacers while Strata is running; only its gap should go on quit.
+        let kept = [spacer("small-spacer-tile"), app("com.apple.Notes", guid: 2),
+                    app("com.apple.Safari", guid: 3), app(Self.strata, guid: 1), spacer()]
+        apps = Array(kept.prefix(2)) + gap + Array(kept.dropFirst(2))
+        notifications.post(name: NSApplication.didResignActiveNotification, object: nil)
+        notifications.post(name: NSWindow.willCloseNotification, object: nil)
+        #expect(writes == 0)
+        #expect(restarts == 0)
+        withExtendedLifetime(search) {
+            notifications.post(name: NSApplication.willTerminateNotification, object: nil)
+            #expect(NSArray(array: apps).isEqual(to: kept))
+            #expect(writes == 1)
+            #expect(restarts == 1)
+            // Cleanup twice must neither remove another item nor restart the Dock again.
+            notifications.post(name: NSApplication.willTerminateNotification, object: nil)
+            #expect(NSArray(array: apps).isEqual(to: kept))
+            #expect(writes == 1)
+            #expect(restarts == 1)
+        }
+    }
+
+    @Test func quittingWithoutTheGapLeavesTheDockAlone() {
+        let ownTiles = [app(Self.strata, guid: 1), spacer(), app("com.apple.Notes", guid: 2),
+                        spacer("small-spacer-tile")]
+        for apps in [nil, [], ownTiles] as [[[String: Any]]?] {
+            let notifications = NotificationCenter()
+            var writes = 0
+            var restarts = 0
+            let search = DockSearch(notifications: notifications, readTiles: { apps }, writeTiles: { _ in
+                writes += 1
+            }, restartDock: { restarts += 1 })
+            withExtendedLifetime(search) {
+                notifications.post(name: NSApplication.willTerminateNotification, object: nil)
+                #expect(writes == 0)
+                #expect(restarts == 0)
+            }
+        }
+    }
 }
