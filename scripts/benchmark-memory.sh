@@ -6,10 +6,12 @@ export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Develope
 memory_benchmark_dir=$(mktemp -d "${TMPDIR:-/tmp}/strata-memory-benchmark.XXXXXX")
 trap 'rm -rf "$memory_benchmark_dir"' EXIT
 xcrun swiftc -O -D DEBUG -D MEMORY_BENCHMARK -swift-version 6 -parse-as-library \
+  -default-isolation MainActor -enable-upcoming-feature NonisolatedNonsendingByDefault \
   -Xllvm -sil-disable-pass=optimize-hop-to-executor \
   -module-cache-path "$memory_benchmark_dir/modules" \
   Sources/Strata/AI/SemanticIndex.swift Sources/Strata/AI/TextExtractor.swift Sources/Strata/Model/SecureStorage.swift \
-  Tests/StrataTests/Support/SemanticFixture.swift Tests/Benchmarks/MemoryBenchmark.swift \
+  Sources/Strata/Views/ThumbnailCache.swift \
+  Tests/StrataTests/Support/SemanticFixture.swift Tests/Benchmarks/ThumbnailCacheBaseline.swift Tests/Benchmarks/MemoryBenchmark.swift \
   -o "$memory_benchmark_dir/benchmark"
 for memory_benchmark_run in 1 2 3; do
   "$memory_benchmark_dir/benchmark" "$@"

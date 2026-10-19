@@ -801,5 +801,19 @@
     "replace": "sentenceRows = VectorRows(dimension: Embedder.sentenceDimension)",
     "rule": "Memory: disabled sentence embeddings allocate no vector storage",
     "tests": "SemanticMemoryTests"
+  },
+  {
+    "file": "Strata/Views/ThumbnailCache.swift",
+    "find": "init(costLimit: Int = 128 * 1024 * 1024",
+    "replace": "init(costLimit: Int = 400 * 1024 * 1024",
+    "rule": "Memory: thumbnail cache stays within 128 MiB",
+    "tests": "ThumbnailCacheTests/theDefaultCache"
+  },
+  {
+    "file": "Strata/Views/FileThumbnails.swift",
+    "find": "let cost = original.map { $0.bytesPerRow * $0.height } ?? 0",
+    "replace": "let cost = image.map { $0.width * $0.height * 4 } ?? 0",
+    "rule": "Memory: cropped thumbnails charge their original backing",
+    "tests": "FileThumbnailsTests/croppedImages"
   }
 ]

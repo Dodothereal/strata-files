@@ -9,6 +9,9 @@ import UniformTypeIdentifiers
 final class FileThumbnails {
     static let shared = FileThumbnails()
 
+    typealias Completion = @Sendable (CGImage?, Bool) -> Void
+    typealias Generate = (QLThumbnailGenerator.Request, @escaping Completion) -> Void
+
     /// Point sizes thumbnails are generated at; a request uses the smallest bucket that covers it.
     private static let buckets: [CGFloat] = [32, 64, 128, 256, 512]
 
@@ -27,15 +30,23 @@ final class FileThumbnails {
         var callbacks: [Int: (NSImage) -> Void]
     }
 
-    private let cache = NSCache<NSString, NSImage>()
+    private let cache: ThumbnailCache
+    private let generate: Generate
+    private let cancelGeneration: (QLThumbnailGenerator.Request) -> Void
     private var pending: [String: Pending] = [:]
     /// Keys Quick Look had nothing for, so they aren't asked for again.
     private var failed: Set<String> = []
     private var nextID = 0
 
-    private init() {
-        cache.countLimit = 1500
-        cache.totalCostLimit = 400 * 1024 * 1024
+    init(cache: ThumbnailCache = ThumbnailCache(), generate: @escaping Generate = { request, completion in
+        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, error in
+            let cancelled = (error as? CocoaError)?.code == .userCancelled || (error as NSError?)?.code == NSUserCancelledError
+            completion(representation?.cgImage, cancelled)
+        }
+    }, cancel: @escaping (QLThumbnailGenerator.Request) -> Void = { QLThumbnailGenerator.shared.cancel($0) }) {
+        self.cache = cache
+        self.generate = generate
+        cancelGeneration = cancel
     }
 
     /// Whether to ask Quick Look for a thumbnail. Like Finder, every file is asked, so any type with a thumbnail
@@ -64,10 +75,10 @@ final class FileThumbnails {
     func cached(_ entry: FileEntry, size: CGFloat, scale: CGFloat) -> (image: NSImage, exact: Bool)? {
         let wanted = Self.bucket(for: size)
         for b in Self.buckets where b >= wanted {
-            if let image = cache.object(forKey: key(entry, b, scale) as NSString) { return (image, true) }
+            if let image = cache.image(forKey: key(entry, b, scale)) { return (image, true) }
         }
         for b in Self.buckets.reversed() where b < wanted {
-            if let image = cache.object(forKey: key(entry, b, scale) as NSString) { return (image, false) }
+            if let image = cache.image(forKey: key(entry, b, scale)) { return (image, false) }
         }
         return nil
     }
@@ -84,7 +95,7 @@ final class FileThumbnails {
         let bucket = Self.bucket(for: size)
         let key = key(entry, bucket, scale)
         if failed.contains(key) { return nil }
-        if let image = cache.object(forKey: key as NSString) {
+        if let image = cache.image(forKey: key) {
             completion(image)
             return nil
         }
@@ -99,13 +110,14 @@ final class FileThumbnails {
         request.iconMode = true
         let generation = ticket.id
         pending[key] = Pending(request: request, generation: generation, callbacks: [ticket.id: completion])
-        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, error in
+        generate(request) { [weak self] original, cancelled in
             // Icon-mode thumbnails sit on a square transparent canvas; trim it so wide images can bottom-align.
-            let image = representation.map { FileThumbnails.trimmed($0.cgImage) }
-            let cancelled = (error as? CocoaError)?.code == .userCancelled || (error as NSError?)?.code == NSUserCancelledError
+            let image = original.map { FileThumbnails.trimmed($0) }
+            // A cropped CGImage can retain the original backing, so charge its full decoded size.
+            let cost = original.map { $0.bytesPerRow * $0.height } ?? 0
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    FileThumbnails.shared.finish(key, generation: generation, image, cancelled: cancelled, bucket: bucket)
+                    self?.finish(key, generation: generation, image, cancelled: cancelled, cost: cost)
                 }
             }
         }
@@ -117,7 +129,7 @@ final class FileThumbnails {
         entry.callbacks[ticket.id] = nil
         if entry.callbacks.isEmpty {
             pending[ticket.key] = nil
-            QLThumbnailGenerator.shared.cancel(entry.request)
+            cancelGeneration(entry.request)
         } else {
             pending[ticket.key] = entry
         }
@@ -167,7 +179,7 @@ final class FileThumbnails {
         return image.cropping(to: rect) ?? image
     }
 
-    private func finish(_ key: String, generation: Int, _ cgImage: CGImage?, cancelled: Bool, bucket: CGFloat) {
+    private func finish(_ key: String, generation: Int, _ cgImage: CGImage?, cancelled: Bool, cost: Int) {
         // A cancelled request can still complete after a new one for the same key started; ignore it.
         guard let entry = pending[key], entry.generation == generation else { return }
         pending[key] = nil
@@ -184,7 +196,7 @@ final class FileThumbnails {
         let factor = 1 / scale
         let image = NSImage(cgImage: cgImage, size: NSSize(width: CGFloat(cgImage.width) * factor,
                                                            height: CGFloat(cgImage.height) * factor))
-        cache.setObject(image, forKey: key as NSString, cost: cgImage.width * cgImage.height * 4)
+        cache.insert(image, forKey: key, cost: cost)
         for callback in entry.callbacks.values { callback(image) }
     }
 }
