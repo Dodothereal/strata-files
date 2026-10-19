@@ -118,4 +118,33 @@ struct FileThumbnailsTests {
         #expect(generator.requests.count == 4)
         #expect(tree.snapshot() == ["image.png"])
     }
+
+    @Test func oneCancelledReaderDoesNotAffectTheOthersOrALaterRequest() async throws {
+        let tree = try TestTree("image.png")
+        let entry = try #require(FileEntry(url: tree.url("image.png")))
+        let generator = Generator()
+        let cache = ThumbnailCache(observesMemoryPressure: false)
+        let loader = generator.loader(cache: cache)
+        var delivered = 0
+        let cancelled = loader.request(entry, size: 64, scale: 2) { _ in Issue.record("The cancelled reader must not be called") }
+        let completed = loader.request(entry, size: 64, scale: 2) { _ in
+            #expect(Thread.isMainThread)
+            delivered += 1
+        }
+        loader.cancel(cancelled)
+        #expect(generator.requests.count == 1 && generator.cancelled.isEmpty)
+        let completion = generator.requests[0].1
+        let image = try bitmap()
+        DispatchQueue.global().async { completion(image, false) }
+        try await wait { delivered == 1 }
+        cache.removeAll()
+        _ = loader.request(entry, size: 64, scale: 2) { _ in delivered += 1 }
+        loader.cancel(completed)
+        loader.cancel(cancelled)
+        #expect(generator.cancelled.isEmpty)
+        try #require(generator.requests.count == 2)
+        generator.requests[1].1(image, false)
+        try await wait { delivered == 2 }
+        #expect(tree.snapshot() == ["image.png"])
+    }
 }

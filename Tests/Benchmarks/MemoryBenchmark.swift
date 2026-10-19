@@ -38,7 +38,7 @@ func thumbnail(seed: Int) -> NSImage {
         precondition(SecureStorage.isTestRun, "Benchmarks must use DEBUG's throwaway storage and key.")
         let mode = CommandLine.arguments.dropFirst().first ?? "semantic"
         let passages = CommandLine.arguments.dropFirst(2).first.flatMap(Int.init) ?? (mode.hasPrefix("thumbnails") ? 160 : 50_000)
-        precondition((1...10_000_000).contains(passages))
+        precondition((1...(mode.hasPrefix("index-") ? 10_000_000 : 200_000)).contains(passages))
         switch mode {
         case "semantic":
             let folder = SecureStorage.url("memory-benchmark", isDirectory: true)

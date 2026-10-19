@@ -61,8 +61,9 @@ cost. Restoring the 400 MiB default makes the budget regression fail.
 ## 3. Loading reserves room for the first burst of index changes
 
 Previously, loading an index allocated its columns at their saved count. A burst of additions could then allocate
-larger buffers and copy the old columns, raising memory and update time. The reader now reserves 12.5% growth room,
-capped at 16 MiB per column, for columns with at least 4,096 elements. It initializes and saves only the actual count.
+larger buffers and copy the old columns, raising memory and update time. For columns with at least 4,096 elements,
+the reader now reserves 12.5% growth room, with a minimum of 1,024 elements and a cap of 16 MiB per column.
+It initializes and saves only the actual count.
 Untouched capacity costs virtual address space; this workload's initial process footprint rises by just 0.05 MiB.
 Growth beyond that reserve can still require resizing.
 
@@ -98,3 +99,38 @@ nor serialized as file entries. Removing the reserve makes the buffer regression
   13,551,234 bytes in a one-million-file fixture. Its temporary allocations raised process footprint by about 14 MiB,
   including after allocator cleanup and a settling interval. That prototype was discarded; the file index continues
   to store all entries and its existing names unchanged.
+
+## Follow-up review, 19 October 2026
+
+Reviewed all production changes in the three optimization commits, their callers in List, Icons, Columns and
+Gallery, and the benchmark's storage isolation. No new functional regression was found. The review did find an
+inherited reader bug: converting an authenticated but invalid UInt64 column length to Int could trap before the
+sanity check. The new regression reproduced that crash. The reader now uses a checked conversion and checks the
+capacity addition before allocating; UInt64.max, Int.max and Int.max + 1 are refused without changing the store.
+Three paired optimized runs against af1e88a, before these extra bounds checks, had identical load and post-burst
+footprint increases on both sides: 107.63 MiB and 108.58 MiB respectively. The hardening has no measured memory cost.
+
+Additional checks cover:
+
+- Empty and small indexes, both sides of the reserve threshold, and additions beyond the reserve; all eleven columns
+  and the decrypted saved bytes round-trip. Authenticated partial columns, truncated ciphertext and invalid tags
+  are refused, leaving the index and unrelated files unchanged.
+- A remaining thumbnail reader still receives its image after another cancels; a background generator returns to
+  the main thread; old tickets cannot cancel a later request. Zero/maximum cache budgets preserve recency without
+  overflowing, and the pressure observer does not retain the cache.
+- Empty content indexes and both mismatched sentence-embedding settings allocate no rows and leave the saved index
+  untouched. Enabled sentence-vector persistence and the default keyword/search path remain covered.
+
+Validation: 338 Swift tests and 24 Python tests pass. All 20 tests in IndexGrowthTests, ThumbnailCacheTests,
+FileThumbnailsTests and SemanticMemoryTests also pass with Address Sanitizer, with no sanitizer reports:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test \
+  --scratch-path /tmp/strata-memory-audit-asan --sanitize address \
+  --filter 'IndexGrowthTests|ThumbnailCacheTests|FileThumbnailsTests|SemanticMemoryTests'
+```
+
+Encryption, the per-store authenticated identity, Keychain access, test storage isolation and file-changing behavior
+are unchanged. The benchmark's public synthetic key exists only in a temporary compiler input; its executable must
+confirm it is a test run before it does work. The content benchmark retains its 200,000-passage input limit.
+The smaller thumbnail cache's regeneration tradeoff and the workload-specific measurement limits still apply.

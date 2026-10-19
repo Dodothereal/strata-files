@@ -73,11 +73,12 @@ nonisolated enum IndexPersistence {
             return String(decoding: bytes, as: UTF8.self)
         }
         func getColumn<T>(_: T.Type) throws -> ContiguousArray<T> {
-            let count = Int(try get(UInt64.self))
-            guard count >= 0, count <= reader.maximumLength / MemoryLayout<T>.stride else { throw Corrupt() }
+            guard let count = Int(exactly: try get(UInt64.self)),
+                  count <= reader.maximumLength / MemoryLayout<T>.stride else { throw Corrupt() }
             var failure: Error?
             // Leave modest, untouched growth room so a burst of new files after loading doesn't copy every column.
             let headroom = count < 4096 ? 0 : min(max(1024, count / 8), (16 * 1024 * 1024) / MemoryLayout<T>.stride)
+            guard count <= Int.max - headroom else { throw Corrupt() }
             let column = ContiguousArray<T>(unsafeUninitializedCapacity: count + headroom) { buffer, initialized in
                 do {
                     try reader.read(into: UnsafeMutableRawBufferPointer(start: buffer.baseAddress,

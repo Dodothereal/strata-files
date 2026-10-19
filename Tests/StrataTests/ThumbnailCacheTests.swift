@@ -52,4 +52,34 @@ struct ThumbnailCacheTests {
         #expect(cache.image(forKey: "onscreen") == nil)
         #expect(visible.size == NSSize(width: 2, height: 2))
     }
+
+    @Test func zeroAndMaximumBudgetsDoNotOverflowOrLoseRecency() {
+        let image = NSImage(size: NSSize(width: 1, height: 1))
+        let zero = ThumbnailCache(costLimit: 0, countLimit: 1, observesMemoryPressure: false)
+        zero.insert(image, forKey: "empty", cost: -1)
+        zero.insert(image, forKey: "tooLarge", cost: 1)
+        #expect(zero.image(forKey: "empty") === image)
+        #expect(zero.image(forKey: "tooLarge") == nil)
+        let large = ThumbnailCache(costLimit: Int.max, observesMemoryPressure: false)
+        large.insert(image, forKey: "a", cost: Int.max - 2)
+        large.insert(image, forKey: "b", cost: 2)
+        #expect(large.image(forKey: "a") === image)
+        large.insert(image, forKey: "c", cost: 1)
+        #expect(large.image(forKey: "b") == nil)
+        #expect(large.image(forKey: "a") === image)
+        #expect(large.image(forKey: "c") === image)
+        large.removeAll()
+        large.insert(image, forKey: "full", cost: Int.max)
+        #expect(large.image(forKey: "full") === image)
+    }
+
+    @Test func thePressureObserverDoesNotKeepTheCacheAlive() {
+        weak var released: ThumbnailCache?
+        autoreleasepool {
+            let cache = ThumbnailCache()
+            released = cache
+            cache.insert(NSImage(size: NSSize(width: 1, height: 1)), forKey: "a", cost: 4)
+        }
+        #expect(released == nil)
+    }
 }

@@ -73,4 +73,25 @@ struct SemanticMemoryTests {
         #expect(await index.indexedFileCount == 0)
         #expect(tree.snapshot() == ["new.txt", "store/"])
     }
+
+    @Test(arguments: [false, true])
+    func emptyAndMismatchedIndexesNeverAllocateOrReuseRows(_ sentences: Bool) async throws {
+        let tree = try TestTree("store/")
+        try SemanticFixture.write(SemanticFixture.make(passages: 0, sentences: sentences, root: tree.root), to: tree.url("store"))
+        let empty = SemanticIndex(configuration: configuration(tree.url("store"), sentences: sentences))
+        #expect(await empty.search("a searchable document").isEmpty)
+        #expect(await empty.indexedFileCount == 0)
+        let emptyBytes = await empty.vectorStorageBytes
+        #expect(emptyBytes.word == 0 && emptyBytes.sentence == 0)
+        try SemanticFixture.write(SemanticFixture.make(passages: 4, sentences: sentences, root: tree.root), to: tree.url("store"))
+        let before = try Data(contentsOf: tree.url("store/index.sealed"))
+        let mismatch = SemanticIndex(configuration: configuration(tree.url("store"), sentences: !sentences))
+        #expect(await mismatch.search("a searchable document").isEmpty)
+        #expect(await mismatch.indexedFileCount == 0)
+        let mismatchBytes = await mismatch.vectorStorageBytes
+        #expect(mismatchBytes.word == 0 && mismatchBytes.sentence == 0)
+        await mismatch.save()
+        #expect(try Data(contentsOf: tree.url("store/index.sealed")) == before)
+        #expect(tree.snapshot() == ["store/", "store/index.sealed"])
+    }
 }
