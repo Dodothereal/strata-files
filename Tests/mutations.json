@@ -794,5 +794,12 @@
     "replace": "                    if store.mtime[o] != item.mtime {",
     "rule": "Index performance: parent events ignore activity inside excluded state",
     "tests": "IndexWorkerTests/aCoalescedParentEventDoesNotResaveChangesOnlyInsideExcludedState"
+  },
+  {
+    "file": "Strata/AI/SemanticIndex.swift",
+    "find": "sentenceRows = VectorRows(dimension: configuration.sentenceEmbeddings ? Embedder.sentenceDimension : 0)",
+    "replace": "sentenceRows = VectorRows(dimension: Embedder.sentenceDimension)",
+    "rule": "Memory: disabled sentence embeddings allocate no vector storage",
+    "tests": "SemanticMemoryTests"
   }
 ]

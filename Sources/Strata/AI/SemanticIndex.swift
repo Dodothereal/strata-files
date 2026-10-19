@@ -84,7 +84,7 @@ actor SemanticIndex {
     private var files: [String: IndexedFile] = [:]
     /// Passage vectors by row (Float16). Rows of deleted passages are recycled.
     private var wordRows = VectorRows(dimension: Embedder.wordDimension)
-    private var sentenceRows = VectorRows(dimension: Embedder.sentenceDimension)
+    private var sentenceRows: VectorRows
     private var rowCount = 0
     private var freeRows: [Int] = []
     private var loaded = false
@@ -94,6 +94,8 @@ actor SemanticIndex {
 
     init(configuration: Configuration) {
         self.configuration = configuration
+        // Disabled sentence embeddings keep an empty matrix, including while loading or recycling passage rows.
+        sentenceRows = VectorRows(dimension: configuration.sentenceEmbeddings ? Embedder.sentenceDimension : 0)
         indexEmbedder = Embedder(label: "dev.strata.semantic.index", qos: .utility, sentences: configuration.sentenceEmbeddings)
         queryEmbedder = Embedder(label: "dev.strata.semantic.query", qos: .userInitiated, sentences: configuration.sentenceEmbeddings)
     }
@@ -103,6 +105,9 @@ actor SemanticIndex {
     }
 
     var indexedFileCount: Int { files.values.filter { !$0.chunks.isEmpty }.count }
+
+    /// Reserved vector storage, including reusable rows, for memory measurements.
+    var vectorStorageBytes: (word: Int, sentence: Int) { (wordRows.storageBytes, sentenceRows.storageBytes) }
 
     // MARK: - Indexing
 
@@ -723,6 +728,8 @@ private nonisolated struct VectorRows {
     private(set) var halves: [UInt16] = []
 
     init(dimension: Int) { self.dimension = dimension }
+
+    var storageBytes: Int { halves.capacity * MemoryLayout<UInt16>.stride }
 
     mutating func grow(to rows: Int) {
         if halves.count < rows * dimension { halves.append(contentsOf: repeatElement(0, count: rows * dimension - halves.count)) }
