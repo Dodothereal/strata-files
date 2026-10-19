@@ -361,7 +361,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             split.scopeBar.isHidden = true
             split.noticeBar.hide()
         }
-        viewModeItem?.selectedIndex = browser.mode.position
+        syncViewModeItem()
         window?.toolbar?.validateVisibleItems()
         updateHeaders()
     }
@@ -479,17 +479,19 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func viewModeChanged(_ sender: NSToolbarItemGroup) {
         browser.setViewMode(sender)
+        syncViewModeItem()
     }
 
     /// Points the toolbar's view switcher at the current mode.
     func syncViewModeItem() {
-        viewModeItem?.selectedIndex = browser.mode.position
+        viewModeItem?.selectedIndex = browser.effectiveMode.position
+        viewModeItem?.isEnabled = !browser.isShowingResults
     }
 
     /// Keeps the toolbar's view switcher in sync when ⌘1–⌘5 change the mode.
     @objc func syncViewMode(_ sender: Any?) {
         browser.setViewMode(sender)
-        viewModeItem?.selectedIndex = browser.mode.position
+        syncViewModeItem()
     }
 
     // MARK: - Search
@@ -939,6 +941,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func refreshPanels() {
+        syncViewModeItem()
         var status = browser.statusText
         if case .scanning(let items) = FileIndex.shared.phase {
             status += (status.isEmpty ? "" : "  ·  ") + String(localized: "Indexing \(items) items…", comment: "plural")
@@ -1109,7 +1112,8 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             return item
         case .viewMode:
             let item = BrowserViewMode.makeToolbarItem(id, target: self, action: #selector(viewModeChanged(_:)))
-            item.selectedIndex = browser.mode.position
+            item.selectedIndex = browser.effectiveMode.position
+            item.isEnabled = !browser.isShowingResults
             item.visibilityPriority = .high
             viewModeItem = item
             return item
@@ -1152,6 +1156,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
         switch item.itemIdentifier {
         case .back: return !pane.backStack.isEmpty
         case .forward: return !pane.forwardStack.isEmpty
+        case .viewMode: return !browser.isShowingResults
         default: return true
         }
     }
@@ -1159,8 +1164,8 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
         case #selector(syncViewMode(_:)):
-            item.state = item.tag == browser.mode.rawValue ? .on : .off
-            return true
+            item.state = item.tag == browser.effectiveMode.rawValue ? .on : .off
+            return !browser.isShowingResults || item.tag == BrowserViewMode.list.rawValue
         case #selector(goBack(_:)): return !pane.backStack.isEmpty
         case #selector(goForward(_:)): return !pane.forwardStack.isEmpty
         case #selector(toggleDualPane(_:)):

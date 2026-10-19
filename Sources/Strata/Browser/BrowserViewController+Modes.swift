@@ -39,6 +39,8 @@ extension BrowserViewController {
 
     /// `remember: false` (a workspace reopening) leaves the view new windows open in as it is.
     func setMode(_ newMode: BrowserViewMode, remember: Bool = true) {
+        // Results stay in List; a user command must not silently change the folder's saved view.
+        guard !remember || !isShowingResults else { return }
         guard newMode != mode else { return }
         let selection = selectedURLs
         setStoredMode(newMode)

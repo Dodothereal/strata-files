@@ -93,7 +93,7 @@ extension BrowserWindowController {
         }
     }
 
-    private func commandItems() -> [PaletteItem] {
+    func commandItems() -> [PaletteItem] {
         let hasSelection = !browser.selectedURLs.isEmpty
         // Titles worked out in code (already localized) come through here; literal ones through `command` below.
         func localizedCommand(_ title: String, _ symbol: String, _ shortcut: String?, keywords: [String] = [],
@@ -136,17 +136,23 @@ extension BrowserWindowController {
             localizedCommand(isDualPane ? String(localized: "Single Pane") : String(localized: "Dual Pane"), "rectangle.split.2x1", "⌘\\") { [weak self] in
                 self?.toggleDualPane(nil)
             },
-            command("View as Icons", "square.grid.2x2", "⌘1") { [weak self] in self?.browser.setMode(.grid); self?.syncViewModeItem() },
-            command("View as List", "list.bullet", "⌘2") { [weak self] in self?.browser.setMode(.list); self?.syncViewModeItem() },
-            command("View as Columns", "rectangle.split.3x1", "⌘3") { [weak self] in self?.browser.setMode(.columns); self?.syncViewModeItem() },
-            command("View as Gallery", "squares.below.rectangle", "⌘4") { [weak self] in
-                self?.browser.setMode(.gallery)
-                self?.syncViewModeItem()
-            },
-            command("View as Disk Usage", "square.split.bottomrightquarter", "⌘5") { [weak self] in
-                self?.browser.setMode(.treemap)
-                self?.syncViewModeItem()
-            },
+        ]
+        if !browser.isShowingResults {
+            commands += [
+                command("View as Icons", "square.grid.2x2", "⌘1") { [weak self] in self?.browser.setMode(.grid); self?.syncViewModeItem() },
+                command("View as List", "list.bullet", "⌘2") { [weak self] in self?.browser.setMode(.list); self?.syncViewModeItem() },
+                command("View as Columns", "rectangle.split.3x1", "⌘3") { [weak self] in self?.browser.setMode(.columns); self?.syncViewModeItem() },
+                command("View as Gallery", "squares.below.rectangle", "⌘4") { [weak self] in
+                    self?.browser.setMode(.gallery)
+                    self?.syncViewModeItem()
+                },
+                command("View as Disk Usage", "square.split.bottomrightquarter", "⌘5") { [weak self] in
+                    self?.browser.setMode(.treemap)
+                    self?.syncViewModeItem()
+                },
+            ]
+        }
+        commands += [
             command("Back", "chevron.left", "⌘[") { [weak self] in self?.goBack(nil) },
             command("Forward", "chevron.right", "⌘]") { [weak self] in self?.goForward(nil) },
             command("Recents", "clock", "⇧⌘F") { [weak self] in self?.goRecents(nil) },
