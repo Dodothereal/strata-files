@@ -2,7 +2,8 @@
 
 These changes live on `perf/memory-usage`, based on main `8cad325`. Each optimization is measured before its commit,
 with the same fixture and optimized compiler settings on both sides. Values below are medians of three fresh
-processes on the same Apple silicon Mac (macOS 26.7.1, Apple Swift 6.4 / Xcode 26.6), in MiB (1,048,576 bytes).
+processes on the same Apple silicon Mac (macOS 26.7.1, Apple Swift 6.4 / Xcode 27.1, build 27A9275),
+in MiB (1,048,576 bytes).
 They describe the measured workloads, not a promised reduction for every running Strata instance.
 
 Run `scripts/benchmark-memory.sh semantic 50000`. The benchmark compiles production code with optimization and
@@ -134,3 +135,21 @@ Encryption, the per-store authenticated identity, Keychain access, test storage 
 are unchanged. The benchmark's public synthetic key exists only in a temporary compiler input; its executable must
 confirm it is a test run before it does work. The content benchmark retains its 200,000-passage input limit.
 The smaller thumbnail cache's regeneration tradeoff and the workload-specific measurement limits still apply.
+
+## Local app session, 19 October 2026
+
+The installed 0.6.2 (27) session was sampled 26 times over its final 50.1 seconds, after the user had browsed.
+An optimized local build of 82975cd was then sampled for 128.2 seconds while the user tried it. The executable paths
+and process IDs were checked; the local build used the same version label to avoid an unrelated updater prompt.
+Both sessions used the real index and preferences. Sampling used proc_pid_rusage every two seconds, without
+attaching a debugger or reading document contents; CPU counters were converted using this Mac's Mach timebase.
+
+| Physical footprint | Installed 0.6.2 | Local memory branch |
+| --- | ---: | ---: |
+| Last recorded sample | 1,004.9 MiB | 834.2 MiB |
+| Highest recorded sample | 1,412.1 MiB | 970.9 MiB |
+
+The last sample is **170.7 MiB (17.0%) lower**. This is an observation from two short, different interactive sessions,
+not a controlled replay or a guaranteed idle saving. The installed session's earlier startup and browsing were not
+recorded, so these maxima do not establish a startup-peak comparison. Recording stopped before the subsequent
+footer-divider reproduction and repair.
