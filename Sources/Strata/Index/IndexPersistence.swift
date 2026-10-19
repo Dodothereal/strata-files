@@ -76,9 +76,12 @@ nonisolated enum IndexPersistence {
             let count = Int(try get(UInt64.self))
             guard count >= 0, count <= reader.maximumLength / MemoryLayout<T>.stride else { throw Corrupt() }
             var failure: Error?
-            let column = ContiguousArray<T>(unsafeUninitializedCapacity: count) { buffer, initialized in
+            // Leave modest, untouched growth room so a burst of new files after loading doesn't copy every column.
+            let headroom = count < 4096 ? 0 : min(max(1024, count / 8), (16 * 1024 * 1024) / MemoryLayout<T>.stride)
+            let column = ContiguousArray<T>(unsafeUninitializedCapacity: count + headroom) { buffer, initialized in
                 do {
-                    try reader.read(into: UnsafeMutableRawBufferPointer(buffer))
+                    try reader.read(into: UnsafeMutableRawBufferPointer(start: buffer.baseAddress,
+                                                                       count: count * MemoryLayout<T>.stride))
                     initialized = count
                 } catch {
                     failure = error

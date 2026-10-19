@@ -38,7 +38,7 @@ func thumbnail(seed: Int) -> NSImage {
         precondition(SecureStorage.isTestRun, "Benchmarks must use DEBUG's throwaway storage and key.")
         let mode = CommandLine.arguments.dropFirst().first ?? "semantic"
         let passages = CommandLine.arguments.dropFirst(2).first.flatMap(Int.init) ?? (mode.hasPrefix("thumbnails") ? 160 : 50_000)
-        precondition((1...200_000).contains(passages))
+        precondition((1...10_000_000).contains(passages))
         switch mode {
         case "semantic":
             let folder = SecureStorage.url("memory-benchmark", isDirectory: true)
@@ -88,8 +88,52 @@ func thumbnail(seed: Int) -> NSImage {
             precondition(image("thumbnail-\(passages - 1)")?.size == NSSize(width: 512, height: 512))
             print("\(mode) generated=\(passages) retained=\(retained) before_bytes=\(before) loaded_bytes=\(loaded) delta_bytes=\(Int64(loaded) - Int64(before)) fill_time=\(elapsed)")
             withExtendedLifetime((image, insert)) {}
+        case "index-fixture":
+            let file = URL(fileURLWithPath: CommandLine.arguments[3])
+            try autoreleasepool {
+                let store = IndexStore()
+                store.reserve(entries: passages + 1)
+                let root = store.addRoot(path: "/synthetic", mtime: 0)
+                appendFiles(0..<passages, to: root, in: store)
+                store.aggregate()
+                try IndexPersistence.save(store, eventID: 1, excluded: [], to: file)
+            }
+            print("index fixture saved; reader processes start with a fresh allocator")
+        case "index-growth", "index-growth-baseline":
+            let file = URL(fileURLWithPath: CommandLine.arguments[3])
+            let before = footprint()
+            let loadStart = ContinuousClock.now
+            let store = try (mode.hasSuffix("baseline") ? IndexPersistenceBaseline.load(from: file).0 : IndexPersistence.load(from: file).0)
+            let loadTime = loadStart.duration(to: .now)
+            let loaded = footprint()
+            let start = ContinuousClock.now
+            let first = Int32(store.count)
+            appendFiles(passages..<(passages + 8192), to: 0, in: store)
+            store.integrateNew(from: first)
+            let updateTime = start.duration(to: .now)
+            let updated = footprint()
+            var usage = rusage()
+            getrusage(RUSAGE_SELF, &usage)
+            precondition(store.fileCount[0] == passages + 8192 && store.size[0] == Int64(passages + 8192))
+            precondition(store.name(Int32(store.count - 1)) == "file-\(passages + 8191).txt")
+            print("\(mode) files=\(passages) loaded_delta_bytes=\(Int64(loaded) - Int64(before)) updated_delta_bytes=\(Int64(updated) - Int64(before)) burst_delta_bytes=\(Int64(updated) - Int64(loaded)) peak_rss_bytes=\(usage.ru_maxrss) load_time=\(loadTime) update_time=\(updateTime)")
+            withExtendedLifetime(store) {}
         default:
             fatalError("Unknown memory benchmark: \(mode)")
+        }
+    }
+
+    private static func appendFiles(_ range: Range<Int>, to parent: Int32, in store: IndexStore) {
+        for base in stride(from: range.lowerBound, to: range.upperBound, by: 4096) {
+            var names: [UInt8] = [], items: [ScannedItem] = []
+            for index in base..<min(base + 4096, range.upperBound) {
+                let bytes = Array("file-\(index).txt".utf8)
+                items.append(ScannedItem(nameOffset: names.count, nameLength: bytes.count, isDirectory: false, isPackage: false,
+                                         isSymlink: false, isHidden: false, isMountPoint: false, size: 1, mtime: 100))
+                names.append(contentsOf: bytes)
+            }
+            names.withUnsafeBytes { _ = store.appendChildren(items, nameBuffer: $0, of: parent,
+                                                            ownNoise: [Bool](repeating: false, count: items.count)) }
         }
     }
 }

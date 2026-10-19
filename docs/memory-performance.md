@@ -57,3 +57,44 @@ Validation: deterministic eviction and recency, replacements, oversized entries,
 images while visible images remain usable, coalesced requests, last-reader cancellation, ignoring stale completions,
 regeneration with identical pixels, fallback size buckets, changed files, failed/cancelled requests and cropped backing
 cost. Restoring the 400 MiB default makes the budget regression fail.
+
+## 3. Loading reserves room for the first burst of index changes
+
+Previously, loading an index allocated its columns at their saved count. A burst of additions could then allocate
+larger buffers and copy the old columns, raising memory and update time. The reader now reserves 12.5% growth room,
+capped at 16 MiB per column, for columns with at least 4,096 elements. It initializes and saves only the actual count.
+Untouched capacity costs virtual address space; this workload's initial process footprint rises by just 0.05 MiB.
+Growth beyond that reserve can still require resizing.
+
+Run `scripts/benchmark-memory.sh index-growth-comparison 1000000`. A separate process builds one encrypted synthetic
+fixture, then three pairs of fresh processes load it and add the same 8,192 files. The baseline compiles the reader
+from main 8cad325; both readers use current, identical store and encryption code. Separate processes prevent the
+fixture builder's freed buffers from favoring one allocation size. Only this synthetic comparison uses a public
+fixed key in a temporary compiler input; the app's key handling is unchanged.
+
+| One-million-file index, then 8,192 additions | Before | After |
+| --- | ---: | ---: |
+| Footprint increase after loading | 107.58 MiB | 107.63 MiB |
+| Footprint increase after the burst | 153.47 MiB | 108.56 MiB |
+| Additional footprint during the burst | 45.89 MiB | 0.94 MiB |
+| Peak resident memory | 162.55 MiB | 117.63 MiB |
+| Load time | 22.7 ms | 21.7 ms |
+| Burst update time | 4.53 ms | 1.70 ms |
+
+The measured post-burst saving is **44.91 MiB (29.3%)**; burst-related growth falls by **98.0%**. Across three pairs,
+the post-burst increase was 153.45–153.47 MiB before and 108.56 MiB after. These are separate workloads from the
+document-index and thumbnail measurements, so their savings must not be added into a whole-app estimate.
+
+Validation: all eleven column buffers stay at the same addresses through a real append/integration burst; original
+and added items retain sizes, timestamps, file identities, hidden/link flags and folder totals after save/reopen.
+Saving a freshly loaded index produces identical decrypted version-6 bytes, proving spare capacity is neither read
+nor serialized as file entries. Removing the reserve makes the buffer regression fail.
+
+## Candidates rejected by measurement
+
+- Releasing an otherwise unused word-embedding model reduced the measured process footprint by **0 bytes** in three
+  runs. No model-unloading behavior was added.
+- A bounded filename-pooling prototype preserved paths and metadata and reduced filename data from 25,399,345 to
+  13,551,234 bytes in a one-million-file fixture. Its temporary allocations raised process footprint by about 14 MiB,
+  including after allocator cleanup and a settling interval. That prototype was discarded; the file index continues
+  to store all entries and its existing names unchanged.

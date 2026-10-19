@@ -815,5 +815,19 @@
     "replace": "let cost = image.map { $0.width * $0.height * 4 } ?? 0",
     "rule": "Memory: cropped thumbnails charge their original backing",
     "tests": "FileThumbnailsTests/croppedImages"
+  },
+  {
+    "file": "Strata/Index/IndexPersistence.swift",
+    "find": "unsafeUninitializedCapacity: count + headroom",
+    "replace": "unsafeUninitializedCapacity: count",
+    "rule": "Memory: a burst after index loading does not copy all column buffers",
+    "tests": "IndexGrowthTests/aBurstAfterLoading"
+  },
+  {
+    "file": "Strata/Index/IndexPersistence.swift",
+    "find": "initialized = count",
+    "replace": "initialized = count + headroom",
+    "rule": "Memory: spare index capacity is never treated as file entries",
+    "tests": "IndexGrowthTests/reservedCapacityIsNeverReadOrSavedAsFileEntries"
   }
 ]
