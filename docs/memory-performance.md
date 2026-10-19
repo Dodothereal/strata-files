@@ -153,3 +153,35 @@ The last sample is **170.7 MiB (17.0%) lower**. This is an observation from two 
 not a controlled replay or a guaranteed idle saving. The installed session's earlier startup and browsing were not
 recorded, so these maxima do not establish a startup-peak comparison. Recording stopped before the subsequent
 footer-divider reproduction and repair.
+
+## Index refresh regression check, 19 October 2026
+
+macOS recorded a CPU resource warning for the earlier `Strata-footer-check.app` debug build (PID 25355),
+12:05:30–12:08:05: 90 CPU seconds over 155 seconds, averaging 58% of one core. Its samples point to
+`IndexWorker.flush`, `refreshFolder` and `getattrlistbulk`. No crash or termination accompanied that report.
+The worker, scanner, event handling and store sources on this branch are byte-for-byte identical to main 8cad325;
+the index reader's reserved capacity and invalid-length checks are the changes relevant to this path.
+
+Compared two optimized standalone executables with the same compiler settings and a synthetic encrypted index of
+98,304 one-byte files in 96 folders. Each fresh process loads the same saved fixture and receives 1,000 identical
+deep folder events, followed by `saveNow` to finish pending work. CPU time comes from `getrusage` user plus system
+time, measured after loading through completion of the refresh and any save. The baseline uses main's reader;
+the other uses this branch's reader. Runs alternate their order. `DEBUG` isolation and a public synthetic key in
+a temporary compiler input keep the real index and Keychain untouched.
+
+| Workload | Main CPU time | Memory branch CPU time |
+| --- | ---: | ---: |
+| Unchanged folder, ten pairs after two warm-up pairs | 210.41 ms | 210.39 ms |
+| 8,192 additions, one resized file and one deletion, five pairs | 144.07 ms | 142.76 ms |
+
+Values are medians. Unchanged-folder ranges were 205.57–234.15 ms and 202.09–224.49 ms; changed-folder ranges were
+141.83–151.48 ms and 141.85–147.79 ms. An initial five-pair unchanged trial measured 134.10 vs 138.64 ms with
+overlapping ranges; that small difference prompted the longer repeat above. These runs show no consistent CPU
+regression in this workload, rather than a universal performance guarantee or an explanation of the event volume
+that caused the warning.
+
+Both versions kept an unchanged encrypted store byte-identical and issued no change notification. Both applied
+the real changes with exactly one notification and reopened with exactly 106,495 files totaling 110,590 bytes;
+the added path, removed path and resized file were checked individually. The experimental incremental-write
+branch is not included. Final functional validation passes all 343 Swift tests in 46 suites, all 24 Python tests,
+complete translations and the destructive-action audit. The user also verified Columns scrolling in the local build.
