@@ -20,13 +20,20 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     private var preview: ColumnPreviewPane?
     private var activeIndex = 0
     private var widths: [Int: CGFloat] = [:]
-    private let scrollView = NSScrollView()
+    private let scrollView: NSScrollView
     private let strip = ColumnStripView()
     /// Folders still to select, outermost first, while revealing a deep path.
     private var pendingReveal: [URL] = []
     private var focusWhenLoaded: ColumnPane?
     private var lastReportedSelection: [URL] = []
     private var renameField: InlineRenameField?
+
+    init(scrollView: NSScrollView = NSScrollView()) {
+        self.scrollView = scrollView
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
 
     static func defaultOrder(_ a: FileEntry, _ b: FileEntry) -> Bool {
         if Prefs.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
@@ -404,6 +411,31 @@ final class ColumnStripView: NSView {
 
 // MARK: - Folder column
 
+/// Folder rows scroll vertically; a sideways gesture belongs to the strip containing all the columns.
+final class ColumnScrollView: NSScrollView {
+    private var horizontalGesture: Bool?
+
+    override func scrollWheel(with event: NSEvent) {
+        guard let strip = superview?.enclosingScrollView else { return super.scrollWheel(with: event) }
+        if event.phase.contains(.began) || event.phase.contains(.mayBegin)
+            || (event.phase.isEmpty && event.momentumPhase.isEmpty) {
+            horizontalGesture = nil
+        }
+        if horizontalGesture == nil, event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0 {
+            horizontalGesture = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
+        }
+        if horizontalGesture == true {
+            strip.scrollWheel(with: event)
+        } else {
+            super.scrollWheel(with: event)
+        }
+        // Keep the direction through the zero-delta end event and any following momentum.
+        if event.phase.contains(.cancelled) || event.momentumPhase.contains(.ended) {
+            horizontalGesture = nil
+        }
+    }
+}
+
 final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     let folder: URL
     var isRoot = false
@@ -424,7 +456,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         tableView.window?.makeFirstResponder(tableView)
         selectRow(row)
     })
-    private let scrollView = NSScrollView()
+    private let scrollView = ColumnScrollView()
     private let divider = ColumnDividerView()
     private let spinner = NSProgressIndicator()
     /// Shown instead of rows when the folder can't be read.
