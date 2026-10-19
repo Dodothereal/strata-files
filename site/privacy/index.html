@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>App Privacy Policy · Strata Files</title>
+  <meta name="description" content="How the Strata Files macOS app handles your files, local indexes, on-device AI, permissions, updates and remote connections.">
+  <link rel="canonical" href="https://stratafiles.app/privacy/">
+  <meta name="theme-color" content="#07060d">
+  <meta name="color-scheme" content="dark">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://stratafiles.app/privacy/">
+  <meta property="og:site_name" content="Strata Files">
+  <meta property="og:title" content="App Privacy Policy · Strata Files">
+  <meta property="og:description" content="How the Strata Files macOS app handles your data.">
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="nav is-scrolled">
+    <div class="wrap nav__inner">
+      <a class="brand" href="/" aria-label="Strata Files, home">
+        <img src="/assets/icon-64.png" width="30" height="30" alt="">
+        <span>Strata <em>Files</em></span>
+      </a>
+      <nav class="nav__links" aria-label="Sections">
+        <a href="/#features">Features</a>
+        <a href="/privacy/" aria-current="page">Privacy Policy</a>
+        <a href="/#faq">FAQ</a>
+      </nav>
+      <div class="nav__actions">
+        <a class="btn btn--primary btn--sm" href="https://github.com/cristipufu/strata-files/releases/latest">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap policy" id="main">
+    <header class="policy__header">
+      <p class="eyebrow">Strata Files for macOS</p>
+      <h1>Privacy Policy</h1>
+      <p class="policy__date">Last updated <time datetime="2026-10-19">October 19, 2026</time></p>
+      <p class="policy__intro">This policy explains how the Strata Files macOS app handles your data. Your files,
+        search indexes and AI requests are processed on your Mac. There is no Strata account, advertising,
+        in-app analytics or telemetry.</p>
+    </header>
+
+    <article class="policy__content" aria-label="App privacy details">
+      <section aria-labelledby="local-data">
+        <h2 id="local-data">What Strata processes on your Mac</h2>
+        <p>Strata reads files and metadata to provide the file manager’s features:</p>
+        <ul>
+          <li><strong>File search and folder sizes:</strong> names, paths, sizes, dates and other file metadata are
+            indexed locally so searches and size calculations can stay current.</li>
+          <li><strong>Content search, previews and summaries:</strong> supported documents are read locally. The
+            content index can store extracted text and search data derived from it.</li>
+          <li><strong>History and undo:</strong> file operations record details such as source and destination paths,
+            dates and file identities so Strata can show past operations and undo them safely.</li>
+          <li><strong>Preferences:</strong> settings, favorite and frequently visited folders, saved searches,
+            workspaces, window locations and saved server details are kept locally.</li>
+        </ul>
+        <p>Strata does not upload your local files, search queries, document text or AI prompts to the developer.</p>
+      </section>
+
+      <section aria-labelledby="ai">
+        <h2 id="ai">AI stays on your Mac</h2>
+        <p>Ask Strata, document summaries and natural-language search use built-in rules and local processing.
+          When available, Apple Intelligence runs through Apple’s on-device Foundation Models framework.
+          Strata does not send these requests to a cloud AI provider.</p>
+      </section>
+
+      <section aria-labelledby="storage">
+        <h2 id="storage">Local storage and credentials</h2>
+        <p>The file index, content index and operation history are encrypted on disk with AES-GCM. Their encryption
+          key is stored in your macOS login Keychain. These stores are kept under
+          <code>~/Library/Application Support/Strata</code>.</p>
+        <p>Settings and saved locations use macOS preferences. They are separate from the encrypted indexes and
+          history. S3 secret keys are stored in Keychain; SFTP uses your SSH configuration, keys or agent, or a
+          password you enter for the connection.</p>
+        <p>Browsing archives, containers and remote files can create local working copies under
+          <code>~/Library/Caches/dev.strata.app</code>. These working copies are separate from the encrypted
+          indexes. Strata clears containers’ and servers’ copies at quit and cleans up copies left by an interrupted
+          session on a later launch.</p>
+      </section>
+
+      <section aria-labelledby="permissions">
+        <h2 id="permissions">Permissions are controlled by macOS</h2>
+        <p><strong>Full Disk Access</strong> lets Strata browse protected folders and include more of your Mac in
+          search and folder-size calculations. Without it, macOS limits which folders Strata can read.</p>
+        <p><strong>Accessibility</strong> is requested if you enable the optional search box in the Dock, so Strata
+          can read the Dock’s layout and position the box alongside it.</p>
+        <p>You can review or revoke these permissions in System Settings → Privacy &amp; Security.</p>
+      </section>
+
+      <section aria-labelledby="network">
+        <h2 id="network">When the app connects to the internet</h2>
+        <p>Strata’s core file browsing, indexing, search and AI processing do not require a Strata server.
+          Network connections support the following features:</p>
+        <ul>
+          <li><strong>Strata updates:</strong> checking for an update contacts GitHub through the Sparkle updater;
+            downloading an update also contacts the download host. Automatic checks are optional and can be changed
+            in Settings → General. Update requests can include app or system information and normal connection
+            metadata, such as your IP address. They do not include your files or search queries.</li>
+          <li><strong>Checking other apps for updates:</strong> when you ask Strata to check installed apps, it
+            contacts their publishers’ update feeds or Apple’s App Store lookup service. App Store requests include
+            the relevant app identifiers and store region.</li>
+          <li><strong>Servers, network shares and cloud folders:</strong> browsing, transferring or changing files
+            on a connection you configure sends the requests and data needed for that action to the relevant server
+            or provider. Cloud-folder downloads and uploads may also be handled by macOS or your cloud provider’s
+            software.</li>
+        </ul>
+        <p>Those services handle connection information and data you send under their own privacy policies.
+          Strata does not route your file transfers through a developer-operated service.</p>
+      </section>
+
+      <section aria-labelledby="retention">
+        <h2 id="retention">Retention and your controls</h2>
+        <p>Local indexes, preferences and saved locations persist between launches. Operation history keeps up to
+          500 operations; you can clear it with Clear History in the History window. Settings → Search &amp; Index
+          provides Rebuild Index for the file index. Removing a saved S3 server also removes its saved secret key
+          from Keychain.</p>
+        <p>Removing the app alone does not remove all saved data. After quitting Strata, its application-support
+          data and caches can be removed from the locations listed above. Preferences and any remaining Strata
+          Keychain items are stored separately and can also be removed from your Mac.</p>
+      </section>
+
+      <section aria-labelledby="diagnostics">
+        <h2 id="diagnostics">Diagnostics and information you share</h2>
+        <p>Strata writes local diagnostic messages through macOS logging. It does not automatically upload
+          diagnostics or crash reports to the developer. If you open a GitHub issue or send a report yourself,
+          the information you choose to include is shared through that service.</p>
+      </section>
+
+      <section aria-labelledby="contact">
+        <h2 id="contact">Questions and changes</h2>
+        <p>For questions about Strata’s privacy practices, contact the maintainer through the
+          <a href="https://github.com/cristipufu/strata-files/issues">Strata Files GitHub repository</a>.
+          GitHub issues are public, so leave out private file contents and credentials.</p>
+        <p>If the app’s data handling changes, this policy will be updated and the date above will change.
+          Strata’s <a href="https://github.com/cristipufu/strata-files">source code is available on GitHub</a>.</p>
+      </section>
+    </article>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer__inner">
+      <a class="brand" href="/"><img src="/assets/icon-64.png" width="24" height="24" alt="" loading="lazy" decoding="async"><span>Strata <em>Files</em></span></a>
+      <nav class="footer__links" aria-label="Links">
+        <a href="https://github.com/cristipufu/strata-files">GitHub</a>
+        <a href="https://github.com/cristipufu/strata-files/releases">Releases</a>
+        <a href="https://github.com/cristipufu/strata-files/issues">Report an issue</a>
+        <a href="/privacy/" aria-current="page">Privacy Policy</a>
+        <a href="https://github.com/cristipufu/strata-files/blob/main/LICENSE">MIT License</a>
+      </nav>
+      <p class="footer__fine">© 2026 Strata Files. Strata is not affiliated with Apple Inc. Mac, macOS, Finder and Apple Intelligence are trademarks of Apple Inc.</p>
+    </div>
+  </footer>
+</body>
+</html>

@@ -141,6 +141,9 @@ downloaded repository could use to do that. It only goes online to check for upd
 other apps' when you ask it to) and to the servers you connect to. Containers' and servers' files are read as you
 browse and cleared when Strata quits; SFTP logs in with your own SSH setup, and an S3 secret key stays in your keychain.
 
+Read the [Strata app Privacy Policy](https://stratafiles.app/privacy/) for details about local data, storage,
+permissions, network connections and your controls.
+
 ## Translations
 
 Strata comes in 21 languages and follows your Mac's (or pick one in Settings ▸ General). Each language is one plain
