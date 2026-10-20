@@ -13,8 +13,12 @@ nonisolated struct PathSuggestion: Equatable, Sendable {
 /// that name anywhere, from the index, those you open most first.
 final class PathSuggestions {
     private let visits: Frecency
+    private let preferences: Prefs
 
-    init(visits: Frecency = .shared) { self.visits = visits }
+    init(visits: Frecency = .shared, preferences: Prefs = .shared) {
+        self.visits = visits
+        self.preferences = preferences
+    }
 
     static let limit = 12
     /// Folders you use and where `github/acme`-style lookups start, read once per editing (`begin`).
@@ -29,7 +33,7 @@ final class PathSuggestions {
         listings.removeAll()
         visited = Array(visits.ranked().prefix(400))
         let here = current ?? Places.home
-        let candidates = (Places.favorites().map(\.url) + Places.volumes().filter { $0.symbol != "network" }.map(\.url)) + [Places.home] + visited.prefix(100)
+        let candidates = (Places.favorites(preferences: preferences).map(\.url) + Places.volumes().filter { $0.symbol != "network" }.map(\.url)) + [Places.home] + visited.prefix(100)
         roots = candidates.filter { !Privacy.measuringWouldPrompt($0, browsing: here) }
     }
 

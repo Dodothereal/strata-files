@@ -316,15 +316,23 @@ enum FileKindGroup: Int, CaseIterable, Sendable {
 
 // MARK: - Shared drawing helpers
 
+struct FileViewTypography: Equatable {
+    let font: NSFont
+    let bold: NSFont
+
+    init(preferences: Prefs = .shared) {
+        (font, bold) = FileViewStyle.fonts(for: preferences.nameTextSize)
+    }
+}
+
 enum FileViewStyle {
     /// File names, at the size chosen in Settings ▸ Appearance.
-    static var nameFont: NSFont { fonts.regular }
-    static var nameBoldFont: NSFont { fonts.bold }
+    static var nameFont: NSFont { fonts(for: Prefs.shared.nameTextSize).regular }
+    static var nameBoldFont: NSFont { fonts(for: Prefs.shared.nameTextSize).bold }
     static let detailFont = NSFont.systemFont(ofSize: 11)
 
     private static var cachedFonts: (size: Double, regular: NSFont, bold: NSFont)?
-    private static var fonts: (regular: NSFont, bold: NSFont) {
-        let size = Prefs.shared.nameTextSize
+    static func fonts(for size: Double) -> (regular: NSFont, bold: NSFont) {
         if let cached = cachedFonts, cached.size == size { return (cached.regular, cached.bold) }
         let made = (NSFont.systemFont(ofSize: size), NSFont.systemFont(ofSize: size, weight: .bold))
         cachedFonts = (size, made.0, made.1)
@@ -332,13 +340,15 @@ enum FileViewStyle {
     }
 
     /// List rows: compact, regular or spacious, and taller for bigger names.
-    static var listRowHeight: CGFloat {
-        [22, 26, 32][min(max(Prefs.shared.density, 0), 2)] + CGFloat(Prefs.shared.nameTextSize - 13).rounded(.up)
+    static var listRowHeight: CGFloat { listHeight(for: .shared) }
+    static func listHeight(for preferences: Prefs) -> CGFloat {
+        [22, 26, 32][min(max(preferences.density, 0), 2)] + CGFloat(preferences.nameTextSize - 13).rounded(.up)
     }
 
     /// Column rows, a little tighter than the list's.
-    static var columnRowHeight: CGFloat {
-        [20, 24, 30][min(max(Prefs.shared.density, 0), 2)] + CGFloat(Prefs.shared.nameTextSize - 13).rounded(.up)
+    static var columnRowHeight: CGFloat { columnHeight(for: .shared) }
+    static func columnHeight(for preferences: Prefs) -> CGFloat {
+        [20, 24, 30][min(max(preferences.density, 0), 2)] + CGFloat(preferences.nameTextSize - 13).rounded(.up)
     }
 
     /// Light, dark, or the system's (Settings ▸ Appearance).
@@ -391,10 +401,10 @@ final class InlineRenameField: NSTextField, NSTextFieldDelegate {
     private var cancelled = false
     private var finished = false
 
-    init(name: String, isFolder: Bool, centered: Bool) {
+    init(name: String, isFolder: Bool, centered: Bool, font: NSFont = FileViewStyle.nameFont) {
         super.init(frame: .zero)
         stringValue = name
-        font = FileViewStyle.nameFont
+        self.font = font
         isBezeled = true
         bezelStyle = .squareBezel
         drawsBackground = true

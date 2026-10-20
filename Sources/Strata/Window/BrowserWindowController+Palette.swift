@@ -42,7 +42,7 @@ extension BrowserWindowController {
 
     private func pathQueryItems(_ query: String) -> [PaletteItem] {
         let visited = Array(services.visits.ranked().prefix(400))
-        let roots = (Places.favorites() + Places.volumes()).map(\.url) + [Places.home] + visited.prefix(100)
+        let roots = (Places.favorites(preferences: services.preferences) + Places.volumes()).map(\.url) + [Places.home] + visited.prefix(100)
         let folderIcon = NSWorkspace.shared.icon(for: .folder)
         return pathQuery.resolve(query, roots: roots, visited: visited).map { hit in
             let url = hit.url
@@ -73,7 +73,7 @@ extension BrowserWindowController {
                                      subtitle: Format.tildePath(url.deletingLastPathComponent()), icon: folderIcon,
                                      kind: .folder, boost: max(0, 24 - rank / 2), url: url) { [weak self] in self?.navigate(to: url) })
         }
-        for place in Places.favorites() + Places.volumes() where seen.insert(place.url.path).inserted {
+        for place in Places.favorites(preferences: services.preferences) + Places.volumes() where seen.insert(place.url.path).inserted {
             items.append(PaletteItem(title: place.title, subtitle: Format.tildePath(place.url), icon: IconCache.shared.icon(forPath: place.url.path),
                                      kind: .folder, boost: 4, url: place.url) { [weak self] in self?.navigate(to: place.url) })
         }
@@ -164,11 +164,11 @@ extension BrowserWindowController {
         add(.newWindow)
         add(.openInTerminal)
         add(.copyPath)
-        add(.toggleHiddenFiles, title: Prefs.shared.showHidden ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files"))
-        add(.toggleFoldersFirst, title: Prefs.shared.foldersFirst ? String(localized: "Mix Folders with Files") : String(localized: "Keep Folders on Top"))
+        add(.toggleHiddenFiles, title: services.preferences.showHidden ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files"))
+        add(.toggleFoldersFirst, title: services.preferences.foldersFirst ? String(localized: "Mix Folders with Files") : String(localized: "Keep Folders on Top"))
         add(.toggleInspector, title: splitController.splitViewItems.last?.isCollapsed == true ? String(localized: "Show Inspector") : String(localized: "Hide Inspector"))
         add(.toggleSidebar, title: splitController.splitViewItems.first?.isCollapsed == true ? String(localized: "Show Sidebar") : String(localized: "Hide Sidebar"))
-        add(.toggleFolderTree, title: Prefs.shared.sidebarShowsTree ? String(localized: "Show Places in Sidebar") : String(localized: "Show Folder Tree in Sidebar"),
+        add(.toggleFolderTree, title: services.preferences.sidebarShowsTree ? String(localized: "Show Places in Sidebar") : String(localized: "Show Folder Tree in Sidebar"),
             keywords: ["Tree", "Folders", "Favorites", "Navigation", "Hierarchy"])
         add(.toggleDualPane, title: isDualPane ? String(localized: "Single Pane") : String(localized: "Dual Pane"))
         if !browser.isShowingResults {

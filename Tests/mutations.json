@@ -1042,8 +1042,8 @@
   },
   {
     "file": "Strata/Sidebar/SidebarViewController.swift",
-    "find": "tree = FolderTreeController(transfers: services.transfers)",
-    "replace": "tree = FolderTreeController()",
+    "find": "tree = FolderTreeController(transfers: services.transfers, preferences: services.preferences)",
+    "replace": "tree = FolderTreeController(preferences: services.preferences)",
     "rule": "Browser service ownership folder tree drops use the global queue",
     "tests": "TransferContextTests/bothSidebarDropModesUseTheWindowQueue"
   },
@@ -1099,8 +1099,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "directoryReads.load(url, showHidden: Prefs.shared.showHidden, applications: applicationFolders) { [weak self] result, gen in\n            guard let self else { return }",
-    "replace": "directoryReads.load(url, showHidden: Prefs.shared.showHidden, applications: applicationFolders) { [self] result, gen in",
+    "find": "directoryReads.load(url, showHidden: preferences.showHidden, applications: applicationFolders) { [weak self] result, gen in\n            guard let self else { return }",
+    "replace": "directoryReads.load(url, showHidden: preferences.showHidden, applications: applicationFolders) { [self] result, gen in",
     "rule": "Directory read ownership outstanding reads retain closed browsers",
     "tests": "DirectoryReadSessionTests/pendingReadsDoNotKeepTheirBrowserAlive"
   },
@@ -1517,5 +1517,75 @@
         "replace": "self.ordered(a, b)"
       }
     ]
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)",
+    "replace": "NotificationCenter.default.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)",
+    "rule": "Browser preferences hidden-file changes use another notification center",
+    "tests": "BrowserPreferencesTests/readsSortAndSavedModesStayWithTheirEnvironment"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "FileOps.newFile(in: directory, extension: preferences.newFileExtension, undo: self.undoManager)",
+    "replace": "FileOps.newFile(in: directory, extension: Prefs.shared.newFileExtension, undo: self.undoManager)",
+    "rule": "Browser preferences New File uses another panes extension",
+    "tests": "BrowserPreferencesTests/newFileUsesItsOwnExtensionAndTargetInEveryView"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Servers.swift",
+    "find": "let ext = preferences.newFileExtension",
+    "replace": "let ext = Prefs.shared.newFileExtension",
+    "rule": "Browser preferences server New File uses another panes extension",
+    "tests": "BrowserPreferencesTests/serverNewFileNamesUseTheirOwnSettingsAndAvoidExistingFilesAndLinks"
+  },
+  {
+    "file": "Strata/Views/GridItem.swift",
+    "find": "let showHidden = preferences.showHidden",
+    "replace": "let showHidden = Prefs.shared.showHidden",
+    "rule": "Browser preferences icon counts use another hidden-file setting",
+    "tests": "BrowserPreferencesTests/deeperColumnsAndIconItemCountsUseTheOwningHiddenFilesSetting"
+  },
+  {
+    "file": "Strata/Model/Places.swift",
+    "find": "guard let paths = preferences.favoritePaths else { return defaultFavorites() }",
+    "replace": "guard let paths = Prefs.shared.favoritePaths else { return defaultFavorites() }",
+    "rule": "Browser preferences favorites come from another store",
+    "tests": "BrowserPreferencesTests/windowsPanesAndSidebarsUseTheirOwnFavoritesAndPreferences"
+  },
+  {
+    "file": "Strata/Views/FileCollection.swift",
+    "find": "self.font = font",
+    "replace": "self.font = FileViewStyle.nameFont",
+    "rule": "Browser preferences inline rename uses another panes text size",
+    "tests": "BrowserPreferencesTests/inlineRenameUsesTheOwningPanesTextSize"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "preferences.notifications.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged, object: nil)",
+    "replace": "NotificationCenter.default.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged, object: nil)",
+    "rule": "Browser preferences font changes leave native views unchanged",
+    "tests": "BrowserPreferencesTests/fontsSpacingAndViewOptionsUpdateOnlyTheirNativeViews"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !ReadOnlyCopies.contains($0) },\n                            preferences: preferences)",
+    "replace": "Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !ReadOnlyCopies.contains($0) })",
+    "rule": "Browser preferences Add to Sidebar writes to another store",
+    "tests": "BrowserPreferencesTests/favoriteCommandsAndPathSuggestionsUseTheirOwningStore"
+  },
+  {
+    "file": "Strata/Sidebar/FolderTreeController.swift",
+    "find": "Places.addFavorites([url], at: nil, preferences: preferences)",
+    "replace": "Places.addFavorites([url], at: nil)",
+    "rule": "Browser preferences folder tree favorites write to another store",
+    "tests": "BrowserPreferencesTests/favoriteCommandsAndPathSuggestionsUseTheirOwningStore"
+  },
+  {
+    "file": "Strata/Toolbar/PathSuggestions.swift",
+    "find": "Places.favorites(preferences: preferences).map(\\.url)",
+    "replace": "Places.favorites().map(\\.url)",
+    "rule": "Browser preferences path suggestions use another favorites store",
+    "tests": "BrowserPreferencesTests/favoriteCommandsAndPathSuggestionsUseTheirOwningStore"
   }
 ]

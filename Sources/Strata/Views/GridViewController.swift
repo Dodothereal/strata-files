@@ -2,6 +2,16 @@ import AppKit
 
 /// The icon view: a justified grid of large icons and Quick Look thumbnails, fed by the browser.
 final class GridViewController: NSViewController, FileCollectionController {
+    let preferences: Prefs
+
+    init(preferences: Prefs = .shared) {
+        self.preferences = preferences
+        super.init(nibName: nil, bundle: nil)
+        layout.metrics = GridMetrics(iconSize: 64, typography: FileViewTypography(preferences: preferences))
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
     weak var fileDelegate: FileCollectionViewDelegate?
     /// The folder shown; background drops and same-folder checks use it.
     var directory: URL? {
@@ -169,7 +179,7 @@ final class GridViewController: NSViewController, FileCollectionController {
 
     func setIconSize(_ size: CGFloat, animated: Bool) {
         loadViewIfNeeded()
-        let metrics = GridMetrics(iconSize: size)
+        let metrics = GridMetrics(iconSize: size, typography: FileViewTypography(preferences: preferences))
         guard metrics != layout.metrics else { return }
         // Keep the focused (or first visible) item at the same spot on screen while the grid reflows.
         let visible = collectionView.visibleRect
@@ -212,7 +222,7 @@ final class GridViewController: NSViewController, FileCollectionController {
     /// The name's text size changed (Settings ▸ Appearance): the cells' geometry follows.
     func restyle() {
         let size = layout.metrics.iconSize
-        layout.metrics = GridMetrics(iconSize: size)
+        layout.metrics = GridMetrics(iconSize: size, typography: FileViewTypography(preferences: preferences))
         layout.invalidateLayout()
         refreshVisibleItems(reconfigure: true)
     }
@@ -221,7 +231,7 @@ final class GridViewController: NSViewController, FileCollectionController {
         let scale = view.window?.backingScaleFactor ?? 2
         for case let item as GridItem in collectionView.visibleItems() {
             guard let entry = item.entry else { continue }
-            item.loadImage(entry, size: layout.metrics.iconSize, scale: scale, keepCurrent: true)
+            item.loadImage(entry, size: layout.metrics.iconSize, scale: scale, keepCurrent: true, preferences: preferences)
         }
     }
 
@@ -238,14 +248,14 @@ final class GridViewController: NSViewController, FileCollectionController {
         if refreshImage {
             item.configure(entry, matches: matches[entry.url.fileViewKey] ?? [], metrics: layout.metrics, showsInfo: showsItemInfo,
                            dimmed: dimmed, scale: view.window?.backingScaleFactor ?? 2, git: badge, tags: tags, cloud: cloud,
-                           folderSizeText: showsItemInfo ? folderSizeText?(entry) : nil)
+                           folderSizeText: showsItemInfo ? folderSizeText?(entry) : nil, preferences: preferences)
         } else {
             item.dimmed = dimmed
             item.itemView.gitBadge.badge = badge
             item.itemView.cloudBadge.status = cloud
             item.itemView.setTags(tags)
             item.itemView.configure(name: entry.displayName, matches: matches[entry.url.fileViewKey] ?? [],
-                                    detail: showsItemInfo ? folderSizeText?(entry) ?? ItemInfoLoader.shared.immediate(entry, showHidden: Prefs.shared.showHidden) : nil,
+                                    detail: showsItemInfo ? folderSizeText?(entry) ?? ItemInfoLoader.shared.immediate(entry, showHidden: preferences.showHidden) : nil,
                                     metrics: layout.metrics)
             item.updateState()
         }
@@ -403,13 +413,13 @@ final class GridViewController: NSViewController, FileCollectionController {
         collectionView.layoutSubtreeIfNeeded()
         guard let item = collectionView.item(at: IndexPath(item: index, section: 0)) as? GridItem else { return false }
         renameField?.removeFromSuperview()
-        let field = InlineRenameField(name: entry.name, isFolder: entry.isFolder, centered: true)
+        let field = InlineRenameField(name: entry.name, isFolder: entry.isFolder, centered: true, font: layout.metrics.typography.font)
         let area = item.itemView.nameAreaRect
         let width = area.width + 10
         let lineHeight = layout.metrics.lineHeight
         let textHeight = (entry.name as NSString).boundingRect(
             with: NSSize(width: width - 8, height: 1000), options: [.usesLineFragmentOrigin],
-            attributes: [.font: FileViewStyle.nameFont]).height
+            attributes: [.font: layout.metrics.typography.font]).height
         let height = min(max(ceil(textHeight) + 6, lineHeight + 6), lineHeight * 4 + 6)
         let origin = item.itemView.convert(NSPoint(x: area.midX - width / 2, y: area.minY - 2), to: collectionView)
         field.frame = NSRect(x: origin.x, y: origin.y, width: width, height: height)

@@ -5,6 +5,7 @@ struct GridMetrics: Equatable {
     static let minIconSize: CGFloat = 32
     static let maxIconSize: CGFloat = 256
 
+    let typography: FileViewTypography
     let iconSize: CGFloat
     /// Padding between the icon and its selection box.
     let iconPad: CGFloat
@@ -14,10 +15,11 @@ struct GridMetrics: Equatable {
     let detailHeight: CGFloat
     let bottomPad: CGFloat = 6
 
-    init(iconSize: CGFloat) {
+    init(iconSize: CGFloat, typography: FileViewTypography = FileViewTypography()) {
+        self.typography = typography
         self.iconSize = iconSize.isFinite ? min(max(iconSize.rounded(), Self.minIconSize), Self.maxIconSize) : 64
         iconPad = (self.iconSize * 0.07).rounded().clamped(3, 10)
-        let font = FileViewStyle.nameFont
+        let font = typography.font
         lineHeight = ceil(font.ascender - font.descender + font.leading) + 1
         let detail = FileViewStyle.detailFont
         detailHeight = ceil(detail.ascender - detail.descender) + 2

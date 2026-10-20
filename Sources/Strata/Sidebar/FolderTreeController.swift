@@ -40,10 +40,13 @@ final class FolderNode {
 /// Reading happens off the main thread. Rebuilding the tree (Show Hidden Files, coming back from Places) starts a new
 /// generation; reads from an older one are dropped when they finish.
 final class FolderTreeController: NSViewController {
+    let preferences: Prefs
     private let transfers: TransferQueue
 
-    init(transfers: TransferQueue = .shared) {
+    init(transfers: TransferQueue = .shared, preferences: Prefs = .shared) {
         self.transfers = transfers
+        self.preferences = preferences
+        showedHidden = preferences.showHidden
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -131,7 +134,7 @@ final class FolderTreeController: NSViewController {
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
         // Show Hidden Files shows hidden folders here too.
-        NotificationCenter.default.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .containersChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .remoteServersChanged, object: nil)
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
@@ -203,11 +206,11 @@ final class FolderTreeController: NSViewController {
         if let current { reveal(current) }
     }
 
-    private var showedHidden = Prefs.shared.showHidden
+    private var showedHidden: Bool
 
     @objc private func prefsChanged() {
-        guard Prefs.shared.showHidden != showedHidden else { return }
-        showedHidden = Prefs.shared.showHidden
+        guard preferences.showHidden != showedHidden else { return }
+        showedHidden = preferences.showHidden
         if isActive { rebuild() } else { roots = []; outline.reloadData() }
     }
 
@@ -225,7 +228,7 @@ final class FolderTreeController: NSViewController {
         if let then { node.waiters.append(then) }
         guard !node.isLoading else { return }
         node.isLoading = true
-        let url = node.url, hidden = Prefs.shared.showHidden, generation = generation
+        let url = node.url, hidden = preferences.showHidden, generation = generation
         Self.reads.async {
             let folders = Self.subfolders(of: url, includeHidden: hidden)
             DispatchQueue.main.async { [weak self] in
@@ -262,7 +265,7 @@ final class FolderTreeController: NSViewController {
                 && !Privacy.measuringWouldPrompt(child.url, browsing: node.url)
         }
         guard !candidates.isEmpty else { return }
-        let urls = candidates.map(\.url), hidden = Prefs.shared.showHidden, generation = generation
+        let urls = candidates.map(\.url), hidden = preferences.showHidden, generation = generation
         Self.lookAheads.async {
             let answers = urls.map { Self.hasSubfolder($0, includeHidden: hidden) }
             DispatchQueue.main.async { [weak self] in
@@ -375,7 +378,7 @@ final class FolderTreeController: NSViewController {
         }
         node.isRefreshing = true
         node.refreshes += 1
-        let token = node.refreshes, url = node.url, hidden = Prefs.shared.showHidden, generation = generation
+        let token = node.refreshes, url = node.url, hidden = preferences.showHidden, generation = generation
         Self.reads.async {
             let folders = Self.subfolders(of: url, includeHidden: hidden)
             DispatchQueue.main.async { [weak self] in
@@ -619,7 +622,7 @@ extension FolderTreeController: NSMenuDelegate {
             return
         }
         add(String(localized: "Copy Path"), #selector(copyPath(_:)))
-        let isFavorite = Places.favorites().contains { $0.url.standardizedFileURL.fileViewKey == node.url.fileViewKey }
+        let isFavorite = Places.favorites(preferences: preferences).contains { $0.url.standardizedFileURL.fileViewKey == node.url.fileViewKey }
         if !isFavorite {
             menu.addItem(.separator())
             add(String(localized: "Add to Favorites"), #selector(addFavorite(_:)))
@@ -639,6 +642,6 @@ extension FolderTreeController: NSMenuDelegate {
 
     @objc private func addFavorite(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        Places.addFavorites([url], at: nil)
+        Places.addFavorites([url], at: nil, preferences: preferences)
     }
 }

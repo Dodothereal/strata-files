@@ -34,8 +34,10 @@ enum Places {
     }
 
     /// The sidebar's favorites: your own list once you've added, removed or reordered any, else the defaults.
-    static func favorites() -> [Place] {
-        guard let paths = Prefs.shared.favoritePaths else { return defaultFavorites() }
+    static func favorites() -> [Place] { favorites(preferences: .shared) }
+
+    static func favorites(preferences: Prefs) -> [Place] {
+        guard let paths = preferences.favoritePaths else { return defaultFavorites() }
         let defaults = defaultFavorites()
         return paths.compactMap { path in
             var isDirectory: ObjCBool = false
@@ -47,24 +49,24 @@ enum Places {
     }
 
     /// Adds folders to the favorites (at `index`, else at the end); ones already there move instead.
-    static func addFavorites(_ urls: [URL], at index: Int? = nil) {
+    static func addFavorites(_ urls: [URL], at index: Int? = nil, preferences: Prefs = .shared) {
         let folders = urls.map(\.standardizedFileURL).filter { url in
             var isDirectory: ObjCBool = false
             return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
         }
         guard !folders.isEmpty else { return }
         let paths = Set(folders.map(\.path))
-        var current = favorites().map(\.url.standardizedFileURL)
+        var current = favorites(preferences: preferences).map(\.url.standardizedFileURL)
         let before = current.prefix(min(index ?? current.count, current.count)).filter { paths.contains($0.path) }.count
         current.removeAll { paths.contains($0.path) }
         let at = min(max(0, (index ?? current.count + before) - before), current.count)
         current.insert(contentsOf: folders, at: at)
-        Prefs.shared.favoritePaths = current.map(\.path)
+        preferences.favoritePaths = current.map(\.path)
     }
 
-    static func removeFavorite(_ url: URL) {
+    static func removeFavorite(_ url: URL, preferences: Prefs = .shared) {
         let path = url.standardizedFileURL.path
-        Prefs.shared.favoritePaths = favorites().map(\.url.standardizedFileURL.path).filter { $0 != path }
+        preferences.favoritePaths = favorites(preferences: preferences).map(\.url.standardizedFileURL.path).filter { $0 != path }
     }
 
     static func defaultFavorites() -> [Place] {

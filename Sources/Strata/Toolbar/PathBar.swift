@@ -33,8 +33,8 @@ final class PathBar: NSView, NSTextFieldDelegate {
     private let suggestionList = PathSuggestionList()
     private var suggesting: Task<Void, Never>?
 
-    init(frame: NSRect = .zero, visits: Frecency = .shared) {
-        suggestions = PathSuggestions(visits: visits)
+    init(frame: NSRect = .zero, visits: Frecency = .shared, preferences: Prefs = .shared) {
+        suggestions = PathSuggestions(visits: visits, preferences: preferences)
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true

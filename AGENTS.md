@@ -210,6 +210,11 @@ sheet's text before clicking a destructive button. Both builds share preferences
   `FileCollectionController.apply` with the same sorted/filtered content; each view keeps its native selection
   policy and requests only the metadata it needs. Metadata and view callbacks must keep the browser weak.
   Preserve cached views, safe-area placement, theme refresh on reattachment and native responder routing.
+- Browser windows, panes, sidebars and View Options use the preferences and notification center in `BrowserServices`.
+  Pass those settings into native file views, typography, rename fields and favorite operations; an injected pane
+  must not read or change another environment's settings. Production windows share the application services.
+  App-wide theme/material integration retains its application scope. Test independent settings with native headless
+  views, including updates to cached views and deeper columns, rather than temporarily changing shared preferences.
 - Folder read scheduling belongs in `DirectoryReadSession`: each presentation owns its generation, rejects late
   success and error responses, and invalidates reads when removed or replaced by results. Inject `DirectoryReader`
   for controlled completion tests; keep callbacks weak so pending I/O cannot retain closed browsers.

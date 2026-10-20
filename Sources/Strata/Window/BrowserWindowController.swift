@@ -55,7 +55,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     init(location: URL, select: URL? = nil, secondPane: URL? = nil, services: BrowserServices = .shared) {
         self.services = services
-        pathBar = PathBar(visits: services.visits)
+        pathBar = PathBar(visits: services.visits, preferences: services.preferences)
         let first = Pane(location: location, services: services)
         panes = [first]
         pane = first
@@ -94,7 +94,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(indexPhaseChanged), name: .indexPhaseDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(sidebarModePrefChanged), name: .prefsChanged, object: nil)
+        services.preferences.notifications.addObserver(self, selector: #selector(sidebarModePrefChanged), name: .prefsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(serverDisconnected(_:)), name: .remoteServerDisconnected, object: nil)
         // The Inspector's Cloud row follows downloads and uploads.
         NotificationCenter.default.addObserver(self, selector: #selector(cloudStatusChanged), name: .cloudStatusChanged, object: nil)
@@ -155,7 +155,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// View ▸ Folder Tree in Sidebar: the tree of folders instead of Favorites, Locations and the rest (every window).
     @objc func toggleFolderTree(_ sender: Any?) {
-        Prefs.shared.sidebarShowsTree.toggle()
+        services.preferences.sidebarShowsTree.toggle()
         if split.splitViewItems.first?.isCollapsed == true { split.toggleSidebar(nil) }
     }
 
@@ -334,7 +334,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             // An archive's copy is temporary: it doesn't become a frequent place or where the next window opens.
             if !ReadOnlyCopies.contains(url) {
                 if countVisit { services.visits.record(url) }
-                Prefs.shared.lastLocation = url
+                services.preferences.lastLocation = url
             }
         case .search, .recents:
             runSearch(in: p)
@@ -495,7 +495,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func sidebarModeChanged(_ sender: NSToolbarItemGroup) {
         let tree = sender.selectedIndex == 1
-        if tree != Prefs.shared.sidebarShowsTree { Prefs.shared.sidebarShowsTree = tree }
+        if tree != services.preferences.sidebarShowsTree { services.preferences.sidebarShowsTree = tree }
         if split.splitViewItems.first?.isCollapsed == true { split.toggleSidebar(nil) }
     }
 
@@ -512,7 +512,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// Every window's switch follows the setting (it's the same for all of them).
     @objc private func sidebarModePrefChanged() {
-        sidebarModeItem?.selectedIndex = Prefs.shared.sidebarShowsTree ? 1 : 0
+        sidebarModeItem?.selectedIndex = services.preferences.sidebarShowsTree ? 1 : 0
     }
 
     @objc private func viewModeChanged(_ sender: NSToolbarItemGroup) {
@@ -1144,7 +1144,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             item.controlRepresentation = .expanded
             item.subitems[0].toolTip = String(localized: "Favorites, disks and other places", comment: "Tooltip of the sidebar's Places switch")
             item.subitems[1].toolTip = String(localized: "Every folder, as a tree", comment: "Tooltip of the sidebar's Folders switch")
-            item.selectedIndex = Prefs.shared.sidebarShowsTree ? 1 : 0
+            item.selectedIndex = services.preferences.sidebarShowsTree ? 1 : 0
             item.visibilityPriority = .low
             sidebarModeItem = item
             return item
@@ -1210,7 +1210,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             item.state = isDualPane ? .on : .off
             return true
         case #selector(toggleFolderTree(_:)):
-            item.state = Prefs.shared.sidebarShowsTree ? .on : .off
+            item.state = services.preferences.sidebarShowsTree ? .on : .off
             return true
         case #selector(focusOtherPane(_:)):
             return isDualPane

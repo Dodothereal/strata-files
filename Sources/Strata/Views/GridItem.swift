@@ -243,7 +243,7 @@ final class GridItemView: NSView, ColorThemeUpdating {
         linesKey = key
         let color = textColor
         let highlight: NSColor = state.selected && state.emphasized ? color : ThemeStyle.accent
-        let full = FileViewStyle.highlightedName(name, matches: matches, color: color, highlight: highlight)
+        let full = FileViewStyle.highlightedName(name, matches: matches, font: metrics.typography.font, boldFont: metrics.typography.bold, color: color, highlight: highlight)
         let width = labelWidth - dotsLead
         let typesetter = CTTypesetterCreateWithAttributedString(full)
         let length = full.length
@@ -409,7 +409,7 @@ final class GridItem: NSCollectionViewItem {
     }
 
     func configure(_ entry: FileEntry, matches: [Int], metrics: GridMetrics, showsInfo: Bool, dimmed: Bool, scale: CGFloat,
-                   git: GitBadge? = nil, tags: [FinderTag] = [], cloud: CloudStatus? = nil, folderSizeText: String? = nil) {
+                   git: GitBadge? = nil, tags: [FinderTag] = [], cloud: CloudStatus? = nil, folderSizeText: String? = nil, preferences: Prefs = .shared) {
         ItemInfoLoader.shared.cancel(infoTicket)
         infoTicket = nil
         itemView.gitBadge.badge = git
@@ -418,7 +418,7 @@ final class GridItem: NSCollectionViewItem {
         let sameFile = self.entry == entry
         self.entry = entry
         self.dimmed = dimmed
-        let showHidden = Prefs.shared.showHidden
+        let showHidden = preferences.showHidden
         let detail = showsInfo ? folderSizeText ?? ItemInfoLoader.shared.immediate(entry, showHidden: showHidden) : nil
         itemView.configure(name: entry.displayName, matches: matches, detail: detail, metrics: metrics)
         itemView.setAccessibilityHelp(entry.kind)
@@ -432,14 +432,14 @@ final class GridItem: NSCollectionViewItem {
                 self.itemView.setDetail(text)
             }
         }
-        loadImage(entry, size: metrics.iconSize, scale: scale, keepCurrent: sameFile)
+        loadImage(entry, size: metrics.iconSize, scale: scale, keepCurrent: sameFile, preferences: preferences)
     }
 
     /// Shows the icon (or the best cached thumbnail) now and asks Quick Look for a sharper one if needed.
-    func loadImage(_ entry: FileEntry, size: CGFloat, scale: CGFloat, keepCurrent: Bool) {
+    func loadImage(_ entry: FileEntry, size: CGFloat, scale: CGFloat, keepCurrent: Bool, preferences: Prefs = .shared) {
         FileThumbnails.shared.cancel(thumbnailTicket)
         thumbnailTicket = nil
-        let canThumbnail = Prefs.shared.showIconPreviews && FileThumbnails.canThumbnail(entry)
+        let canThumbnail = preferences.showIconPreviews && FileThumbnails.canThumbnail(entry)
         let cached = canThumbnail ? FileThumbnails.shared.cached(entry, size: size, scale: scale) : nil
         if let cached {
             itemView.setImage(cached.image, animated: false, upscale: !cached.exact)

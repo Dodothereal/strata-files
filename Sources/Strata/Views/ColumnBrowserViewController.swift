@@ -6,12 +6,13 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     weak var fileDelegate: FileCollectionViewDelegate?
     var applicationFolders = ApplicationsFolders.standard
     let directoryReader: DirectoryReader
+    let preferences: Prefs
     /// The folder the user is "in": the selected folder, or the folder of the focused column. Drive the path bar
     /// and window title from it (without reloading the browser).
     var onLocationChange: ((URL) -> Void)?
     /// Order for columns this view loads itself (the first column keeps the browser's order).
-    var sortComparator: @MainActor (FileEntry, FileEntry) -> Bool = ColumnBrowserViewController.defaultOrder
-    var showHidden: () -> Bool = { Prefs.shared.showHidden }
+    var sortComparator: @MainActor (FileEntry, FileEntry) -> Bool
+    var showHidden: () -> Bool
     var defaultColumnWidth: CGFloat = 230
     var previewColumnWidth: CGFloat = 290
 
@@ -31,8 +32,14 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     private var pendingRename: URL?
     private weak var renameWhenLoaded: ColumnPane?
 
-    init(scrollView: NSScrollView = NSScrollView(), directoryReader: DirectoryReader = .live) {
+    init(scrollView: NSScrollView = NSScrollView(), directoryReader: DirectoryReader = .live, preferences: Prefs = .shared) {
         self.directoryReader = directoryReader
+        self.preferences = preferences
+        showHidden = { preferences.showHidden }
+        sortComparator = { a, b in
+            if preferences.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
+            return a.displayName.localizedStandardCompare(b.displayName) == .orderedAscending
+        }
         self.scrollView = scrollView
         super.init(nibName: nil, bundle: nil)
     }
@@ -390,7 +397,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     /// Row height and text size changed (Settings ▸ Appearance).
     func restyle() {
         for pane in panes {
-            pane.tableView.rowHeight = FileViewStyle.columnRowHeight
+            pane.tableView.rowHeight = FileViewStyle.columnHeight(for: preferences)
             pane.tableView.reloadData()
         }
     }
@@ -418,10 +425,11 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         pane.tableView.scrollRowToVisible(row)
         guard let cell = pane.tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? ColumnCellView else { return false }
         renameField?.removeFromSuperview()
-        let field = InlineRenameField(name: entry.name, isFolder: entry.isFolder, centered: false)
+        let font = FileViewTypography(preferences: preferences).font
+        let field = InlineRenameField(name: entry.name, isFolder: entry.isFolder, centered: false, font: font)
         let labelFrame = cell.nameCell.convert(cell.nameCell.textField?.frame ?? cell.bounds, to: pane.tableView)
         // Tall enough for the name's text size (a bezeled field needs a little more than the line).
-        let height = ceil(FileViewStyle.nameFont.ascender - FileViewStyle.nameFont.descender + FileViewStyle.nameFont.leading) + 8
+        let height = ceil(font.ascender - font.descender + font.leading) + 8
         field.frame = NSRect(x: labelFrame.minX - 3, y: labelFrame.midY - height / 2,
                              width: max(pane.tableView.bounds.width - labelFrame.minX - 8, 80), height: height)
         cell.nameCell.textField?.isHidden = true
@@ -480,6 +488,7 @@ final class ColumnScrollView: NSScrollView {
 
 final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     let folder: URL
+    let preferences: Prefs
     var isRoot = false
     var width: CGFloat = 230
     private(set) var entries: [FileEntry] = []
@@ -520,6 +529,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     init(folder: URL, controller: ColumnBrowserViewController) {
         self.folder = folder
         self.controller = controller
+        preferences = controller.preferences
         directoryReads = DirectoryReadSession(reader: controller.directoryReader)
         super.init(frame: .zero)
 
@@ -528,7 +538,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         tableView.addTableColumn(column)
         tableView.headerView = nil
         tableView.style = .inset
-        tableView.rowHeight = FileViewStyle.columnRowHeight
+        tableView.rowHeight = FileViewStyle.columnHeight(for: preferences)
         tableView.intercellSpacing = NSSize(width: 0, height: 0)
         tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         tableView.allowsMultipleSelection = true
@@ -718,7 +728,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     /// Width that shows the longest name in full.
     var fittingWidth: CGFloat {
-        let font = FileViewStyle.nameFont
+        let font = FileViewTypography(preferences: preferences).font
         let longest = entries.prefix(2000).map { ($0.name as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
         return ceil(longest) + 18 + 7 + 22 + 30
     }
@@ -736,7 +746,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         cell.configure(entry, matches: matches[entry.url.fileViewKey] ?? [],
                        dimmed: entry.isHidden || Clipboard.isCut(entry.url) || git.isIgnored(entry.url),
                        git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
-                       cloud: CloudStore.shared.status(for: entry.url), scale: tableView.window?.backingScaleFactor ?? 2)
+                       cloud: CloudStore.shared.status(for: entry.url), scale: tableView.window?.backingScaleFactor ?? 2, preferences: preferences)
         return cell
     }
 
@@ -919,10 +929,10 @@ final class ColumnCellView: NSTableCellView, ColorThemeUpdating {
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ entry: FileEntry, matches: [Int], dimmed: Bool, git: GitBadge? = nil, tags: [FinderTag] = [],
-                   cloud: CloudStatus? = nil, scale: CGFloat = 2) {
+                   cloud: CloudStatus? = nil, scale: CGFloat = 2, preferences: Prefs = .shared) {
         isFolder = entry.isFolder
         nameCell.configure(name: entry.displayName, icon: IconCache.shared.icon(for: entry), matches: matches, dimmed: dimmed, git: git,
-                           tags: tags, cloud: cloud, thumbnail: Prefs.shared.showIconPreviews ? entry : nil, scale: scale)
+                           tags: tags, cloud: cloud, thumbnail: preferences.showIconPreviews ? entry : nil, scale: scale, typography: FileViewTypography(preferences: preferences))
         applyTruncation()
         chevron.isHidden = !entry.isFolder
         setAccessibilityLabel(entry.isFolder

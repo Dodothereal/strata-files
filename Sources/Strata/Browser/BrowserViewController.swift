@@ -43,10 +43,14 @@ private extension NSUserInterfaceItemIdentifier {
 
 final class BrowserViewController: NSViewController {
     let services: BrowserServices
+    var preferences: Prefs { services.preferences }
     let directoryReads: DirectoryReadSession
 
     init(services: BrowserServices = .shared) {
         self.services = services
+        sortKey = SortKey(rawValue: services.preferences.sortColumn) ?? .name
+        ascending = services.preferences.sortAscending
+        mode = BrowserViewMode(rawValue: services.preferences.viewMode) ?? .list
         directoryReads = DirectoryReadSession(reader: services.directories)
         super.init(nibName: nil, bundle: nil)
     }
@@ -119,8 +123,8 @@ final class BrowserViewController: NSViewController {
     private var watchers: [DirectoryWatcher] = []
     /// Keeps git status for the shown folder's repository fresh (FSEvents) while this folder is shown.
     private var gitObservation: GitObservation?
-    private var sortKey: SortKey = SortKey(rawValue: Prefs.shared.sortColumn) ?? .name
-    private var ascending = Prefs.shared.sortAscending
+    private var sortKey: SortKey
+    private var ascending: Bool
     /// Selected once the folder shows them (after the reload a change brings).
     var pendingSelection: [URL]?
     /// Opens the folder row a drag rests on (only rows still on screen).
@@ -147,7 +151,7 @@ final class BrowserViewController: NSViewController {
     private var resultsSummary: String?
     private var folderSortDescriptors: [NSSortDescriptor] = []
     /// How the folder is presented. Results (search, Recents, Duplicates) always use the list.
-    private(set) var mode = BrowserViewMode(rawValue: Prefs.shared.viewMode) ?? .list
+    private(set) var mode: BrowserViewMode
     let presentations = BrowserPresentations()
     var gridController: GridViewController? { presentations.gridController }
     var columnController: ColumnBrowserViewController? { presentations.columnController }
@@ -196,10 +200,10 @@ final class BrowserViewController: NSViewController {
         sizer.onUpdate = { [weak self] url in self?.folderSizeArrived(url) }
         mediaInfo.onUpdate = { [weak self] entry in self?.mediaInfoArrived(entry) }
         installActiveView()
-        NotificationCenter.default.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(listColumnsChanged), name: .listColumnsChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(viewOptionsChanged), name: .viewOptionsChanged, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(listColumnsChanged), name: .listColumnsChanged, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(viewOptionsChanged), name: .viewOptionsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
@@ -214,7 +218,7 @@ final class BrowserViewController: NSViewController {
     private func configureOutline() {
         let ov = outlineView
         ov.style = .inset
-        ov.rowHeight = FileViewStyle.listRowHeight
+        ov.rowHeight = FileViewStyle.listHeight(for: preferences)
         ov.intercellSpacing = NSSize(width: 10, height: 0)
         ov.allowsMultipleSelection = true
         ov.allowsEmptySelection = true
@@ -257,7 +261,7 @@ final class BrowserViewController: NSViewController {
         }
         ov.headerView?.menu = columnsMenu
         applyColumnVisibility(fitName: false)
-        ov.sortDescriptors = [NSSortDescriptor(key: Prefs.shared.sortColumn, ascending: Prefs.shared.sortAscending)]
+        ov.sortDescriptors = [NSSortDescriptor(key: preferences.sortColumn, ascending: preferences.sortAscending)]
 
         ov.onType = { [weak self] text in self?.setFilter((self?.filter ?? "") + text) }
         ov.onBackspace = { [weak self] in
@@ -272,7 +276,7 @@ final class BrowserViewController: NSViewController {
         }
         ov.onReturn = { [weak self] in
             guard let self else { return }
-            if filter.isEmpty && !Prefs.shared.returnOpens { renameSelection(nil) } else { openSelection(nil) }
+            if filter.isEmpty && !preferences.returnOpens { renameSelection(nil) } else { openSelection(nil) }
         }
         ov.onNameClick = { [weak self] row in
             guard let self, let node = outlineView.item(atRow: row) as? FileNode, node.groupTitle == nil else { return }
@@ -294,7 +298,7 @@ final class BrowserViewController: NSViewController {
 
     @objc private func toggleListColumn(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
-        Prefs.shared.hiddenListColumns.formSymmetricDifference([id])
+        preferences.hiddenListColumns.formSymmetricDifference([id])
     }
 
     @objc private func listColumnsChanged() { applyColumnVisibility(fitName: true) }
@@ -302,7 +306,7 @@ final class BrowserViewController: NSViewController {
     /// Shows the columns you haven't hidden (and ticks them in the menu on the titles); Name takes up the difference
     /// (before the list is laid out, the window's first layout does that).
     private func applyColumnVisibility(fitName: Bool) {
-        let hidden = Prefs.shared.hiddenListColumns
+        let hidden = preferences.hiddenListColumns
         for id in Self.optionalColumns {
             outlineView.tableColumn(withIdentifier: id)?.isHidden = hidden.contains(id.rawValue)
         }
@@ -381,7 +385,7 @@ final class BrowserViewController: NSViewController {
 
     private func reload(scrollToTop: Bool) {
         guard let url = directory else { return }
-        directoryReads.load(url, showHidden: Prefs.shared.showHidden, applications: applicationFolders) { [weak self] result, gen in
+        directoryReads.load(url, showHidden: preferences.showHidden, applications: applicationFolders) { [weak self] result, gen in
             guard let self else { return }
             switch result {
             case .success(let entries):
@@ -448,7 +452,7 @@ final class BrowserViewController: NSViewController {
         node.isLoadingChildren = true
         let gen = generation
         let url = node.url
-        let showHidden = Prefs.shared.showHidden
+        let showHidden = preferences.showHidden
         let reader = services.directories, applications = applicationFolders
         Task { [weak self] in
             let entries = (try? await reader.load(url, showHidden: showHidden, applications: applications)) ?? []
@@ -666,7 +670,7 @@ final class BrowserViewController: NSViewController {
         columnWidthsBeforeResults = []
         fitNameColumn()
         outlineView.sortDescriptors = folderSortDescriptors.isEmpty
-            ? [NSSortDescriptor(key: Prefs.shared.sortColumn, ascending: Prefs.shared.sortAscending)] : folderSortDescriptors
+            ? [NSSortDescriptor(key: preferences.sortColumn, ascending: preferences.sortAscending)] : folderSortDescriptors
     }
 
     // MARK: - Sorting and filtering
@@ -688,7 +692,7 @@ final class BrowserViewController: NSViewController {
 
     /// The current sort order (column, direction, folders on top), shared with the column view.
     func ordered(_ a: FileEntry, _ b: FileEntry) -> Bool {
-        if Prefs.shared.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
+        if preferences.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
         let result: ComparisonResult
         switch sortKey {
         case .name: result = a.displayName.localizedStandardCompare(b.displayName)
@@ -951,7 +955,7 @@ final class BrowserViewController: NSViewController {
         if let directory = targetDirectory, RemoteCopies.server(containing: directory) != nil, !isShowingResults { return newFileOnServer(in: directory) }
         guard let directory = targetDirectory, !isShowingTrash, !isInsideArchive else { return }
         perform {
-            let url = try FileOps.newFile(in: directory, extension: Prefs.shared.newFileExtension, undo: self.undoManager)
+            let url = try FileOps.newFile(in: directory, extension: preferences.newFileExtension, undo: self.undoManager)
             self.renameWhenShown(url, in: directory)
         }
     }
@@ -1086,7 +1090,8 @@ final class BrowserViewController: NSViewController {
     @objc func addToSidebar(_ sender: Any?) {
         let folders = selectedEntries.filter(\.isFolder).map(\.url)
         // A temporary copy of an archive's contents doesn't belong in the sidebar.
-        Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !ReadOnlyCopies.contains($0) })
+        Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !ReadOnlyCopies.contains($0) },
+                            preferences: preferences)
     }
 
     @objc func addToShelf(_ sender: Any?) {
@@ -1154,7 +1159,7 @@ final class BrowserViewController: NSViewController {
         let selected = selectedEntries
         let folder = selected.count == 1 && selected[0].isFolder ? selected[0].url : targetDirectory
         guard let folder else { return }
-        guard let terminal = Prefs.shared.terminalURL else { return }
+        guard let terminal = preferences.terminalURL else { return }
         NSWorkspace.shared.open([folder], withApplicationAt: terminal, configuration: NSWorkspace.OpenConfiguration())
     }
 
@@ -1174,7 +1179,7 @@ final class BrowserViewController: NSViewController {
     private func openStackInTerminal() -> Bool {
         guard isStackContext else { return false }
         let folders = stackProjectFolders()
-        guard let terminal = Prefs.shared.terminalURL, !folders.isEmpty else { NSSound.beep(); return true }
+        guard let terminal = preferences.terminalURL, !folders.isEmpty else { NSSound.beep(); return true }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.open(folders, withApplicationAt: terminal, configuration: configuration)
@@ -1189,11 +1194,11 @@ final class BrowserViewController: NSViewController {
     }
 
     @objc func toggleHiddenFiles(_ sender: Any?) {
-        Prefs.shared.showHidden.toggle()
+        preferences.showHidden.toggle()
     }
 
     @objc func toggleFoldersFirst(_ sender: Any?) {
-        Prefs.shared.foldersFirst.toggle()
+        preferences.foldersFirst.toggle()
     }
 
     @objc func reloadFolder(_ sender: Any?) {
@@ -1217,7 +1222,7 @@ final class BrowserViewController: NSViewController {
 
     /// Density or text size changed: every view takes the new row height and font (nothing is read again).
     @objc private func appearanceChanged() {
-        outlineView.rowHeight = FileViewStyle.listRowHeight
+        outlineView.rowHeight = FileViewStyle.listHeight(for: preferences)
         outlineView.reloadData()
         columnController?.restyle()
         if let gridController { gridController.restyle() }
@@ -1226,8 +1231,8 @@ final class BrowserViewController: NSViewController {
 
     @objc private func viewOptionsChanged() {
         guard let gridController else { return }
-        gridController.showsItemInfo = Prefs.shared.iconViewOptions.showsInfo
-        gridController.setIconSize(CGFloat(Prefs.shared.gridIconSize), animated: false)
+        gridController.showsItemInfo = preferences.iconViewOptions.showsInfo
+        gridController.setIconSize(CGFloat(preferences.gridIconSize), animated: false)
         gridController.refreshVisibleItems(reconfigure: true)
     }
 
@@ -1488,7 +1493,7 @@ final class BrowserViewController: NSViewController {
             openWith.submenu = submenu
             menu.addItem(openWith)
         }
-        let hiddenFilesTitle = Prefs.shared.showHidden ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files")
+        let hiddenFilesTitle = preferences.showHidden ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files")
         if selected.isEmpty {
             // On a server: a new folder there, or pasting onto it; a shell there (SFTP).
             if isOnServer {
@@ -1717,8 +1722,8 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             }()
             cell.configure(name: entry.displayName, icon: IconCache.shared.icon(for: entry), matches: node.matchIndices, dimmed: dimmed,
                            git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
-                           cloud: CloudStore.shared.status(for: entry.url), thumbnail: Prefs.shared.showIconPreviews ? entry : nil,
-                           scale: outlineView.window?.backingScaleFactor ?? 2)
+                           cloud: CloudStore.shared.status(for: entry.url), thumbnail: preferences.showIconPreviews ? entry : nil,
+                           scale: outlineView.window?.backingScaleFactor ?? 2, typography: FileViewTypography(preferences: preferences))
             return cell
         }
         let cell = outlineView.makeView(withIdentifier: .textCell, owner: nil) as? TextCellView ?? {
@@ -1791,7 +1796,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     func applySort(_ key: SortKey, ascending direction: Bool, remember: Bool = true) {
         sortKey = key
         ascending = direction
-        if remember { Prefs.shared.sortColumn = key.rawValue; Prefs.shared.sortAscending = direction }
+        if remember { preferences.sortColumn = key.rawValue; preferences.sortAscending = direction }
         let selection = selectedURLs
         listing.sort(using: sort)
         outlineView.reloadData()
@@ -1990,7 +1995,7 @@ extension BrowserViewController: NSMenuItemValidation {
             // Disk Usage can't show an empty folder or file, so a new one would seem to vanish.
             return directory != nil && !isShowingResults && loadError == nil && effectiveMode != .treemap && !isShowingTrash
         case #selector(toggleHiddenFiles(_:)):
-            item.state = Prefs.shared.showHidden ? .on : .off
+            item.state = preferences.showHidden ? .on : .off
             return true
         case #selector(biggerIcons(_:)), #selector(smallerIcons(_:)):
             // Icons zoom the icons; List and Columns, the names' text.
@@ -2002,12 +2007,12 @@ extension BrowserViewController: NSMenuItemValidation {
             case .list, .columns:
                 item.title = bigger ? String(localized: "Bigger Text", comment: "View menu: make file names bigger (⌘+)")
                     : String(localized: "Smaller Text", comment: "View menu: make file names smaller (⌘−)")
-                return bigger ? Prefs.shared.nameTextSize < Self.textSizes.upperBound : Prefs.shared.nameTextSize > Self.textSizes.lowerBound
+                return bigger ? preferences.nameTextSize < Self.textSizes.upperBound : preferences.nameTextSize > Self.textSizes.lowerBound
             case .gallery, .treemap:
                 return false
             }
         case #selector(toggleFoldersFirst(_:)):
-            item.state = Prefs.shared.foldersFirst ? .on : .off
+            item.state = preferences.foldersFirst ? .on : .off
             return true
         case #selector(sortBy(_:)):
             let key = Self.sortMenuKeys.indices.contains(item.tag) ? Self.sortMenuKeys[item.tag].key.rawValue : ""
@@ -2047,7 +2052,7 @@ extension BrowserViewController: QLPreviewPanelDataSource, QLPreviewPanelDelegat
         guard let entry = selectedEntries.first(where: { Self.key($0.url) == Self.key(url) }) ?? node(for: url)?.entry else { return nil }
         // The thumbnail the row shows, so the zoom starts from what's on screen.
         let scale = view.window?.backingScaleFactor ?? 2
-        if Prefs.shared.showIconPreviews, FileThumbnails.canThumbnail(entry),
+        if preferences.showIconPreviews, FileThumbnails.canThumbnail(entry),
            let thumbnail = FileThumbnails.shared.cached(entry, size: NameCellView.iconSide, scale: scale) { return thumbnail.image }
         return IconCache.shared.icon(for: entry)
     }

@@ -66,10 +66,11 @@ final class SidebarItem {
 
 final class SidebarViewController: NSViewController {
     let services: BrowserServices
+    var preferences: Prefs { services.preferences }
 
     init(services: BrowserServices = .shared) {
         self.services = services
-        tree = FolderTreeController(transfers: services.transfers)
+        tree = FolderTreeController(transfers: services.transfers, preferences: services.preferences)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -81,7 +82,7 @@ final class SidebarViewController: NSViewController {
 
     private let outline = SidebarOutlineView()
     private let placesScroll = NSScrollView()
-    /// Folders mode (Prefs.shared.sidebarShowsTree): the tree instead of the sections.
+    /// Folders mode (preferences.sidebarShowsTree): the tree instead of the sections.
     private let tree: FolderTreeController
     /// Opens the location a drag rests on, in the current pane.
     private lazy var springLoader = SpringLoader(view: outline, frame: { [weak self] folder in
@@ -160,7 +161,7 @@ final class SidebarViewController: NSViewController {
         view = container
         reload()
         showMode()
-        NotificationCenter.default.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
 
         let center = NSWorkspace.shared.notificationCenter
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
@@ -171,9 +172,9 @@ final class SidebarViewController: NSViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .remoteSessionsChanged, object: nil)
         // A tag used for the first time joins the Tags section.
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .tagsChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .favoritesChanged, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(volumesChanged), name: .favoritesChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(collapsedSectionsChanged(_:)), name: .sidebarSectionsCollapsed, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(collapsedSectionsChanged(_:)), name: .sidebarSectionsCollapsed, object: nil)
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(trashMayHaveChanged), name: name, object: nil)
         }
@@ -181,7 +182,7 @@ final class SidebarViewController: NSViewController {
 
     func reload() {
         let favorites = [SidebarItem(title: String(localized: "Recents", comment: "Sidebar item: recently used files"), target: .recents, symbol: "clock")]
-            + Places.favorites().map(SidebarItem.init)
+            + Places.favorites(preferences: preferences).map(SidebarItem.init)
         let pinned = Set(favorites.compactMap(\.url?.path))
         let home = Places.home.path
         let frequent = services.visits.ranked()
@@ -251,7 +252,7 @@ final class SidebarViewController: NSViewController {
     /// Every section open except those you've hidden. The sidebar is rebuilt whenever a window comes forward (and
     /// when disks, servers or tags change), and that mustn't open them again.
     private func applyCollapsed() {
-        let collapsed = Prefs.shared.collapsedSidebarSections
+        let collapsed = preferences.collapsedSidebarSections
         applyingCollapsed = true
         for section in sections {
             if collapsed.contains(section.id) { outline.collapseItem(section) } else { outline.expandItem(section) }
@@ -268,7 +269,7 @@ final class SidebarViewController: NSViewController {
 
     /// Places or Folders, as set.
     private func showMode() {
-        let showsTree = Prefs.shared.sidebarShowsTree
+        let showsTree = preferences.sidebarShowsTree
         let hiding = showsTree ? placesScroll : tree.view
         let hadFocus = (view.window?.firstResponder as? NSView).map { $0.isDescendant(of: hiding) } ?? false
         placesScroll.isHidden = showsTree
@@ -365,11 +366,11 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     /// Hide or Show on a section's title: remembered for every window and the next launch.
     private func sectionToggled(_ notification: Notification, collapsed: Bool) {
         guard !applyingCollapsed, let section = notification.userInfo?["NSObject"] as? SidebarSection else { return }
-        var hidden = Prefs.shared.collapsedSidebarSections
+        var hidden = preferences.collapsedSidebarSections
         guard hidden.contains(section.id) != collapsed else { return }
         if collapsed { hidden.insert(section.id) } else { hidden.remove(section.id) }
-        Prefs.shared.collapsedSidebarSections = hidden
-        NotificationCenter.default.post(name: .sidebarSectionsCollapsed, object: self)
+        preferences.collapsedSidebarSections = hidden
+        preferences.notifications.post(name: .sidebarSectionsCollapsed, object: self)
     }
 
     /// A workspace opens a window when clicked (`rowClicked`), or with Return once it's selected with the keyboard;
@@ -481,9 +482,9 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         springLoader.cancel()
         if let at = favoriteIndex(item, index) {
             if let path = info.draggingPasteboard.string(forType: .sidebarFavorite) {
-                Places.addFavorites([URL(fileURLWithPath: path)], at: at)
+                Places.addFavorites([URL(fileURLWithPath: path)], at: at, preferences: preferences)
             } else {
-                Places.addFavorites(FileDrop.urls(info).filter { !ReadOnlyCopies.contains($0) }, at: at)
+                Places.addFavorites(FileDrop.urls(info).filter { !ReadOnlyCopies.contains($0) }, at: at, preferences: preferences)
             }
             return true
         }
@@ -792,12 +793,12 @@ extension SidebarViewController: NSMenuDelegate {
 
     @objc private func removeFavorite(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        Places.removeFavorite(url)
+        Places.removeFavorite(url, preferences: preferences)
     }
 
     @objc private func addFavorite(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        Places.addFavorites([url])
+        Places.addFavorites([url], preferences: preferences)
     }
 
     @objc private func ejectItem(_ sender: NSMenuItem) {

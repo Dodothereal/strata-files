@@ -10,6 +10,7 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
     private let gitBadge = GitStatusBadge()
     private let tagDots = TagDotsView()
     private let cloudBadge = CloudBadge()
+    private var typography = FileViewTypography()
     private var name = ""
     private var matches: [Int] = []
     private var dimmed = false
@@ -59,7 +60,8 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
 
     /// `thumbnail` is the file to show a Quick Look thumbnail of in place of `image`, when Quick Look has one.
     func configure(name: String, icon image: NSImage, matches: [Int], dimmed: Bool, git: GitBadge? = nil,
-                   tags: [FinderTag] = [], cloud: CloudStatus? = nil, thumbnail entry: FileEntry? = nil, scale: CGFloat = 2) {
+                   tags: [FinderTag] = [], cloud: CloudStatus? = nil, thumbnail entry: FileEntry? = nil, scale: CGFloat = 2, typography: FileViewTypography = FileViewTypography()) {
+        self.typography = typography
         self.name = name
         self.matches = matches
         self.dimmed = dimmed
@@ -116,7 +118,7 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
         let selected = backgroundStyle == .emphasized
         var color: NSColor = selected ? ThemeStyle.selectedText : .labelColor
         if dimmed { color = color.withAlphaComponent(0.5) }
-        let font = FileViewStyle.nameFont
+        let font = typography.font
         // The field's own font too: renaming edits at the size the name is shown.
         label.font = font
         // Being renamed: the field holds what's typed. The row's highlight changes as the field takes focus and gives it
@@ -127,7 +129,7 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
         paragraph.lineBreakMode = .byTruncatingMiddle
         let text = NSMutableAttributedString(string: name, attributes: [.font: font, .foregroundColor: color, .paragraphStyle: paragraph])
         if !matches.isEmpty {
-            let bold = FileViewStyle.nameBoldFont
+            let bold = typography.bold
             let highlight: NSColor = selected ? color : ThemeStyle.accent
             let characters = Array(name)
             var utf16Offset = 0

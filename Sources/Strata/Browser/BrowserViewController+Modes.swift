@@ -3,7 +3,7 @@ import Quartz
 
 /// List, icons, columns, gallery and disk usage: the other presentations are child view controllers fed the same rows.
 extension BrowserViewController {
-    @objc func showViewOptions(_ sender: Any?) { ViewOptionsWindowController.shared.show() }
+    @objc func showViewOptions(_ sender: Any?) { services.viewOptions.show() }
 
     /// Results (search, Recents, Duplicates) have no single folder, so they always use the list.
     var effectiveMode: BrowserViewMode { isShowingResults ? .list : mode }
@@ -39,7 +39,7 @@ extension BrowserViewController {
         columnController?.cancelPendingRename()
         let selection = selectedURLs
         setStoredMode(newMode)
-        if remember { Prefs.shared.viewMode = newMode.rawValue }
+        if remember { preferences.viewMode = newMode.rawValue }
         installActiveView()
         pushContent()
         select(selection)
@@ -51,22 +51,22 @@ extension BrowserViewController {
     @objc func biggerIcons(_ sender: Any?) {
         guard effectiveMode == .grid else { return stepTextSize(1) }
         grid.setIconSize(min(256, grid.iconSize * 1.25), animated: true)
-        Prefs.shared.gridIconSize = Double(grid.iconSize)
+        preferences.gridIconSize = Double(grid.iconSize)
     }
 
     @objc func smallerIcons(_ sender: Any?) {
         guard effectiveMode == .grid else { return stepTextSize(-1) }
         grid.setIconSize(max(32, grid.iconSize / 1.25), animated: true)
-        Prefs.shared.gridIconSize = Double(grid.iconSize)
+        preferences.gridIconSize = Double(grid.iconSize)
     }
 
     /// The text size's range is 11–16 pt; past an end there's nothing to do.
     static let textSizes: ClosedRange<Double> = 11...16
 
     private func stepTextSize(_ delta: Double) {
-        let size = min(max(Prefs.shared.nameTextSize + delta, Self.textSizes.lowerBound), Self.textSizes.upperBound)
-        guard size != Prefs.shared.nameTextSize else { return NSSound.beep() }
-        Prefs.shared.nameTextSize = size
+        let size = min(max(preferences.nameTextSize + delta, Self.textSizes.lowerBound), Self.textSizes.upperBound)
+        guard size != preferences.nameTextSize else { return NSSound.beep() }
+        preferences.nameTextSize = size
     }
 
     /// Shows the active presentation's view on top of the list (the list's scroll view hides).
@@ -153,7 +153,7 @@ extension BrowserViewController: FileCollectionViewDelegate {
             setFilter("")
         case .returnKey:
             // Disk Usage can't rename in place, so Return opens there.
-            if filter.isEmpty && !Prefs.shared.returnOpens && effectiveMode != .treemap { renameSelection(nil) } else { openSelection(nil) }
+            if filter.isEmpty && !preferences.returnOpens && effectiveMode != .treemap { renameSelection(nil) } else { openSelection(nil) }
         case .space:
             if filter.isEmpty { toggleQuickLook(nil) } else { setFilter(filter + " ") }
         case .tab:

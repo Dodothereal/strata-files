@@ -49,13 +49,13 @@ final class BrowserPresentations {
 
     func grid(in browser: BrowserViewController) -> GridViewController {
         if let gridController { return gridController }
-        let controller = GridViewController()
+        let controller = GridViewController(preferences: browser.preferences)
         controller.fileDelegate = browser
-        controller.setIconSize(CGFloat(Prefs.shared.gridIconSize), animated: false)
-        controller.showsItemInfo = Prefs.shared.iconViewOptions.showsInfo
+        controller.setIconSize(CGFloat(browser.preferences.gridIconSize), animated: false)
+        controller.showsItemInfo = browser.preferences.iconViewOptions.showsInfo
         controller.folderSizeText = { [weak browser] entry in
-            guard Prefs.shared.iconViewOptions.folderInfo == .size else { return nil }
-            return browser?.iconFolderSizeText(entry)
+            guard let browser, browser.preferences.iconViewOptions.folderInfo == .size else { return nil }
+            return browser.iconFolderSizeText(entry)
         }
         gridController = controller
         return controller
@@ -63,7 +63,7 @@ final class BrowserPresentations {
 
     func columns(in browser: BrowserViewController) -> ColumnBrowserViewController {
         if let columnController { return columnController }
-        let controller = ColumnBrowserViewController(directoryReader: browser.services.directories)
+        let controller = ColumnBrowserViewController(directoryReader: browser.services.directories, preferences: browser.preferences)
         controller.applicationFolders = browser.applicationFolders
         controller.fileDelegate = browser
         controller.onLocationChange = { [weak browser] url in

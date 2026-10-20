@@ -48,7 +48,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 |---|---|---|
 | Rename (inline, click to rename, Rename menu) | `FileOps.rename` | `InlineRenameTests/*`; `RenameTests/*` |
 | Batch rename, swaps and chains | `RenameRules`, `FileOps.moveAll` | `RenameTests/*` |
-| New Folder / New File | `FileOps.newFolder`, `newFile` | `NewFileTests/*` (incl. `newFolderNeverTakesAnExistingOne`); `TrashUndoTests/undoingANewFolderLeavesOneMadeInItsPlace` |
+| New Folder / New File | `FileOps.newFolder`, `newFile`, `BrowserViewController.newFile` | `NewFileTests/*` (incl. `newFolderNeverTakesAnExistingOne`); `TrashUndoTests/undoingANewFolderLeavesOneMadeInItsPlace`; `BrowserPreferencesTests/newFileUsesItsOwnExtensionAndTargetInEveryView` |
 
 ## Metadata
 
@@ -72,7 +72,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 
 | Action | Code | Tests |
 |---|---|---|
-| Delete, move, rename, new items on a server | `RemoteFiles`, `SFTPBackend` | `ServerSafetyTests/*`; `RemoteFilesTests/newFilesAreMadeOnTheServerNeverOverAnything`, `deletingALinkLeavesWhatItPointsTo`; `SFTPClientTests/foldersRenamesAndRemoval` |
+| Delete, move, rename, new items on a server | `RemoteFiles`, `SFTPBackend`, `BrowserViewController.newFileNameOnServer` | `ServerSafetyTests/*`; `RemoteFilesTests/newFilesAreMadeOnTheServerNeverOverAnything`, `deletingALinkLeavesWhatItPointsTo`; `SFTPClientTests/foldersRenamesAndRemoval`; `BrowserPreferencesTests/serverNewFileNamesUseTheirOwnSettingsAndAvoidExistingFilesAndLinks` |
 | Upload (asks before replacing) | `copyToServer`, `uploadChoice`, `RemoteFiles.upload` | `ServerSafetyTests/copyingOntoTakenNamesAsksOrLeavesThem`; `RemoteFilesTests/uploadsFilesAndFolders`, `uploadingOverALinkReplacesTheLink` |
 | S3 delete, rename, upload | `S3Backend` | `DeleteScopeTests` (S3Tests extension): `deletingAFolderTakesOnlyTheKeysInIt`, `deletingAFileTakesOnlyThatKey`, `theBucketItselfIsNeverDeleted`, `renamingAFolderMovesExactlyItsKeys`, `renamingOnS3NeverReplacesAnything`, `aCopyThatFailsLeavesTheOriginal`, `uploadsAndFoldersNeverTakeTheBucketsTop`, `whatsTakenIsSeenBeforeCopyingOntoIt` |
 | Copying out of a server's copy | `ContainerCopies.finishCopyingOut`, `LazyCopies.stageForClipboard` | `RemoteFilesTests/copiedOutLinksLeadingOutsideAreDropped`, `mergingOutLeavesWhatWasThereAlone`, `theClipboardGetsAFinishedCopy` |

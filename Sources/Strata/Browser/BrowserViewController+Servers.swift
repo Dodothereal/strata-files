@@ -44,8 +44,17 @@ extension BrowserViewController {
 
     /// An empty "untitled.txt" on the server, like New File on this Mac.
     func newFileOnServer(in folder: URL) {
+        let name = newFileNameOnServer(in: folder)
+        runOnServer {
+            let made = try await RemoteFiles.shared.makeFile(named: name, in: folder)
+            self.renameWhenShown(made, in: folder)
+        }
+    }
+
+    /// Choose a name from this pane's settings and listing before starting the server write.
+    func newFileNameOnServer(in folder: URL) -> String {
         let existing = Set(((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).map { $0.lowercased() })
-        let ext = Prefs.shared.newFileExtension
+        let ext = preferences.newFileExtension
         let base = FileOps.newFileName(extension: "")
         var name = FileOps.newFileName(extension: ext)
         var number = 2
@@ -53,10 +62,7 @@ extension BrowserViewController {
             name = FileOps.newFileName(extension: ext, stem: "\(base) \(number)")
             number += 1
         }
-        runOnServer {
-            let made = try await RemoteFiles.shared.makeFile(named: name, in: folder)
-            self.renameWhenShown(made, in: folder)
-        }
+        return name
     }
 
     func renameOnServer(_ url: URL, to name: String) {
