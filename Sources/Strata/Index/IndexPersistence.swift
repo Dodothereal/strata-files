@@ -120,6 +120,42 @@ nonisolated enum IndexPersistence {
                store.flags.count].allSatisfy({ $0 == count })
         else { throw Corrupt() }
         try reader.finish()
+        guard validStructure(store) else { throw Corrupt() }
         return (store, header)
+    }
+
+    /// Authentication protects bytes, not the invariants of an index saved by an earlier build.
+    /// Check offsets and links before search can dereference them or walk an ancestor chain.
+    private static func validStructure(_ store: IndexStore) -> Bool {
+        let count = store.count
+        guard count <= Int32.max else { return false }
+        func validLink(_ id: Int32) -> Bool { id == -1 || (id >= 0 && Int(id) < count) }
+        var roots = Set<Int32>()
+        for root in store.roots {
+            guard root.id >= 0, Int(root.id) < count, roots.insert(root.id).inserted,
+                  store.parent[Int(root.id)] == -1,
+                  store.flags[Int(root.id)] & IndexStore.Flag.directory != 0 else { return false }
+        }
+        for i in 0..<count {
+            let parent = store.parent[i]
+            guard (parent == -1 && roots.contains(Int32(i))) || (parent >= 0 && Int(parent) < i),
+                  validLink(store.firstChild[i]), validLink(store.nextSibling[i]),
+                  Int(store.nameStart[i]) + Int(store.nameLength[i]) <= store.names.count,
+                  store.size[i] >= 0 else { return false }
+            if parent >= 0, store.flags[Int(parent)] & IndexStore.Flag.directory == 0 { return false }
+        }
+        var linked = [Bool](repeating: false, count: count)
+        for i in 0..<count {
+            var child = store.firstChild[i]
+            while child >= 0 {
+                let id = Int(child)
+                guard !linked[id], store.parent[id] == Int32(i) else { return false }
+                linked[id] = true
+                child = store.nextSibling[id]
+            }
+        }
+        return (0..<count).allSatisfy {
+            store.parent[$0] == -1 || linked[$0] || store.flags[$0] & IndexStore.Flag.deleted != 0
+        }
     }
 }
