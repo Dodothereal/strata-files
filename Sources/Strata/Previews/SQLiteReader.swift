@@ -109,6 +109,9 @@ nonisolated enum SQLiteReader {
             sqlite3_close_v2(db)
             throw PreviewError.message(String(localized: "This database couldn’t be opened."))
         }
+        // A view can allocate a huge value in one instruction, before the progress callback can interrupt it.
+        // Preview rows only need short text and blob sizes; report SQLite's normal error above this budget.
+        sqlite3_limit(db, SQLITE_LIMIT_LENGTH, 8 * 1024 * 1024)
         // The schema is the file's: don't let its views or triggers call functions with side effects.
         sqlite3_exec(db, "PRAGMA trusted_schema = OFF", nil, nil, nil)
         // A corrupt or encrypted file opens fine and fails on the first read.
