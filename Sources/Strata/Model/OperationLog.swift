@@ -106,12 +106,26 @@ final class OperationLog {
 
     private init() {
         file = SecureStorage.url("history.sealed")
-        if let data = SecureStorage.read(file), let decoded = try? JSONDecoder().decode([Entry].self, from: data) {
-            entries = decoded
-        }
+        entries = Self.readEntries(from: file)
         // Never import a plain history file: anything running as you could plant one, and undoing its entries would
         // move files with Strata's access. One from an earlier build is simply removed.
         SecureStorage.removeLegacy(SecureStorage.url("history.json"))
+    }
+
+    // A bad record must not hide valid neighbors. Authentication and the JSON array itself still have to be
+    // intact; loading never repairs or overwrites the saved file.
+    nonisolated static func readEntries(from file: URL) -> [Entry] {
+        guard let data = SecureStorage.read(file),
+              let decoded = try? JSONDecoder().decode([SavedEntry].self, from: data) else { return [] }
+        return decoded.compactMap(\.entry)
+    }
+
+    private nonisolated struct SavedEntry: Decodable {
+        let entry: Entry?
+
+        init(from decoder: Decoder) throws {
+            entry = try? Entry(from: decoder)
+        }
     }
 
     @discardableResult
