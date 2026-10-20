@@ -5,8 +5,11 @@ import Testing
 struct ColumnScrollingTests {
     private func wheel(x: Int32 = 0, y: Int32 = 0, units: CGScrollEventUnit = .line,
                        phase: CGScrollPhase? = nil, momentum: CGMomentumScrollPhase = .none) throws -> NSEvent {
-        let event = try #require(CGEvent(scrollWheelEvent2Source: nil, units: units,
+        let source = try #require(CGEventSource(stateID: .privateState))
+        let event = try #require(CGEvent(scrollWheelEvent2Source: source, units: units,
                                         wheelCount: 2, wheel1: y, wheel2: x, wheel3: 0))
+        // Keep the fixture independent of held keys. Shift makes AppKit turn vertical scrolling sideways.
+        event.flags = []
         event.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(phase?.rawValue ?? 0))
         event.setIntegerValueField(.scrollWheelEventMomentumPhase, value: Int64(momentum.rawValue))
         // Events go directly to the test's views, never to the system event queue.
