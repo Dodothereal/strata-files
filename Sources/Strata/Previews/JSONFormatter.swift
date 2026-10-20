@@ -24,6 +24,10 @@ nonisolated enum JSONFormatter {
     /// Short arrays of plain values stay on one line.
     static func format(_ text: String) -> String {
         let input = Array(text.utf16)
+        // Indentation can multiply even a short document's size. Keep the original text when formatting
+        // would make the preview too large, including incomplete files that bypass JSON validation.
+        let outputLimit = 1 << 20
+        guard input.count <= outputLimit else { return text }
         var out: [UInt16] = []
         out.reserveCapacity(input.count + input.count / 2)
         var depth = 0
@@ -36,6 +40,7 @@ nonisolated enum JSONFormatter {
         }
 
         while i < n {
+            guard out.count <= outputLimit else { return text }
             let c = input[i]
             switch c {
             case space, tab, newlineChar, 0x0D:
@@ -55,6 +60,7 @@ nonisolated enum JSONFormatter {
                     i = end
                 } else {
                     out.append(c)
+                    guard depth < 64 else { return text }
                     depth += 1
                     newline()
                     i += 1
@@ -78,6 +84,7 @@ nonisolated enum JSONFormatter {
                 i = end
             }
         }
+        guard out.count <= outputLimit else { return text }
         return String(utf16CodeUnits: out, count: out.count)
     }
 
