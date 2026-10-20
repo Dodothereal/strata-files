@@ -15,7 +15,7 @@ struct GridMetrics: Equatable {
     let bottomPad: CGFloat = 6
 
     init(iconSize: CGFloat) {
-        self.iconSize = min(max(iconSize.rounded(), Self.minIconSize), Self.maxIconSize)
+        self.iconSize = iconSize.isFinite ? min(max(iconSize.rounded(), Self.minIconSize), Self.maxIconSize) : 64
         iconPad = (self.iconSize * 0.07).rounded().clamped(3, 10)
         let font = FileViewStyle.nameFont
         lineHeight = ceil(font.ascender - font.descender + font.leading) + 1
@@ -50,19 +50,21 @@ final class GridLayout: NSCollectionViewLayout {
     private var lastWidth: CGFloat = 0
 
     private var width: CGFloat {
-        collectionView?.enclosingScrollView?.contentView.bounds.width ?? collectionView?.bounds.width ?? 0
+        let value = collectionView?.enclosingScrollView?.contentView.bounds.width ?? collectionView?.bounds.width ?? 0
+        return value.isFinite ? max(value, 0) : 0
     }
 
     override func prepare() {
         super.prepare()
         itemCount = collectionView.map { $0.numberOfSections > 0 ? $0.numberOfItems(inSection: 0) : 0 } ?? 0
         let available = max(width - insets.left - insets.right, metrics.minCellWidth)
-        columns = max(1, Int(available / metrics.minCellWidth))
+        let proposedColumns = available / metrics.minCellWidth
+        columns = max(1, Int(exactly: floor(proposedColumns)) ?? 1)
         cellWidth = floor(available / CGFloat(columns))
         lastWidth = width
     }
 
-    var rows: Int { itemCount == 0 ? 0 : (itemCount + columns - 1) / columns }
+    var rows: Int { itemCount == 0 ? 0 : (itemCount - 1) / columns + 1 }
     var rowHeight: CGFloat { metrics.itemHeight }
 
     override var collectionViewContentSize: NSSize {
@@ -81,12 +83,14 @@ final class GridLayout: NSCollectionViewLayout {
     }
 
     func index(at point: NSPoint) -> Int? {
-        guard itemCount > 0 else { return nil }
+        guard itemCount > 0, point.x.isFinite, point.y.isFinite else { return nil }
         let available = width - insets.left - insets.right
         let slack = max(available - cellWidth * CGFloat(columns), 0)
-        let column = Int(floor((point.x - insets.left - (slack / 2).rounded(.down)) / cellWidth))
-        let row = Int(floor((point.y - insets.top) / (rowHeight + rowSpacing)))
-        guard column >= 0, column < columns, row >= 0 else { return nil }
+        let proposedColumn = floor((point.x - insets.left - (slack / 2).rounded(.down)) / cellWidth)
+        let proposedRow = floor((point.y - insets.top) / (rowHeight + rowSpacing))
+        guard proposedColumn >= 0, proposedColumn < CGFloat(columns),
+              proposedRow >= 0, proposedRow < CGFloat(rows) else { return nil }
+        let column = Int(proposedColumn), row = Int(proposedRow)
         let index = row * columns + column
         guard index < itemCount, frame(for: index).contains(point) else { return nil }
         return index
@@ -94,12 +98,16 @@ final class GridLayout: NSCollectionViewLayout {
 
     /// Items whose rows intersect `rect`.
     func indexes(in rect: NSRect) -> Range<Int> {
-        guard itemCount > 0 else { return 0..<0 }
+        guard itemCount > 0, !rect.isNull, !rect.minY.isNaN, !rect.maxY.isNaN else { return 0..<0 }
         let pitch = rowHeight + rowSpacing
-        let first = max(Int(floor((rect.minY - insets.top) / pitch)), 0)
-        let last = max(Int(floor((rect.maxY - insets.top) / pitch)), first)
-        let lower = min(first * columns, itemCount)
-        let upper = min((last + 1) * columns, itemCount)
+        let firstRow = floor((rect.minY - insets.top) / pitch)
+        let lastRow = floor((rect.maxY - insets.top) / pitch)
+        guard lastRow >= 0, firstRow < CGFloat(rows) else { return 0..<0 }
+        // AppKit may request an unbounded rectangle. Clamp before converting to integer coordinates.
+        let first = Int(max(firstRow, 0))
+        let last = Int(min(max(lastRow, firstRow), CGFloat(rows - 1)))
+        let lower = first * columns
+        let upper = last == rows - 1 ? itemCount : (last + 1) * columns
         return lower..<upper
     }
 
