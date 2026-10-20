@@ -21,6 +21,33 @@ import Testing
         tree.snapshot().filter { $0.contains(".strata-") }
     }
 
+    // Normalize the existing parent: standardizing a missing destination retains /private, while an existing
+    // destination drops it. The file itself may not exist until the hook runs.
+    nonisolated static func fixtureLocation(_ url: URL) -> String {
+        url.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: url.lastPathComponent).path
+    }
+
+    /// Exercise the installed hook with other jobs' look-alike names before the intended fault is triggered.
+    func unrelatedTransfersKeepTheirFiles(alongside fixture: TestTree) throws {
+        let before = fixture.snapshot()
+        for operation in [TransferItem.Operation.copy, .rename] {
+            for replacing in [false, true] {
+                let other = try TestTree("from/a.txt", "from/b.txt", "from/c.txt", "to/")
+                if replacing { try other.add(["to/a.txt", "to/b.txt", "to/c.txt"]) }
+                for name in ["a.txt", "b.txt", "c.txt"] {
+                    let result = run(TransferItem(source: other.url("from/" + name), destination: other.url("to/" + name),
+                                                 operation: operation, decision: replacing ? .replace : nil), verify: true)
+                    defer { discard(result) }
+                    #expect(result.outcome == .done && result.failures.isEmpty)
+                    #expect(other.text("to/" + name) == "from/" + name)
+                }
+                let sources = operation == .copy ? ["from/a.txt", "from/b.txt", "from/c.txt"] : []
+                #expect(other.snapshot() == (["from/", "to/", "to/a.txt", "to/b.txt", "to/c.txt"] + sources).sorted())
+            }
+        }
+        #expect(fixture.snapshot() == before)
+    }
+
     @Test func aCopyLeavesTheOriginalAndEverythingAround() throws {
         let tree = try TestTree("from/", "from/a/", "from/a/inner.txt", "from/b.txt", "to/", "to/there.txt")
         let result = run(TransferItem(source: tree.url("from/a"), destination: tree.url("to/a"), operation: .copy))
@@ -58,8 +85,13 @@ import Testing
     @Test func anOriginalThatChangedWhileBeingCopiedIsKept() throws {
         let tree = try TestTree("from/", "from/a/", "from/a/inner.txt", "to/")
         let added = tree.url("from/a/saved meanwhile.txt")
-        TransferEngine.hooks.beforeVerify = { _ in try? Data("new".utf8).write(to: added) }
+        let target = Self.fixtureLocation(tree.url("to/a"))
+        TransferEngine.hooks.beforeVerify = { copy in
+            guard Self.fixtureLocation(copy) == target else { return }
+            try? Data("new".utf8).write(to: added)
+        }
         defer { TransferEngine.hooks = .init() }
+        try unrelatedTransfersKeepTheirFiles(alongside: tree)
         let result = run(TransferItem(source: tree.url("from/a"), destination: tree.url("to/a"), operation: .copyThenDelete),
                          verify: true)
         #expect(result.outcome != .done && !result.sourceRemoved)
@@ -71,13 +103,15 @@ import Testing
         let tree = try TestTree("a.txt", "b.txt", "to/")
         // While the job checks its copy of "b.txt", the copy of "a.txt" it made a moment before is swapped for another file.
         let swapped = tree.url("to/a.txt")
+        let checked = Self.fixtureLocation(tree.url("to/b.txt"))
         TransferEngine.hooks.beforeVerify = { copy in
-            guard copy.lastPathComponent.contains("b.txt") else { return }
+            guard Self.fixtureLocation(copy) == checked else { return }
             Thread.sleep(forTimeInterval: 0.3)
             try? FileManager.default.removeItem(at: swapped)
             try? Data("someone else's".utf8).write(to: swapped)
         }
         defer { TransferEngine.hooks = .init() }
+        try unrelatedTransfersKeepTheirFiles(alongside: tree)
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
@@ -98,12 +132,14 @@ import Testing
     @Test func aFileSwappedTheMomentItLandsIsNeverUndone() async throws {
         // The narrowest window there is: the item has just been placed and recorded, nothing else has happened yet.
         let tree = try TestTree("a.txt", "b.txt", "to/")
+        let swapped = Self.fixtureLocation(tree.url("to/a.txt"))
         TransferEngine.hooks.afterLanding = { landed in
-            guard landed.lastPathComponent == "a.txt" else { return }
+            guard Self.fixtureLocation(landed) == swapped else { return }
             try? FileManager.default.removeItem(at: landed)
             try? Data("someone else's".utf8).write(to: landed)
         }
         defer { TransferEngine.hooks = .init() }
+        try unrelatedTransfersKeepTheirFiles(alongside: tree)
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
@@ -118,11 +154,13 @@ import Testing
         #expect(tree.text("to/a.txt") == "someone else's")
         // The same for a move (a rename on one disk): the swapped file isn't moved back either.
         let moved = try TestTree("from/", "from/c.txt", "from/d.txt", "to/")
+        let movedTarget = Self.fixtureLocation(moved.url("to/c.txt"))
         TransferEngine.hooks.afterLanding = { landed in
-            guard landed.lastPathComponent == "c.txt" else { return }
+            guard Self.fixtureLocation(landed) == movedTarget else { return }
             try? FileManager.default.removeItem(at: landed)
             try? Data("someone else's".utf8).write(to: landed)
         }
+        try unrelatedTransfersKeepTheirFiles(alongside: moved)
         let undo2 = UndoManager()
         undo2.groupsByEvent = false
         undo2.beginUndoGrouping()
@@ -139,12 +177,14 @@ import Testing
 
     @Test func aRenamedFileSwappedTheMomentItLandsIsNeverUndone() async throws {
         let tree = try TestTree("a.txt", "c.txt")
+        let swapped = Self.fixtureLocation(tree.url("b.txt"))
         TransferEngine.hooks.afterLanding = { landed in
-            guard landed.lastPathComponent == "b.txt" else { return }
+            guard Self.fixtureLocation(landed) == swapped else { return }
             try? FileManager.default.removeItem(at: landed)
             try? Data("someone else's".utf8).write(to: landed)
         }
         defer { TransferEngine.hooks = .init() }
+        try unrelatedTransfersKeepTheirFiles(alongside: tree)
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
@@ -163,8 +203,13 @@ import Testing
         // the original mid-move and its loss.
         let tree = try TestTree("from/", "from/a/", "from/a/inner.txt", "to/")
         let added = tree.url("from/a/saved meanwhile.txt")
-        TransferEngine.hooks.afterLanding = { _ in try? Data("new".utf8).write(to: added) }
+        let target = Self.fixtureLocation(tree.url("to/a"))
+        TransferEngine.hooks.afterLanding = { landed in
+            guard Self.fixtureLocation(landed) == target else { return }
+            try? Data("new".utf8).write(to: added)
+        }
         defer { TransferEngine.hooks = .init() }
+        try unrelatedTransfersKeepTheirFiles(alongside: tree)
         let result = run(TransferItem(source: tree.url("from/a"), destination: tree.url("to/a"), operation: .copyThenDelete))
         #expect(result.outcome != .done && !result.sourceRemoved)
         #expect(tree.snapshot() == ["from/", "from/a/", "from/a/inner.txt", "from/a/saved meanwhile.txt", "to/", "to/a/", "to/a/inner.txt"])
@@ -197,8 +242,14 @@ import Testing
     @Test func aCopyThatFailsToVerifyNeverReplacesAnything() throws {
         let tree = try TestTree("from/", "from/a.txt", "to/", "to/a.txt")
         // Something corrupts the copy before it's checked: the existing item must stay as it was.
-        TransferEngine.hooks.beforeVerify = { copy in try? Data("corrupted".utf8).write(to: copy) }
+        let destination = tree.url("to").resolvingSymlinksInPath().path
+        TransferEngine.hooks.beforeVerify = { copy in
+            guard copy.deletingLastPathComponent().resolvingSymlinksInPath().path == destination,
+                  copy.lastPathComponent.hasPrefix(".a.txt.strata-") else { return }
+            try? Data("corrupted".utf8).write(to: copy)
+        }
         defer { TransferEngine.hooks = .init() }
+        try unrelatedTransfersKeepTheirFiles(alongside: tree)
         let result = run(TransferItem(source: tree.url("from/a.txt"), destination: tree.url("to/a.txt"), operation: .copy,
                                       decision: .replace), verify: true)
         defer { discard(result) }

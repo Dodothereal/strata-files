@@ -61,12 +61,14 @@ extension TransferTests {
         let tree = try TestTree("a.txt", "b.txt")
         let to = volume.url("to")
         try FileManager.default.createDirectory(at: to, withIntermediateDirectories: false)
+        let swapped = Self.fixtureLocation(to.appending(path: "a.txt"))
         TransferEngine.hooks.afterLanding = { landed in
-            guard landed.lastPathComponent == "a.txt" else { return }
+            guard Self.fixtureLocation(landed) == swapped else { return }
             try? FileManager.default.removeItem(at: landed)
             try? Data("someone else's".utf8).write(to: landed)
         }
         defer { TransferEngine.hooks = .init() }
+        try unrelatedTransfersKeepTheirFiles(alongside: tree)
         let undo = await undoable { undo in
             await TransferQueue.shared.enqueue([tree.url("a.txt"), tree.url("b.txt")], to: to, mode: .move,
                                                options: .init(verify: false, clone: false), undo: undo, conflicts: .keepBoth).finished()

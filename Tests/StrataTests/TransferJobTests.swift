@@ -90,7 +90,9 @@ import Testing
                 let tree = try TestTree("x/", "x/a.txt", "y/", "y/a.txt", "to/")
                 if alreadyThere { try tree.add(["to/a.txt"]) }
                 defer { tree.removeFromTrash() }
-                _ = await run([tree.url("x/a.txt"), tree.url("y/a.txt")], to: tree.url("to"), mode, conflicts: resolver)
+                let job = await run([tree.url("x/a.txt"), tree.url("y/a.txt")], to: tree.url("to"), mode, conflicts: resolver)
+                #expect(job.failures.isEmpty, "\(mode) \(label) \(alreadyThere): \(job.failures.map(\.message))")
+                #expect(job.errorMessage == nil)
                 // However the clash with what was there is settled, one of the job's own items never replaces the
                 // other: both stay in the folder.
                 let landed = tree.snapshot().filter { $0.hasPrefix("to/") }.compactMap { tree.text($0) }
