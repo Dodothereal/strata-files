@@ -213,6 +213,10 @@ sheet's text before clicking a destructive button. Both builds share preferences
 - Listing coalescing and freshness belong in `CopyListings`, owned by each provider actor. Invalidation during a
   read requires another read; an old waiter cannot clear its replacement or make it fresh. Drain listings before
   removing a copy. Inject container listing readers or server backends to test held responses without live services.
+- Shared copy downloads use `CopyFetches`, owned by their provider actor. Cancellation belongs to one waiting
+  caller; stop the download only after the last caller stops. Keep cancelled tasks until they finish, drain both
+  explicit and background downloads before removing a copy, and coalesce overlapping removals. Late cleanup must
+  not clear a reopened copy's requests. Inject container content readers for controlled lifecycle tests.
 - Post-operation selection and rename wait for entries to be applied, not an elapsed delay. Keep the original pane
   and navigation revision; leaving and returning is still a different navigation. Cancel pending renames when their
   column is removed, explicit selection or mode changes, or its read fails. A reload dropping the old selection must

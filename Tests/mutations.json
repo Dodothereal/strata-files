@@ -1292,5 +1292,96 @@
     "replace": "func discard(_ top: URL) async {\n        return // Mutation: omit copy teardown.",
     "rule": "Copy listing coordination leaves a container copy alive after discard",
     "tests": "CopyListingsTests/discardingAContainerCopyDrainsItsListingBeforeRemovingIt"
+  },
+  {
+    "file": "Strata/Remote/CopyFetches.swift",
+    "find": "if let current = join(path, kind: kind) { return current }",
+    "replace": "if false, let current = join(path, kind: kind) { return current }",
+    "rule": "Copy fetch coordination starts another download for a shared request",
+    "tests": "CopyFetchesTests/sharedFetchesKeepOneWaitPerCallerAndCancelOnlyAfterTheLastStops"
+  },
+  {
+    "file": "Strata/Remote/CopyFetches.swift",
+    "find": "running[key]?.waiters.insert(request.waiter)",
+    "replace": "// Mutation: forget the joining caller.",
+    "rule": "Copy fetch coordination does not count another reader before cancellation",
+    "tests": "CopyFetchesTests/sharedFetchesKeepOneWaitPerCallerAndCancelOnlyAfterTheLastStops"
+  },
+  {
+    "file": "Strata/Remote/CopyFetches.swift",
+    "find": "if running[key]?.waiters.isEmpty == true { request.task.cancel() }",
+    "replace": "request.task.cancel()",
+    "rule": "Copy fetch coordination cancels another readers download",
+    "tests": "CopyFetchesTests/sharedFetchesKeepOneWaitPerCallerAndCancelOnlyAfterTheLastStops"
+  },
+  {
+    "file": "Strata/Remote/CopyFetches.swift",
+    "find": "if running[key]?.waiters.isEmpty == true { request.task.cancel() }",
+    "replace": "// Mutation: ignore the last cancellation.",
+    "rule": "Copy fetch coordination keeps downloading after every reader stops",
+    "tests": "CopyFetchesTests/sharedFetchesKeepOneWaitPerCallerAndCancelOnlyAfterTheLastStops"
+  },
+  {
+    "file": "Strata/Remote/CopyFetches.swift",
+    "find": "if running[key]?.id == request.operation { running[key] = nil }",
+    "replace": "running[key] = nil",
+    "rule": "Copy fetch coordination lets an old waiter remove a new download",
+    "tests": "CopyFetchesTests/oldWaitersCannotCancelOrRemoveAReplacementAfterSuccessOrFailure"
+  },
+  {
+    "file": "Strata/Remote/CopyFetches.swift",
+    "find": "running = running.filter { !Self.contains($0.key.path, under: path) }",
+    "replace": "// Mutation: keep completed requests after removing the copy.",
+    "rule": "Copy fetch coordination reopens onto the removed downloads",
+    "tests": "CopyFetchesTests/reopeningAfterTeardownCannotJoinOrCancelTheRemovedDownload"
+  },
+  {
+    "file": "Strata/Remote/CopyFetches.swift",
+    "find": "key == path || key.hasPrefix(path == \"/\" ? \"/\" : path + \"/\")",
+    "replace": "key.hasPrefix(path)",
+    "rule": "Copy fetch coordination stops downloads in a neighboring copy",
+    "tests": "CopyFetchesTests/teardownSelectsOnlyItsCopyAndTracksFilesAndTreesIndependently"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "for task in fetching { _ = try? await task.value }",
+    "replace": "// Mutation: cancellation is mistaken for completion.",
+    "rule": "Copy fetch coordination removes a server copy while its download still runs",
+    "tests": "RemoteFilesTests/disconnectWaitsForAnActiveDownloadToStopBeforeRemovingItsCopy"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "if let running = removals[id] { await running.value; return }",
+    "replace": "// Mutation: duplicate disconnects remove the same copy twice.",
+    "rule": "Copy fetch coordination runs overlapping server removals independently",
+    "tests": "RemoteFilesTests/disconnectWaitsForAnActiveDownloadToStopBeforeRemovingItsCopy"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "if let running = removals[path] { await running.value; return }",
+    "replace": "// Mutation: duplicate disconnects remove the same copy twice.",
+    "rule": "Copy fetch coordination runs overlapping container removals independently",
+    "tests": "CopyFetchesTests/containerTeardownDrainsBothFileAndTreeDownloads"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "self.closing.remove(id)",
+    "replace": "// Mutation: leave the removed copy closed.",
+    "rule": "Copy fetch coordination leaves server closing after teardown completes",
+    "tests": "RemoteFilesTests/disconnectWaitsForAnActiveDownloadToStopBeforeRemovingItsCopy"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "self.closing.remove(path)",
+    "replace": "// Mutation: leave the removed copy closed.",
+    "rule": "Copy fetch coordination leaves container closing after teardown completes",
+    "tests": "CopyFetchesTests/containerTeardownDrainsBothFileAndTreeDownloads"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "        removeCopy(id)",
+    "replace": "        // Mutation: leave the prefetched copy behind.",
+    "rule": "Copy fetch coordination background disconnect leaves its copy behind",
+    "tests": "RemoteFilesTests/disconnectAlsoDrainsAutomaticallyPrefetchedFiles"
   }
 ]

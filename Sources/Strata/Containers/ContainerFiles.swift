@@ -61,31 +61,33 @@ actor ContainerFiles {
     /// Longest an archive-stream listing may take.
     static let archiveBudget: TimeInterval = 120
 
+    private let removeCopy: @Sendable (URL) async -> Void
+    private var removals: [String: Task<Void, Never>] = [:]
     private let readListing: @Sendable (ContainerSource, String) async throws -> ContainerListingResult
+    private let readFile: @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void
+    private let readTree: @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void
 
     init(readListing: @escaping @Sendable (ContainerSource, String) async throws -> ContainerListingResult = {
         try await ContainerFiles.loadListing($0, path: $1)
+    }, readFile: @escaping @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void = { source, path, url, stop in
+        try await blocking { try CopyWriter.fetchFile(source.engine, id: source.id, containerPath: path, to: url, stop: stop) }
+    }, readTree: @escaping @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void = { source, path, url, stop in
+        try await blocking { try CopyWriter.writeTree(source.engine, id: source.id, containerPath: path, into: url, stop: stop) }
+    }, removeCopy: @escaping @Sendable (URL) async -> Void = { url in
+        _ = try? await blocking { ContainerCopies.remove(url) }
     }) {
+        self.removeCopy = removeCopy
         self.readListing = readListing
+        self.readFile = readFile
+        self.readTree = readTree
     }
 
     private var listings = CopyListings()
-    private var fetches: [String: Shared] = [:]
-    private var trees: [String: Shared] = [:]
+    private(set) var fetches = CopyFetches()
     /// Placeholders' permissions in the container, from their listing (a secret only its owner may read isn't fetched
     /// just because it's selected).
     private var modes: [String: UInt32] = [:]
 
-    /// A fetch several callers may wait on; stopped only when the last of them stops waiting.
-    private final class Shared: @unchecked Sendable {
-        let task: Task<Void, Error>
-        var waiters = 0
-        var gaveUp = 0
-
-        init(_ task: Task<Void, Error>) {
-            self.task = task
-        }
-    }
     /// Background fetches of small files, by copy (top folder path).
     private var eager: [String: [UUID: Task<Void, Never>]] = [:]
     /// Copies being removed: nothing new starts in them.
@@ -223,20 +225,32 @@ actor ContainerFiles {
     /// Stops everything reading into the copy at `top` (and keeps anything new from starting), then removes the copy.
     func discard(_ top: URL) async {
         let path = top.standardizedFileURL.path
+        if let running = removals[path] { await running.value; return }
         closing.insert(path)
-        defer { closing.remove(path) }
+        let task = Task {
+            await self.drainAndRemove(top)
+            self.removals[path] = nil
+            self.closing.remove(path)
+        }
+        removals[path] = task
+        await task.value
+    }
+
+    private func drainAndRemove(_ top: URL) async {
+        let path = top.standardizedFileURL.path
         let inside: (String) -> Bool = { $0 == path || $0.hasPrefix(path + "/") }
         let background = Array((eager.removeValue(forKey: path) ?? [:]).values)
-        let fetching = fetches.filter { inside($0.key) }.map(\.value.task) + trees.filter { inside($0.key) }.map(\.value.task)
+        let fetching = fetches.tasks(under: path)
         background.forEach { $0.cancel() }
         fetching.forEach { $0.cancel() }
         let listing = listings.tasks(under: path)
         for task in background { await task.value }
         for task in fetching { _ = try? await task.value }
         for task in listing { _ = await task.value }
+        fetches.forget(under: path)
         listings.forget(under: path)
         modes = modes.filter { !inside($0.key) }
-        _ = try? await blocking { ContainerCopies.remove(top) }
+        await removeCopy(top)
     }
 
     /// Makes everything at `urls` complete before it's copied out: placeholders fetched, and folders with all they hold
@@ -260,20 +274,19 @@ actor ContainerFiles {
         guard let (source, top) = ContainerCopies.copy(containing: real), let path = ContainerCopies.containerPath(of: real, top: top),
               !closing.contains(top.standardizedFileURL.path) else { return }
         let key = real.path
-        if let running = trees[key] { return try await join(running) }
-        let engine = source.engine
-        let task = Task {
-            let stop = StopFlag()
-            try await withTaskCancellationHandler {
-                try await blocking { try CopyWriter.writeTree(engine, id: source.id, containerPath: path, into: real, stop: stop) }
-            } onCancel: {
-                stop.set()
+        try Task.checkCancellation()
+        if let running = fetches.join(key, kind: .tree) { return try await join(running) }
+        let request = fetches.request(key, kind: .tree) {
+            Task {
+                let stop = StopFlag()
+                try await withTaskCancellationHandler {
+                    try await readTree(source, path, real, stop)
+                } onCancel: {
+                    stop.set()
+                }
             }
         }
-        let shared = Shared(task)
-        trees[key] = shared
-        defer { if trees[key] === shared { trees[key] = nil } }
-        try await join(shared)
+        try await join(request)
         listings.expire(under: key)
     }
 
@@ -310,44 +323,38 @@ actor ContainerFiles {
         let url = requested.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: requested.lastPathComponent)
         guard ContainerCopies.copy(containing: url)?.top.standardizedFileURL == top.standardizedFileURL else { return false }
         let key = url.standardizedFileURL.path
-        if let running = fetches[key] {
+        try Task.checkCancellation()
+        if let running = fetches.join(key) {
             try await join(running)
             return false
         }
         guard !closing.contains(top.standardizedFileURL.path), ContainerCopies.isPlaceholder(url),
               let path = ContainerCopies.containerPath(of: url, top: top) else { return false }
-        let engine = source.engine
-        let task = Task {
-            let stop = StopFlag()
-            try await withTaskCancellationHandler {
-                try await blocking { try CopyWriter.fetchFile(engine, id: source.id, containerPath: path, to: url, stop: stop) }
-            } onCancel: {
-                stop.set()
+        let request = fetches.request(key) {
+            Task {
+                let stop = StopFlag()
+                try await withTaskCancellationHandler {
+                    try await readFile(source, path, url, stop)
+                } onCancel: {
+                    stop.set()
+                }
             }
         }
-        let shared = Shared(task)
-        fetches[key] = shared
-        defer { if fetches[key] === shared { fetches[key] = nil } }
-        try await join(shared)
+        try await join(request)
         return true
     }
 
-    /// Waits for a shared fetch. Stopping the wait (a Stop in Transfers, a new selection) stops the fetch only when
-    /// nothing else is waiting for it.
-    private func join(_ shared: Shared) async throws {
-        shared.waiters += 1
-        defer { shared.waiters -= 1 }
+    /// Keep cancellation with its own wait; another preview or copy may still need the same download.
+    private func join(_ request: CopyFetches.Request) async throws {
+        defer { fetches.finish(request) }
         try await withTaskCancellationHandler {
-            try await shared.task.value
+            try await request.task.value
         } onCancel: {
-            Task { await self.giveUp(shared) }
+            Task { await self.cancel(request) }
         }
     }
 
-    private func giveUp(_ shared: Shared) {
-        shared.gaveUp += 1
-        if shared.gaveUp >= shared.waiters { shared.task.cancel() }
-    }
+    private func cancel(_ request: CopyFetches.Request) { fetches.cancel(request) }
 
     private nonisolated static func loadListing(_ source: ContainerSource, path: String) async throws -> ContainerListingResult {
         let engine = source.engine, id = source.id

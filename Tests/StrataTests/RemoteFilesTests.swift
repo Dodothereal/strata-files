@@ -120,6 +120,98 @@ struct RemoteFilesTests {
         #expect(sandbox.snapshot() == original)
     }
 
+    @Test func disconnectWaitsForAnActiveDownloadToStopBeforeRemovingItsCopy() async throws {
+        defer { cleanUp() }
+        let original = sandbox.snapshot()
+        let backend = HeldDownloadBackend()
+        defer { Task { await backend.finish() } }
+        let removals = Counter()
+        let files = RemoteFiles(backends: { _ in backend }, removeCopy: { id in
+            removals.add(1)
+            RemoteCopies.remove(id)
+        })
+        await files.refresh(folder)
+        let item = folder.appending(path: "held.txt")
+        let fetching = Task { try await files.fetch([item]) }
+        await backend.waitUntilStarted()
+        var removed = false
+        let removing = Task { await files.discard(remote.id); removed = true }
+        while !(await files.closing.contains(remote.id)) && !removed { await Task.yield() }
+        #expect(!removed)
+        let secondRemoval = await Self.beginDiscard(files, id: remote.id)
+        await backend.finish()
+        let result = await fetching.result
+        if case .success = result { Issue.record("The disconnected download should stop") }
+        await removing.value
+        await secondRemoval.value
+        #expect(removals.value == 1)
+        #expect(!FileManager.default.fileExists(atPath: RemoteCopies.top(of: remote.id).path))
+        await files.refresh(folder)
+        try await files.fetch([item])
+        #expect(await backend.downloads == 2)
+        #expect(try Data(contentsOf: item) == Data("data".utf8))
+        #expect(sandbox.snapshot() == original)
+    }
+
+    @Test func cancellingOneServerReaderKeepsAnotherReadersDownloadAlive() async throws {
+        defer { cleanUp() }
+        let original = sandbox.snapshot()
+        let backend = HeldDownloadBackend()
+        defer { Task { await backend.finish() } }
+        let files = RemoteFiles(backends: { _ in backend })
+        await files.refresh(folder)
+        let item = folder.appending(path: "held.txt")
+        let first = Task { try await files.fetch([item]) }
+        await backend.waitUntilStarted()
+        var secondEnded = false
+        let second = Task { defer { secondEnded = true }; try await files.fetch([item]) }
+        let key = item.standardizedFileURL.path
+        while await files.fetches.waiterCount(for: key) < 2 && !secondEnded { await Task.yield() }
+        #expect(!secondEnded)
+        #expect(await files.fetches.waiterCount(for: key) == 2)
+        first.cancel()
+        while await files.fetches.waiterCount(for: key) == 2 { await Task.yield() }
+        #expect(await files.fetches.waiterCount(for: key) == 1)
+        await backend.finish()
+        try await first.value
+        try await second.value
+        #expect(await backend.downloads == 1)
+        #expect(try Data(contentsOf: item) == Data("data".utf8))
+        #expect(await files.fetches.tasks(under: key).isEmpty)
+        #expect(sandbox.snapshot() == original)
+    }
+
+    @Test func disconnectAlsoDrainsAutomaticallyPrefetchedFiles() async throws {
+        defer { cleanUp() }
+        let original = sandbox.snapshot()
+        let backend = HeldDownloadBackend(mode: 0o644)
+        defer { Task { await backend.finish() } }
+        let files = RemoteFiles(backends: { _ in backend }, removeCopy: { id in
+            #expect(backend.completions.value == 1)
+            RemoteCopies.remove(id)
+        })
+        await files.refresh(folder)
+        // No explicit fetch: the listing's world-readable file starts a background download.
+        await backend.waitUntilStarted()
+        let removing = await Self.beginDiscard(files, id: remote.id)
+        await backend.finish()
+        await removing.value
+        #expect(await backend.downloads == 1)
+        #expect(backend.completions.value == 1)
+        #expect(!FileManager.default.fileExists(atPath: RemoteCopies.top(of: remote.id).path))
+        #expect(await files.fetches.tasks(under: folder.standardizedFileURL.path).isEmpty)
+        #expect(sandbox.snapshot() == original)
+    }
+
+    private static func beginDiscard(_ files: isolated RemoteFiles, id: String) -> Task<Void, Never> {
+        // Begin on this actor through the first suspension, so the held download guarantees overlapping discards.
+        Task.immediate {
+            _ = files.closing
+            await files.discard(id)
+            #expect(!files.closing.contains(id))
+        }
+    }
+
     @Test func listsIntoTheCopy() async throws {
         defer { cleanUp() }
         await files.refresh(folder)
@@ -401,6 +493,46 @@ private actor HeldListingBackend: RemoteBackend {
     }
     func home() async throws -> String { "/" }
     func download(_ path: String, to destination: URL, limit: Int64, progress: @escaping @Sendable (Int64) -> Void, stop: StopFlag) async throws { throw CocoaError(.featureUnsupported) }
+    func upload(_ source: URL, to path: String, modified: Date?, progress: @escaping @Sendable (Int64) -> Void, stop: StopFlag) async throws { throw CocoaError(.featureUnsupported) }
+    func makeFolder(_ path: String) async throws { throw CocoaError(.featureUnsupported) }
+    func rename(_ path: String, to newPath: String) async throws { throw CocoaError(.featureUnsupported) }
+    func remove(_ path: String) async throws { throw CocoaError(.featureUnsupported) }
+    func kind(of path: String) async throws -> RemoteItemKind? { nil }
+    nonisolated var isAlive: Bool { true }
+    nonisolated func close() {}
+}
+
+/// Only writes the supplied download scratch file; the first download remains held even after cancellation.
+private actor HeldDownloadBackend: RemoteBackend {
+    private(set) var downloads = 0
+    nonisolated let completions = Counter()
+    private let mode: UInt32
+    private var finished = false
+    init(mode: UInt32 = 0o600) { self.mode = mode }
+    private var held: CheckedContinuation<Void, Never>?
+    private var started: CheckedContinuation<Void, Never>?
+    func waitUntilStarted() async {
+        if downloads > 0 { return }
+        await withCheckedContinuation { started = $0 }
+    }
+    func finish() { finished = true; held?.resume(); held = nil }
+    func list(_ path: String) async throws -> [ListedEntry] {
+        [ListedEntry(name: "held.txt", kind: .file, size: 4, mode: mode, modified: nil, linkTarget: "")]
+    }
+    func download(_ path: String, to destination: URL, limit: Int64, progress: @escaping @Sendable (Int64) -> Void, stop: StopFlag) async throws {
+        downloads += 1
+        defer { completions.add(1) }
+        if downloads == 1 && !finished {
+            await withCheckedContinuation { continuation in
+                held = continuation
+                started?.resume(); started = nil
+            }
+        }
+        if stop.isSet { throw CancellationError() }
+        #expect(limit == 4)
+        try Data("data".utf8).write(to: destination, options: .withoutOverwriting)
+    }
+    func home() async throws -> String { "/" }
     func upload(_ source: URL, to path: String, modified: Date?, progress: @escaping @Sendable (Int64) -> Void, stop: StopFlag) async throws { throw CocoaError(.featureUnsupported) }
     func makeFolder(_ path: String) async throws { throw CocoaError(.featureUnsupported) }
     func rename(_ path: String, to newPath: String) async throws { throw CocoaError(.featureUnsupported) }

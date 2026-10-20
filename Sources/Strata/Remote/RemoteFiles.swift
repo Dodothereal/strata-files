@@ -19,17 +19,22 @@ actor RemoteFiles {
     /// …and this many.
     static let eagerFolderCount = 100
 
+    private let removeCopy: @Sendable (String) -> Void
+    private var removals: [String: Task<Void, Never>] = [:]
     /// Where connections come from (tests give a local one).
     private let backends: @Sendable (String) async throws -> any RemoteBackend
     private var listings = CopyListings()
-    private var fetches: [String: Task<Void, Error>] = [:]
+    private(set) var fetches = CopyFetches()
+    private var eager: [String: [UUID: Task<Void, Never>]] = [:]
     /// Listed permissions of files still to fetch, by local path.
     private var modes: [String: UInt32] = [:]
     /// Servers whose copies are being removed: nothing new starts in them.
     private(set) var closing: Set<String> = []
 
-    init(backends: @escaping @Sendable (String) async throws -> any RemoteBackend = { try await RemoteSessions.shared.backend(for: $0) }) {
+    init(backends: @escaping @Sendable (String) async throws -> any RemoteBackend = { try await RemoteSessions.shared.backend(for: $0) },
+         removeCopy: @escaping @Sendable (String) -> Void = { RemoteCopies.remove($0) }) {
         self.backends = backends
+        self.removeCopy = removeCopy
     }
 
     // MARK: - Listing
@@ -92,7 +97,13 @@ actor RemoteFiles {
                     eager.append(url)
                 }
             }
-            if !eager.isEmpty { Task { await self.fetchEagerly(eager) } }
+            if !eager.isEmpty {
+                let id = UUID()
+                self.eager[server.id, default: [:]][id] = Task {
+                    await self.fetchEagerly(eager)
+                    self.eager[server.id]?[id] = nil
+                }
+            }
             return Self.freshFor
         } catch {
             // A server that stopped answering was disconnected; the sidebar says so too (the next look connects again).
@@ -106,7 +117,7 @@ actor RemoteFiles {
         await withTaskGroup(of: URL?.self) { group in
             var queue = urls[...]
             func next() -> Bool {
-                guard let url = queue.popFirst() else { return false }
+                guard !Task.isCancelled, let url = queue.popFirst() else { return false }
                 group.addTask { (try? await self.fetchOne(url)) == true ? url : nil }
                 return true
             }
@@ -154,30 +165,42 @@ actor RemoteFiles {
         // Through a linked folder: the real one, in the same copy.
         let url = requested.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: requested.lastPathComponent).standardizedFileURL
         let key = url.path
-        if let running = fetches[key] {
-            try await running.value
+        try Task.checkCancellation()
+        if let running = fetches.join(key) {
+            try await join(running)
             return false
         }
         guard let (server, top) = RemoteCopies.server(containing: url), !closing.contains(server.id), RemoteCopies.isPlaceholder(url),
               let path = RemoteCopies.remotePath(of: url, top: top) else { return false }
         let mode = modes[key] ?? 0o644
-        let task = Task {
-            let backend = try await backends(server.id)
-            // Stopping (cancelling this task: a Stop, a disconnect) stops the download too.
-            let stop = StopFlag()
-            try await withTaskCancellationHandler {
-                try await RemoteWriter.fetch(path, into: url, mode: mode) { temp, limit in
-                    try await backend.download(path, to: temp, limit: limit, progress: { _ in }, stop: stop)
+        let request = fetches.request(key) {
+            Task {
+                let backend = try await backends(server.id)
+                // Stopping (cancelling this task: a Stop, a disconnect) stops the download too.
+                let stop = StopFlag()
+                try await withTaskCancellationHandler {
+                    try await RemoteWriter.fetch(path, into: url, mode: mode) { temp, limit in
+                        try await backend.download(path, to: temp, limit: limit, progress: { _ in }, stop: stop)
+                    }
+                } onCancel: {
+                    stop.set()
                 }
-            } onCancel: {
-                stop.set()
             }
         }
-        fetches[key] = task
-        defer { fetches[key] = nil }
-        try await task.value
+        try await join(request)
         return true
     }
+
+    private func join(_ request: CopyFetches.Request) async throws {
+        defer { fetches.finish(request) }
+        try await withTaskCancellationHandler {
+            try await request.task.value
+        } onCancel: {
+            Task { await self.cancel(request) }
+        }
+    }
+
+    private func cancel(_ request: CopyFetches.Request) { fetches.cancel(request) }
 
     /// Makes everything at `urls` complete before it's copied out: placeholders fetched, and folders with all they
     /// hold (listed afresh, not just what's been browsed). Throws the first problem.
@@ -210,15 +233,31 @@ actor RemoteFiles {
 
     /// Stops reading into a server's copy and removes it (disconnecting, removing the server).
     func discard(_ id: String) async {
+        if let running = removals[id] { await running.value; return }
         closing.insert(id)
-        defer { closing.remove(id) }
+        let task = Task {
+            await self.drainAndRemove(id)
+            self.removals[id] = nil
+            self.closing.remove(id)
+        }
+        removals[id] = task
+        await task.value
+    }
+
+    private func drainAndRemove(_ id: String) async {
         let top = RemoteCopies.top(of: id).standardizedFileURL.path
         let inside: (String) -> Bool = { $0 == top || $0.hasPrefix(top + "/") }
-        for (key, task) in fetches where inside(key) { task.cancel() }
+        let background = Array((eager.removeValue(forKey: id) ?? [:]).values)
+        let fetching = fetches.tasks(under: top)
+        background.forEach { $0.cancel() }
+        fetching.forEach { $0.cancel() }
+        for task in background { await task.value }
+        for task in fetching { _ = try? await task.value }
         for task in listings.tasks(under: top) { _ = await task.value }
+        fetches.forget(under: top)
         listings.forget(under: top)
         modes = modes.filter { !inside($0.key) }
-        RemoteCopies.remove(id)
+        removeCopy(id)
     }
 
     // MARK: - Changes on the server
