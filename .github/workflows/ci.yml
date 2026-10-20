@@ -7,10 +7,10 @@ on:
   push:
     branches: [main]
     paths: ["Sources/**", "Tests/**", "Resources/**", "Package.swift", "Package.resolved", "docs/destructive-actions.md", "scripts/audit-destructive.py",
-            "scripts/mutate.py", "scripts/build.sh", "scripts/build-icon.py", "scripts/audit-theme-colors.py", "AGENTS.md", ".github/workflows/ci.yml", ".github/workflows/release.yml"]
+            "scripts/mutate.py", "scripts/build.sh", "scripts/build-icon.py", "scripts/audit-theme-colors.py", "scripts/run-test-check.py", "AGENTS.md", ".github/workflows/ci.yml", ".github/workflows/release.yml"]
   pull_request:
     paths: ["Sources/**", "Tests/**", "Resources/**", "Package.swift", "Package.resolved", "docs/destructive-actions.md", "scripts/audit-destructive.py",
-            "scripts/mutate.py", "scripts/build.sh", "scripts/build-icon.py", "scripts/audit-theme-colors.py", "AGENTS.md", ".github/workflows/ci.yml", ".github/workflows/release.yml"]
+            "scripts/mutate.py", "scripts/build.sh", "scripts/build-icon.py", "scripts/audit-theme-colors.py", "scripts/run-test-check.py", "AGENTS.md", ".github/workflows/ci.yml", ".github/workflows/release.yml"]
 
 permissions:
   contents: read
@@ -49,7 +49,16 @@ jobs:
         run: swift build --product Strata
 
       - name: Test
-        run: swift test
+        run: python3 scripts/run-test-check.py --output-directory "$RUNNER_TEMP/strata-test-diagnostics/normal" -- swift test
+
+      - name: Preserve test diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-diagnostics-normal-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/strata-test-diagnostics/
+          retention-days: 3
+          if-no-files-found: ignore
 
   address-sanitizer:
     name: Address Sanitizer
@@ -68,4 +77,15 @@ jobs:
           swift --version
 
       - name: Test with Address Sanitizer
-        run: swift test --sanitize address --scratch-path .build/sanitizers/address --disable-automatic-resolution --jobs 4
+        env:
+          ASAN_OPTIONS: handle_abort=1
+        run: python3 scripts/run-test-check.py --output-directory "$RUNNER_TEMP/strata-test-diagnostics/address" -- swift test --sanitize address --scratch-path .build/sanitizers/address --disable-automatic-resolution --jobs 4
+
+      - name: Preserve test diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-diagnostics-address-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/strata-test-diagnostics/
+          retention-days: 3
+          if-no-files-found: ignore
