@@ -235,6 +235,9 @@ sheet's text before clicking a destructive button. Both builds share preferences
   that trashes or moves items must check each is still the one the operation left there.
 - A decision that needs a window to ask in must not go ahead when there's none (it closed meanwhile): fall back to
   what changes nothing, as `uploadChoice` does.
+- Undo cleanup for folders an operation creates must verify their recorded identity and use nonrecursive empty-folder
+  removal. A failed directory listing is not an empty folder. Cover replacement files, folders and symlinks, including
+  anything at the link's target; never use recursive removal for this cleanup.
 
 ## Commits and releases
 

@@ -18,10 +18,6 @@ struct PlanSafetyTests {
         steps.map { "\($0.kind.rawValue) \($0.source?.lastPathComponent ?? "-") \($0.destination?.lastPathComponent ?? "-")" }.sorted()
     }
 
-    private func wait(until condition: () -> Bool) async {
-        for _ in 0..<200 where !condition() { try? await Task.sleep(for: .milliseconds(50)) }
-    }
-
     @Test func stepsOnItemsOutsideTheSelectionAreLeftOut() async throws {
         let tree = try TestTree("a.txt", "b.txt", "sub/")
         let plan = await validate([.trash(tree.url("b.txt")), .rename(tree.url("b.txt"), to: "x.txt"),
@@ -107,7 +103,7 @@ struct PlanSafetyTests {
         #expect(tree.snapshot() == ["Done/", "Done/c.txt", "Old/", "Old/x.txt", "b.txt", "dee.txt", "keep.txt"])
         // ⌘Z puts everything back, the trashed item included, and removes the folder it made.
         undo.undo()
-        await wait { tree.snapshot().contains("a.txt") && !tree.snapshot().contains("Done/") }
+        await FileOps.undoWork?.value
         #expect(tree.snapshot() == ["Old/", "Old/x.txt", "a.txt", "b.txt", "c.txt", "d.txt", "keep.txt"])
     }
 
@@ -125,8 +121,57 @@ struct PlanSafetyTests {
         try Data("mine".utf8).write(to: tree.url("Done/mine.txt"))
         try Data().write(to: tree.url("Later/.DS_Store"))
         undo.undo()
-        await wait { tree.snapshot().contains("c.txt") && !tree.snapshot().contains("Later/") }
+        await FileOps.undoWork?.value
         #expect(tree.snapshot() == ["Done/", "Done/mine.txt", "c.txt", "e.txt"])
+    }
+
+    @Test func undoKeepsAReplacementAtACreatedFolderPath() async throws {
+        for replacement in ["folder", "file", "link"] {
+            let tree = try TestTree("c.txt", "keep.txt", "Done-other/", "outside/", "outside/.DS_Store")
+            let plan = await validate([.move(tree.url("c.txt"), into: "Done")], selecting: ["c.txt"], in: tree)
+            let transaction = PlanTransaction(plan: plan)
+            let result = await transaction.perform()
+            try #require(result.applied == 1 && result.failures.isEmpty)
+            try FileManager.default.moveItem(at: tree.url("Done"), to: tree.url("Saved"))
+            switch replacement {
+            case "folder": try FileManager.default.createDirectory(at: tree.url("Done"), withIntermediateDirectories: false)
+            case "file": try Data("someone else's file".utf8).write(to: tree.url("Done"))
+            default: try FileManager.default.createSymbolicLink(atPath: tree.url("Done").path, withDestinationPath: "outside")
+            }
+            let before = tree.snapshot()
+            await transaction.revert()
+            #expect(tree.snapshot() == before, "Undo must leave the replacement \(replacement).")
+            #expect(tree.text("Saved/c.txt") == "c.txt")
+            #expect(tree.text("outside/.DS_Store") == "outside/.DS_Store")
+            if replacement == "file" { #expect(tree.text("Done") == "someone else's file") }
+            #expect(tree.snapshot() == before)
+        }
+    }
+
+    @Test func nestedFolderCleanupWorksAfterCompleteAndFailedMoves() async throws {
+        for missingSource in [false, true] {
+            let tree = try TestTree("c.txt", "keep.txt")
+            let plan = await validate([.move(tree.url("c.txt"), into: "Done/Nested")], selecting: ["c.txt"], in: tree)
+            if missingSource { try FileManager.default.moveItem(at: tree.url("c.txt"), to: tree.url("Saved.txt")) }
+            let transaction = PlanTransaction(plan: plan)
+            let result = await transaction.perform()
+            #expect(result.applied == (missingSource ? 0 : 1))
+            #expect(result.failures.count == (missingSource ? 1 : 0))
+            try #require(transaction.hasChanges)
+            for path in ["Done/.DS_Store", "Done/Nested/.DS_Store"] {
+                try Data("Finder records".utf8).write(to: tree.url(path))
+            }
+            await transaction.revert()
+            #expect(tree.text(missingSource ? "Saved.txt" : "c.txt") == "c.txt")
+            #expect(tree.snapshot() == (missingSource ? ["Saved.txt", "keep.txt"] : ["c.txt", "keep.txt"]))
+            if !missingSource {
+                // A redo creates new directories, whose identities must replace those from the first application.
+                let redone = await transaction.perform()
+                #expect(redone.applied == 1 && redone.failures.isEmpty)
+                await transaction.revert()
+                #expect(tree.snapshot() == ["c.txt", "keep.txt"])
+            }
+        }
     }
 
     @Test func undoAndRedoOfAPlanTouchOnlyItsOwnItems() async throws {
@@ -147,24 +192,23 @@ struct PlanSafetyTests {
         // "dee.txt" is swapped for another file: undo leaves it, and puts back the rest.
         try swap("dee.txt")
         undo.undo()
-        await wait { tree.snapshot() == ["a.txt", "c.txt", "dee.txt", "keep.txt"] }
+        await FileOps.undoWork?.value
         #expect(tree.snapshot() == ["a.txt", "c.txt", "dee.txt", "keep.txt"])
         #expect(tree.text("dee.txt") == "someone else's")
         // "c.txt" is swapped before redo: redo leaves it (and makes no folder for it), and redoes the rest.
         try swap("c.txt")
         undo.redo()
-        await wait { !tree.snapshot().contains("a.txt") }
-        try? await Task.sleep(for: .milliseconds(200))
+        await FileOps.undoWork?.value
         #expect(tree.snapshot() == ["c.txt", "dee.txt", "keep.txt"])
         #expect(tree.text("c.txt") == "someone else's")
         // Undone once more, "a.txt" is back from the Trash, and nothing of the test is left there.
         undo.undo()
-        await wait { tree.snapshot().contains("a.txt") }
+        await FileOps.undoWork?.value
         #expect(tree.snapshot() == ["a.txt", "c.txt", "dee.txt", "keep.txt"])
         // Swapped before the next redo, it isn't trashed: what's there now isn't the plan's.
         try swap("a.txt")
         undo.redo()
-        try? await Task.sleep(for: .milliseconds(300))
+        await FileOps.undoWork?.value
         #expect(tree.snapshot() == ["a.txt", "c.txt", "dee.txt", "keep.txt"])
         #expect(tree.text("a.txt") == "someone else's")
     }

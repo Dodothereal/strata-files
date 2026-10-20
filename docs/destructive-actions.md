@@ -64,7 +64,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 | Sync (copies and extras to the Trash) | `FolderCompare.defaultAction`, `syncPlan` | `FolderSyncTests/*` |
 | Compress | `Archiver.compress`, `place` | `MetadataEditTests/compressingAddsOneArchiveAndNeverReplacesOne`, `aLinkIsArchivedAsALink` |
 | Extract and browse an archive | `Archiver.extract`, `extractContents` | `ArchiveSafetyTests/*`, including `browsingAnArchiveNeverReplacesAnExistingFolder` for the copy used to browse |
-| Ask Strata plans (rename, move, trash, new folders), their undo and redo | `PlanValidator`, `PlanExecutor`, `PlanTransaction` | `PlanSafetyTests/*` |
+| Ask Strata plans (rename, move, trash, new folders), their undo and redo | `PlanValidator`, `PlanExecutor`, `PlanTransaction`; created folders use `FileOps.Landed` and `removeEmptyFolders` | `PlanSafetyTests/*`, including `undoKeepsAReplacementAtACreatedFolderPath` |
 | Project cleanup | `ProjectDetector.detectSync`, `isRealDirectory` | `ProjectCleanupTests/*` |
 | Git for status badges (a browsed repository's own commands never run, and a disabled driver is no longer required) | `GitRunner.runBlocking`, `hardening`, `repositoryFilterOverrides` | `GitSafetyTests/*` |
 

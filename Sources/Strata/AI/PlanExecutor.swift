@@ -3,9 +3,8 @@ import AppKit
 /// Applies the enabled steps of a validated plan as one undoable action ("AI Rename").
 ///
 /// Renames and moves go through `FileOps.move` one pair at a time (so a failure part-way still knows exactly what happened).
-/// New folders and Trash are done here because `FileOps` has no named-folder API and `FileOps.trash` doesn't report where items
-/// went; both are needed to undo the whole plan in one step. Undo puts everything back (Trash restored, moves reversed, the
-/// folders the plan created removed if empty); redo applies it again.
+/// New folders and Trash are coordinated here so per-item failures and the plan's ordering stay part of one action.
+/// Undo restores Trash items, reverses moves and removes only the plan's own empty folders; redo applies it again.
 enum PlanExecutor {
     struct Outcome {
         var applied = 0
@@ -101,6 +100,7 @@ final class PlanTransaction {
             do {
                 try fm.createDirectory(at: folder, withIntermediateDirectories: false)
                 created.append(folder)
+                applied.record([folder])
             } catch {
                 outcome.failures.append(String(localized: "Couldn’t create “\(folder.lastPathComponent)”: \(error.localizedDescription)"))
             }
@@ -171,12 +171,8 @@ final class PlanTransaction {
         }
         await moveBack(done.filter { applied.holds($0.to) }.reversed().map { (from: $0.to, to: $0.from) })
         await moveBack(trashed.reversed().filter { applied.holds($0.to) }.map { (from: $0.to, to: $0.from) })
-        let fm = FileManager.default
-        for folder in created.reversed() {
-            // Only remove what is (still) empty: never delete something the user put there meanwhile.
-            let contents = (try? fm.contentsOfDirectory(atPath: folder.path)) ?? []
-            if contents.allSatisfy({ $0 == ".DS_Store" }) { try? fm.removeItem(at: folder) }
-        }
+        // A name alone does not belong to the plan: the user may have replaced its folder while it was applied.
+        FileOps.removeEmptyFolders(created.filter(applied.holds))
     }
 
     /// Case-only renames ("photo.jpg" → "Photo.jpg") go through a temporary name on case-insensitive volumes.

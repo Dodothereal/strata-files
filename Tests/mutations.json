@@ -367,8 +367,8 @@
   },
   {
     "file": "Strata/AI/PlanExecutor.swift",
-    "find": "            if contents.allSatisfy({ $0 == \".DS_Store\" }) { try? fm.removeItem(at: folder) }",
-    "replace": "            try? fm.removeItem(at: folder)",
+    "find": "        FileOps.removeEmptyFolders(created.filter(applied.holds))",
+    "replace": "        for folder in created.filter(applied.holds) { try? FileManager.default.removeItem(at: folder) }",
     "rule": "Undo of a plan removes a folder something was put in",
     "tests": "PlanSafetyTests"
   },
@@ -1397,5 +1397,19 @@
     "replace": "let upper = count * chunk / chunks",
     "rule": "Index parallel search includes the complete range of every worker",
     "tests": "IndexStoreAccessTests/parallelSearchJoinsAllColumnReadersBeforeReturning"
+  },
+  {
+    "file": "Strata/AI/PlanExecutor.swift",
+    "find": "FileOps.removeEmptyFolders(created.filter(applied.holds))",
+    "replace": "FileOps.removeEmptyFolders(created)",
+    "rule": "Plan folder cleanup preserves replacement files folders and links",
+    "tests": "PlanSafetyTests/undoKeepsAReplacementAtACreatedFolderPath"
+  },
+  {
+    "file": "Strata/AI/PlanExecutor.swift",
+    "find": "                applied.record([folder])\n",
+    "replace": "",
+    "rule": "Plan folder cleanup records ownership when each folder is created",
+    "tests": "PlanSafetyTests/runningAPlanDoesOnlyItsCheckedSteps|PlanSafetyTests/undoKeepsAFolderThePlanMadeOnceSomethingElseIsInIt|PlanSafetyTests/nestedFolderCleanupWorksAfterCompleteAndFailedMoves"
   }
 ]
