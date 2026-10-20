@@ -116,6 +116,10 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
   `@concurrent` function: other suites' file work waits on those (see `ScratchVolume`, a disk image for moves across
   disks). Suites sharing global state (`RemoteRegistry`, `TransferEngine.hooks`) run as one
   `.serialized` suite.
+- A serialized suite does not exclude other suites. Shared fault-injection hooks must match only their own
+  fixture's full URL (or its unique temporary parent), never just a basename. Prove an unrelated same-name file
+  stays unchanged while the hook is installed. Synchronize shared hook storage and invoke callbacks after
+  releasing its lock; resets can overlap workers from other suites.
 - The temporary folder is `/private/var/...`. Spell URLs the way `DirectoryLoader` lists them (`TestTree.root` is
   already resolved); `standardizedFileURL` and `resolvingSymlinksInPath` drop the `/private`.
 - The test SFTP server (`RemoteFilesTests`, macOS's `sftp-server` over a pipe) isn't confined to its folder: it can
