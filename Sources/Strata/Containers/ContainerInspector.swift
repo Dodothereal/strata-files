@@ -95,7 +95,7 @@ final class ContainerInspectorView: NSView {
             }
             list.append((String(localized: "ID", comment: "Inspector row: a container's short ID"), container.shortID))
             rows.setText(list)
-            state = shown.busy.map { Self.small(ContainerControl.progress($0), color: .systemOrange) } ?? Self.stateLabel(container)
+            state = shown.busy.map { Self.small(ContainerControl.progress($0), color: InspectorColors.warning) } ?? Self.stateLabel(container)
             let buttons = actions(container, busy: shown.busy)
             let content = NSStackView(views: [rows, buttons])
             content.orientation = .vertical
@@ -107,7 +107,7 @@ final class ContainerInspectorView: NSView {
         } else {
             rows.setText([(String(localized: "Engine", comment: "Inspector row: Docker Desktop, OrbStack, Colima…"), shown.source.engineName)])
             state = Self.small(String(localized: "Not available", comment: "Inspector: the container is gone, or its engine isn't running"),
-                               color: .secondaryLabelColor)
+                               color: InspectorColors.secondary)
         }
         return InspectorCard(id: "container", title: shown.source.name, symbol: "shippingbox", content: rows, accessory: state)
     }
@@ -123,7 +123,7 @@ final class ContainerInspectorView: NSView {
             content.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
         }
-        let count = Self.small(mounts.count.formatted(), color: .secondaryLabelColor)
+        let count = Self.small(mounts.count.formatted(), color: InspectorColors.secondary)
         return InspectorCard(id: "containerMounts", title: String(localized: "Mounts", comment: "Inspector section: a container's mounted folders and volumes"),
                              symbol: "externaldrive.connected.to.line.below", content: content, accessory: count)
     }
@@ -168,7 +168,7 @@ final class ContainerInspectorView: NSView {
         rows.set(list)
         let running = shown.containers.filter(\.isRunning).count
         let state = Self.small(String(localized: "\(running) of \(shown.containers.count) running", comment: "Inspector, Compose: how many services run"),
-                               color: running == shown.containers.count ? .systemGreen : running == 0 ? .secondaryLabelColor : .systemOrange)
+                               color: running == shown.containers.count ? InspectorColors.success : running == 0 ? InspectorColors.secondary : InspectorColors.warning)
         let buttons = stackActions(shown)
         let content = NSStackView(views: [rows, buttons])
         content.orientation = .vertical
@@ -189,7 +189,7 @@ final class ContainerInspectorView: NSView {
             spinner.style = .spinning
             spinner.controlSize = .small
             spinner.startAnimation(nil)
-            let row = NSStackView(views: [spinner, Self.small(ContainerControl.progress(busy), color: .secondaryLabelColor)])
+            let row = NSStackView(views: [spinner, Self.small(ContainerControl.progress(busy), color: InspectorColors.secondary)])
             row.spacing = 6
             column.addArrangedSubview(row)
         } else {
@@ -249,7 +249,7 @@ final class ContainerInspectorView: NSView {
             spinner.style = .spinning
             spinner.controlSize = .small
             spinner.startAnimation(nil)
-            let row = NSStackView(views: [spinner, Self.small(ContainerControl.progress(busy), color: .secondaryLabelColor)])
+            let row = NSStackView(views: [spinner, Self.small(ContainerControl.progress(busy), color: InspectorColors.secondary)])
             row.spacing = 6
             return row
         }
@@ -281,10 +281,10 @@ final class ContainerInspectorView: NSView {
 
     static func stateLabel(_ container: ContainerInfo) -> NSTextField {
         switch container.state {
-        case .running: small(String(localized: "Running", comment: "Container state"), color: .systemGreen)
-        case .paused: small(String(localized: "Paused", comment: "Container state"), color: .systemOrange)
-        case .restarting: small(String(localized: "Restarting", comment: "Container state"), color: .systemOrange)
-        default: small(String(localized: "Not Running", comment: "Container state: stopped, exited or created"), color: .secondaryLabelColor)
+        case .running: small(String(localized: "Running", comment: "Container state"), color: InspectorColors.success)
+        case .paused: small(String(localized: "Paused", comment: "Container state"), color: InspectorColors.warning)
+        case .restarting: small(String(localized: "Restarting", comment: "Container state"), color: InspectorColors.warning)
+        default: small(String(localized: "Not Running", comment: "Container state: stopped, exited or created"), color: InspectorColors.secondary)
         }
     }
 
@@ -315,19 +315,19 @@ private final class MountRow: NSView {
                 link.toolTip = String(localized: "Show this folder on your Mac", comment: "Inspector, Mounts: tooltip")
                 details.append(link)
             } else {
-                details.append(ContainerInspectorView.small(text, color: .secondaryLabelColor))
+                details.append(ContainerInspectorView.small(text, color: InspectorColors.secondary))
             }
         case .volume:
             details.append(ContainerInspectorView.small(String(localized: "volume \(mount.name ?? mount.source)", comment: "Inspector, Mounts: a named volume"),
-                                                        color: .secondaryLabelColor))
+                                                        color: InspectorColors.secondary))
         case .tmpfs:
-            details.append(ContainerInspectorView.small(String(localized: "in memory", comment: "Inspector, Mounts: a tmpfs mount"), color: .secondaryLabelColor))
+            details.append(ContainerInspectorView.small(String(localized: "in memory", comment: "Inspector, Mounts: a tmpfs mount"), color: InspectorColors.secondary))
         case .other:
             break
         }
         if !mount.isWritable {
             details.append(ContainerInspectorView.small(String(localized: "read-only", comment: "Inspector, Mounts: the container can't change it"),
-                                                        color: .tertiaryLabelColor))
+                                                        color: InspectorColors.tertiary))
         }
         let detail = NSStackView(views: details)
         detail.orientation = .horizontal
@@ -381,7 +381,7 @@ final class LinkButton: NSButton {
         onClick = action
         super.init(frame: .zero)
         isBordered = false
-        attributedTitle = NSAttributedString(string: title, attributes: [.font: font, .foregroundColor: NSColor.linkColor])
+        attributedTitle = NSAttributedString(string: title, attributes: [.font: font, .foregroundColor: InspectorColors.link])
         alignment = .left
         lineBreakMode = .byTruncatingMiddle
         setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -480,7 +480,7 @@ final class ComposeInspectorView: NSView {
         let running = next.services.filter { $0.containers.contains(where: \.isRunning) }.count
         let total = next.services.count
         let accessory = ContainerInspectorView.small(String(localized: "\(running) of \(total) running", comment: "Inspector, Compose: how many services run"),
-                                                     color: .secondaryLabelColor)
+                                                     color: InspectorColors.secondary)
         let card = InspectorCard(id: "compose", title: "Compose", symbol: "square.stack.3d.up", content: content, accessory: accessory)
         stack.addArrangedSubview(card)
         card.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
@@ -566,15 +566,16 @@ private final class ServiceRow: NSView {
         let running = service.containers.contains(where: \.isRunning)
         let dot = NSImageView(image: NSImage(systemSymbolName: running ? "circle.fill" : "circle", accessibilityDescription: nil) ?? NSImage())
         dot.symbolConfiguration = .init(pointSize: 7, weight: .bold)
-        dot.contentTintColor = running ? .systemGreen : .tertiaryLabelColor
+        dot.contentTintColor = running ? InspectorColors.success : InspectorColors.tertiary
         dot.setAccessibilityElement(false)
         let name = NSTextField(labelWithString: service.name)
         name.font = .systemFont(ofSize: 12, weight: .medium)
+        name.textColor = InspectorColors.primary
         name.lineBreakMode = .byTruncatingTail
         var parts: [NSView] = [dot, name]
         if service.containers.isEmpty {
             parts.append(ContainerInspectorView.small(String(localized: "not created", comment: "Inspector, Compose: a service with no container yet"),
-                                                      color: .tertiaryLabelColor))
+                                                      color: InspectorColors.tertiary))
         }
         for container in service.containers {
             let link = LinkButton(container.name, font: .systemFont(ofSize: 11)) { open(container.id) }
@@ -599,7 +600,7 @@ private final class ServiceRow: NSView {
             let button = ActionButton("", symbol: ContainerControl.symbol(action)) { act(action, service.containers) }
             button.isBordered = false
             button.imagePosition = .imageOnly
-            button.contentTintColor = .secondaryLabelColor
+            button.contentTintColor = InspectorColors.secondary
             button.toolTip = ContainerControl.title(action)
             button.setAccessibilityLabel(ContainerControl.title(action) + " " + service.name)
             button.translatesAutoresizingMaskIntoConstraints = false

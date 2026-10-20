@@ -33,8 +33,8 @@ final class FolderNode {
     }
 }
 
-/// The sidebar's Folders mode: Home and every disk as a tree of folders, like a classic file manager's, then the Trash
-/// and (while an engine runs) Containers. It follows the folder you're in, opens a folder when you click it, takes drops
+/// The sidebar's Folders mode: Home and every disk as a tree of folders, servers, Containers and finally the Trash.
+/// It follows the folder you're in, opens a folder when you click it, takes drops
 /// (copy or move, like the list; onto the Trash, trashing) and springs folders open while dragging.
 ///
 /// Reading happens off the main thread. Rebuilding the tree (Show Hidden Files, coming back from Places) starts a new
@@ -92,6 +92,7 @@ final class FolderTreeController: NSViewController {
     override func loadView() {
         let scroll = NSScrollView()
         scroll.drawsBackground = false
+        ThemeStyle.bind(scroll, to: .sidebar)
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         let column = NSTableColumn(identifier: .init("main"))
@@ -99,6 +100,7 @@ final class FolderTreeController: NSViewController {
         outline.outlineTableColumn = column
         outline.headerView = nil
         outline.style = .sourceList
+        ThemeStyle.bind(outline, to: .sidebar)
         outline.rowSizeStyle = .default
         outline.focusRingType = .none
         outline.allowsEmptySelection = true
@@ -132,9 +134,9 @@ final class FolderTreeController: NSViewController {
 
     private static var trashSymbol: String { Trash.isHomeEmpty ? "trash" : "trash.fill" }
 
-    /// Home, then each disk (the startup disk as "/"), the Trash, and Containers while an engine runs. Nodes already in
+    /// Home, then each disk (the startup disk as "/"), servers, Containers while an engine runs, and the Trash. Nodes already in
     /// the tree are kept, so what's expanded stays expanded.
-    private func currentRoots() -> [FolderNode] {
+    func currentRoots(hasContainers: Bool = ContainerStore.shared.engine != nil) -> [FolderNode] {
         func reuse(_ url: URL, _ kind: FolderNode.Kind, _ make: () -> FolderNode) -> FolderNode {
             roots.first { $0.kind == kind && $0.url.fileViewKey == url.fileViewKey } ?? make()
         }
@@ -144,9 +146,6 @@ final class FolderTreeController: NSViewController {
             let url = volume.url.standardizedFileURL
             fresh.append(reuse(url, .folder) { FolderNode(url: url, title: volume.title, symbol: volume.symbol) })
         }
-        fresh.append(reuse(Trash.home, .trash) {
-            FolderNode(url: Trash.home, title: String(localized: "Trash", comment: "Sidebar item: the Trash"), symbol: Self.trashSymbol, kind: .trash)
-        })
         // Saved servers: each opens its files (its row's URL is its copy's top, named by its ID).
         for server in RemoteServers.all {
             let top = RemoteCopies.top(of: server.id)
@@ -156,12 +155,15 @@ final class FolderTreeController: NSViewController {
             fresh.append(node.title == server.name ? node
                 : FolderNode(url: top, title: server.name, symbol: node.symbol, kind: .server))
         }
-        if ContainerStore.shared.engine != nil {
+        if hasContainers {
             fresh.append(reuse(ContainerCopies.root, .containers) {
                 FolderNode(url: ContainerCopies.root, title: String(localized: "Containers", comment: "Sidebar section title: Docker containers"),
                            symbol: "shippingbox", kind: .containers)
             })
         }
+        fresh.append(reuse(Trash.home, .trash) {
+            FolderNode(url: Trash.home, title: String(localized: "Trash", comment: "Sidebar item: the Trash"), symbol: Self.trashSymbol, kind: .trash)
+        })
         return fresh
     }
 

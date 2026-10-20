@@ -119,6 +119,7 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
         stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         stack.translatesAutoresizingMaskIntoConstraints = false
         let container = NSView()
+        ThemeStyle.bind(container, to: .content)
         container.addSubview(stack)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -132,6 +133,7 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
             rulesStack.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
         ])
         view = container
+        ThemeStyle.refresh(container)
         showRuleControls()
         summary.stringValue = String(localized: "Reading \(urls.count) items…", comment: "plural")
         for (field, label) in [(find, String(localized: "Find", comment: "Batch rename field: the text to replace in names")),
@@ -208,6 +210,7 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
         }
         // Format keeps extensions ({name} is the name without one).
         includeExtension.isHidden = RenameRules.Mode(rawValue: mode.indexOfSelectedItem) == .format
+        ThemeStyle.refresh(rulesStack, includingInputs: true)
     }
 
     /// The first thing to type into for the shown rule.

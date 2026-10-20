@@ -129,12 +129,14 @@ final class SidebarViewController: NSViewController {
         menu.delegate = self
         outline.menu = menu
         scroll.documentView = outline
+        ThemeStyle.bind(scroll, to: .sidebar)
+        ThemeStyle.bind(outline, to: .sidebar)
         tree.onSelect = { [weak self] target in self?.onSelect?(target) }
         tree.onTrash = { [weak self] urls in self?.moveToTrash(urls) }
         tree.canTrash = { urls in Self.canTrash(urls) }
         tree.onOpenInNewTab = { [weak self] url in self?.onOpenInNewTab?(url) }
         addChild(tree)
-        let container = NSView()
+        let container = ThemeSurfaceView()
         for child in [scroll, tree.view] {
             child.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(child)
@@ -501,7 +503,9 @@ final class SidebarRowView: NSTableRowView {
     override func drawSelection(in dirtyRect: NSRect) {
         guard selectionHighlightStyle != .none else { return }
         let rect = bounds.insetBy(dx: 10, dy: 1)
-        NSColor.labelColor.withAlphaComponent(effectiveAppearance.isHighContrast ? 0.25 : 0.1).setFill()
+        let ink: NSColor = ThemeStyle.options.palette == .system || ThemeStyle.highContrast || effectiveAppearance.isHighContrast
+            ? .labelColor : ThemeStyle.accent
+        ink.withAlphaComponent(ThemeStyle.highContrast || effectiveAppearance.isHighContrast ? 0.25 : 0.1).setFill()
         NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8).fill()
     }
 }
@@ -513,8 +517,8 @@ final class SidebarCellView: NSTableCellView {
 
     /// Explicit colors: the source-list style recolors the semantic label color with the accent on selection.
     /// Fully opaque with Increase Contrast.
-    private static let ink = NSColor.ink(light: 0.85, dark: 0.9)
-    private static let iconInk = NSColor.ink(light: 0.6, dark: 0.75)
+    private static let ink = ThemeStyle.panelLabel
+    private static let iconInk = ThemeStyle.panelIcon
 
     override init(frame: NSRect) {
         super.init(frame: frame)

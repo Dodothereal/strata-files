@@ -51,7 +51,7 @@ final class SearchScopeBar: NSSplitViewItemAccessoryViewController {
         // the pane (and the window) wider. It's laid out even while hidden.
         stack.setVisibilityPriority(.detachOnlyIfNecessary, for: matchCase)
         stack.setClippingResistancePriority(.defaultLow, for: .horizontal)
-        let container = NSView()
+        let container = ThemeAccessoryView()
         container.addSubview(stack)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),

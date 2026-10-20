@@ -44,7 +44,7 @@ struct PaletteItem {
 
 /// ⌘K: a floating glass panel that fuzzy-searches folders you visit, items in this folder, and every command.
 final class CommandPalette: NSObject {
-    private let panel: PalettePanel
+    let panel: PalettePanel
     private let field = NSTextField()
     private let table = NSTableView()
     private let scroll = NSScrollView()
@@ -94,12 +94,7 @@ final class CommandPalette: NSObject {
 
     func show(in window: NSWindow, items: [PaletteItem]) {
         parent = window
-        ranker.source = items
-        field.stringValue = ""
-        pendingUpdate?.cancel()
-        shownRows = []
-        listRows = 0
-        update()
+        prepare(items: items)
         let frame = window.frame
         let height = panel.frame.height
         // The glass's top edge 110 points below the window's; the panel holds a margin for the shadow around it.
@@ -116,6 +111,17 @@ final class CommandPalette: NSObject {
         }
     }
 
+    /// Refresh the cached panel before showing it; this also works without ordering a window.
+    func prepare(items: [PaletteItem]) {
+        ranker.source = items
+        field.stringValue = ""
+        pendingUpdate?.cancel()
+        shownRows = []
+        listRows = 0
+        update()
+        if let content = panel.contentView { ThemeStyle.refresh(content) }
+    }
+
     func close() {
         guard panel.isVisible else { return }
         parent?.removeChildWindow(panel)
@@ -130,6 +136,7 @@ final class CommandPalette: NSObject {
         let glass = chrome.glass
 
         let content = NSView()
+        ThemeStyle.bind(content, to: .content)
         let icon = NSImageView(image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)!)
         icon.symbolConfiguration = .init(pointSize: 18, weight: .medium)
         icon.contentTintColor = .secondaryLabelColor
@@ -305,12 +312,14 @@ extension CommandPalette: NSTextFieldDelegate, NSWindowDelegate {
 }
 
 extension CommandPalette: NSTableViewDataSource, NSTableViewDelegate {
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { PaletteRowView() }
     func numberOfRows(in tableView: NSTableView) -> Int { results.count }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let id = NSUserInterfaceItemIdentifier("PaletteCell")
         let cell = tableView.makeView(withIdentifier: id, owner: nil) as? PaletteCell ?? {
             let cell = PaletteCell()
+            cell.usesTheme = true
             cell.identifier = id
             return cell
         }()
@@ -333,7 +342,8 @@ final class PalettePanel: NSPanel {
 
 /// A palette row: icon, title (fuzzy matches highlighted), subtitle, and its kind or shortcut. The Dock's search box
 /// shows the same rows.
-final class PaletteCell: NSTableCellView {
+final class PaletteCell: NSTableCellView, ColorThemeUpdating {
+    var usesTheme = false
     private let icon = NSImageView()
     private let title = NSTextField(labelWithString: "")
     private let subtitle = NSTextField(labelWithString: "")
@@ -413,7 +423,7 @@ final class PaletteCell: NSTableCellView {
         }
         for i in matches where i < characters.count {
             text.addAttributes([.font: NSFont.systemFont(ofSize: 14, weight: .bold),
-                                .foregroundColor: selected ? primary : NSColor.controlAccentColor],
+                                .foregroundColor: selected ? primary : (usesTheme ? ThemeStyle.accent : NSColor.controlAccentColor)],
                                range: NSRange(location: offsets[i], length: characters[i].utf16.count))
         }
         title.attributedStringValue = text
@@ -424,6 +434,21 @@ final class PaletteCell: NSTableCellView {
         titleCentered.isActive = item.subtitle.isEmpty
         accessory.stringValue = item.shortcut ?? item.kind.label
         accessory.textColor = selected ? secondary : .tertiaryLabelColor
+    }
+
+    func updateColorTheme() { if usesTheme { render() } }
+}
+
+/// The search field keeps focus, so results use a quiet selection with normal label ink.
+final class PaletteRowView: NSTableRowView {
+    override func drawSelection(in dirtyRect: NSRect) {
+        guard ThemeStyle.options.palette != .system, !ThemeStyle.highContrast, !effectiveAppearance.isHighContrast else {
+            super.drawSelection(in: dirtyRect)
+            return
+        }
+        guard selectionHighlightStyle != .none else { return }
+        ThemeStyle.iconSelection.setFill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 1), xRadius: 4, yRadius: 4).fill()
     }
 }
 

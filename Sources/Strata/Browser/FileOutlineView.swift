@@ -17,6 +17,11 @@ final class FileOutlineView: NSOutlineView {
     var onNameClick: ((Int) -> Void)?
     private let clickToRename = ClickToRename()
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        ThemeStyle.refreshHeaderAppearance(in: self)
+    }
+
     override func mouseDown(with event: NSEvent) {
         // The name is the outline column's (the one with the disclosure triangles).
         let nameColumn = outlineTableColumn.map { column(withIdentifier: $0.identifier) } ?? -1

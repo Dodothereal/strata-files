@@ -2,7 +2,7 @@ import AppKit
 
 /// An item's iCloud (or File Provider) state, the way Finder shows it: a cloud for items only in the cloud, arrows
 /// while they move. Items that are here show nothing.
-final class CloudBadge: NSImageView {
+final class CloudBadge: NSImageView, ColorThemeUpdating {
     var status: CloudStatus? {
         didSet {
             guard status != oldValue else { return }
@@ -18,7 +18,11 @@ final class CloudBadge: NSImageView {
 
     /// Set from the cell's, so the badge turns white on a selected row.
     var backgroundStyle: NSView.BackgroundStyle = .normal {
-        didSet { contentTintColor = backgroundStyle == .emphasized ? .alternateSelectedControlTextColor : .secondaryLabelColor }
+        didSet { updateColorTheme() }
+    }
+
+    func updateColorTheme() {
+        contentTintColor = backgroundStyle == .emphasized ? ThemeStyle.selectedText : .secondaryLabelColor
     }
 
     /// Over an icon (Icons view) the badge sits on a small plate in the window's background color, so it reads on any

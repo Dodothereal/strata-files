@@ -97,6 +97,8 @@ extension BrowserViewController {
                 active.view.topAnchor.constraint(equalTo: inset ? view.safeAreaLayoutGuide.topAnchor : view.topAnchor),
                 active.view.bottomAnchor.constraint(equalTo: inset ? view.safeAreaLayoutGuide.bottomAnchor : view.bottomAnchor),
             ])
+            // A cached view may have been detached when the palette changed.
+            ThemeStyle.refresh(active.view)
         }
         outlineScrollView.isHidden = true
     }

@@ -99,7 +99,7 @@ final class ProjectInspectorView: NSView {
     }
 
     private func buildGit(_ git: ProjectGitSummary) {
-        let upstream = git.branch.upstream.map { label($0, size: 11, color: .tertiaryLabelColor) }
+        let upstream = git.branch.upstream.map { label($0, size: 11, color: InspectorColors.tertiary) }
         upstream?.lineBreakMode = .byTruncatingHead
         let content = section()
         fillGit(git, into: content)
@@ -117,9 +117,9 @@ final class ProjectInspectorView: NSView {
         let items = FlowView(spacing: 12, lineSpacing: 4)
         let counts = git.counts
         if git.outcome == .timedOut {
-            items.add(StatusItem(nil, String(localized: "Status timed out", comment: "Git status didn't finish in time"), color: .tertiaryLabelColor))
+            items.add(StatusItem(nil, String(localized: "Status timed out", comment: "Git status didn't finish in time"), color: InspectorColors.tertiary))
         } else if case .failed = git.outcome {
-            items.add(StatusItem(nil, String(localized: "Status unavailable", comment: "Git status couldn't be read"), color: .tertiaryLabelColor))
+            items.add(StatusItem(nil, String(localized: "Status unavailable", comment: "Git status couldn't be read"), color: InspectorColors.tertiary))
         } else if counts.isClean {
             items.add(StatusItem(symbol: "checkmark.circle", git.isRepositoryRoot ? String(localized: "Working tree clean", comment: "Git: no uncommitted changes")
                 : String(localized: "No changes in this folder", comment: "Git: no uncommitted changes inside the selected folder")))
@@ -142,7 +142,7 @@ final class ProjectInspectorView: NSView {
     }
 
     private func buildArtifacts(_ artifacts: [ProjectArtifact]) {
-        let total = label("", size: 11, color: .secondaryLabelColor, monospacedDigits: true)
+        let total = label("", size: 11, color: InspectorColors.secondary, monospacedDigits: true)
         artifactsTotalLabel = total
         let content = section()
         for artifact in artifacts {
@@ -179,7 +179,7 @@ final class ProjectInspectorView: NSView {
             let group = scripts.filter { $0.source == source }
             if sources.count > 1, shown < limit {
                 let title = source == "package.json" ? "package.json · \(group[0].runner.rawValue)" : source
-                add(inset(label(title, size: 10.5, weight: .medium, color: .tertiaryLabelColor), by: ScriptRow.inset), to: content, spacingAfter: 2)
+                add(inset(label(title, size: 10.5, weight: .medium, color: InspectorColors.tertiary), by: ScriptRow.inset), to: content, spacingAfter: 2)
             }
             for script in group where shown < limit {
                 let row = ScriptRow(script)
@@ -194,15 +194,15 @@ final class ProjectInspectorView: NSView {
                                 action: #selector(showMoreScripts))
             more.isBordered = false
             more.font = .systemFont(ofSize: 11, weight: .medium)
-            more.contentTintColor = .controlAccentColor
+            more.contentTintColor = InspectorColors.accent
             more.attributedTitle = NSAttributedString(string: more.title, attributes: [
-                .font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: NSColor.controlAccentColor,
+                .font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: InspectorColors.accent,
             ])
             add(inset(more, by: ScriptRow.inset - 1), to: content)
         }
         addCard(id: "scripts", title: String(localized: "Scripts", comment: "Inspector section title: runnable project scripts"),
                 symbol: "terminal", content: content,
-                accessory: sources.count == 1 && !runnerName.isEmpty ? label(runnerName, size: 11, color: .tertiaryLabelColor) : nil)
+                accessory: sources.count == 1 && !runnerName.isEmpty ? label(runnerName, size: 11, color: InspectorColors.tertiary) : nil)
     }
 
     // MARK: - Artifacts state
@@ -393,13 +393,13 @@ private final class KindChip: NSView {
 
     init(_ info: ProjectKindInfo) {
         symbol = NSImage(systemSymbolName: info.kind.symbolName, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 11, weight: .medium).applying(.init(paletteColors: [.secondaryLabelColor])))
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .medium).applying(.init(paletteColors: [InspectorColors.secondary])))
         let text = NSMutableAttributedString(string: info.kind.title, attributes: [
-            .font: NSFont.systemFont(ofSize: 11.5, weight: .medium), .foregroundColor: NSColor.labelColor,
+            .font: NSFont.systemFont(ofSize: 11.5, weight: .medium), .foregroundColor: InspectorColors.primary,
         ])
         if let detail = info.detail {
             text.append(NSAttributedString(string: "  " + detail, attributes: [
-                .font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: NSColor.secondaryLabelColor,
+                .font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: InspectorColors.secondary,
             ]))
         }
         self.text = text
@@ -419,7 +419,7 @@ private final class KindChip: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        NSColor.labelColor.withAlphaComponent(dark ? 0.10 : 0.06).setFill()
+        InspectorColors.primary.withAlphaComponent(dark ? 0.10 : 0.06).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
         if let symbol {
             let s = symbol.size
@@ -457,7 +457,7 @@ private final class BranchLine: NSView {
     override func draw(_ dirtyRect: NSRect) {
         // The card's header already shows the branch symbol; a detached HEAD gets its own.
         let symbol = git.branch.isDetached ? NSImage(systemSymbolName: "smallcircle.filled.circle", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 13, weight: .medium).applying(.init(paletteColors: [.secondaryLabelColor]))) : nil
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .medium).applying(.init(paletteColors: [InspectorColors.secondary]))) : nil
         var x: CGFloat = 0
         if let symbol {
             let s = symbol.size
@@ -471,12 +471,12 @@ private final class BranchLine: NSView {
         if git.branch.behind > 0 { counts.append("↓\(git.branch.behind)") }
         if !counts.isEmpty {
             trailing.append(NSAttributedString(string: counts.joined(separator: " "), attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.secondaryLabelColor,
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium), .foregroundColor: InspectorColors.secondary,
             ]))
         }
         if let operation = git.operation {
             trailing.append(NSAttributedString(string: operation.title.uppercased(), attributes: [
-                .font: NSFont.systemFont(ofSize: 10, weight: .semibold), .foregroundColor: GitColors.conflicted, .kern: 0.4,
+                .font: NSFont.systemFont(ofSize: 10, weight: .semibold), .foregroundColor: InspectorColors.conflict, .kern: 0.4,
             ]))
         }
         let trailingWidth = trailing.reduce(0) { $0 + ceil($1.size().width) + 8 }
@@ -485,7 +485,7 @@ private final class BranchLine: NSView {
         let font = git.branch.isDetached ? NSFont.monospacedSystemFont(ofSize: 12.5, weight: .semibold)
             : NSFont.systemFont(ofSize: 13, weight: .semibold)
         let name = NSAttributedString(string: git.branch.displayName, attributes: [
-            .font: font, .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraph,
+            .font: font, .foregroundColor: InspectorColors.primary, .paragraphStyle: paragraph,
         ])
         let nameSize = name.size()
         let nameWidth = min(ceil(nameSize.width), bounds.width - x - trailingWidth)
@@ -501,12 +501,12 @@ private final class BranchLine: NSView {
 }
 
 /// "● 3 modified": a colored dot (or a small symbol) and a count.
-private final class StatusItem: NSView {
+final class StatusItem: NSView {
     private let dot: NSColor?
     private let symbol: NSImage?
-    private let text: NSAttributedString
+    let text: NSAttributedString
 
-    init(_ dot: NSColor?, _ title: String, color: NSColor = .secondaryLabelColor) {
+    init(_ dot: NSColor?, _ title: String, color: NSColor = InspectorColors.secondary) {
         self.dot = dot
         symbol = nil
         text = NSAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: color])
@@ -517,9 +517,9 @@ private final class StatusItem: NSView {
     init(symbol name: String, _ title: String) {
         dot = nil
         symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 10.5, weight: .medium).applying(.init(paletteColors: [.secondaryLabelColor])))
+            .withSymbolConfiguration(.init(pointSize: 10.5, weight: .medium).applying(.init(paletteColors: [InspectorColors.secondary])))
         text = NSAttributedString(string: title, attributes: [
-            .font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: NSColor.secondaryLabelColor,
+            .font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: InspectorColors.secondary,
         ])
         super.init(frame: .zero)
         configureAccessibility(title)
@@ -561,21 +561,21 @@ private final class ArtifactRow: NSView {
     var onToggle: ((Bool) -> Void)?
     private let checkbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let nameLabel: NSTextField
-    private let sizeLabel = label("", size: 11, color: .secondaryLabelColor, monospacedDigits: true)
+    private let sizeLabel = label("", size: 11, color: InspectorColors.secondary, monospacedDigits: true)
     private let spinner = NSProgressIndicator()
 
     init(_ artifact: ProjectArtifact, selected: Bool) {
         let name = NSMutableAttributedString(string: artifact.name, attributes: [
-            .font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.labelColor,
+            .font: NSFont.systemFont(ofSize: 12), .foregroundColor: InspectorColors.primary,
         ])
         if artifact.urls.count > 1 {
             name.append(NSAttributedString(string: "  ×\(artifact.urls.count)", attributes: [
-                .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.tertiaryLabelColor,
+                .font: NSFont.systemFont(ofSize: 11), .foregroundColor: InspectorColors.tertiary,
             ]))
         }
         if artifact.role == .environment {
             name.append(NSAttributedString(string: "  " + String(localized: "environment", comment: "Note after a build folder's name: it's a virtual environment"), attributes: [
-                .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.tertiaryLabelColor,
+                .font: NSFont.systemFont(ofSize: 11), .foregroundColor: InspectorColors.tertiary,
             ]))
         }
         nameLabel = NSTextField(labelWithAttributedString: name)
@@ -655,17 +655,17 @@ private final class ScriptRow: NSView {
     init(_ script: ProjectScript) {
         self.script = script
         super.init(frame: .zero)
-        let name = label(script.name, size: 12, weight: .medium, color: .labelColor)
+        let name = label(script.name, size: 12, weight: .medium, color: InspectorColors.primary)
         // Prose (## help, doc comments) in the text font; commands monospaced.
-        let command = script.summary.map { label($0, size: 11, color: .secondaryLabelColor) }
-            ?? label(script.command.isEmpty ? script.invocation : script.command, size: 10.5, color: .secondaryLabelColor,
+        let command = script.summary.map { label($0, size: 11, color: InspectorColors.secondary) }
+            ?? label(script.command.isEmpty ? script.invocation : script.command, size: 10.5, color: InspectorColors.secondary,
                      monospaced: true)
         command.lineBreakMode = .byTruncatingTail
         runButton.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: String(localized: "Run \(script.name) in Terminal"))
         runButton.symbolConfiguration = .init(pointSize: 9, weight: .bold)
         runButton.isBordered = false
         runButton.imagePosition = .imageOnly
-        runButton.contentTintColor = .secondaryLabelColor
+        runButton.contentTintColor = InspectorColors.secondary
         runButton.target = self
         runButton.action = #selector(runClicked)
         runButton.toolTip = String(localized: "Run “\(script.invocation)” in Terminal", comment: "Tooltip; the placeholder is a shell command")
@@ -701,7 +701,7 @@ private final class ScriptRow: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard hovering else { return }
-        NSColor.labelColor.withAlphaComponent(0.06).setFill()
+        InspectorColors.primary.withAlphaComponent(0.06).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
     }
 
@@ -718,7 +718,7 @@ private final class ScriptRow: NSView {
 
     private func setHover(_ on: Bool) {
         hovering = on
-        runButton.contentTintColor = on ? .controlAccentColor : .secondaryLabelColor
+        runButton.contentTintColor = on ? InspectorColors.accent : InspectorColors.secondary
         needsDisplay = true
     }
 

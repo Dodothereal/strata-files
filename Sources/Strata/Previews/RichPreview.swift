@@ -61,6 +61,8 @@ nonisolated enum PreviewFormat: Sendable {
             self = .code(Language(name: contentType.localizedDescription ?? String(localized: "Source", comment: "Fallback name of a source code file type"), lexer: .plain))
         } else if contentType?.conforms(to: .json) == true {
             self = .json
+        } else if let contentType, contentType.conforms(to: .plainText) {
+            self = .code(Language(name: contentType.localizedDescription ?? String(localized: "Source", comment: "Fallback name of a source code file type"), lexer: .plain))
         } else {
             return nil
         }

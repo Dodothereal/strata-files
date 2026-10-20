@@ -67,7 +67,7 @@ final class PaneHostViewController: NSViewController {
     private let header = PaneHeaderView()
     private let status = NSTextField(labelWithString: "")
     private let statusBar = NSView()
-    private var underRoot: NSLayoutConstraint?
+    private var underToolbar: NSLayoutConstraint?
     private var underHeader: NSLayoutConstraint?
     private var aboveBottom: NSLayoutConstraint?
     private var aboveStatus: NSLayoutConstraint?
@@ -81,11 +81,15 @@ final class PaneHostViewController: NSViewController {
 
     override func loadView() {
         let root = NSView()
+        ThemeStyle.bind(root, to: .content)
+        ThemeStyle.bind(header, to: .content)
+        ThemeStyle.bind(statusBar, to: .content)
         addChild(browser)
         header.translatesAutoresizingMaskIntoConstraints = false
         header.isHidden = true
         header.onClick = { [weak self] in self?.onActivate?() }
         browser.view.translatesAutoresizingMaskIntoConstraints = false
+        browser.view.clipsToBounds = true
         status.font = .systemFont(ofSize: 11)
         status.textColor = .secondaryLabelColor
         status.alignment = .center
@@ -126,10 +130,10 @@ final class PaneHostViewController: NSViewController {
         aboveBottom = browser.view.bottomAnchor.constraint(equalTo: root.bottomAnchor)
         aboveStatus = browser.view.bottomAnchor.constraint(equalTo: statusBar.topAnchor)
         aboveBottom?.isActive = true
-        // Single pane: the list scrolls under the toolbar. Dual: it starts below the pane's header.
-        underRoot = browser.view.topAnchor.constraint(equalTo: root.topAnchor)
+        // Clip scrolling files below the toolbar instead of letting them show through gaps in its native glass.
+        underToolbar = browser.view.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor)
         underHeader = browser.view.topAnchor.constraint(equalTo: header.bottomAnchor)
-        underRoot?.isActive = true
+        underToolbar?.isActive = true
         view = root
     }
 
@@ -145,7 +149,7 @@ final class PaneHostViewController: NSViewController {
         loadViewIfNeeded()
         header.isHidden = !visible
         header.configure(title: title, symbol: symbol, active: active)
-        hold(visible ? underHeader : underRoot, over: visible ? underRoot : underHeader)
+        hold(visible ? underHeader : underToolbar, over: visible ? underToolbar : underHeader)
     }
 
     /// Switches from one of two contradicting constraints to the other, letting go of the old one first: with both
@@ -156,7 +160,7 @@ final class PaneHostViewController: NSViewController {
     }
 }
 
-private final class PaneHeaderView: NSVisualEffectView {
+private final class PaneHeaderView: NSVisualEffectView, ColorThemeUpdating {
     var onClick: (() -> Void)?
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
@@ -200,7 +204,7 @@ private final class PaneHeaderView: NSVisualEffectView {
                                      : String(localized: "\(title), pane", comment: "Accessibility: the pane header; where the pane is"))
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         label.textColor = active ? .labelColor : .secondaryLabelColor
-        icon.contentTintColor = active ? .controlAccentColor : .tertiaryLabelColor
+        icon.contentTintColor = active ? ThemeStyle.accent : .tertiaryLabelColor
         isActive = active
         updateUnderline()
     }
@@ -209,8 +213,13 @@ private final class PaneHeaderView: NSVisualEffectView {
 
     private func updateUnderline() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            underline.layer?.backgroundColor = isActive ? NSColor.controlAccentColor.cgColor : NSColor.separatorColor.cgColor
+            underline.layer?.backgroundColor = isActive ? ThemeStyle.accent.cgColor : NSColor.separatorColor.cgColor
         }
+    }
+
+    func updateColorTheme() {
+        icon.contentTintColor = isActive ? ThemeStyle.accent : .tertiaryLabelColor
+        updateUnderline()
     }
 
     /// Light or dark changed: the line's color is worked out again (a layer keeps the old one).

@@ -22,6 +22,7 @@ scripts/build.sh debug                  # build/Strata.app (release: scripts/bui
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 python3 scripts/localize.py extract     # after editing Swift files: regenerates Localization/en.json
 python3 scripts/localize.py check --all --complete  # every supported language must be complete
+python3 scripts/audit-theme-colors.py    # no unreviewed surface colors or unthemed Inspector gray text
 ```
 
 - `swift test` needs Xcode's toolchain: the Command Line Tools fail with "no such module 'Testing'".
@@ -36,6 +37,27 @@ python3 scripts/localize.py check --all --complete  # every supported language m
 - CI on every push: **CI** (build + `swift test`), **Translations** (complete catalogs and `en.json` matches the code).
   Tags run **Release**, which repeats extraction, completeness and localization regression tests before importing
   signing credentials, signing or publishing. Do not bypass this gate or release with incomplete translations.
+- UI backgrounds and borders use `ThemeStyle`. The regular `swift test` suite and CI also run the color audit.
+  `python3 scripts/audit-theme-colors.py --list` inventories direct colors. Only deliberate native defaults, semantic
+  artwork and document colors belong in `Tests/theme-colors.json`, with an exact use count and a reviewed reason;
+  missing or stale exceptions fail. Do not add an exception to silence an unthemed surface. This source check cannot
+  see AppKit's implicit gray materials: keep headless rendered and layout coverage for complete windows and views.
+- Keep AppKit in charge of toolbar controls, panel corners, material masks and focus. Color owned canvases beneath
+  native chrome and use glass's public tint; do not insert paint overlays inside native visual-effect materials.
+  Check the full native accessory padding, not just the smaller label container. Keep the native scroll-edge
+  preference when clipping the file viewport already prevents content from entering the toolbar.
+- Inspector text uses `InspectorColors`, including cached attributed strings in Git, Scripts and container cards.
+  Keep at least 4.5:1 rendered text contrast against every light/dark panel palette, and preserve native colors for
+  System and Increase Contrast. Recolor existing cards without rebuilding them or changing selections.
+- `NativeHeaderFillTint` is a guarded compatibility adapter, not a public AppKit tint API. It supports only the
+  active/inactive titlebar layer signatures observed on macOS 26. Match structure, not the OS version: later macOS
+  versions can retain it. Unknown structures or non-neutral fills must retain native drawing. Never change blur,
+  opacity, masks, filters or controls to force a match. Keep native-layer tests for changed signatures, and visually
+  check new macOS releases. `ToolbarBackdropTint.prepare` recognizes known header sections at the titlebar edge. Preserve
+  their original colors across the window/full-screen move; never extend this lookup into arbitrary content.
+- An unshown window cannot verify AppKit's live full-screen compositor. Report headless layout/drawing checks
+  separately from visual confirmation in a focused, unfocused or full-screen window; never treat an empty bitmap
+  or a borderless fixture as proof of the real full-screen appearance.
 
 ## Destructive actions: full test coverage is required
 

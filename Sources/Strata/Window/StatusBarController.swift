@@ -5,7 +5,7 @@ final class StatusBarController: NSSplitViewItemAccessoryViewController {
     private let label = NSTextField(labelWithString: "")
 
     override func loadView() {
-        let container = NSView()
+        let container = ThemeAccessoryView()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = .systemFont(ofSize: 11)
         label.textColor = .secondaryLabelColor

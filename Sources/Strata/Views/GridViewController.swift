@@ -57,6 +57,7 @@ final class GridViewController: NSViewController, FileCollectionController {
         cv.allowsMultipleSelection = true
         cv.allowsEmptySelection = true
         cv.backgroundColors = [.controlBackgroundColor]
+        ThemeStyle.bind(cv, to: .content)
         cv.register(GridItem.self, forItemWithIdentifier: GridItem.identifier)
         cv.registerForDraggedTypes(FileDrop.types)
         cv.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
@@ -69,6 +70,7 @@ final class GridViewController: NSViewController, FileCollectionController {
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = true
         scrollView.backgroundColor = .controlBackgroundColor
+        ThemeStyle.bind(scrollView, to: .content)
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
         dropHighlight.translatesAutoresizingMaskIntoConstraints = false
@@ -648,7 +650,7 @@ final class DropHighlightView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1.5, dy: 1.5), xRadius: 10, yRadius: 10)
         path.lineWidth = 3
-        NSColor.controlAccentColor.withAlphaComponent(0.7).setStroke()
+        ThemeStyle.accent.withAlphaComponent(0.7).setStroke()
         path.stroke()
     }
 }

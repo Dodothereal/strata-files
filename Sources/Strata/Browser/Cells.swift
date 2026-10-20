@@ -1,7 +1,7 @@
 import AppKit
 
 /// Icon + file name, with fuzzy-match characters highlighted while filtering.
-final class NameCellView: NSTableCellView {
+final class NameCellView: NSTableCellView, ColorThemeUpdating {
     /// The icon's side, in points.
     static let iconSide: CGFloat = 18
 
@@ -114,7 +114,7 @@ final class NameCellView: NSTableCellView {
 
     private func render() {
         let selected = backgroundStyle == .emphasized
-        var color: NSColor = selected ? .alternateSelectedControlTextColor : .labelColor
+        var color: NSColor = selected ? ThemeStyle.selectedText : .labelColor
         if dimmed { color = color.withAlphaComponent(0.5) }
         let font = FileViewStyle.nameFont
         // The field's own font too: renaming edits at the size the name is shown.
@@ -128,7 +128,7 @@ final class NameCellView: NSTableCellView {
         let text = NSMutableAttributedString(string: name, attributes: [.font: font, .foregroundColor: color, .paragraphStyle: paragraph])
         if !matches.isEmpty {
             let bold = FileViewStyle.nameBoldFont
-            let highlight: NSColor = selected ? color : .controlAccentColor
+            let highlight: NSColor = selected ? color : ThemeStyle.accent
             let characters = Array(name)
             var utf16Offset = 0
             var offsets: [Int] = []
@@ -143,10 +143,12 @@ final class NameCellView: NSTableCellView {
         }
         label.attributedStringValue = text
     }
+
+    func updateColorTheme() { render() }
 }
 
 /// Secondary-colored text for the metadata columns.
-final class TextCellView: NSTableCellView {
+final class TextCellView: NSTableCellView, ColorThemeUpdating {
     private let label = NSTextField(labelWithString: "")
     private var dimmed = false
 
@@ -180,9 +182,11 @@ final class TextCellView: NSTableCellView {
 
     private func updateColor() {
         let selected = backgroundStyle == .emphasized
-        let base: NSColor = selected ? .alternateSelectedControlTextColor.withAlphaComponent(0.85) : .secondaryLabelColor
+        let base: NSColor = selected ? ThemeStyle.selectedText.withAlphaComponent(0.85) : .secondaryLabelColor
         label.textColor = dimmed ? base.withAlphaComponent(0.5) : base
     }
+
+    func updateColorTheme() { updateColor() }
 }
 
 /// A header row above a group of files: icon, a bold title and a secondary detail.

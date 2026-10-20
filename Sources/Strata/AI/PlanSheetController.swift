@@ -65,6 +65,7 @@ final class PlanSheetController: NSViewController {
         sheet.minSize = NSSize(width: 560, height: 420)
         sheet.contentViewController = controller
         sheet.setContentSize(size)
+        ThemeStyle.bind(sheet)
         window.beginSheet(sheet)
         controller.start(instruction: instruction)
         return controller
@@ -96,6 +97,7 @@ final class PlanSheetController: NSViewController {
 
     override func loadView() {
         let root = NSView(frame: NSRect(origin: .zero, size: Self.size))
+        ThemeStyle.bind(root, to: .content)
 
         let icon = AppIconBadge()
         let title = NSTextField(labelWithString: String(localized: "Ask Strata", comment: "Title of the sheet where you describe a change for the selected files"))
@@ -219,6 +221,7 @@ final class PlanSheetController: NSViewController {
         ])
         well.setContentHuggingPriority(.defaultLow, for: .vertical)
         view = root
+        ThemeStyle.refresh(root)
         render()
     }
 
@@ -675,8 +678,8 @@ final class WellView: NSView {
 
     override func updateLayer() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
-            layer?.borderColor = NSColor.separatorColor.cgColor
+            layer?.backgroundColor = ThemeStyle.surface(.content).cgColor
+            layer?.borderColor = ThemeStyle.border.cgColor
         }
         layer?.borderWidth = 0.5
     }

@@ -73,6 +73,15 @@ with a keystroke, or compare and sync them.
   </tr>
 </table>
 
+## Your colors. Still your Mac.
+
+Choose **System** for the Mac’s own colors, or one of eight presets: **Graphite, Blue, Green, Purple, Sand, Teal,
+Rose and Amber**. Each has a light and dark palette, with coordinated colors across the file views, sidebar,
+inspector, toolbar and secondary windows. Native macOS controls and familiar behavior stay intact.
+
+Find them in **Settings ▸ Appearance ▸ Color theme**. Turn **Window tint** off to keep native backgrounds while
+using the palette for selections and accents. You can also adjust row density and the size of file names.
+
 ## Made for developers
 
 Strata knows your projects. Every file shows its git status, the current branch sits in the path bar, and the
@@ -113,7 +122,7 @@ there; an S3 secret key stays in your keychain.
 | **Network shares** | Connect to SMB, AFP, NFS and WebDAV shares (⌥⌘K), with macOS's own login and your keychain; SFTP servers and S3 buckets are covered above. |
 | **Cloud folders** | See what's only in iCloud Drive or another cloud folder, with Download Now and Remove Download. |
 | **Compare and sync** | Compare the two panes' folders and sync them both ways, one way, or as a mirror, verified and undoable. |
-| **Your shortcuts, your look** | Change any menu shortcut in Settings, and pick light or dark, row density and the size of file names. |
+| **Your shortcuts, your look** | Change any menu shortcut in Settings. Choose a color theme in light or dark mode, adjust row density and set the size of file names. |
 | **Copy queue** | Big copies run in the background with progress you can pause, resume or cancel. Conflicts are asked up front, with a side-by-side comparison and a diff for text files, and folders can be merged. Turn on **Verify copies** in Settings to check that every byte arrived. Moves between disks keep the original if it changed while copying. |
 | **History** | Renames, moves, copies and deletions are recorded. Undo them later, even days later and after a restart, as long as the items are still where they were left. |
 | **Recents** | Files you changed in the last 7 days, across your home folder, in one place. |

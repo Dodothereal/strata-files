@@ -4,7 +4,7 @@ import CoreText
 /// How an icon cell is highlighted.
 struct GridItemState: Equatable {
     var selected = false
-    /// Accent-colored name capsule when the grid has focus in the key window; gray otherwise.
+    /// The stronger selection color when the grid has focus in the key window.
     var emphasized = false
     var dropTarget = false
     var dimmed = false
@@ -12,7 +12,7 @@ struct GridItemState: Equatable {
 
 /// One icon cell: thumbnail/icon in a rounded selection box, a two-line middle-truncated name in a capsule, and an
 /// optional detail line. Text and highlights are drawn; the image is an image view so thumbnails can crossfade in.
-final class GridItemView: NSView {
+final class GridItemView: NSView, ColorThemeUpdating {
     let imageView = NSImageView()
     /// Git status, at the icon's top-right corner.
     let gitBadge = GitStatusBadge()
@@ -53,6 +53,16 @@ final class GridItemView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    func updateColorTheme() {
+        linesKey = ""
+        needsDisplay = true
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateColorTheme()
+    }
 
     // The collection view selects, rubber-bands and drags from the view hit-testing returns. Subviews (the icon, the
     // badges) must not take the click. Returning nil makes a click on the icon look like empty space, so only a drag
@@ -201,7 +211,7 @@ final class GridItemView: NSView {
     // MARK: Drawing
 
     private var textColor: NSColor {
-        let base: NSColor = state.selected && state.emphasized ? .alternateSelectedControlTextColor : .labelColor
+        let base: NSColor = state.selected && state.emphasized ? ThemeStyle.selectedText : .labelColor
         return state.dimmed ? base.withAlphaComponent(0.5) : base
     }
 
@@ -232,7 +242,7 @@ final class GridItemView: NSView {
         guard key != linesKey else { return }
         linesKey = key
         let color = textColor
-        let highlight: NSColor = state.selected && state.emphasized ? color : .controlAccentColor
+        let highlight: NSColor = state.selected && state.emphasized ? color : ThemeStyle.accent
         let full = FileViewStyle.highlightedName(name, matches: matches, color: color, highlight: highlight)
         let width = labelWidth - dotsLead
         let typesetter = CTTypesetterCreateWithAttributedString(full)
@@ -268,10 +278,10 @@ final class GridItemView: NSView {
         let box = iconBoxRect
         if state.selected || state.dropTarget {
             let path = NSBezierPath(roundedRect: box, xRadius: min(8, box.width * 0.09), yRadius: min(8, box.width * 0.09))
-            NSColor.unemphasizedSelectedContentBackgroundColor.setFill()
+            ThemeStyle.iconSelection.setFill()
             path.fill()
             if state.dropTarget {
-                NSColor.controlAccentColor.setStroke()
+                ThemeStyle.accent.setStroke()
                 path.lineWidth = 2
                 let inset = NSBezierPath(roundedRect: box.insetBy(dx: 1, dy: 1), xRadius: 7, yRadius: 7)
                 inset.lineWidth = 2
@@ -283,7 +293,7 @@ final class GridItemView: NSView {
         var y = box.maxY + metrics.nameGap
         if state.selected {
             let capsule = capsulePath(top: y)
-            (state.emphasized ? NSColor.selectedContentBackgroundColor : NSColor.unemphasizedSelectedContentBackgroundColor).setFill()
+            ThemeStyle.selection(emphasized: state.emphasized).setFill()
             capsule.fill()
         }
         if !tags.isEmpty, let first = lineWidths.first {

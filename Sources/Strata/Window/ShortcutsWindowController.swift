@@ -100,7 +100,7 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
     private let search = NSSearchField()
     private let content = NSStackView()
 
-    private init() {
+    init(restoresFrame: Bool = true) {
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 560, height: 640),
                             styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
                             backing: .buffered, defer: true)
@@ -130,6 +130,7 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
 
         let effect = NSVisualEffectView()
         effect.material = .windowBackground
+        ThemeStyle.bind(effect, to: .content)
         effect.addSubview(search)
         effect.addSubview(scroll)
         NSLayoutConstraint.activate([
@@ -147,7 +148,8 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
             content.bottomAnchor.constraint(equalTo: document.bottomAnchor),
         ])
         panel.contentView = effect
-        panel.setFrameAutosaveName("StrataShortcuts")
+        ThemeStyle.bind(panel)
+        if restoresFrame { panel.setFrameAutosaveName("StrataShortcuts") }
         rebuild(filter: "")
         NotificationCenter.default.addObserver(self, selector: #selector(shortcutsChanged), name: .shortcutsChanged, object: nil)
     }
@@ -286,7 +288,7 @@ final class SidebarFooterController: NSSplitViewItemAccessoryViewController {
         button.font = .systemFont(ofSize: 12)
         button.toolTip = String(localized: "Every shortcut in Strata (⌘/)")
         button.translatesAutoresizingMaskIntoConstraints = false
-        let container = NSView()
+        let container = ThemeAccessoryView(role: .sidebar)
         container.addSubview(button)
         NSLayoutConstraint.activate([
             container.heightAnchor.constraint(equalToConstant: 36),

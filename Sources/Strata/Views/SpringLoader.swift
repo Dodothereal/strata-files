@@ -82,9 +82,9 @@ final class SpringLoader {
         let highlight = NSView(frame: rect)
         highlight.wantsLayer = true
         // Dims the folder (and its drop highlight) on and off: visible on the list's solid highlight and on icons alike.
-        var color = NSColor.controlBackgroundColor.cgColor
+        var color = ThemeStyle.surface(.content).cgColor
         view.effectiveAppearance.performAsCurrentDrawingAppearance {
-            color = NSColor.controlBackgroundColor.withAlphaComponent(0.65).cgColor
+            color = ThemeStyle.surface(.content).withAlphaComponent(0.65).cgColor
         }
         highlight.layer?.backgroundColor = color
         highlight.layer?.cornerRadius = 6

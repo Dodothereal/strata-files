@@ -180,6 +180,7 @@ final class BrowserViewController: NSViewController {
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
+        ThemeStyle.bind(scrollView, to: .content)
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         emptyState.translatesAutoresizingMaskIntoConstraints = false
         emptyState.isHidden = true
@@ -232,6 +233,7 @@ final class BrowserViewController: NSViewController {
         ov.autoresizesOutlineColumn = false
         ov.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         ov.focusRingType = .none
+        ThemeStyle.bind(ov, to: .content)
         ov.dataSource = self
         ov.delegate = self
         ov.target = self
@@ -249,6 +251,9 @@ final class BrowserViewController: NSViewController {
         addColumn(.location, String(localized: "Where"), width: 220, min: 100, ascending: true)
         ov.tableColumn(withIdentifier: .location)?.isHidden = true
         ov.outlineTableColumn = ov.tableColumns.first
+        for column in ov.tableColumns {
+            ThemeStyle.bind(column)
+        }
         // Right-click the column titles to show or hide a column (Name always shows; Where comes with results).
         let columnsMenu = NSMenu()
         for id in Self.optionalColumns {
@@ -1755,6 +1760,8 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         guard filter.isEmpty, !isShowingResults else { return false }
         return node.entry.isFolder
     }
+
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { ThemeRowView() }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? FileNode else { return nil }

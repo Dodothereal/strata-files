@@ -566,7 +566,7 @@ final class GalleryRootView: NSView {
     override var wantsUpdateLayer: Bool { true }
 
     override func updateLayer() {
-        effectiveAppearance.performAsCurrentDrawingAppearance { layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor }
+        effectiveAppearance.performAsCurrentDrawingAppearance { layer?.backgroundColor = ThemeStyle.surface(.content).cgColor }
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -757,21 +757,28 @@ final class GalleryThumbnailItem: NSCollectionViewItem {
     }
 
     fileprivate func updatePlate() {
+        let themed = ThemeStyle.options.palette != .system && !ThemeStyle.highContrast
+            && !view.effectiveAppearance.isHighContrast
         let color: NSColor
         if highlightState == .asDropTarget {
-            color = .controlAccentColor.withAlphaComponent(0.35)
+            color = ThemeStyle.accent.withAlphaComponent(0.35)
         } else if isSelected {
-            color = emphasized ? .selectedContentBackgroundColor : .unemphasizedSelectedContentBackgroundColor
+            // A thumbnail has no white label to support: use the same adaptive plate as Icons.
+            color = themed ? ThemeStyle.iconSelection : ThemeStyle.selection(emphasized: emphasized)
         } else {
             color = .clear
         }
-        view.effectiveAppearance.performAsCurrentDrawingAppearance { view.layer?.backgroundColor = color.cgColor }
+        view.effectiveAppearance.performAsCurrentDrawingAppearance {
+            view.layer?.backgroundColor = color.cgColor
+        }
     }
 }
 
 /// Keeps the plate's color right when the appearance changes (light, dark).
-final class GalleryThumbnailView: NSView {
+final class GalleryThumbnailView: NSView, ColorThemeUpdating {
     fileprivate weak var item: GalleryThumbnailItem?
+
+    func updateColorTheme() { item?.updatePlate() }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()

@@ -4,6 +4,8 @@ extension Notification.Name {
     static let prefsChanged = Notification.Name("StrataPrefsChanged")
     /// Theme, density or text size changed (Settings ▸ Appearance): views restyle, nothing reloads.
     static let appearanceChanged = Notification.Name("StrataAppearanceChanged")
+    /// Palette or window tint changed: redraw without reloading file views.
+    static let colorThemeChanged = Notification.Name("StrataColorThemeChanged")
     static let favoritesChanged = Notification.Name("StrataFavoritesChanged")
     /// A list column was shown or hidden (right-click the column titles): every list follows.
     static let listColumnsChanged = Notification.Name("StrataListColumnsChanged")
@@ -135,6 +137,15 @@ enum Prefs {
     static var theme: Int {
         get { defaults.integer(forKey: Key.theme) }
         set { defaults.set(newValue, forKey: Key.theme); NotificationCenter.default.post(name: .appearanceChanged, object: nil) }
+    }
+
+    static var colorThemeOptions: ColorThemeOptions {
+        get { ColorThemeOptions.read(from: defaults) }
+        set {
+            guard newValue != colorThemeOptions else { return }
+            newValue.save(in: defaults)
+            NotificationCenter.default.post(name: .colorThemeChanged, object: nil)
+        }
     }
 
     /// Row spacing in the list and columns: 0 compact, 1 regular, 2 spacious.

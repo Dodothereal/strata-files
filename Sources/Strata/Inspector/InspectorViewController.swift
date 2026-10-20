@@ -50,6 +50,7 @@ final class InspectorViewController: NSViewController {
         previewBox.layer?.cornerRadius = 14
         previewBox.layer?.cornerCurve = .continuous
         previewBox.layer?.masksToBounds = true
+        ThemeStyle.bind(previewBox, to: .inspector)
 
         preview.translatesAutoresizingMaskIntoConstraints = false
         preview.shouldCloseWithWindow = true
@@ -59,6 +60,7 @@ final class InspectorViewController: NSViewController {
         richBackdrop.boxType = .custom
         richBackdrop.fillColor = .textBackgroundColor
         richBackdrop.borderColor = .separatorColor
+        ThemeStyle.bind(richBackdrop, to: .inspector)
         richBackdrop.borderWidth = 1
         richBackdrop.cornerRadius = 14
         richBackdrop.isHidden = true
@@ -68,12 +70,13 @@ final class InspectorViewController: NSViewController {
         previewBox.addSubview(iconView)
 
         titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+        titleLabel.textColor = InspectorColors.primary
         titleLabel.alignment = .center
         titleLabel.maximumNumberOfLines = 3
         titleLabel.lineBreakMode = .byTruncatingMiddle
         titleLabel.isSelectable = true
         subtitleLabel.font = .systemFont(ofSize: 12)
-        subtitleLabel.textColor = .secondaryLabelColor
+        subtitleLabel.textColor = InspectorColors.secondary
         subtitleLabel.alignment = .center
         subtitleLabel.lineBreakMode = .byTruncatingTail
 
@@ -115,6 +118,7 @@ final class InspectorViewController: NSViewController {
         document.addSubview(stack)
         let scroll = NSScrollView()
         scroll.drawsBackground = false
+        ThemeStyle.bind(scroll, to: .inspector)
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.documentView = document

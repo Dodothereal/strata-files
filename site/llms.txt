@@ -6,6 +6,7 @@
 - Download: https://github.com/cristipufu/strata-files/releases/latest (Strata.dmg, signed with a Developer ID and notarized by Apple)
 - Requirements: macOS 26 Tahoe on a Mac with Apple silicon. Apple Intelligence is optional.
 - Price: free. License: MIT.
+- Color themes: eight presets with light and dark palettes, native macOS controls and optional window tint, in Settings ▸ Appearance. System keeps the Mac’s own colors.
 
 ## Docs
 

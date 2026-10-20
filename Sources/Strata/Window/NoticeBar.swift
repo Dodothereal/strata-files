@@ -26,7 +26,7 @@ final class NoticeBar: NSSplitViewItemAccessoryViewController {
         stack.spacing = 8
         stack.edgeInsets = NSEdgeInsets(top: 6, left: 14, bottom: 6, right: 14)
         stack.translatesAutoresizingMaskIntoConstraints = false
-        let container = NSView()
+        let container = ThemeAccessoryView()
         container.addSubview(stack)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),

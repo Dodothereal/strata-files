@@ -26,8 +26,7 @@ struct ShortcutSettings: View {
         // Read so a change redraws the rows (each passes its shortcut down; the list keeps its scroll position).
         let _ = version
         VStack(alignment: .leading, spacing: 10) {
-            TextField("Search commands or shortcuts", text: $query)
-                .textFieldStyle(.roundedBorder)
+            ThemeTextField(String(localized: "Search commands or shortcuts"), text: $query, search: true)
             List {
                 ForEach(groups, id: \.menu) { group in
                     Section(group.menu) {
@@ -40,6 +39,7 @@ struct ShortcutSettings: View {
             }
             // The list scrolls itself; the pane stays inside the Settings window's height without a scroll of its own.
             .frame(height: 360)
+            .modifier(ThemedFormBackground())
             HStack {
                 Text("Click a shortcut, then press the keys. ⌫ removes it; esc keeps it.")
                     .font(.caption)

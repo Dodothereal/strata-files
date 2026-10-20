@@ -128,10 +128,10 @@ private final class ShelfWell: NSView, NSDraggingSource {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 12, yRadius: 12)
         path.setLineDash([5, 4], count: 2, phase: 0)
         path.lineWidth = 1.5
-        (highlighted ? NSColor.controlAccentColor : NSColor.tertiaryLabelColor).setStroke()
+        (highlighted ? ThemeStyle.accent : NSColor.tertiaryLabelColor).setStroke()
         path.stroke()
         if highlighted {
-            NSColor.controlAccentColor.withAlphaComponent(0.08).setFill()
+            ThemeStyle.accent.withAlphaComponent(0.08).setFill()
             path.fill()
         }
     }

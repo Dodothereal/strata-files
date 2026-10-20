@@ -49,6 +49,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         scrollView.verticalScrollElasticity = .none
         scrollView.drawsBackground = true
         scrollView.backgroundColor = .controlBackgroundColor
+        ThemeStyle.bind(scrollView, to: .content)
         // The strip runs under the toolbar; each column's own scroll view insets its rows below it. Insetting the strip
         // as well left the first rows hidden when the view was created before it had a window.
         scrollView.automaticallyAdjustsContentInsets = false
@@ -492,6 +493,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         tableView.allowsTypeSelect = true
         tableView.focusRingType = .none
         tableView.backgroundColor = .controlBackgroundColor
+        ThemeStyle.bind(tableView, to: .content)
         tableView.dataSource = self
         tableView.delegate = self
         tableView.target = self
@@ -684,6 +686,8 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     func numberOfRows(in tableView: NSTableView) -> Int { entries.count }
 
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { ThemeRowView() }
+
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = tableView.makeView(withIdentifier: ColumnCellView.identifier, owner: nil) as? ColumnCellView ?? ColumnCellView()
         let entry = entries[row]
@@ -833,7 +837,7 @@ final class ColumnTableView: NSTableView {
 }
 
 /// The list's name cell (icon + highlighted name) with a disclosure chevron for folders.
-final class ColumnCellView: NSTableCellView {
+final class ColumnCellView: NSTableCellView, ColorThemeUpdating {
     static let identifier = NSUserInterfaceItemIdentifier("ColumnCell")
 
     let nameCell = NameCellView()
@@ -910,8 +914,10 @@ final class ColumnCellView: NSTableCellView {
     }()
 
     private func updateChevron() {
-        chevron.contentTintColor = backgroundStyle == .emphasized ? .alternateSelectedControlTextColor : .tertiaryLabelColor
+        chevron.contentTintColor = backgroundStyle == .emphasized ? ThemeStyle.selectedText : .tertiaryLabelColor
     }
+
+    func updateColorTheme() { updateChevron() }
 }
 
 /// The column's right edge: a hairline you can drag to resize (Option resizes all), double-click to fit.

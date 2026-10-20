@@ -123,6 +123,7 @@ enum Workspaces {
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
         field.stringValue = name
         field.placeholderString = String(localized: "Name", comment: "Placeholder: the new workspace's name")
+        ThemeStyle.bind(field, to: .preview)
         alert.accessoryView = field
         alert.addButton(withTitle: String(localized: "Rename", comment: "Button: rename the workspace"))
         alert.addButton(withTitle: String(localized: "Cancel"))

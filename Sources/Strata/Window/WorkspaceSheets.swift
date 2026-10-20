@@ -55,6 +55,7 @@ final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
         stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         stack.translatesAutoresizingMaskIntoConstraints = false
         let container = NSView()
+        ThemeStyle.bind(container, to: .content)
         container.addSubview(stack)
         var constraints = [
             stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -68,6 +69,7 @@ final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
         }
         NSLayoutConstraint.activate(constraints)
         view = container
+        ThemeStyle.refresh(container)
         nameChanged()
     }
 

@@ -2,11 +2,12 @@ import AppKit
 
 /// One section of the Inspector: an icon, a title, an optional accessory and a chevron that collapses it
 /// (remembered per section), with a hairline above. Every section looks and lines up the same way.
-final class InspectorCard: NSView {
+final class InspectorCard: NSView, ColorThemeUpdating {
     /// The card's content; it spans the card's width inside the padding.
     let content: NSView
     private let card = CardView()
     private let chevron = NSButton()
+    private let icon = NSImageView()
     private let titleLabel: NSTextField
     private let body = NSView()
     private let id: String
@@ -27,8 +28,7 @@ final class InspectorCard: NSView {
         card.translatesAutoresizingMaskIntoConstraints = false
         addSubview(card)
 
-        let icon = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil) ?? NSImage())
-        icon.symbolConfiguration = .init(pointSize: 12, weight: .semibold).applying(.init(hierarchicalColor: .secondaryLabelColor))
+        icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) ?? NSImage()
         icon.setAccessibilityElement(false)
         titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         titleLabel.lineBreakMode = .byTruncatingTail
@@ -38,7 +38,7 @@ final class InspectorCard: NSView {
         chevron.isBordered = false
         chevron.bezelStyle = .accessoryBarAction
         chevron.imagePosition = .imageOnly
-        chevron.contentTintColor = .tertiaryLabelColor
+        chevron.contentTintColor = InspectorColors.tertiary
         chevron.target = self
         chevron.action = #selector(toggle)
         chevron.setAccessibilityLabel(title)
@@ -93,9 +93,25 @@ final class InspectorCard: NSView {
         setAccessibilityRole(.group)
         setAccessibilityLabel(title)
         apply(collapsed: isCollapsed, animated: false)
+        updateColorTheme()
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    func updateColorTheme() {
+        let themed = ThemeStyle.options.palette != .system && !ThemeStyle.highContrast && !effectiveAppearance.isHighContrast
+        let ink: NSColor = themed ? ThemeStyle.panelIcon : InspectorColors.secondary
+        let symbol = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+        icon.symbolConfiguration = themed ? symbol : symbol.applying(.init(hierarchicalColor: ink))
+        icon.contentTintColor = ink
+        titleLabel.textColor = InspectorColors.primary
+        chevron.contentTintColor = themed ? ThemeStyle.panelIcon : InspectorColors.tertiary
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateColorTheme()
+    }
 
     private var defaultsKey: String { "inspector.collapsed." + id }
 
@@ -169,6 +185,7 @@ final class InspectorRows: NSView {
     static func text(_ value: String) -> NSTextField {
         let field = NSTextField(wrappingLabelWithString: value)
         field.font = .systemFont(ofSize: 12)
+        field.textColor = InspectorColors.primary
         field.maximumNumberOfLines = 0
         field.lineBreakMode = .byWordWrapping
         field.isSelectable = true
@@ -194,7 +211,7 @@ final class InspectorRows: NSView {
         for (name, value) in rows {
             let label = NSTextField(labelWithString: name)
             label.font = .systemFont(ofSize: 12)
-            label.textColor = .secondaryLabelColor
+            label.textColor = InspectorColors.secondary
             label.lineBreakMode = .byTruncatingTail
             label.toolTip = name
             grid.addRow(with: [label, value])
@@ -265,7 +282,7 @@ final class InspectorLocationView: NSView {
         name.lineBreakMode = .byTruncatingMiddle
         let location = NSTextField(labelWithString: shownLocation ?? Format.tildePath(path.deletingLastPathComponent()))
         location.font = .systemFont(ofSize: 11)
-        location.textColor = .secondaryLabelColor
+        location.textColor = InspectorColors.secondary
         location.lineBreakMode = .byTruncatingHead
         for label in [name, location] {
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)

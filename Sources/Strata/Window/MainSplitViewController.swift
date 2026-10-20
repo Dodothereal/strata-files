@@ -26,13 +26,14 @@ final class MainSplitViewController: NSSplitViewController {
         // backing layer, which otherwise shows through the footer in Columns and Disk Usage.
         let content = NSViewController()
         content.view = NSView()
+        ThemeStyle.bind(content.view, to: .content)
         content.addChild(panes)
         panes.view.translatesAutoresizingMaskIntoConstraints = false
         panes.view.clipsToBounds = true
         content.view.addSubview(panes.view)
         NSLayoutConstraint.activate([
-            panes.view.leadingAnchor.constraint(equalTo: content.view.leadingAnchor),
-            panes.view.trailingAnchor.constraint(equalTo: content.view.trailingAnchor),
+            panes.view.leadingAnchor.constraint(equalTo: content.view.safeAreaLayoutGuide.leadingAnchor),
+            panes.view.trailingAnchor.constraint(equalTo: content.view.safeAreaLayoutGuide.trailingAnchor),
             panes.view.topAnchor.constraint(equalTo: content.view.topAnchor),
             panes.view.bottomAnchor.constraint(equalTo: content.view.safeAreaLayoutGuide.bottomAnchor),
         ])

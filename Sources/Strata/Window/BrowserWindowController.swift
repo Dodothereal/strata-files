@@ -106,9 +106,27 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         }
         go(.folder(first.location), select: select, recordHistory: false)
         if let secondPane { toggleDualPane(at: secondPane) }
+        ThemeStyle.apply(to: window)
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        if let window { ThemeStyle.apply(to: window) }
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        if let window { ThemeStyle.apply(to: window) }
+    }
+
+    func windowDidFailToEnterFullScreen(_ window: NSWindow) { finishThemeTransition(in: window) }
+
+    func windowDidFailToExitFullScreen(_ window: NSWindow) { finishThemeTransition(in: window) }
+
+    private func finishThemeTransition(in window: NSWindow) {
+        window.titlebarAccessoryViewControllers.compactMap { $0 as? ToolbarThemeController }
+            .forEach { $0.finishFullScreenTransition() }
+    }
 
     private func configure(_ pane: Pane) {
         pane.browser.delegate = self
@@ -1084,7 +1102,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             item.image = NSImage(systemSymbolName: isBack ? "chevron.left" : "chevron.right", accessibilityDescription: item.label)
             item.target = self
             item.action = isBack ? #selector(goBack(_:)) : #selector(goForward(_:))
-            item.isBordered = true
+            ToolbarThemeController.applyNavigation(to: item)
             item.visibilityPriority = .high
             return item
         case .pathBar:

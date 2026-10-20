@@ -18,6 +18,7 @@ final class TreemapViewController: NSViewController, FileCollectionController {
 
     override func loadView() {
         let root = NSView()
+        ThemeStyle.bind(root, to: .content)
         treemapView.translatesAutoresizingMaskIntoConstraints = false
         legend.translatesAutoresizingMaskIntoConstraints = false
         treemapView.controller = self
@@ -296,7 +297,7 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
     override func draw(_ dirtyRect: NSRect) {
         // Views don't clip to bounds by default (macOS 14+); never paint outside our own.
         let dirtyRect = dirtyRect.intersection(bounds)
-        NSColor.controlBackgroundColor.setFill()
+        ThemeStyle.surface(.content).setFill()
         dirtyRect.fill()
         let progress = currentProgress(CACurrentMediaTime())
         if drawn.isEmpty {
@@ -356,7 +357,7 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
         if selected {
             let ring = NSBezierPath(roundedRect: rect.insetBy(dx: 1.25, dy: 1.25), xRadius: max(radius - 1, 0), yRadius: max(radius - 1, 0))
             ring.lineWidth = 2.5
-            (emphasized ? NSColor.controlAccentColor : NSColor.secondaryLabelColor).withAlphaComponent(alpha).setStroke()
+            (emphasized ? ThemeStyle.accent : NSColor.secondaryLabelColor).withAlphaComponent(alpha).setStroke()
             ring.stroke()
         }
         drawLabels(tile, in: rect, alpha: alpha, path: path)
@@ -686,7 +687,7 @@ final class TreemapLegendView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.controlBackgroundColor.setFill()
+        ThemeStyle.surface(.content).setFill()
         dirtyRect.intersection(bounds).fill()
         NSColor.separatorColor.setFill()
         NSRect(x: 0, y: bounds.maxY - 1, width: bounds.width, height: 1).fill()

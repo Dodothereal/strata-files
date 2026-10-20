@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// ⌘, — the standard toolbar-tabbed settings window, each pane a SwiftUI form.
@@ -6,7 +7,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     static let shared = SettingsWindowController()
     private let room: SettingsRoom
 
-    private init() {
+    init() {
         let tabs = NSTabViewController()
         tabs.tabStyle = .toolbar
         let room = SettingsRoom()
@@ -30,9 +31,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         tabs.addTabViewItem(pane("Shortcuts", "keyboard", ShortcutSettings()))
         let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]
+        // Settings joins Strata’s full-screen Space instead of taking focus back to its old desktop.
+        window.collectionBehavior = [.auxiliary, .moveToActiveSpace, .fullScreenAuxiliary, .fullScreenDisallowsTiling]
+        window.tabbingMode = .disallowed
         window.title = String(localized: "General", comment: "Settings pane: general settings")
         super.init(window: window)
         window.delegate = self
+        ThemeStyle.bind(window)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -74,6 +79,7 @@ private struct SettingsPaneView<Content: View>: View {
         ScrollView { content.frame(width: 520).fixedSize(horizontal: false, vertical: true) }
             .frame(width: 520)
             .frame(maxHeight: room.height)
+            .modifier(ThemedFormBackground())
     }
 }
 
@@ -156,6 +162,7 @@ private struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
+        .modifier(ThemedFormBackground())
     }
 }
 
@@ -164,10 +171,12 @@ private struct NewFileExtensionField: View {
     @State private var text = Prefs.newFileExtension
 
     var body: some View {
-        TextField("Extension", text: Binding(get: { text }, set: { typed in
-            text = typed
-            if FileOps.newFileExtension(typed) != nil { Prefs.newFileExtension = typed }
-        }))
+        LabeledContent("Extension") {
+            ThemeTextField(String(localized: "Extension"), text: Binding(get: { text }, set: { typed in
+                text = typed
+                if FileOps.newFileExtension(typed) != nil { Prefs.newFileExtension = typed }
+            }))
+        }
         if let ext = FileOps.newFileExtension(text) {
             let name = FileOps.newFileName(extension: ext)
             Text(String(localized: "File ▸ New File makes an empty “\(name)”. Leave the extension empty for none.",
@@ -227,6 +236,7 @@ private struct IndexSettings: View {
             }
         }
         .formStyle(.grouped)
+        .modifier(ThemedFormBackground())
         .onAppear(perform: refresh)
         .onReceive(timer) { _ in refresh() }
     }
@@ -267,6 +277,7 @@ private struct TerminalSettings: View {
                 .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
+        .modifier(ThemedFormBackground())
     }
 }
 

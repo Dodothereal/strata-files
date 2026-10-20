@@ -11,6 +11,7 @@ final class ViewOptionsWindowController: NSWindowController {
         panel.contentViewController = NSHostingController(rootView: ViewOptionsView())
         panel.isReleasedWhenClosed = false
         super.init(window: panel)
+        ThemeStyle.bind(panel)
         panel.center()
     }
 
@@ -52,6 +53,7 @@ struct ViewOptionsView: View {
             Text("Applies to all windows.").font(.caption).foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
+        .modifier(ThemedFormBackground())
         .onChange(of: options) { _, value in
             if value != Prefs.iconViewOptions { Prefs.iconViewOptions = value }
         }

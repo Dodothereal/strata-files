@@ -95,15 +95,15 @@ final class SummaryView: NSView {
 
         icon.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
         icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
-            .applying(.init(hierarchicalColor: .controlAccentColor))
+            .applying(.init(hierarchicalColor: InspectorColors.accent))
         heading.font = .systemFont(ofSize: 13, weight: .semibold)
-        heading.textColor = .labelColor
+        heading.textColor = InspectorColors.primary
 
         accessory.isBordered = false
         accessory.bezelStyle = .accessoryBarAction
         accessory.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: String(localized: "Summarize Again"))?
             .withSymbolConfiguration(.init(pointSize: 11, weight: .medium))
-        accessory.contentTintColor = .secondaryLabelColor
+        accessory.contentTintColor = InspectorColors.secondary
         accessory.toolTip = String(localized: "Summarize Again")
         accessory.target = self
         accessory.action = #selector(summarize(_:))
@@ -156,7 +156,7 @@ final class SummaryView: NSView {
                 : AIModel.canOpenSettings
                     ? String(localized: "Pull out the key sentences of this document. Turn on Apple Intelligence for written summaries.")
                     : String(localized: "Pull out the key sentences of this document.")
-            body.addArrangedSubview(wrapping(text, size: 12, color: .secondaryLabelColor))
+            body.addArrangedSubview(wrapping(text, size: 12, color: InspectorColors.secondary))
             let button = NSButton(title: String(localized: "Summarize", comment: "Button: summarize the document"),
                                   image: NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)!,
                                   target: self, action: #selector(summarize(_:)))
@@ -180,8 +180,8 @@ final class SummaryView: NSView {
             accessory.isHidden = false
             show(summary, streaming: false)
         case let .failed(message, canRetry):
-            let row = NSStackView(views: [symbol("exclamationmark.triangle.fill", color: .systemOrange, size: 12),
-                                          wrapping(message, size: 12, color: .secondaryLabelColor)])
+            let row = NSStackView(views: [symbol("exclamationmark.triangle.fill", color: InspectorColors.warning, size: 12),
+                                          wrapping(message, size: 12, color: InspectorColors.secondary)])
             row.alignment = .firstBaseline
             row.spacing = 6
             body.addArrangedSubview(row)
@@ -196,7 +196,7 @@ final class SummaryView: NSView {
 
     private func show(_ summary: DocumentSummary, streaming: Bool) {
         if !summary.title.isEmpty {
-            let title = wrapping(summary.title, size: 13, color: .labelColor, weight: .semibold)
+            let title = wrapping(summary.title, size: 13, color: InspectorColors.primary, weight: .semibold)
             body.addArrangedSubview(title)
             body.setCustomSpacing(8, after: title)
         }
@@ -227,7 +227,7 @@ final class SummaryView: NSView {
     }
 
     private func caption(_ text: String) -> NSTextField {
-        let label = wrapping(text, size: 10.5, color: .tertiaryLabelColor)
+        let label = wrapping(text, size: 10.5, color: InspectorColors.tertiary)
         label.isSelectable = false
         return label
     }
@@ -285,7 +285,7 @@ private final class BulletRow: NSView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         label.font = .systemFont(ofSize: 12)
-        label.textColor = .labelColor
+        label.textColor = InspectorColors.primary
         label.isSelectable = true
         label.translatesAutoresizingMaskIntoConstraints = false
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -353,7 +353,7 @@ final class ShimmerView: NSView {
     override func updateLayer() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             for bar in bars { bar.backgroundColor = NSColor.quaternaryLabelColor.cgColor }
-            let shine = NSColor.labelColor.withAlphaComponent(0.06).cgColor
+            let shine = InspectorColors.primary.withAlphaComponent(0.06).cgColor
             highlight.colors = [NSColor.clear.cgColor, shine, NSColor.clear.cgColor]
         }
     }

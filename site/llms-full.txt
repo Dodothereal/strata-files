@@ -43,11 +43,15 @@ Filters can be combined with words:
 - Servers: SFTP servers (through the Mac's own ssh and ~/.ssh/config: keys, agent, ProxyJump) and S3 buckets (Amazon S3 or S3-compatible, the secret key in the Keychain) browse like folders: every view, Quick Look, copy or drag out, drop or paste files in, new files and folders, rename, delete (asks first), moves within a server, Open in Terminal over ssh. Files are read as you browse and cleared when Strata quits.
 - iCloud Drive and cloud folders (Dropbox, OneDrive, Google Drive…): see what's only in the cloud or still syncing, with Download Now and Remove Download.
 - Tabs, Workspaces (a saved set of tabs and panes with their views; in the sidebar, ⌘K and `strata -w <name>`; folders on shares and servers connect again), and windows that reopen where you left them.
-- Sidebar: Favorites you can drag in and reorder, frequent folders, workspaces, servers, Large Files, Duplicates, disks with Eject, the Trash and Finder tags; or a folder tree (Home, disks, the Trash, servers, containers) that follows the folder you're in.
+- Sidebar: Favorites you can drag in and reorder, frequent folders, workspaces, servers, Large Files, Duplicates, disks with Eject, the Trash and Finder tags; or a folder tree (Home, disks, servers, containers, then the Trash) that follows the folder you're in.
 - ⌘+ and ⌘− change icon size in Icons and the text size in List and Columns.
 - Recents: files changed in the last 7 days across the home folder.
 - Shelf: collect files from anywhere, then drop them all at once.
 - Settings ▸ "Open Reveal in Finder in Strata": apps that show files in Finder open Strata instead.
+
+## Color themes
+
+Settings ▸ Appearance ▸ Color theme offers System (the Mac’s own colors) and eight presets: Graphite, Blue, Green, Purple, Sand, Teal, Rose and Amber. Each preset has a light and dark palette, with coordinated colors across file views, the sidebar, inspector, toolbar and secondary windows. Controls and behavior remain native macOS. Turn Window tint off to keep native backgrounds while using the palette for selections and accents. Row density and file name size are also adjustable.
 
 ## Space
 
@@ -95,7 +99,7 @@ Filters can be combined with words:
 - ⌘K command palette · ⌘L type a path · ⇧⌘G go to folder
 - ⌘[ back · ⌘] forward · ⌘↑ enclosing folder · ⌘↓ open
 - ⌘1 to ⌘5 views · ⌘\ dual pane · ⌘I inspector · Space Quick Look · ⌥⌘K connect to server
-- Every menu shortcut can be changed in Settings ▸ Shortcuts; Settings ▸ Appearance sets light or dark, row density and the file name size.
+- Every menu shortcut can be changed in Settings ▸ Shortcuts; Settings ▸ Appearance sets the color theme, window tint, light or dark mode, row density and the file name size.
 - ⇧⌘N new folder · ⌥⌘N new file · ⇧⌘F Recents · ⇧⌘H Home · ⇧⌘D Desktop · ⇧⌘O Documents · ⌥⌘L Downloads · ⇧⌘A Applications
 - ⌘/ the searchable list of every shortcut
 

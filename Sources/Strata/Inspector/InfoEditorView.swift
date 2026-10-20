@@ -51,6 +51,7 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
         comments.maximumNumberOfLines = 4
         comments.delegate = self
         comments.setAccessibilityLabel(String(localized: "Comments", comment: "Inspector: the item’s Spotlight comments"))
+        ThemeStyle.bind(comments, to: .preview)
 
         openWith.target = self
         openWith.action = #selector(openWithChanged(_:))
@@ -63,7 +64,7 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
         changeAll.bezelStyle = .push
         changeAll.toolTip = String(localized: "Open all documents like this one with this app")
         openWithNote.font = .systemFont(ofSize: 11)
-        openWithNote.textColor = .secondaryLabelColor
+        openWithNote.textColor = InspectorColors.secondary
         openWithNote.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         locked.controlSize = .mini
@@ -109,7 +110,7 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
     private static func messageLabel() -> NSTextField {
         let label = NSTextField(wrappingLabelWithString: "")
         label.font = .systemFont(ofSize: 11)
-        label.textColor = .systemRed
+        label.textColor = InspectorColors.error
         label.isHidden = true
         return label
     }
@@ -277,13 +278,13 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
     }
 
     private func showSaved() {
-        commentsMessage.textColor = .secondaryLabelColor
+        commentsMessage.textColor = InspectorColors.secondary
         commentsMessage.stringValue = String(localized: "Saved", comment: "Inspector, under Comments: the comment was saved")
         commentsMessage.isHidden = false
         savedNoteHide?.cancel()
         savedNoteHide = Task { [weak self] in
             try? await Task.sleep(for: .seconds(2))
-            guard !Task.isCancelled, let self, self.commentsMessage.textColor == .secondaryLabelColor else { return }
+            guard !Task.isCancelled, let self, self.commentsMessage.textColor == InspectorColors.secondary else { return }
             self.commentsMessage.isHidden = true
         }
     }
@@ -372,7 +373,7 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
     /// Clears or shows the last change's problem, in the card it happened in.
     private func finish(_ error: Error?, in label: NSTextField?) {
         guard let label else { return }
-        label.textColor = .systemRed
+        label.textColor = InspectorColors.error
         label.stringValue = error.map { String(localized: "Couldn’t change that: \($0.localizedDescription)", comment: "Inspector: a change was refused, then why") } ?? ""
         label.isHidden = error == nil
         if error != nil, label === openWithMessage, let url, let app = NSWorkspace.shared.urlForApplication(toOpen: url),
