@@ -74,8 +74,9 @@ observable behavior assertions. It excludes fixed sleeps, memory/timing threshol
 source-text assertions as substitutes for behavioral regression tests.
 
 Release previously ran localization validation but not the Swift suite. It now runs all
-Swift tests before importing signing credentials on both tags and manual runs. CI also
-runs when that release workflow changes. This blocks release on a failing regression;
+Swift tests before importing signing credentials on both tags and manual runs. Address
+Sanitizer also runs the full suite in a separate CI job and before signing a release.
+CI runs when that release workflow changes. This blocks release on a failing regression;
 it does not prove that untested inputs or platform behavior cannot fail.
 
 ## Validation
@@ -112,6 +113,38 @@ python3 scripts/mutate.py 'Malformed History'
 The full weekly mutation matrix was not rerun. The new rule was exercised directly, and
 the existing matrix was checked for coverage and matching source text.
 
+## Address Sanitizer follow-up
+
+At `9a73d46`, the complete debug suite passed under Address Sanitizer: 471 tests in
+62 suites, in 84.387 seconds after a 58.01-second instrumented build. No Address Sanitizer
+diagnostic or test failure was reported. The testable app's index-persistence object
+contained ASan checks, and the built app linked the ASan runtime. A separate temporary
+Swift control program with a deliberate use-after-free failed with the expected
+`heap-use-after-free` report and exit status 1, confirming runtime detection on this Mac.
+The control program was outside the repository and did not touch app data.
+
+Reproduce locally with Xcode's toolchain:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --sanitize address --scratch-path .build/sanitizers/address --disable-automatic-resolution --jobs 4
+```
+
+The local toolchain was Apple Swift 6.4 (`swiftlang-6.4.0.34.1`), using the macOS 27 SDK.
+CI remains pinned to its existing Xcode 26.6 selection; the first hosted sanitizer run
+is pending a push. The instrumented build directory is separate from ordinary builds.
+No sanitizer suppressions, excluded tests or retry-until-pass behavior were added.
+Debug configuration preserves the existing temporary History/index/key isolation.
+
+The Swift compiler accepted a minimal `-sanitize=undefined` probe, but that is not
+proof of UBSan coverage. Apple documents Undefined Behavior Sanitizer as supporting
+C-based languages, not Swift. This package has no C/C++/Objective-C source targets;
+its system libraries and Sparkle are prebuilt. No UBSan coverage is claimed or added
+as a nominally passing CI job: [Apple sanitizer documentation](https://developer.apple.com/documentation/xcode/diagnosing-memory-thread-and-crash-issues-early).
+
+ASan covers memory-access bugs on instrumented paths exercised by these tests. It does
+not prove freedom from crashes, cover every system-framework implementation, detect
+all races or substitute for live-platform testing.
+
 ## Performance and remaining limits
 
 File-index validation is linear in the number of entries and links, once per load. Its
@@ -131,8 +164,8 @@ before changing transfer behavior.
 These checks do not cover every live macOS compositor transition, accessibility service
 response, filesystem driver, third-party parser or network-failure timing. Quick Look,
 PDF/media decoding, SQLite and other system frameworks retain their own failure modes.
-There was no extended GUI soak, real-server fault-injection campaign or whole-repository
-fuzzing/sanitizer run. Existing SDK deprecation and nested-capture warnings remain; no
+There was no extended GUI soak, real-server fault-injection campaign, whole-repository
+fuzzing or Thread Sanitizer run. The full-suite Address Sanitizer result is recorded above. Existing SDK deprecation and nested-capture warnings remain; no
 new compiler warning was introduced by these fixes.
 
 The guarded private toolbar tint remains a compatibility risk requiring visual checks on

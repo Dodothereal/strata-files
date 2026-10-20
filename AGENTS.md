@@ -129,6 +129,15 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
   Prove it fails before the fix and passes afterward. Keep these tests in `Tests/StrataTests` so ordinary local
   `swift test`, pull-request CI and the Release workflow all run them. Do not substitute regex checks, source-text
   assertions, or tests of a duplicate implementation for runtime behavior.
+- Run the complete debug suite under Address Sanitizer when changing unsafe memory, parsing, indexing or callback
+  lifetimes. Use a separate build directory so ordinary and instrumented artifacts stay separate:
+  `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --sanitize address --scratch-path .build/sanitizers/address --disable-automatic-resolution --jobs 4`.
+  CI runs this as a separate job on pull requests and main; Release repeats it before signing, including on tags.
+  Investigate sanitizer diagnostics instead of suppressing them, retrying until green or skipping affected tests.
+  Keep the debug configuration: release tests would use real app stores because `SecureStorage.isTestRun` is
+  debug-only. Sanitizers do not instrument prebuilt system frameworks or prove unexecuted paths safe.
+  Apple's Undefined Behavior Sanitizer supports C-based languages, not Swift; accepting the compiler flag is not
+  evidence of Swift coverage. Strata currently has no C/C++/Objective-C source targets to instrument with it.
 - Treat file contents, authenticated saved data, process output and macOS callback values as external input.
   Validate array shapes, offsets, counts, parent/child links and cycles before indexing or walking them. Verify
   CF type IDs before casts, and finite values and representable ranges before numeric conversion. Exercise empty,

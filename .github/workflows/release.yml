@@ -89,6 +89,9 @@ jobs:
       - name: Run all app regressions before signing
         run: swift test
 
+      - name: Run memory safety checks before signing
+        run: swift test --sanitize address --scratch-path .build/sanitizers/address --disable-automatic-resolution --jobs 4
+
       - name: Work out the version
         id: version
         env:
