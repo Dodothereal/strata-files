@@ -654,11 +654,19 @@ final class DockReader {
     }
 
     private static func frame(of element: AXUIElement) -> CGRect? {
-        guard let position = attribute(element, kAXPositionAttribute), let size = attribute(element, kAXSizeAttribute) else { return nil }
+        frame(position: attribute(element, kAXPositionAttribute), size: attribute(element, kAXSizeAttribute))
+    }
+
+    static func frame(position: AnyObject?, size: AnyObject?) -> CGRect? {
+        guard let position, let size, CFGetTypeID(position) == AXValueGetTypeID(),
+              CFGetTypeID(size) == AXValueGetTypeID() else { return nil }
         var origin = CGPoint.zero, extent = CGSize.zero
-        // Both come back as AXValues (CFTypes, so the cast always succeeds).
-        AXValueGetValue(position as! AXValue, .cgPoint, &origin)
-        AXValueGetValue(size as! AXValue, .cgSize, &extent)
+        // Check both the CF object type and the structure stored inside it before using Dock geometry.
+        guard AXValueGetValue(position as! AXValue, .cgPoint, &origin),
+              AXValueGetValue(size as! AXValue, .cgSize, &extent),
+              origin.x.isFinite, origin.y.isFinite, extent.width.isFinite, extent.height.isFinite,
+              extent.width > 0, extent.height > 0,
+              (origin.x + extent.width).isFinite, (origin.y + extent.height).isFinite else { return nil }
         return CGRect(origin: origin, size: extent)
     }
 }
