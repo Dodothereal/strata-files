@@ -1460,5 +1460,62 @@
     "replace": "",
     "rule": "Browser listing refresh keeps duplicate old paths and misses a new result",
     "tests": "BrowserListingTests/duplicateExistingResultsRequireAFullReplacement"
+  },
+  {
+    "file": "Strata/Browser/BrowserPresentations.swift",
+    "find": "        if let gridController { return gridController }\n",
+    "replace": "",
+    "rule": "Browser presentations cached views are recreated on every switch",
+    "tests": "BrowserPresentationsTests/presentationsAreLazyReusedAndAttachedOnlyToTheirOwnBrowser"
+  },
+  {
+    "file": "Strata/Views/GridViewController.swift",
+    "find": "        directory = content.directory\n",
+    "replace": "",
+    "rule": "Browser presentations empty folder navigation keeps the previous directory",
+    "tests": "BrowserPresentationsTests/directoryContextChangesEvenWhenTheNewFolderIsEmpty"
+  },
+  {
+    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "find": "        sortComparator = metadata.ordered",
+    "replace": "        sortComparator = Self.defaultOrder",
+    "rule": "Browser presentations deeper columns ignore the browser sort order",
+    "tests": "BrowserPresentationsTests/deeperColumnsUseTheLiveComparatorAndKeepTheirOwnSelectionOnRootRefresh"
+  },
+  {
+    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "find": "setRoot(content.directory, entries: content.entries, matches: content.matches)",
+    "replace": "setRoot(content.directory, entries: content.entries, matches: [:])",
+    "rule": "Browser presentations column rows lose match highlights",
+    "tests": "BrowserPresentationsTests/columnContentPassesMatchHighlightsIntoNativeText"
+  },
+  {
+    "file": "Strata/Views/TreemapViewController.swift",
+    "find": "$0.isDirectory && !$0.isSymlink && !$0.isVolume && !metadata.canMeasure($0)",
+    "replace": "$0.isDirectory && !metadata.canMeasure($0)",
+    "rule": "Browser presentations disk usage asks to measure links and volumes",
+    "tests": "BrowserPresentationsTests/diskUsageUsesMeasurementsOnlyForItsOwnContentsAndKeepsUnknownTotals"
+  },
+  {
+    "file": "Strata/Browser/BrowserPresentations.swift",
+    "find": "controller.folderSizeText = { [weak browser] entry in",
+    "replace": "controller.folderSizeText = { [browser = Optional(browser)] entry in",
+    "rule": "Browser presentations cached icon callbacks retain their browser",
+    "tests": "BrowserPresentationsTests/cachedPresentationsAndTheirMetadataDoNotRetainTheBrowser"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Modes.swift",
+    "rule": "Browser presentations column metadata retains its closed browser",
+    "tests": "BrowserPresentationsTests/cachedPresentationsAndTheirMetadataDoNotRetainTheBrowser",
+    "edits": [
+      {
+        "find": "ordered: { [weak self] a, b in",
+        "replace": "ordered: { [self] a, b in"
+      },
+      {
+        "find": "self?.ordered(a, b) ?? (a.displayName.localizedStandardCompare(b.displayName) == .orderedAscending)",
+        "replace": "self.ordered(a, b)"
+      }
+    ]
   }
 ]

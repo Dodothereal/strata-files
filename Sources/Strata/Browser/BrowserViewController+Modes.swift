@@ -9,13 +9,7 @@ extension BrowserViewController {
     var effectiveMode: BrowserViewMode { isShowingResults ? .list : mode }
 
     var activeView: FileCollectionController? {
-        switch effectiveMode {
-        case .list: nil
-        case .grid: grid
-        case .columns: columns
-        case .gallery: gallery
-        case .treemap: treemap
-        }
+        presentations.controller(for: effectiveMode, in: self)
     }
 
     /// The view that should have keyboard focus.
@@ -77,118 +71,41 @@ extension BrowserViewController {
 
     /// Shows the active presentation's view on top of the list (the list's scroll view hides).
     func installActiveView() {
-        let active = activeView
-        for controller in [gridController, columnController, galleryController, treemapController] as [NSViewController?] {
-            guard let controller, controller !== active, controller.isViewLoaded else { continue }
-            controller.view.removeFromSuperview()
-        }
-        guard let active else {
-            outlineScrollView.isHidden = false
-            return
-        }
-        if active.parent == nil { addChild(active) }
-        if active.view.superview == nil {
-            active.view.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(active.view, positioned: .above, relativeTo: outlineScrollView)
-            // Columns are scroll views nested in a scroll view, which don't get the toolbar inset: start them below it.
-            let inset = active is ColumnBrowserViewController
-            NSLayoutConstraint.activate([
-                active.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                active.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                active.view.topAnchor.constraint(equalTo: inset ? view.safeAreaLayoutGuide.topAnchor : view.topAnchor),
-                active.view.bottomAnchor.constraint(equalTo: inset ? view.safeAreaLayoutGuide.bottomAnchor : view.bottomAnchor),
-            ])
-            // A cached view may have been detached when the palette changed.
-            ThemeStyle.refresh(active.view)
-        }
-        outlineScrollView.isHidden = true
+        presentations.install(effectiveMode, in: self)
     }
 
     /// Hands the current rows (sorted, filtered, with match highlights) to the active presentation.
     func pushContent(animated: Bool = false) {
-        guard let directory, !isShowingResults else { return }
+        guard let directory, !isShowingResults, let active = activeView else { return }
         let shown = visibleRows
         var matches: [URL: [Int]] = [:]
         for node in shown where !node.matchIndices.isEmpty { matches[node.url] = node.matchIndices }
-        switch effectiveMode {
-        case .list:
-            break
-        case .grid:
-            grid.directory = directory
-            grid.setEntries(shown.map(\.entry), matches: matches)
-        case .columns:
-            columns.sortComparator = { [weak self] a, b in self?.ordered(a, b) ?? (a.displayName.localizedStandardCompare(b.displayName) == .orderedAscending) }
-            columns.setRoot(directory, entries: shown.map(\.entry), matches: matches)
-        case .gallery:
-            gallery.directory = directory
-            gallery.setEntries(shown.map(\.entry))
-        case .treemap:
-            // Folders that can't be measured without Full Disk Access would silently shrink the total: say so.
-            treemap.unmeasured = shown.filter {
-                $0.entry.isDirectory && !$0.entry.isSymlink && !$0.entry.isVolume && !canMeasure($0.entry)
-            }.count
-            treemap.setEntries(shown.map(\.entry), size: { [weak self] entry in
+        let content = FileCollectionContent(directory: directory, entries: shown.map(\.entry), matches: matches)
+        let metadata = FileCollectionMetadata(
+            ordered: { [weak self] a, b in
+                self?.ordered(a, b) ?? (a.displayName.localizedStandardCompare(b.displayName) == .orderedAscending)
+            },
+            canMeasure: { [weak self] entry in self?.canMeasure(entry) ?? false },
+            size: { [weak self] entry in
                 guard let self else { return nil }
                 guard entry.isDirectory else { return entry.size }
                 return canMeasure(entry) ? folderSize(entry.url, request: true)?.bytes : 0
-            }, animated: animated)
-        }
+            })
+        active.apply(content, metadata: metadata, animated: animated)
     }
 
     // MARK: - Lazily created presentations
 
-    var grid: GridViewController {
-        if let gridController { return gridController }
-        let controller = GridViewController()
-        controller.fileDelegate = self
-        controller.setIconSize(CGFloat(Prefs.shared.gridIconSize), animated: false)
-        controller.showsItemInfo = Prefs.shared.iconViewOptions.showsInfo
-        controller.folderSizeText = { [weak self] entry in
-            guard Prefs.shared.iconViewOptions.folderInfo == .size else { return nil }
-            return self?.iconFolderSizeText(entry)
-        }
-        gridController = controller
-        return controller
-    }
+    var grid: GridViewController { presentations.grid(in: self) }
+    var columns: ColumnBrowserViewController { presentations.columns(in: self) }
+    var gallery: GalleryViewController { presentations.gallery(in: self) }
+    var treemap: TreemapViewController { presentations.treemap(in: self) }
 
     /// Reuses the list's measurements and privacy checks; links and disks are never walked for icon info.
     func iconFolderSizeText(_ entry: FileEntry) -> String? {
         guard entry.isFolder else { return nil }
         guard canMeasure(entry) else { return "—" }
         return folderSize(entry.url, request: true).map { Format.bytes($0.bytes) } ?? "…"
-    }
-
-    var columns: ColumnBrowserViewController {
-        if let columnController { return columnController }
-        let controller = ColumnBrowserViewController(directoryReader: services.directories)
-        controller.applicationFolders = applicationFolders
-        controller.fileDelegate = self
-        controller.onLocationChange = { [weak self] url in
-            guard let self else { return }
-            delegate?.browser(self, columnLocationChanged: url)
-        }
-        columnController = controller
-        return controller
-    }
-
-    var gallery: GalleryViewController {
-        if let galleryController { return galleryController }
-        let controller = GalleryViewController()
-        controller.fileDelegate = self
-        galleryController = controller
-        return controller
-    }
-
-    var treemap: TreemapViewController {
-        if let treemapController { return treemapController }
-        let controller = TreemapViewController()
-        controller.fileDelegate = self
-        controller.onDrill = { [weak self] url in
-            guard let self else { return }
-            delegate?.browser(self, navigateTo: url)
-        }
-        treemapController = controller
-        return controller
     }
 }
 

@@ -206,6 +206,10 @@ sheet's text before clicking a destructive button. Both builds share preferences
 - Browser entries, filtered rows and path lookup belong to `BrowserListing`. Preserve node identity on refresh,
   create fresh roots on navigation, and validate a whole result update before changing any node. Keep native
   selection, expansion and editing in the AppKit controller; publish entries before applying pending actions.
+- `BrowserPresentations` owns lazy view creation and attachment. Feed alternative views through
+  `FileCollectionController.apply` with the same sorted/filtered content; each view keeps its native selection
+  policy and requests only the metadata it needs. Metadata and view callbacks must keep the browser weak.
+  Preserve cached views, safe-area placement, theme refresh on reattachment and native responder routing.
 - Folder read scheduling belongs in `DirectoryReadSession`: each presentation owns its generation, rejects late
   success and error responses, and invalidates reads when removed or replaced by results. Inject `DirectoryReader`
   for controlled completion tests; keep callbacks weak so pending I/O cannot retain closed browsers.

@@ -148,10 +148,11 @@ final class BrowserViewController: NSViewController {
     private var folderSortDescriptors: [NSSortDescriptor] = []
     /// How the folder is presented. Results (search, Recents, Duplicates) always use the list.
     private(set) var mode = BrowserViewMode(rawValue: Prefs.shared.viewMode) ?? .list
-    var gridController: GridViewController?
-    var columnController: ColumnBrowserViewController?
-    var treemapController: TreemapViewController?
-    var galleryController: GalleryViewController?
+    let presentations = BrowserPresentations()
+    var gridController: GridViewController? { presentations.gridController }
+    var columnController: ColumnBrowserViewController? { presentations.columnController }
+    var treemapController: TreemapViewController? { presentations.treemapController }
+    var galleryController: GalleryViewController? { presentations.galleryController }
 
     func setStoredMode(_ newMode: BrowserViewMode) { mode = newMode }
     var outlineScrollView: NSScrollView { scrollView }

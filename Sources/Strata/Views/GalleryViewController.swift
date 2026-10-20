@@ -182,6 +182,11 @@ final class GalleryViewController: NSViewController, FileCollectionController {
 
     // MARK: - Content
 
+    func apply(_ content: FileCollectionContent, metadata: FileCollectionMetadata, animated: Bool) {
+        directory = content.directory
+        setEntries(content.entries)
+    }
+
     /// Shows `entries` in order, keeping the selection for items still there (or the first item).
     func setEntries(_ entries: [FileEntry]) {
         loadViewIfNeeded()

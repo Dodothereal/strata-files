@@ -39,6 +39,14 @@ final class TreemapViewController: NSViewController, FileCollectionController {
 
     // MARK: - Content
 
+    func apply(_ content: FileCollectionContent, metadata: FileCollectionMetadata, animated: Bool) {
+        // Unmeasurable folders must not silently shrink the total shown in the legend.
+        unmeasured = content.entries.filter {
+            $0.isDirectory && !$0.isSymlink && !$0.isVolume && !metadata.canMeasure($0)
+        }.count
+        setEntries(content.entries, size: metadata.size, animated: animated)
+    }
+
     /// Replaces everything shown. Pass `animated: false` when switching folders.
     func setItems(_ items: [TreemapItem], animated: Bool = true) {
         loadViewIfNeeded()

@@ -1,7 +1,7 @@
 import AppKit
 import UniformTypeIdentifiers
 
-// Shared contract for the browser's alternative presentations (icons, columns, disk usage). The browser stays the
+// Shared contract for the browser's alternative presentations (icons, columns, gallery, disk usage). The browser stays the
 // owner of loading, sorting, filtering, file operations and Quick Look; a view only shows what it is given and
 // reports what the user asked for.
 
@@ -44,10 +44,28 @@ extension FileCollectionViewDelegate {
     func fileView(_ view: NSViewController, canSpringLoad folder: URL) -> Bool { false }
 }
 
+/// The browser's current folder rows, already sorted and filtered. Views preserve their own selection policy.
+struct FileCollectionContent {
+    let directory: URL
+    let entries: [FileEntry]
+    let matches: [URL: [Int]]
+}
+
+/// Lookups remain with the browser: a view requests only the metadata it needs. Retained callbacks must not keep
+/// their browser alive (Columns retains the comparator for folders opened later).
+struct FileCollectionMetadata {
+    let ordered: @MainActor (FileEntry, FileEntry) -> Bool
+    let canMeasure: @MainActor (FileEntry) -> Bool
+    let size: @MainActor (FileEntry) -> Int64?
+}
+
 /// What the browser needs from whichever presentation is active.
 protocol FileCollectionController: NSViewController {
     var fileDelegate: FileCollectionViewDelegate? { get set }
     var selectedEntries: [FileEntry] { get }
+    func apply(_ content: FileCollectionContent, metadata: FileCollectionMetadata, animated: Bool)
+    /// Columns contain nested scroll views that need the host's safe-area inset; other views handle it themselves.
+    var insetsContentToSafeArea: Bool { get }
     func select(_ urls: [URL], scroll: Bool)
     /// The view to make first responder when the browser takes focus.
     var focusView: NSView { get }
@@ -58,6 +76,7 @@ protocol FileCollectionController: NSViewController {
 }
 
 extension FileCollectionController {
+    var insetsContentToSafeArea: Bool { false }
     var selectedURLs: [URL] { selectedEntries.map(\.url) }
 }
 

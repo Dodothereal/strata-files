@@ -76,6 +76,13 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     // MARK: - Content
 
+    var insetsContentToSafeArea: Bool { true }
+
+    func apply(_ content: FileCollectionContent, metadata: FileCollectionMetadata, animated: Bool) {
+        sortComparator = metadata.ordered
+        setRoot(content.directory, entries: content.entries, matches: content.matches)
+    }
+
     /// Shows `folder` in the first column with the browser's (filtered, sorted) entries. Calling again with the same
     /// folder updates the first column and keeps the columns opened from it as long as their folder is still selected.
     func setRoot(_ folder: URL, entries: [FileEntry], matches: [URL: [Int]] = [:]) {

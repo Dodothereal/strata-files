@@ -95,6 +95,11 @@ final class GridViewController: NSViewController, FileCollectionController {
 
     // MARK: - Content
 
+    func apply(_ content: FileCollectionContent, metadata: FileCollectionMetadata, animated: Bool) {
+        directory = content.directory
+        setEntries(content.entries, matches: content.matches)
+    }
+
     /// Shows `entries` in the given order. `matches` holds fuzzy-match character offsets per URL for highlighting.
     /// Selection is kept for items that are still present.
     func setEntries(_ entries: [FileEntry], matches: [URL: [Int]] = [:]) {
