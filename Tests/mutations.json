@@ -1085,8 +1085,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "        let selection = selectedURLs\n        enterResults()\n        directoryReads.invalidate()",
-    "replace": "        let selection = selectedURLs\n        enterResults()",
+    "find": "        let selection = pendingSelection ?? selectedURLs\n        enterResults()\n        directoryReads.invalidate()",
+    "replace": "        let selection = pendingSelection ?? selectedURLs\n        enterResults()",
     "rule": "Directory read ownership a folder response replaces search results",
     "tests": "DirectoryReadSessionTests/resultsAndMessagesInvalidateOutstandingFolderReads"
   },
@@ -1103,5 +1103,82 @@
     "replace": "directoryReads.load(url, showHidden: Prefs.shared.showHidden, applications: applicationFolders) { [self] result, gen in",
     "rule": "Directory read ownership outstanding reads retain closed browsers",
     "tests": "DirectoryReadSessionTests/pendingReadsDoNotKeepTheirBrowserAlive"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "if pendingSelection == nil { pendingSelection = selectedURLs }",
+    "replace": "if pendingSelection?.isEmpty != false { pendingSelection = selectedURLs }",
+    "rule": "Applied browser actions explicit empty selection is replaced by the old selection",
+    "tests": "DirectoryReadSessionTests/aReloadHonorsEmptySelectionAndEachViewsSelectionPolicy"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "isShowingResults, pendingSelection == nil, resultsSummary == nil",
+    "replace": "isShowingResults, resultsSummary == nil",
+    "rule": "Applied browser actions unchanged search results ignore the requested selection",
+    "tests": "DirectoryReadSessionTests/pendingSelectionsApplyToRefreshedResultsAndGroups"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "origin.navigationRevision == revision,",
+    "replace": "true,",
+    "rule": "Applied browser actions completion survives navigation away and back",
+    "tests": "DirectoryReadSessionTests/operationCompletionRejectsLeavingAndReturningAndRemovedPanes"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "panes.contains(where: { $0 === origin }) else { return }",
+    "replace": "true else { return }",
+    "rule": "Applied browser actions completion reloads a removed pane",
+    "tests": "DirectoryReadSessionTests/operationCompletionRejectsLeavingAndReturningAndRemovedPanes"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "origin.browser.reloadFolder(nil)",
+    "replace": "browser.reloadFolder(nil)",
+    "rule": "Applied browser actions completion reloads the newly focused pane",
+    "tests": "DirectoryReadSessionTests/operationCompletionSelectsAfterReadingItsOriginalPaneInEveryView"
+  },
+  {
+    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "find": "if renameWhenLoaded === pane, let url = pendingRename, pane.row(for: url) != nil {",
+    "replace": "if false, let url = pendingRename, pane.row(for: url) != nil {",
+    "rule": "Applied browser actions deeper rename never starts when the item arrives",
+    "tests": "DirectoryReadSessionTests/deeperColumnRenameWaitsUntilTheItemIsApplied"
+  },
+  {
+    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "find": "        cancelPendingRename()\n        guard let index = panes.firstIndex(where: { $0 === pane }) else { return }",
+    "replace": "        guard let index = panes.firstIndex(where: { $0 === pane }) else { return }",
+    "rule": "Applied browser actions changed column selection leaves an old rename pending",
+    "tests": "DirectoryReadSessionTests/deferredColumnRenamesStopAfterNavigationSelectionModeChangesAndErrors"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Modes.swift",
+    "find": "        columnController?.cancelPendingRename()\n",
+    "replace": "",
+    "rule": "Applied browser actions a hidden columns view starts an old rename",
+    "tests": "DirectoryReadSessionTests/deferredColumnRenamesStopAfterNavigationSelectionModeChangesAndErrors"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "if let deferred = deferredApply, deferred.generation == generation {",
+    "replace": "if let deferred = deferredApply {",
+    "rule": "Applied browser actions ending a native edit applies a superseded listing",
+    "tests": "DirectoryReadSessionTests/endingAnInlineEditCannotApplyAListingSupersededByAnotherRead"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "    private func showError(_ error: Error) {\n        cancelPendingActions()",
+    "replace": "    private func showError(_ error: Error) {",
+    "rule": "Applied browser actions failed root rename restarts on a later refresh",
+    "tests": "DirectoryReadSessionTests/aFailedRootRenameRequestDoesNotRestartOnALaterRefresh"
+  },
+  {
+    "file": "Strata/Window/Pane.swift",
+    "find": "            navigationRevision += 1\n            browser.cancelPendingActions()",
+    "replace": "            // Mutation: search edits leave captured actions alive.",
+    "rule": "Applied browser actions search edits leave stale selections waiting",
+    "tests": "DirectoryReadSessionTests/changingSearchTextScopeOrCaseCancelsCapturedActions"
   }
 ]

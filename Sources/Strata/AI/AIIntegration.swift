@@ -57,15 +57,11 @@ extension BrowserWindowController {
         let urls = browser.selectedURLs.isEmpty ? browser.topLevelEntries.map(\.url) : browser.selectedURLs
         guard !urls.isEmpty else { return }
         let folder = location
+        let selectAfterReload = selectionAfterOperation()
         PlanSheetController.present(on: window, urls: urls, baseFolder: folder, undoManager: window.undoManager,
                                     instruction: instruction) { [weak self] outcome in
-            guard let self, let outcome, !outcome.results.isEmpty else { return }
-            browser.reloadFolder(nil)
-            // Select what changed, once the reload has landed.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-                guard let self else { return }
-                browser.select(outcome.results.filter { $0.deletingLastPathComponent().standardizedFileURL == folder.standardizedFileURL })
-            }
+            guard self != nil, let outcome, !outcome.results.isEmpty else { return }
+            selectAfterReload(outcome.results)
             Task { for url in outcome.results { await StrataAI.index.refresh(url) } }
         }
     }

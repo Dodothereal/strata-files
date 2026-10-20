@@ -18,12 +18,10 @@ import Testing
         try await body(board)
     }
 
-    private func wait(until condition: () -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(30)
-        while !condition() {
-            try #require(ContinuousClock.now < deadline, "The temporary browser did not finish loading.")
-            try await Task.sleep(for: .milliseconds(10))
-        }
+    private func loaded(_ browser: BrowserViewController, items: Int) async throws {
+        await browser.directoryReads.task?.value
+        try #require(browser.isLoaded && !browser.isLoadingFolder && browser.itemCount == items,
+                     "The temporary browser did not apply its completed read.")
     }
 
     private func finishPaste(into folder: URL, sources: Set<URL>) async throws {
@@ -42,7 +40,8 @@ import Testing
             let tree = try TestTree("left/", "left/a.txt", "left/ab.txt", "left/b/", "left/b/c.txt", "right/", "right/d.txt")
             let window = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"))
             let other = try #require(window.otherBrowser)
-            try await wait { window.browser.isLoaded && other.isLoaded && window.browser.itemCount == 3 && other.itemCount == 1 }
+            try await loaded(window.browser, items: 3)
+            try await loaded(other, items: 1)
             window.browser.select([tree.url("left/a.txt"), tree.url("left/b")])
             window.browser.cut(nil)
             #expect(Clipboard.isCut(tree.url("left/a.txt")) && !Clipboard.isCut(tree.url("left/ab.txt")))
@@ -81,7 +80,8 @@ import Testing
             let tree = try TestTree("left/", "left/a.txt", "right/")
             let window = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"))
             let other = try #require(window.otherBrowser)
-            try await wait { window.browser.isLoaded && other.isLoaded && window.browser.itemCount == 1 && other.itemCount == 0 }
+            try await loaded(window.browser, items: 1)
+            try await loaded(other, items: 0)
             window.browser.select([tree.url("left/a.txt")])
             window.browser.cut(nil)
             board.clearContents()

@@ -206,6 +206,10 @@ sheet's text before clicking a destructive button. Both builds share preferences
 - Folder read scheduling belongs in `DirectoryReadSession`: each presentation owns its generation, rejects late
   success and error responses, and invalidates reads when removed or replaced by results. Inject `DirectoryReader`
   for controlled completion tests; keep callbacks weak so pending I/O cannot retain closed browsers.
+- Post-operation selection and rename wait for entries to be applied, not an elapsed delay. Keep the original pane
+  and navigation revision; leaving and returning is still a different navigation. Cancel pending renames when their
+  column is removed, selection or mode changes, or its read fails. Preserve each view's selection policy, including
+  Gallery's preview item. A listing deferred during native inline editing must still match the current read generation.
 - Shared commands belong in `StrataCommand`: preserve their action/tag identities and existing shortcut overrides.
   Menus keep native responder routing; the palette uses the same validator and revalidates before dispatch. Never
   use a translated title as identity. A captured file command must stay bound to its original pane, folder and

@@ -11,7 +11,14 @@ enum Destination: Equatable {
 /// One side of a window: a browser with its own place and back/forward history.
 final class Pane {
     let browser: BrowserViewController
-    var destination: Destination
+    var destination: Destination {
+        didSet {
+            guard destination != oldValue else { return }
+            navigationRevision += 1
+            browser.cancelPendingActions()
+        }
+    }
+    private(set) var navigationRevision = 0
     /// The current folder, or the last one shown before a search or Recents.
     var location: URL
     var backStack: [Destination] = []

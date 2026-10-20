@@ -224,6 +224,22 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// Completion for a reviewed operation. Keep its original pane and navigation, including leaving and returning
+    /// to the same folder, and let the next applied listing select its results instead of guessing a delay.
+    func selectionAfterOperation() -> ([URL]) -> Void {
+        let origin = pane, revision = pane.navigationRevision, folder = pane.location.standardizedFileURL.fileViewKey
+        return { [weak self, weak origin] results in
+            guard let self, let origin, origin.navigationRevision == revision,
+                  panes.contains(where: { $0 === origin }) else { return }
+            origin.browser.pendingSelection = results.filter { $0.deletingLastPathComponent().standardizedFileURL.fileViewKey == folder }
+            switch origin.destination {
+            case .folder: origin.browser.reloadFolder(nil)
+            case .search, .recents: runSearch(in: origin)
+            case .duplicates: findDuplicates(in: origin)
+            }
+        }
+    }
+
     private func activate(_ newPane: Pane) {
         guard newPane !== pane, panes.contains(where: { $0 === newPane }) else { return }
         pane = newPane

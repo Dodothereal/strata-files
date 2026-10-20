@@ -362,11 +362,8 @@ struct TransferContextTests {
     }
 
     private func waitForBrowser(_ browser: BrowserViewController) async throws {
-        let deadline = ContinuousClock.now + .seconds(30)
-        while !browser.isLoaded || browser.isLoadingFolder {
-            try #require(ContinuousClock.now < deadline, "The private browser did not finish loading.")
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        await browser.directoryReads.task?.value
+        try #require(browser.isLoaded && !browser.isLoadingFolder, "The private browser did not apply its completed read.")
     }
 
     /// Also drain a misrouted job when deliberately breaking queue ownership in a mutation test.

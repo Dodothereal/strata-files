@@ -214,4 +214,308 @@ struct DirectoryReadSessionTests {
         #expect(session.task == nil && completions == 2)
         #expect(tree.snapshot() == ["installed/", "system/"])
     }
+    @Test func aReloadHonorsEmptySelectionAndEachViewsSelectionPolicy() async throws {
+        let tree = try TestTree("a.txt", "b.txt")
+        let entries = try ["a.txt", "b.txt"].map { try #require(FileEntry(url: tree.url($0))) }
+        for mode in BrowserViewMode.ordered {
+            let reads = Reads()
+            defer { reads.stop() }
+            let browser = browser(reads)
+            browser.setMode(mode, remember: false)
+            browser.load(tree.root)
+            var work = try #require(browser.directoryReads.task)
+            try await reads.request(0).finish(.success(entries))
+            await work.value
+            browser.select([entries[0].url])
+            browser.selectWhenShown([])
+            work = try #require(browser.directoryReads.task)
+            try await reads.request(1).finish(.success(entries))
+            await work.value
+            // Gallery always keeps an item in front for its preview; the other views allow no selection.
+            #expect(browser.selectedURLs == (mode == .gallery ? [entries[0].url] : []), "\(mode)")
+            #expect(browser.pendingSelection == nil)
+            browser.select([entries[1].url])
+            browser.refresh()
+            work = try #require(browser.directoryReads.task)
+            try await reads.request(2).finish(.success(entries))
+            await work.value
+            #expect(browser.selectedURLs == [entries[1].url])
+        }
+        #expect(tree.snapshot() == ["a.txt", "b.txt"])
+    }
+
+    @Test func pendingSelectionsApplyToRefreshedResultsAndGroups() throws {
+        let tree = try TestTree("a.txt", "b.txt")
+        let reads = Reads()
+        defer { reads.stop() }
+        let browser = browser(reads)
+        let entries = try ["a.txt", "b.txt"].map { try #require(FileEntry(url: tree.url($0))) }
+        browser.showResults(entries, total: 2)
+        browser.select([entries[0].url])
+        browser.pendingSelection = [entries[1].url]
+        browser.showResults(entries, total: 2)
+        #expect(browser.selectedURLs == [entries[1].url])
+        browser.pendingSelection = []
+        browser.showResults(entries, total: 2)
+        #expect(browser.selectedURLs.isEmpty && browser.pendingSelection == nil)
+        browser.showGroups([(title: "Files", detail: "", entries: entries)], summary: "")
+        browser.pendingSelection = [entries[0].url]
+        browser.showGroups([(title: "Files", detail: "", entries: entries)], summary: "")
+        #expect(browser.selectedURLs == [entries[0].url] && browser.pendingSelection == nil)
+        #expect(tree.snapshot() == ["a.txt", "b.txt"])
+    }
+
+    @Test func operationCompletionSelectsAfterReadingItsOriginalPaneInEveryView() async throws {
+        let tree = try TestTree("left/old.txt", "left/new.txt", "right/other.txt")
+        let old = try #require(FileEntry(url: tree.url("left/old.txt")))
+        let new = try #require(FileEntry(url: tree.url("left/new.txt")))
+        let other = try #require(FileEntry(url: tree.url("right/other.txt")))
+        for mode in BrowserViewMode.ordered {
+            let reads = Reads()
+            defer { reads.stop() }
+            let controller = window(tree.url("left"), second: tree.url("right"), reads: reads)
+            defer { controller.window?.contentViewController = nil }
+            let first = controller.browser, second = try #require(controller.otherBrowser)
+            let firstLoad = try #require(first.directoryReads.task), secondLoad = try #require(second.directoryReads.task)
+            try await reads.request(0).finish(.success([old]))
+            try await reads.request(1).finish(.success([other]))
+            await firstLoad.value
+            await secondLoad.value
+            first.setMode(mode, remember: false)
+            first.select([old.url])
+            let completion = controller.selectionAfterOperation()
+            second.select([other.url])
+            controller.window?.makeFirstResponder(second.focusView)
+            try #require(controller.browser === second)
+            completion([new.url, other.url])
+            let refresh = try #require(first.directoryReads.task)
+            let request = try await reads.request(2)
+            #expect(request.folder.standardizedFileURL.fileViewKey == tree.url("left").standardizedFileURL.fileViewKey)
+            #expect(first.selectedURLs == [old.url])
+            request.finish(.success([old, new]))
+            await refresh.value
+            #expect(first.selectedURLs == [new.url])
+            #expect(second.selectedURLs == [other.url] && controller.browser === second)
+            #expect(controller.window?.isVisible == false)
+        }
+        #expect(tree.snapshot() == ["left/", "left/new.txt", "left/old.txt", "right/", "right/other.txt"])
+    }
+
+    @Test func operationCompletionRejectsLeavingAndReturningAndRemovedPanes() async throws {
+        let tree = try TestTree("left/a.txt", "right/b.txt")
+        let a = try #require(FileEntry(url: tree.url("left/a.txt")))
+        let b = try #require(FileEntry(url: tree.url("right/b.txt")))
+        let reads = Reads()
+        defer { reads.stop() }
+        let controller = window(tree.url("left"), second: tree.url("right"), reads: reads)
+        defer { controller.window?.contentViewController = nil }
+        let first = controller.browser, second = try #require(controller.otherBrowser)
+        let firstLoad = try #require(first.directoryReads.task), secondLoad = try #require(second.directoryReads.task)
+        try await reads.request(0).finish(.success([a]))
+        try await reads.request(1).finish(.success([b]))
+        await firstLoad.value
+        await secondLoad.value
+        let stale = controller.selectionAfterOperation()
+        controller.navigate(to: tree.url("right"))
+        var work = try #require(first.directoryReads.task)
+        try await reads.request(2).finish(.success([b]))
+        await work.value
+        controller.navigate(to: tree.url("left"))
+        work = try #require(first.directoryReads.task)
+        try await reads.request(3).finish(.success([a]))
+        await work.value
+        stale([a.url])
+        #expect(first.directoryReads.task == nil && first.pendingSelection == nil)
+        controller.window?.makeFirstResponder(second.focusView)
+        let removedPane = controller.pane
+        let removed = controller.selectionAfterOperation()
+        controller.window?.makeFirstResponder(first.focusView)
+        controller.toggleDualPane(at: nil)
+        removed([b.url])
+        #expect(removedPane.browser.directoryReads.task == nil && removedPane.browser.pendingSelection == nil)
+        #expect(controller.browser === first && !controller.isDualPane)
+        #expect(tree.snapshot() == ["left/", "left/a.txt", "right/", "right/b.txt"])
+    }
+
+    @Test func changingSearchTextScopeOrCaseCancelsCapturedActions() async throws {
+        let tree = try TestTree("a.txt")
+        let reads = Reads()
+        defer { reads.stop() }
+        let controller = window(tree.root, second: nil, reads: reads)
+        defer { controller.window?.contentViewController = nil }
+        let pane = controller.pane, browser = pane.browser
+        let entry = try #require(FileEntry(url: tree.url("a.txt")))
+        let initial = try #require(browser.directoryReads.task)
+        try await reads.request(0).finish(.success([entry]))
+        await initial.value
+        // All search controls write the pane's destination, including changes that keep the same history entry.
+        let original = Destination.search("a", scope: nil)
+        for changed in [Destination.search("b", scope: nil), .search("a", scope: tree.root), .search("case:a", scope: nil)] {
+            pane.destination = original
+            browser.showResults([entry], total: 1)
+            let completion = controller.selectionAfterOperation()
+            let revision = pane.navigationRevision
+            browser.pendingSelection = [entry.url]
+            pane.destination = changed
+            #expect(pane.navigationRevision == revision + 1 && browser.pendingSelection == nil)
+            pane.destination = original
+            let searchGeneration = pane.searchGeneration
+            completion([entry.url])
+            #expect(pane.searchGeneration == searchGeneration && browser.pendingSelection == nil)
+            #expect(browser.directoryReads.task == nil)
+            let unchanged = pane.navigationRevision
+            pane.destination = original
+            #expect(pane.navigationRevision == unchanged)
+        }
+        #expect(tree.snapshot() == ["a.txt"])
+    }
+
+    @Test func deeperColumnRenameWaitsUntilTheItemIsApplied() async throws {
+        let tree = try TestTree("folder/old.txt", "folder/new.txt", "folder/keep.txt", "else.txt")
+        let reads = Reads()
+        defer { reads.stop() }
+        let (browser, pane) = try await deeperColumn(tree, reads: reads)
+        let old = try #require(FileEntry(url: tree.url("folder/old.txt")))
+        let new = try #require(FileEntry(url: tree.url("folder/new.txt")))
+        browser.renameWhenShown(new.url, in: tree.url("folder"))
+        var work = try #require(pane.directoryReads.task)
+        #expect(views(browser.view, of: InlineRenameField.self).isEmpty)
+        // A listing can arrive before the new item is visible on a remote filesystem.
+        try await reads.request(2).finish(.success([old]))
+        await work.value
+        #expect(views(browser.view, of: InlineRenameField.self).isEmpty)
+        pane.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder)
+        work = try #require(pane.directoryReads.task)
+        try await reads.request(3).finish(.success([old, new]))
+        await work.value
+        let field = try #require(views(browser.view, of: InlineRenameField.self).first)
+        #expect(field.stringValue == "new.txt")
+        #expect(browser.selectedURLs == [new.url])
+        #expect(tree.snapshot() == ["else.txt", "folder/", "folder/keep.txt", "folder/new.txt", "folder/old.txt"])
+    }
+
+    @Test func deferredColumnRenamesStopAfterNavigationSelectionModeChangesAndErrors() async throws {
+        let tree = try TestTree("folder/old.txt", "folder/new.txt", "folder/keep.txt", "else.txt")
+        let entries = try ["old.txt", "new.txt", "keep.txt"].map { try #require(FileEntry(url: tree.url("folder/" + $0))) }
+        for change in 0..<4 {
+            let reads = Reads()
+            defer { reads.stop() }
+            let (browser, pane) = try await deeperColumn(tree, reads: reads)
+            browser.renameWhenShown(tree.url("folder/new.txt"), in: tree.url("folder"))
+            let work = try #require(pane.directoryReads.task)
+            let request = try await reads.request(2)
+            switch change {
+            case 0: browser.select([tree.url("else.txt")])
+            case 1: pane.select([tree.url("folder/keep.txt")], scroll: false)
+            case 2: browser.setMode(.grid, remember: false)
+            default: break
+            }
+            request.finish(change == 3 ? .failure(CocoaError(.fileReadNoPermission)) : .success(entries))
+            await work.value
+            if change == 3 {
+                pane.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder)
+                let retry = try #require(pane.directoryReads.task)
+                try await reads.request(3).finish(.success(entries))
+                await retry.value
+            }
+            #expect(views(browser.columns.view, of: InlineRenameField.self).isEmpty)
+        }
+        #expect(tree.snapshot() == ["else.txt", "folder/", "folder/keep.txt", "folder/new.txt", "folder/old.txt"])
+    }
+
+    @Test func endingAnInlineEditCannotApplyAListingSupersededByAnotherRead() async throws {
+        let tree = try TestTree("old.txt", "stale.txt", "current.txt")
+        let reads = Reads()
+        defer { reads.stop() }
+        let controller = window(tree.root, second: nil, reads: reads)
+        defer { controller.window?.contentViewController = nil }
+        let browser = controller.browser
+        browser.setMode(.list, remember: false)
+        let entries = try ["old.txt", "stale.txt", "current.txt"].map { try #require(FileEntry(url: tree.url($0))) }
+        var work = try #require(browser.directoryReads.task)
+        try await reads.request(0).finish(.success([entries[0]]))
+        await work.value
+        browser.select([entries[0].url])
+        browser.renameSelection(nil)
+        let field = try #require(views(browser.view, of: NSTextField.self).first { $0.isEditable && $0.stringValue == "old.txt" })
+        try #require(field.currentEditor() != nil)
+        browser.refresh()
+        work = try #require(browser.directoryReads.task)
+        try await reads.request(1).finish(.success([entries[0], entries[1]]))
+        await work.value
+        #expect(browser.topLevelEntries.map(\.url) == [entries[0].url])
+        browser.refresh()
+        work = try #require(browser.directoryReads.task)
+        let currentRead = try await reads.request(2)
+        // End the native field edit without changing its name while the newer read is still pending.
+        controller.window?.makeFirstResponder(browser.outlineView)
+        #expect(browser.topLevelEntries.map(\.url) == [entries[0].url])
+        currentRead.finish(.success([entries[0], entries[2]]))
+        await work.value
+        #expect(Set(browser.topLevelEntries.map(\.url)) == Set([entries[0].url, entries[2].url]))
+        #expect(controller.window?.isVisible == false)
+        #expect(tree.snapshot() == ["current.txt", "old.txt", "stale.txt"])
+    }
+
+    @Test func aFailedRootRenameRequestDoesNotRestartOnALaterRefresh() async throws {
+        let tree = try TestTree("old.txt", "new.txt")
+        for mode in [BrowserViewMode.list, .grid, .columns, .gallery] {
+            let reads = Reads()
+            defer { reads.stop() }
+            let browser = browser(reads)
+            browser.setMode(mode, remember: false)
+            let entries = try ["old.txt", "new.txt"].map { try #require(FileEntry(url: tree.url($0))) }
+            browser.load(tree.root)
+            var work = try #require(browser.directoryReads.task)
+            try await reads.request(0).finish(.success([entries[0]]))
+            await work.value
+            browser.renameWhenShown(entries[1].url, in: tree.root)
+            work = try #require(browser.directoryReads.task)
+            try await reads.request(1).finish(.failure(CocoaError(.fileReadNoPermission)))
+            await work.value
+            browser.refresh()
+            work = try #require(browser.directoryReads.task)
+            try await reads.request(2).finish(.success(entries))
+            await work.value
+            #expect(views(browser.view, of: InlineRenameField.self).isEmpty, "\(mode)")
+            #expect(!views(browser.view, of: NSTextField.self).contains { $0.isEditable && $0.stringValue == "new.txt" }, "\(mode)")
+        }
+        #expect(tree.snapshot() == ["new.txt", "old.txt"])
+    }
+
+    private func deeperColumn(_ tree: TestTree, reads: Reads) async throws -> (BrowserViewController, ColumnPane) {
+        let browser = browser(reads)
+        browser.setMode(.columns, remember: false)
+        browser.load(tree.root)
+        let initial = try #require(browser.directoryReads.task)
+        let rootEntries = try ["folder", "else.txt"].map { try #require(FileEntry(url: tree.url($0))) }
+        try await reads.request(0).finish(.success(rootEntries))
+        await initial.value
+        browser.select([tree.url("folder/old.txt")])
+        let request = try await reads.request(1)
+        let pane = try #require(views(browser.columns.view, of: ColumnPane.self).first {
+            $0.folder.standardizedFileURL.fileViewKey == tree.url("folder").standardizedFileURL.fileViewKey
+        })
+        let work = try #require(pane.directoryReads.task)
+        let children = try ["old.txt", "keep.txt"].map { try #require(FileEntry(url: tree.url("folder/" + $0))) }
+        request.finish(.success(children))
+        await work.value
+        browser.columns.view.layoutSubtreeIfNeeded()
+        #expect(browser.selectedURLs == [tree.url("folder/old.txt")])
+        return (browser, pane)
+    }
+
+    private func window(_ folder: URL, second: URL?, reads: Reads) -> BrowserWindowController {
+        _ = NSApplication.shared
+        let services = BrowserServices(transfers: .shared, visits: .shared, directories: reads.reader)
+        let controller = BrowserWindowController(location: folder, secondPane: second, services: services)
+        controller.split.splitView.autosaveName = nil
+        controller.window?.setFrameAutosaveName("")
+        return controller
+    }
+
+    private func views<T: NSView>(_ view: NSView, of type: T.Type) -> [T] {
+        (view as? T).map { [$0] } ?? view.subviews.flatMap { views($0, of: type) }
+    }
+
 }

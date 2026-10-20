@@ -42,6 +42,7 @@ extension BrowserViewController {
         // Results stay in List; a user command must not silently change the folder's saved view.
         guard !remember || !isShowingResults else { return }
         guard newMode != mode else { return }
+        columnController?.cancelPendingRename()
         let selection = selectedURLs
         setStoredMode(newMode)
         if remember { Prefs.shared.viewMode = newMode.rawValue }

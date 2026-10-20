@@ -142,7 +142,7 @@ final class BrowserViewController: NSViewController {
     private var sortKey: SortKey = SortKey(rawValue: Prefs.shared.sortColumn) ?? .name
     private var ascending = Prefs.shared.sortAscending
     /// Selected once the folder shows them (after the reload a change brings).
-    var pendingSelection: [URL] = []
+    var pendingSelection: [URL]?
     /// Opens the folder row a drag rests on (only rows still on screen).
     private lazy var springLoader = SpringLoader(view: outlineView, frame: { [weak self] folder in
         guard let self, let node = node(for: folder) else { return nil }
@@ -159,7 +159,7 @@ final class BrowserViewController: NSViewController {
     private var renaming: FileNode?
     private weak var renamingField: NSTextField?
     /// The folder read again while a name was being edited in place: shown once the edit ends.
-    private var deferredApply: (entries: [FileEntry], preservingState: Bool, fromTop: Bool)?
+    private var deferredApply: (entries: [FileEntry], preservingState: Bool, fromTop: Bool, generation: Int)?
     private var resortWork: DispatchWorkItem?
     /// Showing search results or Recents instead of a folder's contents.
     private(set) var isShowingResults = false
@@ -351,6 +351,8 @@ final class BrowserViewController: NSViewController {
         if isShowingResults { leaveResults() }
         directory = url
         if isNewDirectory {
+            cancelPendingActions()
+            deferredApply = nil
             filter = ""
             filterPill.update(query: "", matches: 0)
             sizer.cancelPending()
@@ -394,7 +396,7 @@ final class BrowserViewController: NSViewController {
         if let observation = gitObservation, !observation.isWatching {
             GitStatusStore.shared.invalidate(root: observation.repository.root)
         }
-        if pendingSelection.isEmpty { pendingSelection = selectedURLs }
+        if pendingSelection == nil { pendingSelection = selectedURLs }
         reload(scrollToTop: false)
     }
 
@@ -434,7 +436,7 @@ final class BrowserViewController: NSViewController {
     private func apply(_ entries: [FileEntry], preservingState: Bool, fromTop: Bool = false) {
         // Reloading the list would end a rename in progress, half typed.
         if isRenamingInPlace {
-            deferredApply = (entries, preservingState, fromTop)
+            deferredApply = (entries, preservingState, fromTop, generation)
             return
         }
         deferredApply = nil
@@ -461,8 +463,8 @@ final class BrowserViewController: NSViewController {
         // Icons, columns and disk usage get the new rows first: selecting or renaming before that looked in the
         // previous folder's items, so a revealed file or a new folder came up unselected outside the list.
         pushContent(animated: preservingState)
-        select(pendingSelection)
-        pendingSelection = []
+        select(pendingSelection ?? [])
+        pendingSelection = nil
         if let rename = pendingRename, node(for: rename) != nil {
             pendingRename = nil
             beginRename(rename)
@@ -519,6 +521,8 @@ final class BrowserViewController: NSViewController {
     }
 
     private func showError(_ error: Error) {
+        cancelPendingActions()
+        deferredApply = nil
         loadError = error
         isLoaded = true
         isLoadingFolder = false
@@ -581,7 +585,7 @@ final class BrowserViewController: NSViewController {
     func showResults(_ entries: [FileEntry], total: Int) {
         // A search refreshed because the index changed nearly always finds the same files: the list, its selection
         // and the Inspector stay as they are, and only rows whose size or date moved are redrawn.
-        if isShowingResults, resultsSummary == nil, loadError == nil, updateResultsInPlace(entries) {
+        if isShowingResults, pendingSelection == nil, resultsSummary == nil, loadError == nil, updateResultsInPlace(entries) {
             localizeResultNames()
             if resultsTotal != total {
                 resultsTotal = total
@@ -591,7 +595,7 @@ final class BrowserViewController: NSViewController {
         }
         // Read before switching to the list: in other views the list's own selection is stale and could point at a file
         // nobody picked.
-        let selection = selectedURLs
+        let selection = pendingSelection ?? selectedURLs
         enterResults()
         directoryReads.invalidate()
         resultsTotal = total
@@ -605,6 +609,7 @@ final class BrowserViewController: NSViewController {
         applyFilter()
         outlineView.reloadData()
         select(selection, scroll: false)
+        pendingSelection = nil
         updateEmptyState()
         delegate?.browserContentDidChange(self)
         delegate?.browserSelectionDidChange(self)
@@ -661,6 +666,8 @@ final class BrowserViewController: NSViewController {
         applyFilter()
         outlineView.reloadData()
         outlineView.expandItem(nil, expandChildren: true)
+        if let pendingSelection { select(pendingSelection, scroll: true) }
+        pendingSelection = nil
         updateEmptyState()
         delegate?.browserContentDidChange(self)
         delegate?.browserSelectionDidChange(self)
@@ -708,6 +715,8 @@ final class BrowserViewController: NSViewController {
     private func enterResults() {
         isLoadingFolder = false
         if !isShowingResults {
+            cancelPendingActions()
+            deferredApply = nil
             isShowingResults = true
             installActiveView()
             folderSortDescriptors = outlineView.sortDescriptors
@@ -1047,14 +1056,22 @@ final class BrowserViewController: NSViewController {
 
     /// An item just made in `directory`: selected, and renamed once it's shown.
     func renameWhenShown(_ url: URL, in directory: URL) {
-        if mode == .columns, directory != self.directory {
-            // A deeper column picks the item up from its own watcher; rename once it's shown.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { _ = self.activeView?.beginRename(url) }
+        guard !isShowingResults, !isLoadingFolder else { return }
+        if effectiveMode == .columns, Self.key(directory) != self.directory.map(Self.key) {
+            columns.renameWhenShown(url, in: directory)
             return
         }
+        guard Self.key(directory) == self.directory.map(Self.key) else { return }
         pendingSelection = [url]
         pendingRename = url
         refresh()
+    }
+
+    /// Navigation and failed reads must not leave a selection or rename waiting for an unrelated later listing.
+    func cancelPendingActions() {
+        pendingSelection = nil
+        pendingRename = nil
+        columnController?.cancelPendingRename()
     }
 
     @objc func renameSelection(_ sender: Any?) {
@@ -1956,9 +1973,10 @@ extension BrowserViewController: NSTextFieldDelegate {
         field.isEditable = false
         field.isSelectable = false
         field.drawsBackground = false
-        if let deferred = deferredApply {
+        if let deferred = deferredApply, deferred.generation == generation {
             apply(deferred.entries, preservingState: deferred.preservingState, fromTop: deferred.fromTop)
         } else {
+            deferredApply = nil
             let row = outlineView.row(forItem: node)
             if row >= 0 { outlineView.reloadData(forRowIndexes: [row], columnIndexes: [outlineView.column(withIdentifier: .name)]) }
         }

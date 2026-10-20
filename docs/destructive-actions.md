@@ -33,6 +33,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 | Action | Code | Tests |
 |---|---|---|
 | Window and pane transfer ownership | `BrowserServices`, `Pane`, `BrowserWindowController.transferToOtherPane`, `BrowserViewController.transfer` | `TransferContextTests/bothPanesInEveryViewSendOnlyTheirSelectionToTheirOwnQueue`, `replacementPanesAndBrowserCommandsKeepTheWindowServices`, `bothSidebarDropModesUseTheWindowQueue`; mutations: “Browser service ownership” |
+| Selection and inline rename after a completed operation | `BrowserWindowController.selectionAfterOperation`, `Pane.destination`, `BrowserViewController.renameWhenShown`, `ColumnBrowserViewController.paneLoaded` | `DirectoryReadSessionTests/*` (applied entries, original pane, navigation and search edits, cancelled rename, native edit completion); mutations: “Applied browser actions” |
 | Copy / move items (engine) | `TransferEngine.perform`, replace, merge, verify | `TransferTests/*` |
 | Copy / move jobs (drag and drop, paste, other pane, Duplicate) | `TransferQueue.enqueue`, `TransferJob` | `TransferJobTests/*`, incl. `aReadOnlyCopyTakesNothingAndWhatLeavesItIsCopied` |
 | What a drop does | `FileDrop.operation(_:into:mask:option:)` | `DropTests/*` |

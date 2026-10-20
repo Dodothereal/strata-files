@@ -28,6 +28,8 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     private var focusWhenLoaded: ColumnPane?
     private var lastReportedSelection: [URL] = []
     private var renameField: InlineRenameField?
+    private var pendingRename: URL?
+    private weak var renameWhenLoaded: ColumnPane?
 
     init(scrollView: NSScrollView = NSScrollView(), directoryReader: DirectoryReader = .live) {
         self.directoryReader = directoryReader
@@ -164,6 +166,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     private func removeColumns(after index: Int) {
         while panes.count > index + 1 {
             let pane = panes.removeLast()
+            if renameWhenLoaded === pane { cancelPendingRename() }
             pane.tearDown()
             pane.removeFromSuperview()
         }
@@ -216,6 +219,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     // MARK: - Pane callbacks
 
     fileprivate func selectionChanged(in pane: ColumnPane) {
+        cancelPendingRename()
         guard let index = panes.firstIndex(where: { $0 === pane }) else { return }
         activeIndex = index
         let selected = pane.selectedEntries
@@ -242,19 +246,32 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         reportLocation()
     }
 
-    fileprivate func paneLoaded(_ pane: ColumnPane) {
-        if focusWhenLoaded === pane {
-            focusWhenLoaded = nil
-            if pane.entries.isEmpty == false {
-                pane.selectRow(0)
-                view.window?.makeFirstResponder(pane.tableView)
+    fileprivate func paneLoaded(_ pane: ColumnPane, firstLoad: Bool) {
+        guard panes.contains(where: { $0 === pane }) else { return }
+        if firstLoad {
+            if focusWhenLoaded === pane {
+                focusWhenLoaded = nil
+                if pane.entries.isEmpty == false {
+                    pane.selectRow(0)
+                    view.window?.makeFirstResponder(pane.tableView)
+                }
             }
+            continueReveal()
         }
-        continueReveal()
+        if renameWhenLoaded === pane, let url = pendingRename, pane.row(for: url) != nil {
+            cancelPendingRename()
+            pane.select([url], scroll: true)
+            _ = beginRename(url)
+        }
+    }
+
+    fileprivate func paneFailed(_ pane: ColumnPane) {
+        if renameWhenLoaded === pane { cancelPendingRename() }
     }
 
     fileprivate func paneBecameActive(_ pane: ColumnPane) {
         guard let index = panes.firstIndex(where: { $0 === pane }), index != activeIndex else { return }
+        cancelPendingRename()
         activeIndex = index
         reportSelection()
         reportLocation()
@@ -371,6 +388,18 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     }
 
     // MARK: - Rename
+
+    func renameWhenShown(_ url: URL, in folder: URL) {
+        guard let pane = panes.first(where: { $0.folder.standardizedFileURL.fileViewKey == folder.standardizedFileURL.fileViewKey }) else { return }
+        pendingRename = url
+        renameWhenLoaded = pane
+        pane.reload()
+    }
+
+    func cancelPendingRename() {
+        pendingRename = nil
+        renameWhenLoaded = nil
+    }
 
     @discardableResult
     func beginRename(_ url: URL) -> Bool {
@@ -576,7 +605,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         reload()
     }
 
-    private func reload() {
+    fileprivate func reload() {
         let gen = generation + 1
         let folder = folder
         let showHidden = showHidden
@@ -600,6 +629,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
                 self.message.isHidden = true
                 self.setEntries(self.order.map { entries.sorted(by: $0) } ?? entries, matches: [:])
             case .failure(let error):
+                self.controller?.paneFailed(self)
                 // An unreadable folder says so instead of looking empty.
                 let code = (error as NSError).code
                 let denied = code == NSFileReadNoPermissionError
@@ -632,7 +662,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         tableView.selectRowIndexes(rows, byExtendingSelection: false)
         suppressSelection = false
         if rows.count != before.count { controller?.selectionChanged(in: self) }
-        if !wasLoaded { controller?.paneLoaded(self) }
+        controller?.paneLoaded(self, firstLoad: !wasLoaded)
     }
 
     private var selectedKeys: [String] {
