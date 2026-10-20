@@ -42,4 +42,71 @@ struct SQLitePreviewSafetyTests {
         #expect(try Data(contentsOf: url) == before)
         #expect(tree.snapshot() == ["test.db"])
     }
+
+    @Test(arguments: [8_388_607, 8_388_608, 8_388_609])
+    func valueLimitAcceptsItsBoundaryAndRefusesLargerValues(_ bytes: Int) throws {
+        let tree = try TestTree()
+        let url = tree.url("test.db")
+        try database(url, sql: "CREATE VIEW bounded AS SELECT zeroblob(\(bytes)) AS payload")
+        let before = try Data(contentsOf: url)
+        let result = try SQLiteReader.rows(url, table: "bounded")
+        if bytes <= 8 * 1024 * 1024 {
+            #expect(result.error == nil)
+            let row = try #require(result.data.rows.first)
+            guard case .blob(let count) = try #require(row.first) else {
+                Issue.record("Expected a BLOB size, not allocated preview text")
+                return
+            }
+            #expect(count == bytes)
+        } else {
+            #expect(result.error != nil)
+            #expect(result.data.rows.isEmpty)
+        }
+        #expect(try Data(contentsOf: url) == before)
+        #expect(tree.snapshot() == ["test.db"])
+    }
+
+    @Test func anOversizedStoredValueKeepsEarlierRowsAndReportsTheFailure() throws {
+        let tree = try TestTree()
+        let url = tree.url("test.db")
+        try database(url, sql: """
+            CREATE TABLE example (id INTEGER PRIMARY KEY, first BLOB, second BLOB);
+            INSERT INTO example VALUES (1, zeroblob(16), zeroblob(32));
+            INSERT INTO example VALUES (2, zeroblob(16777216), zeroblob(32));
+            INSERT INTO example VALUES (3, zeroblob(16), zeroblob(32));
+            """)
+        let before = try Data(contentsOf: url)
+        let result = try SQLiteReader.rows(url, table: "example")
+        #expect(result.error != nil)
+        #expect(result.data.columns.map(\.title) == ["id", "first", "second"])
+        #expect(result.data.rows.count == 1)
+        if let row = result.data.rows.first {
+            #expect(row.map { GridView.display($0) } == ["1", GridView.display(.blob(bytes: 16)),
+                                                        GridView.display(.blob(bytes: 32))])
+        }
+        #expect(try Data(contentsOf: url) == before)
+        #expect(tree.snapshot() == ["test.db"])
+    }
+
+
+    @Test func aStoredRowCanStillReadSeparateValuesThatEachFitTheLimit() throws {
+        let tree = try TestTree()
+        let url = tree.url("test.db")
+        try database(url, sql: """
+            CREATE TABLE example (first BLOB, second BLOB);
+            INSERT INTO example VALUES (zeroblob(4194304), zeroblob(4194304));
+            """)
+        let before = try Data(contentsOf: url)
+        let result = try SQLiteReader.rows(url, table: "example")
+        #expect(result.error == nil)
+        #expect(result.data.rows.count == 1)
+        let row = try #require(result.data.rows.first)
+        #expect(row.count == 2)
+        for cell in row {
+            if case .blob(let count) = cell { #expect(count == 4_194_304) }
+            else { Issue.record("Expected the stored BLOB size") }
+        }
+        #expect(try Data(contentsOf: url) == before)
+        #expect(tree.snapshot() == ["test.db"])
+    }
 }
