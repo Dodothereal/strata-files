@@ -1,6 +1,6 @@
 # Crash resilience review, 20 October 2026
 
-Baseline: `1a72127` on `main`. Changes are on `audit/crash-resilience`.
+Baseline: `1a72127` on `main`. The audit branch was merged into `main`; final release review followed.
 
 This was a repository-wide risk inventory followed by detailed inspection and headless
 reproductions of the highest-risk paths. It is not a proof that every execution path is
@@ -41,7 +41,7 @@ unchecked external input.
 | File-index persistence | Ten structurally invalid but authenticated indexes were accepted. Invalid offsets and cyclic links could reach raw-buffer reads or tree walks. | Validate bounds, parent order, roots, child ownership, linked membership and nonnegative sizes. Reject invalid stores through the existing rebuild path. Preserve deleted entries and 200,000-entry growth/round trips. |
 | Content-index persistence | Malformed keyword arrays or lengths crashed the test process during scoring. | Skip malformed documents before allocating rows. Validate array shapes, lengths, page marks and vector dimensions/finite values; use unaligned-safe packed reads. Valid neighboring documents remain searchable. |
 | Text and bundle metadata | A FIFO named like text was consumed by a preview; an empty FIFO could instead block. The bundle reader separately checked a path and then read it without a byte bound. | Open nonblocking, inspect the opened descriptor, accept regular files only, then read a bounded prefix. Bundle metadata shares this reader. Tests preserve FIFO bytes, regular files, links and bundle behavior. |
-| Process output | Reading a closed pipe through `availableData` raised an uncaught Objective-C exception and aborted the test process. | Use throwing reads. Git reports a failed run if output cannot be read, rather than accepting partial output as success. SSH diagnostic reads end safely on failure. Cover closed pipes, ordinary output/EOF and existing Git/remote integration. |
+| Process output | Reading a closed pipe through `availableData` raised an uncaught Objective-C exception and aborted the test process. | Use bounded POSIX reads on owned pipe descriptors, retry EINTR and throw Swift errors. Preserve short streaming output while writers remain open. Git reports a failed run if output cannot be read; SSH diagnostic reads end safely. Cover invalid descriptors, short output/EOF and existing Git/remote integration. |
 | SQLite previews | A view allocated a 16 MiB value despite the existing query timeout; the test expected refusal and failed. This was a bounded reproduction, not an OOM test. | Set an 8 MiB SQLite value/row limit. Oversized values use the existing preview error presentation while retaining earlier rows. Test the exact boundary, stored and computed values, and ordinary tables/views without changing the database or creating sidecars. |
 | History decoding | Saved move/replacement arrays with 0, 1 or 3 elements were accepted, although undo indexes exactly two elements. | Reject malformed pairs while decoding; skip invalid independent records while preserving valid neighbors, their order and older formats. Never rewrite History while loading or salvage unauthenticated bytes. Test truncated JSON, malformed records and tampered ciphertext; removing the pair check is caught by the regression tests. |
 
@@ -79,9 +79,9 @@ Sanitizer also runs the full suite in a separate CI job and before signing a rel
 CI runs when that release workflow changes. This blocks release on a failing regression;
 it does not prove that untested inputs or platform behavior cannot fail.
 
-## Validation
+## Validation before the final release review
 
-The baseline passed 437 Swift tests in 51 suites. The final run passed 471 tests in
+The baseline passed 437 Swift tests in 51 suites. The pre-review run passed 471 tests in
 62 suites, including 34 new regression tests and their parameterized edge cases.
 Five before-fix reproductions terminated their test processes: archive totals, deep path
 search, unbounded grid layout, malformed content-index scoring and closed-pipe reads.
@@ -144,6 +144,45 @@ as a nominally passing CI job: [Apple sanitizer documentation](https://developer
 ASan covers memory-access bugs on instrumented paths exercised by these tests. It does
 not prove freedom from crashes, cover every system-framework implementation, detect
 all races or substitute for live-platform testing.
+
+## Final release review
+
+Three parallel reviewers inspected persistence/search safety, previews/process output/
+layout, and release gates/test isolation. The focused second pass found two regressions
+introduced during this audit, both fixed before release:
+
+- `bedf594`: the content-index validator compared keyword counts only with passage
+  length, although the writer includes title or filename context. Actual indexing,
+  saving and reopening tests for short plain text and HTML failed before the fix and
+  now pass. The bound includes that context with checked addition; malformed-data
+  validation remains in place.
+- `c75eb6b`: Foundation's `read(upToCount:)` could wait for a full buffer or EOF, delaying
+  short output. A deterministic prefilled, nonblocking pipe with its writer left open
+  exposed lost output and EAGAIN. Bounded POSIX reads restore streaming behavior while
+  throwing Swift errors instead of Objective-C exceptions. All 25 targeted pipe, Git
+  and local SFTP tests passed after the fix.
+
+The first complete post-review run exposed an existing test-fixture dependency on the
+live keyboard: synthetic scroll events inherited Shift, so AppKit converted the expected
+vertical gesture into horizontal scrolling. `7e8ee4a` gives those events a private source
+and clears their flags before NSEvent conversion. A headless Shift-versus-no-Shift probe
+confirmed the mechanism, and all four scrolling tests passed with their assertions
+unchanged. No application scrolling code changed, and no events were posted to the
+system queue.
+
+The review also added `Package.resolved` to CI path filters so dependency-only changes
+run the ordinary and Address Sanitizer suites. Agent guidance now explicitly requires
+real writer/save/reopen coverage and open-writer pipe tests. Reviewers reported no other
+actionable findings within their scopes; this remains a review of exercised and inspected
+paths, not proof that all crashes are impossible.
+
+Final local validation after these review fixes:
+
+- Full Swift suite: 473 tests in 62 suites passed in 39.283 seconds.
+- Address Sanitizer: the same 473 tests passed in 75.162 seconds with no sanitizer findings.
+- Python tooling: 39 tests passed.
+- Localization completeness, destructive-action coverage and theme-color audit passed.
+- Hosted validation uses the existing Xcode 26.6 selection and must pass before tagging the release.
 
 ## Performance and remaining limits
 

@@ -145,16 +145,21 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
 - Authentication does not prove a saved structure is valid. Preserve valid neighboring records when records are
   independent; reject an invalid linked structure as a whole through its existing recovery path. Never salvage
   unauthenticated bytes or overwrite the saved file just because a read failed. Test older supported formats,
-  valid-record preservation and byte-for-byte preservation of the input file.
+  valid-record preservation and byte-for-byte preservation of the input file. Include real writer → save → reopen
+  tests, not only hand-built stored fixtures; validation must include context the writer adds, such as titles and
+  filenames in content-search token counts.
 - Apply byte, nesting, entry and output limits before allocation or expansion. A time budget cannot interrupt one
   expensive library instruction. Test limits with bounded fixtures, including values on either side of the boundary;
   never deliberately exhaust the machine's memory. For files that could be replaced while opening, inspect the
   opened descriptor and reject nonregular input before reading, as `TextFile.readPrefix` does.
 - Use throwing Foundation I/O APIs where available. Swift `do`/`catch` does not catch Objective-C exceptions from
-  older APIs. Cover closed handles and ordinary output/EOF. A failed read must not report partial output as success;
+  older APIs. Preserve streaming semantics when replacing an API: cover short pipe output while the writer stays
+  open, as well as read failures and EOF. A failed read must not report partial output as success;
   a partial preview must expose its error while keeping rows already read.
 - Assert observable results and unchanged fixture files. Avoid fixed sleeps, wall-clock performance thresholds,
   exact RSS expectations, nondeterministic random inputs and tests that depend on installed apps or live services.
+  Synthetic CGEvents must set their own modifier flags before conversion to NSEvent; a nil event source can
+  inherit the live keyboard's Shift state and change scrolling axes. Never post fixture events to the system queue.
   Use explicit completion signals, deterministic boundary fixtures and controlled failures. Measure performance
   separately under matched conditions; passing tests establish only the cases exercised.
 

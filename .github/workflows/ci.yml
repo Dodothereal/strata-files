@@ -6,10 +6,10 @@ name: CI
 on:
   push:
     branches: [main]
-    paths: ["Sources/**", "Tests/**", "Resources/**", "Package.swift", "docs/destructive-actions.md", "scripts/audit-destructive.py",
+    paths: ["Sources/**", "Tests/**", "Resources/**", "Package.swift", "Package.resolved", "docs/destructive-actions.md", "scripts/audit-destructive.py",
             "scripts/mutate.py", "scripts/build.sh", "scripts/build-icon.py", "scripts/audit-theme-colors.py", "AGENTS.md", ".github/workflows/ci.yml", ".github/workflows/release.yml"]
   pull_request:
-    paths: ["Sources/**", "Tests/**", "Resources/**", "Package.swift", "docs/destructive-actions.md", "scripts/audit-destructive.py",
+    paths: ["Sources/**", "Tests/**", "Resources/**", "Package.swift", "Package.resolved", "docs/destructive-actions.md", "scripts/audit-destructive.py",
             "scripts/mutate.py", "scripts/build.sh", "scripts/build-icon.py", "scripts/audit-theme-colors.py", "AGENTS.md", ".github/workflows/ci.yml", ".github/workflows/release.yml"]
 
 permissions:
