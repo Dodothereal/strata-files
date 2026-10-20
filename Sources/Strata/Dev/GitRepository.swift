@@ -275,29 +275,31 @@ nonisolated final class PipeCollector: @unchecked Sendable {
     private let eof = DispatchSemaphore(value: 0)
 
     init() {
-        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            self?.receive(handle)
+        // The owned pipe stays open for every callback; don't ask a closed FileHandle for its descriptor.
+        let descriptor = pipe.fileHandleForReading.fileDescriptor
+        pipe.fileHandleForReading.readabilityHandler = { [weak self] _ in
+            self?.receive(descriptor)
         }
     }
 
-    func receive(_ handle: FileHandle) {
+    func receive(_ descriptor: Int32) {
         let chunk: Data
         do {
-            chunk = try handle.read(upToCount: 64 * 1024) ?? Data()
+            chunk = try PipeRead.availableData(from: descriptor)
         } catch {
             lock.withLock { failure = error.localizedDescription }
-            finishReading(handle)
+            finishReading()
             return
         }
         if chunk.isEmpty {
-            finishReading(handle)
+            finishReading()
         } else {
             lock.withLock { buffer.append(chunk) }
         }
     }
 
-    private func finishReading(_ handle: FileHandle) {
-        handle.readabilityHandler = nil
+    private func finishReading() {
+        pipe.fileHandleForReading.readabilityHandler = nil
         lock.withLock {
             guard !reachedEOF else { return }
             reachedEOF = true

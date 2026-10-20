@@ -515,9 +515,10 @@ nonisolated final class SFTPClient: @unchecked Sendable {
 
     /// What ssh prints (a login that failed, an unknown host…), kept short for messages.
     private func readErrors() {
-        let handle = errors.fileHandleForReading
+        // close() ends ssh but leaves this owned read handle open until the reader finishes.
+        let descriptor = errors.fileHandleForReading.fileDescriptor
         while true {
-            guard let data = try? handle.read(upToCount: 64 * 1024), !data.isEmpty else { break }
+            guard let data = try? PipeRead.availableData(from: descriptor), !data.isEmpty else { break }
             let text = String(decoding: data, as: UTF8.self)
             lock.withLock {
                 stderrText = String((stderrText + text).suffix(600)).trimmingCharacters(in: .whitespacesAndNewlines)
