@@ -48,6 +48,31 @@ import Testing
         #expect(fixture.snapshot() == before)
     }
 
+    @Test func hookSnapshotsPreserveFieldUpdatesAndAllowCallbacksToReconfigure() {
+        defer { TransferEngine.hooks = .init() }
+        let unused = URL(fileURLWithPath: "/synthetic-hook-argument")
+        // Nonpositive rates disable throttling, including for any unrelated worker taking a snapshot.
+        TransferEngine.hooks = .init(throttleBytesPerSecond: 0, beforeVerify: { url in
+            guard url == unused else { return }
+            TransferEngine.hooks.throttleBytesPerSecond = -1
+        })
+        TransferEngine.hooks.afterLanding = { url in
+            guard url == unused else { return }
+            TransferEngine.hooks.throttleBytesPerSecond = -2
+        }
+        let snapshot = TransferEngine.hooks
+        #expect(snapshot.throttleBytesPerSecond == 0)
+        #expect(snapshot.beforeVerify != nil && snapshot.afterLanding != nil)
+        // Real callers invoke a callback through the getter; it must not retain the configuration lock.
+        TransferEngine.hooks.afterLanding?(unused)
+        #expect(TransferEngine.hooks.throttleBytesPerSecond == -2)
+        TransferEngine.hooks = .init()
+        snapshot.beforeVerify?(unused)
+        #expect(TransferEngine.hooks.throttleBytesPerSecond == -1)
+        #expect(snapshot.throttleBytesPerSecond == 0)
+        #expect(TransferEngine.hooks.beforeVerify == nil && TransferEngine.hooks.afterLanding == nil)
+    }
+
     @Test func aCopyLeavesTheOriginalAndEverythingAround() throws {
         let tree = try TestTree("from/", "from/a/", "from/a/inner.txt", "from/b.txt", "to/", "to/there.txt")
         let result = run(TransferItem(source: tree.url("from/a"), destination: tree.url("to/a"), operation: .copy))

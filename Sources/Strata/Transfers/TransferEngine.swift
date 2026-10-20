@@ -132,7 +132,20 @@ nonisolated enum TransferEngine {
         var afterLanding: (@Sendable (URL) -> Void)?
     }
 
-    nonisolated(unsafe) static var hooks = Hooks()
+    private static let hooksLock = NSLock()
+    nonisolated(unsafe) private static var storedHooks = Hooks()
+
+    // Workers read snapshots while tests configure hooks. Keep field updates atomic too; callbacks run after
+    // the getter has released the lock, so they may safely update the configuration themselves.
+    static var hooks: Hooks {
+        get { hooksLock.withLock { storedHooks } }
+        set { hooksLock.withLock { storedHooks = newValue } }
+        _modify {
+            hooksLock.lock()
+            defer { hooksLock.unlock() }
+            yield &storedHooks
+        }
+    }
 
     // MARK: - Items
 
