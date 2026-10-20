@@ -6,7 +6,7 @@ import Quartz
 /// Live preview and metadata for the selection, or for the current folder when nothing is selected.
 final class InspectorViewController: NSViewController {
     private let previewBox = NSView()
-    private let preview: QLPreviewView = QLPreviewView(frame: .zero, style: .compact)
+    private let preview = QuickLookPreviewView(frame: .zero, style: .compact)
     private let iconView = NSImageView()
     private let titleLabel = NSTextField(wrappingLabelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
@@ -44,6 +44,17 @@ final class InspectorViewController: NSViewController {
     private let richBackdrop = NSBox()
     private var previewHeight: NSLayoutConstraint?
 
+    private let previewScheduler: (DispatchWorkItem) -> Void
+
+    init(previewScheduler: @escaping (DispatchWorkItem) -> Void = {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: $0)
+    }) {
+        self.previewScheduler = previewScheduler
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { return nil }
+
     override func loadView() {
         previewBox.translatesAutoresizingMaskIntoConstraints = false
         previewBox.wantsLayer = true
@@ -53,8 +64,6 @@ final class InspectorViewController: NSViewController {
         ThemeStyle.bind(previewBox, to: .inspector)
 
         preview.translatesAutoresizingMaskIntoConstraints = false
-        preview.shouldCloseWithWindow = true
-        preview.autostarts = false
         iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.imageScaling = .scaleProportionallyUpOrDown
         richBackdrop.boxType = .custom
@@ -330,7 +339,7 @@ final class InspectorViewController: NSViewController {
             if !sameItems {
                 previewWork?.cancel()
                 removeRichPreview()
-                preview.previewItem = nil
+                preview.clear()
                 preview.isHidden = true
                 iconView.isHidden = false
                 iconView.image = Self.stackedIcons(items)
@@ -362,11 +371,11 @@ final class InspectorViewController: NSViewController {
             }
         }
         previewWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
+        previewScheduler(work)
     }
 
     private func showQuickLook(_ url: URL) {
-        preview.previewItem = url as NSURL
+        guard preview.show(url) else { return }
         preview.isHidden = false
         iconView.isHidden = true
     }
@@ -384,7 +393,7 @@ final class InspectorViewController: NSViewController {
         richPreview = rich
         richBackdrop.isHidden = false
         previewHeight?.constant = 340
-        preview.previewItem = nil
+        preview.clear()
         preview.isHidden = true
         iconView.isHidden = true
     }

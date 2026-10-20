@@ -15,7 +15,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
     private let stripScroll = NSScrollView()
     private let layout = NSCollectionViewFlowLayout()
     private let previewBox = NSView()
-    private let preview = QLPreviewView(frame: .zero, style: .normal)!
+    private let preview = QuickLookPreviewView(frame: .zero, style: .normal)
     private let iconView = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "")
     private let detailLabel = NSTextField(labelWithString: "")
@@ -74,8 +74,6 @@ final class GalleryViewController: NSViewController, FileCollectionController {
 
         previewBox.translatesAutoresizingMaskIntoConstraints = false
         preview.translatesAutoresizingMaskIntoConstraints = false
-        preview.shouldCloseWithWindow = true
-        preview.autostarts = false
         preview.isHidden = true
         iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.imageScaling = .scaleProportionallyUpOrDown
@@ -178,7 +176,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         super.viewDidDisappear()
         // A movie mustn't play on (or hold its file) once the gallery isn't shown.
         previewWork?.cancel()
-        preview.previewItem = nil
+        preview.clear()
         previewed = nil
     }
 
@@ -299,7 +297,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         let sameItem = entry?.url == previewed?.url
         previewed = entry
         guard let entry else {
-            preview.previewItem = nil
+            preview.clear()
             preview.isHidden = true
             iconView.image = nil
             nameLabel.stringValue = ""
@@ -322,14 +320,14 @@ final class GalleryViewController: NSViewController, FileCollectionController {
             ?? FileThumbnails.shared.cached(entry, size: Self.thumbnailSize, scale: scale)?.image ?? IconCache.shared.icon(for: entry)
             : IconCache.shared.icon(for: entry)
         iconView.isHidden = false
-        preview.previewItem = nil
+        preview.clear()
         preview.isHidden = true
         // Folders and apps show their icon; an item only in the cloud isn't downloaded just to be looked at.
         guard !entry.isFolder, FileThumbnails.canThumbnail(entry), CloudStore.shared.status(for: entry.url) != .cloudOnly else { return }
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.previewed == entry else { return }
-                self.preview.previewItem = entry.url as NSURL
+                guard self.preview.show(entry.url) else { return }
                 self.preview.isHidden = false
                 self.iconView.isHidden = true
             }

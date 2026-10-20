@@ -162,6 +162,9 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
   older APIs. Preserve streaming semantics when replacing an API: cover short pipe output while the writer stays
   open, as well as read failures and EOF. A failed read must not report partial output as success;
   a partial preview must expose its error while keeping rows already read.
+- A closed `QLPreviewView` cannot accept another item. Use `QuickLookPreviewView` to own the native view for one
+  window lifetime, reject late completions after closing, and create a new native view when moved to another window.
+  Cover deferred selection work and rich-preview fallback after closing with a controlled scheduler.
 - Assert observable results and unchanged fixture files. Avoid fixed sleeps, wall-clock performance thresholds,
   exact RSS expectations, nondeterministic random inputs and tests that depend on installed apps or live services.
   Synthetic CGEvents must set their own modifier flags before conversion to NSEvent; a nil event source can
