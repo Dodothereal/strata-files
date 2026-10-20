@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/hero.png" alt="Strata showing a folder with live sizes, and a Markdown preview with an on-device summary in the inspector" width="900">
+  <img src="docs/screenshots/themes.png" alt="Strata with demo folders in Blue, Teal, Sand, Purple and native System Light" width="900">
 </p>
 
 ---
