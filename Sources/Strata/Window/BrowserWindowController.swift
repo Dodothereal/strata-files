@@ -22,13 +22,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             : String(localized: "Search: \(text)", comment: "Window title while searching; the search text")
     }
 
+    let services: BrowserServices
     private var panes: [Pane]
     /// The pane with focus; navigation, search and the inspector act on it.
     private(set) var pane: Pane
     var onClose: (() -> Void)?
 
     let split: MainSplitViewController
-    private let pathBar = PathBar()
+    private let pathBar: PathBar
     private var searchItem: NSSearchToolbarItem?
     private var viewModeItem: NSToolbarItemGroup?
     private var sidebarModeItem: NSToolbarItemGroup?
@@ -52,8 +53,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     var location: URL { pane.location }
 
-    init(location: URL, select: URL? = nil, secondPane: URL? = nil) {
-        let first = Pane(location: location)
+    init(location: URL, select: URL? = nil, secondPane: URL? = nil, services: BrowserServices = .shared) {
+        self.services = services
+        pathBar = PathBar(visits: services.visits)
+        let first = Pane(location: location, services: services)
         panes = [first]
         pane = first
         split = MainSplitViewController(firstPane: first.host)
@@ -164,7 +167,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             split.panes.remove(closing.host)
             panes.removeAll { $0 === closing }
         } else {
-            let second = Pane(location: url ?? pane.location)
+            let second = Pane(location: url ?? pane.location, services: services)
             configure(second)
             panes.append(second)
             split.panes.add(second.host)
@@ -199,7 +202,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// View ▸ Compare with Other Pane: what differs between the two folders, and a sync.
     @objc func compareWithOtherPane(_ sender: Any?) {
         guard let (left, right) = paneFolders, let window, window.attachedSheet == nil else { return }
-        let controller = CompareController(left: left, right: right, undo: window.undoManager)
+        let controller = CompareController(left: left, right: right, undo: window.undoManager, transfers: services.transfers)
         contentViewController?.presentAsSheet(controller)
     }
 
@@ -213,10 +216,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         guard !urls.isEmpty else { return }
         // Onto a server: copied there (or moved within it), through the server.
         if RemoteCopies.contains(target) { return other.browser.copyToServer(urls, into: target, move: move) }
-        let job = TransferQueue.shared.enqueue(urls, to: target, mode: move ? .move : .copy,
+        let job = services.transfers.enqueue(urls, to: target, mode: move ? .move : .copy,
                                                undo: window?.undoManager, conflicts: .sheet(for: window))
-        job.onFinish = { [weak self] job in
-            guard self != nil else { return }
+        job.onFinish = { [weak self, weak other] job in
+            guard self != nil, let other else { return }
             other.browser.select(job.createdItems)
         }
     }
@@ -314,7 +317,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             p.browser.load(url, select: select)
             // An archive's copy is temporary: it doesn't become a frequent place or where the next window opens.
             if !ReadOnlyCopies.contains(url) {
-                if countVisit { Frecency.shared.record(url) }
+                if countVisit { services.visits.record(url) }
                 Prefs.shared.lastLocation = url
             }
         case .search, .recents:
@@ -1156,7 +1159,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             item.visibilityPriority = .low
             return item
         case .transfers:
-            let item = TransfersToolbarItem(itemIdentifier: id)
+            let item = TransfersToolbarItem(itemIdentifier: id, queue: services.transfers)
             item.onReveal = { [weak self] job in self?.navigate(to: job.destination, select: job.createdItems.last) }
             return item
         case .search:

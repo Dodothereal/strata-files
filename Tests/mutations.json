@@ -997,5 +997,76 @@
     "replace": "registerLogMark(id, undone: !undone, undo)",
     "rule": "Transfer ownership Redo marks the global History",
     "tests": "TransferContextTests/transferHistoryAndRepeatedUndoStayWithTheirOwner"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "let job = services.transfers.enqueue(urls, to: target",
+    "replace": "let job = TransferQueue.shared.enqueue(urls, to: target",
+    "rule": "Browser service ownership cross-pane commands use the global queue",
+    "tests": "TransferContextTests/bothPanesInEveryViewSendOnlyTheirSelectionToTheirOwnQueue"
+  },
+  {
+    "file": "Strata/Window/Pane.swift",
+    "find": "browser = BrowserViewController(services: services)",
+    "replace": "browser = BrowserViewController()",
+    "rule": "Browser service ownership a new pane loses its window services",
+    "tests": "TransferContextTests/replacementPanesAndBrowserCommandsKeepTheWindowServices"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "let job = services.transfers.enqueue(urls, to: target",
+    "replace": "let job = TransferQueue.shared.enqueue(urls, to: target",
+    "rule": "Browser service ownership browser transfers use the global queue",
+    "tests": "TransferContextTests/replacementPanesAndBrowserCommandsKeepTheWindowServices"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "if countVisit { services.visits.record(url) }",
+    "replace": "if countVisit { Frecency.shared.record(url) }",
+    "rule": "Browser service ownership navigation records visits globally",
+    "tests": "TransferContextTests/windowNavigationAndSuggestionsUseTheirOwnVisitHistory"
+  },
+  {
+    "file": "Strata/Toolbar/PathSuggestions.swift",
+    "find": "visited = Array(visits.ranked().prefix(400))",
+    "replace": "visited = Array(Frecency.shared.ranked().prefix(400))",
+    "rule": "Browser service ownership suggestions read global visits",
+    "tests": "TransferContextTests/windowNavigationAndSuggestionsUseTheirOwnVisitHistory"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "services.transfers.enqueue(urls, to: target",
+    "replace": "TransferQueue.shared.enqueue(urls, to: target",
+    "rule": "Browser service ownership sidebar drops use the global queue",
+    "tests": "TransferContextTests/bothSidebarDropModesUseTheWindowQueue"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "tree = FolderTreeController(transfers: services.transfers)",
+    "replace": "tree = FolderTreeController()",
+    "rule": "Browser service ownership folder tree drops use the global queue",
+    "tests": "TransferContextTests/bothSidebarDropModesUseTheWindowQueue"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "edits": [
+      {
+        "find": "job.onFinish = { [weak self, weak other] job in",
+        "replace": "job.onFinish = { [weak self] job in"
+      },
+      {
+        "find": "guard self != nil, let other else { return }",
+        "replace": "guard self != nil else { return }"
+      }
+    ],
+    "rule": "Browser service ownership completed transfers retain closed panes",
+    "tests": "TransferContextTests/completedTransfersDoNotKeepClosedPanesAlive"
+  },
+  {
+    "file": "Strata/Containers/ContainerFetchJob.swift",
+    "find": "        then = nil\n",
+    "replace": "",
+    "rule": "Browser service ownership terminal fetch jobs retain their continuation",
+    "tests": "TransferContextTests/fetchJobsReleaseTheirContinuationWhenFinishedOrCancelled"
   }
 ]

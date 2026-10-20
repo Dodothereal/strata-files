@@ -12,6 +12,10 @@ nonisolated struct PathSuggestion: Equatable, Sendable {
 /// relative one walks down from where you are and from folders you use (`github/acme`); a name alone finds folders with
 /// that name anywhere, from the index, those you open most first.
 final class PathSuggestions {
+    private let visits: Frecency
+
+    init(visits: Frecency = .shared) { self.visits = visits }
+
     static let limit = 12
     /// Folders you use and where `github/acme`-style lookups start, read once per editing (`begin`).
     private var visited: [URL] = []
@@ -23,7 +27,7 @@ final class PathSuggestions {
     /// (Desktop, Documents… without Full Disk Access) or live on another machine are left out.
     func begin(at current: URL?) {
         listings.removeAll()
-        visited = Array(Frecency.shared.ranked().prefix(400))
+        visited = Array(visits.ranked().prefix(400))
         let here = current ?? Places.home
         let candidates = (Places.favorites().map(\.url) + Places.volumes().filter { $0.symbol != "network" }.map(\.url)) + [Places.home] + visited.prefix(100)
         roots = candidates.filter { !Privacy.measuringWouldPrompt($0, browsing: here) }

@@ -182,7 +182,7 @@ private final class ShelfWell: NSView, NSDraggingSource {
         let urls = items
         // Onto a server: copied there through the server (what's on the Shelf stays).
         if RemoteCopies.contains(controller.location) { return controller.browser.copyToServer(urls, into: controller.location, move: false) }
-        let job = TransferQueue.shared.enqueue(urls, to: controller.location, mode: move ? .move : .copy,
+        let job = controller.services.transfers.enqueue(urls, to: controller.location, mode: move ? .move : .copy,
                                                undo: controller.window?.undoManager, conflicts: .sheet(for: controller.window))
         job.onFinish = { [weak self] _ in
             if move { self?.items.removeAll() }

@@ -79,7 +79,7 @@ extension BrowserViewController {
         let pending = urls.filter(LazyCopies.isPlaceholder)
         guard !pending.isEmpty else { return action() }
         let bytes = pending.map { Int64((try? $0.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0) }.saturatingSum
-        if bytes > 8 << 20 { return TransferQueue.shared.add(ContainerFetchJob(pending, then: action)) }
+        if bytes > 8 << 20 { return services.transfers.add(ContainerFetchJob(pending, then: action)) }
         Task {
             do {
                 try await LazyCopies.fetch(pending)

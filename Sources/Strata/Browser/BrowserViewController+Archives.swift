@@ -51,7 +51,7 @@ extension BrowserViewController {
                 let here = made.urls.filter { $0.deletingLastPathComponent().standardizedFileURL == shown }
                 if !here.isEmpty { selectWhenShown(here) }
             }
-            TransferQueue.shared.add(job)
+            services.transfers.add(job)
         }
     }
 }

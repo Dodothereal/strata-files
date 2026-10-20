@@ -115,6 +115,8 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
 - Transfer queues own their preferences and History. Keep that owner through archive work, retries and every
   Undo/Redo step, including queued moves across disks. Do not fall back to the global queue from an injected job.
   Active work retains its queue through completion; finished jobs must not form a queue/job retain cycle.
+  Queue-held completion callbacks keep panes weak, and one-shot fetch actions release their captures on every
+  terminal path. Test teardown while finished jobs remain in the queue.
 - Tests that use the real Trash remove exactly what they put there (`tree.removeFromTrash()`). Never empty the real
   Trash: cleanup must match the saved file identity, because a restored item's old Trash path can be reused by
   another file. Cover that reuse explicitly; a historical path alone is not ownership. `Trash.empty(_:)` takes

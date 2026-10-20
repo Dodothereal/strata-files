@@ -61,6 +61,15 @@ private extension NSUserInterfaceItemIdentifier {
 }
 
 final class BrowserViewController: NSViewController {
+    let services: BrowserServices
+
+    init(services: BrowserServices = .shared) {
+        self.services = services
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
     weak var delegate: BrowserViewControllerDelegate?
     var applicationFolders = ApplicationsFolders.standard
     private(set) var directory: URL?
@@ -1000,7 +1009,7 @@ final class BrowserViewController: NSViewController {
         // The menus are off in the Trash and in archives opened as folders; this also covers ⌘K.
         guard !urls.isEmpty, !isShowingTrash, !isInsideArchive else { return }
         // Copying onto itself with "keep both" gives Finder's "name copy" naming, with progress for big items.
-        let job = TransferQueue.shared.enqueue(moves: urls.map { TransferMove(from: $0, to: $0) }, mode: .copy,
+        let job = services.transfers.enqueue(moves: urls.map { TransferMove(from: $0, to: $0) }, mode: .copy,
                                                undo: undoManager, conflicts: .keepBoth)
         job.onFinish = { [weak self] job in
             guard let self else { return }
@@ -1099,7 +1108,7 @@ final class BrowserViewController: NSViewController {
         // half-read copy or a link written by another machine.
         let fromContainers = urls.filter(LazyCopies.contains)
         guard fromContainers.isEmpty else {
-            return TransferQueue.shared.add(ContainerFetchJob(fromContainers) {
+            return services.transfers.add(ContainerFetchJob(fromContainers) {
                 Task {
                     let staged = await Task.detached(priority: .userInitiated) { LazyCopies.stageForClipboard(urls) }.value
                     if !staged.isEmpty { Clipboard.write(staged, cut: false) }
@@ -1371,7 +1380,7 @@ final class BrowserViewController: NSViewController {
     /// Copies and moves go through the transfer queue: progress, pause, conflicts asked up front, undo.
     private func transfer(_ urls: [URL], into target: URL, move: Bool) {
         if RemoteCopies.contains(target) { return copyToServer(urls, into: target, move: move) }
-        let job = TransferQueue.shared.enqueue(urls, to: target, mode: move ? .move : .copy,
+        let job = services.transfers.enqueue(urls, to: target, mode: move ? .move : .copy,
                                                undo: undoManager, conflicts: .sheet(for: view.window))
         job.onFinish = { [weak self] job in
             guard let self else { return }

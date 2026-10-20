@@ -8,7 +8,7 @@ final class ContainerFetchJob {
     private(set) var state: TransferState = .queued
     private(set) var errorMessage: String?
     private var task: Task<Void, Never>?
-    private let then: () -> Void
+    private var then: (() -> Void)?
     var onChange: ((ContainerFetchJob) -> Void)?
     var onFinish: ((ContainerFetchJob) -> Void)?
     private var finishWaiters: [CheckedContinuation<Void, Never>] = []
@@ -30,7 +30,7 @@ final class ContainerFetchJob {
                 try Task.checkCancellation()
                 guard !urls.contains(where: LazyCopies.isPlaceholder) else { throw ContainerAPIError.notFound }
                 state = .finished
-                then()
+                then?()
             } catch is CancellationError {
                 state = .cancelled
             } catch {
@@ -55,6 +55,8 @@ final class ContainerFetchJob {
     }
 
     private func finish() {
+        // The Transfers list keeps finished jobs; their one-shot actions must release the UI they captured.
+        then = nil
         onChange?(self)
         onFinish?(self)
         let waiters = finishWaiters

@@ -41,7 +41,7 @@ extension BrowserWindowController {
     }
 
     private func pathQueryItems(_ query: String) -> [PaletteItem] {
-        let visited = Array(Frecency.shared.ranked().prefix(400))
+        let visited = Array(services.visits.ranked().prefix(400))
         let roots = (Places.favorites() + Places.volumes()).map(\.url) + [Places.home] + visited.prefix(100)
         let folderIcon = NSWorkspace.shared.icon(for: .folder)
         return pathQuery.resolve(query, roots: roots, visited: visited).map { hit in
@@ -68,7 +68,7 @@ extension BrowserWindowController {
             })
             if entry.isFolder { seen.insert(entry.url.path) }
         }
-        for (rank, url) in Frecency.shared.ranked().prefix(400).enumerated() where seen.insert(url.path).inserted {
+        for (rank, url) in services.visits.ranked().prefix(400).enumerated() where seen.insert(url.path).inserted {
             items.append(PaletteItem(title: Places.displayName(url),
                                      subtitle: Format.tildePath(url.deletingLastPathComponent()), icon: folderIcon,
                                      kind: .folder, boost: max(0, 24 - rank / 2), url: url) { [weak self] in self?.navigate(to: url) })

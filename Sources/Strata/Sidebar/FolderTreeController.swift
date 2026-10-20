@@ -40,6 +40,15 @@ final class FolderNode {
 /// Reading happens off the main thread. Rebuilding the tree (Show Hidden Files, coming back from Places) starts a new
 /// generation; reads from an older one are dropped when they finish.
 final class FolderTreeController: NSViewController {
+    private let transfers: TransferQueue
+
+    init(transfers: TransferQueue = .shared) {
+        self.transfers = transfers
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
     var onSelect: ((SidebarTarget) -> Void)?
     var onOpenInNewTab: ((URL) -> Void)?
     /// Items dropped on the Trash row.
@@ -586,7 +595,7 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
         }
         let operation = FileDrop.operation(urls, into: node.url, info: info)
         guard !urls.isEmpty, !operation.isEmpty else { return false }
-        TransferQueue.shared.enqueue(urls, to: node.url, mode: operation == .move ? .move : .copy,
+        transfers.enqueue(urls, to: node.url, mode: operation == .move ? .move : .copy,
                                      undo: view.window?.undoManager, conflicts: .sheet(for: view.window))
         return true
     }

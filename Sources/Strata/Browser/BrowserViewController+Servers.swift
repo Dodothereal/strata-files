@@ -126,7 +126,7 @@ extension BrowserViewController {
     }
 
     private func askAndUpload(_ urls: [URL], into folder: URL, clashing: [String]) {
-        let upload = { [weak self] (skipping: Set<String>) in
+        let upload = { [weak self, services] (skipping: Set<String>) in
             let job = RemoteUploadJob(urls, into: folder, skipping: skipping)
             job.onFinish = { job in
                 guard let self else { return }
@@ -135,7 +135,7 @@ extension BrowserViewController {
                 }
                 self.refresh()
             }
-            TransferQueue.shared.add(job)
+            services.transfers.add(job)
         }
         let window = view.window
         if case .upload(let skipping) = Self.uploadChoice(clashing: clashing, canAsk: window != nil) { return upload(skipping) }

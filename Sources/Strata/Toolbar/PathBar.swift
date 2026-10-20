@@ -29,11 +29,12 @@ final class PathBar: NSView, NSTextFieldDelegate {
     private let crumbs = NSStackView()
     private let field = NSTextField()
     private(set) var isEditing = false
-    private let suggestions = PathSuggestions()
+    private let suggestions: PathSuggestions
     private let suggestionList = PathSuggestionList()
     private var suggesting: Task<Void, Never>?
 
-    override init(frame: NSRect) {
+    init(frame: NSRect = .zero, visits: Frecency = .shared) {
+        suggestions = PathSuggestions(visits: visits)
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true

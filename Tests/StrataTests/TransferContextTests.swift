@@ -171,11 +171,209 @@ struct TransferContextTests {
         #expect(tree.snapshot() == ["a.txt", "out/", "out/a.txt", "state/", "state/history.sealed"])
     }
 
+    @Test func bothPanesInEveryViewSendOnlyTheirSelectionToTheirOwnQueue() async throws {
+        for mode in BrowserViewMode.ordered {
+            let tree = try TestTree("left/a.txt", "left/ab.txt", "right/b.txt", "right/bb.txt", "state/")
+            let env = try Environment(tree)
+            let services = BrowserServices(transfers: env.queue, visits: Frecency(preferences: env.defaults))
+            let controller = makeWindow(tree.url("left"), second: tree.url("right"), services: services)
+            defer { controller.window?.contentViewController = nil }
+            let left = controller.browser
+            let right = try #require(controller.otherBrowser)
+            try await waitForBrowser(left)
+            try await waitForBrowser(right)
+            for (browser, selected) in [(left, tree.url("left/a.txt")), (right, tree.url("right/b.txt"))] {
+                browser.setMode(mode, remember: false)
+                controller.window?.makeFirstResponder(browser.focusView)
+                try #require(controller.browser === browser)
+                browser.select([selected])
+                try #require(browser.selectedURLs.map(\.fileViewKey) == [selected.fileViewKey])
+                controller.copyToOtherPane(nil)
+                await finishRelatedJobs(env.queue, tree: tree)
+            }
+            #expect(env.queue.jobs.count == 2)
+            #expect(env.history.entries.count == 2)
+            #expect(env.queue.jobs.allSatisfy { $0.state == .finished && $0.failureCount == 0 })
+            #expect(tree.text("right/a.txt") == "left/a.txt")
+            #expect(tree.text("left/b.txt") == "right/b.txt")
+            #expect(controller.window?.isVisible == false)
+            #expect(tree.snapshot() == ["left/", "left/a.txt", "left/ab.txt", "left/b.txt", "right/", "right/a.txt",
+                                       "right/b.txt", "right/bb.txt", "state/", "state/history.sealed"])
+        }
+    }
+
+    @Test func replacementPanesAndBrowserCommandsKeepTheWindowServices() async throws {
+        let tree = try TestTree("left/a.txt", "left/ab.txt", "right/", "third/", "state/")
+        let env = try Environment(tree)
+        let services = BrowserServices(transfers: env.queue, visits: Frecency(preferences: env.defaults))
+        let controller = makeWindow(tree.url("left"), second: tree.url("right"), services: services)
+        defer { controller.window?.contentViewController = nil }
+        controller.toggleDualPane(at: nil)
+        controller.toggleDualPane(at: tree.url("third"))
+        let other = try #require(controller.otherBrowser)
+        #expect(other.services === services && controller.split.sidebar.services === services)
+        try await waitForBrowser(other)
+        other.moveOrCopy([tree.url("left/a.txt")], into: tree.url("third"), move: false)
+        await finishRelatedJobs(env.queue, tree: tree)
+        #expect(env.queue.jobs.count == 1)
+        #expect(env.history.entries.count == 1)
+        #expect(tree.text("third/a.txt") == "left/a.txt")
+        #expect(tree.snapshot() == ["left/", "left/a.txt", "left/ab.txt", "right/", "state/", "state/history.sealed", "third/", "third/a.txt"])
+    }
+
+    @Test func windowNavigationAndSuggestionsUseTheirOwnVisitHistory() async throws {
+        let first = try TestTree("start/", "visited/", "state/")
+        let second = try TestTree("start/", "visited/", "state/")
+        let a = try Environment(first), b = try Environment(second)
+        let servicesA = BrowserServices(transfers: a.queue, visits: Frecency(preferences: a.defaults))
+        let servicesB = BrowserServices(transfers: b.queue, visits: Frecency(preferences: b.defaults))
+        let windowA = makeWindow(first.url("start"), services: servicesA)
+        let windowB = makeWindow(second.url("start"), services: servicesB)
+        defer {
+            windowA.window?.contentViewController = nil
+            windowB.window?.contentViewController = nil
+        }
+        windowA.navigate(to: first.url("visited"))
+        windowB.navigate(to: second.url("visited"))
+        try await waitForBrowser(windowA.browser)
+        try await waitForBrowser(windowB.browser)
+        #expect(servicesA.visits.ranked().map { $0.standardizedFileURL.fileViewKey }.contains(first.url("visited").standardizedFileURL.fileViewKey))
+        #expect(!servicesA.visits.ranked().map { $0.standardizedFileURL.fileViewKey }.contains(second.url("visited").standardizedFileURL.fileViewKey))
+        #expect(servicesB.visits.ranked().map { $0.standardizedFileURL.fileViewKey }.contains(second.url("visited").standardizedFileURL.fileViewKey))
+        let suggestions = PathSuggestions(visits: servicesA.visits)
+        suggestions.begin(at: first.url("start"))
+        // One character intentionally excludes the global index lookup.
+        let matches = await suggestions.suggestions(for: "v", in: first.url("start"))
+        #expect(matches.contains { $0.url.standardizedFileURL.fileViewKey == first.url("visited").standardizedFileURL.fileViewKey })
+        #expect(!matches.contains { $0.url.standardizedFileURL.fileViewKey == second.url("visited").standardizedFileURL.fileViewKey })
+        #expect(first.snapshot() == ["start/", "state/", "visited/"])
+        #expect(second.snapshot() == ["start/", "state/", "visited/"])
+    }
+
+    @Test func bothSidebarDropModesUseTheWindowQueue() async throws {
+        let tree = try TestTree("a.txt", "ab.txt", "places/", "folders/", "state/")
+        let env = try Environment(tree)
+        let services = BrowserServices(transfers: env.queue, visits: Frecency(preferences: env.defaults))
+        let sidebar = SidebarViewController(services: services)
+        _ = sidebar.view
+        let folderTree = try #require(sidebar.children.compactMap { $0 as? FolderTreeController }.first)
+        let drag = FileDrag(tree.url("a.txt"))
+        defer { drag.draggingPasteboard.releaseGlobally() }
+        let outline = NSOutlineView()
+        let place = SidebarItem(title: "places", target: .folder(tree.url("places")), symbol: "folder")
+        #expect(sidebar.outlineView(outline, acceptDrop: drag, item: place, childIndex: NSOutlineViewDropOnItemIndex))
+        let node = FolderNode(url: tree.url("folders"), title: "folders")
+        #expect(folderTree.outlineView(outline, acceptDrop: drag, item: node, childIndex: NSOutlineViewDropOnItemIndex))
+        await finishRelatedJobs(env.queue, tree: tree)
+        #expect(env.queue.jobs.count == 2 && env.history.entries.count == 2)
+        #expect(env.queue.jobs.allSatisfy { $0.state == .finished && $0.failureCount == 0 })
+        #expect(tree.text("places/a.txt") == "a.txt" && tree.text("folders/a.txt") == "a.txt")
+        #expect(tree.snapshot() == ["a.txt", "ab.txt", "folders/", "folders/a.txt", "places/", "places/a.txt", "state/", "state/history.sealed"])
+    }
+
+    /// A private pasteboard and a copy-only source exercise the native drop delegates without posting a drag or
+    /// depending on the user's modifier keys. No promised files or drag-image callbacks are involved in this drop.
+    private final class FileDrag: NSObject, NSDraggingInfo {
+        let draggingPasteboard = NSPasteboard(name: .init("StrataTransferDropTests.\(UUID().uuidString)"))
+        var draggingDestinationWindow: NSWindow? { nil }
+        var draggingSourceOperationMask: NSDragOperation { .copy }
+        var draggingLocation: NSPoint { .zero }
+        var draggedImageLocation: NSPoint { .zero }
+        nonisolated var draggedImage: NSImage? { nil }
+        var draggingSource: Any? { nil }
+        var draggingSequenceNumber: Int { 1 }
+        var draggingFormation: NSDraggingFormation = .none
+        var animatesToDestination = false
+        var numberOfValidItemsForDrop = 1
+        var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+
+        init(_ url: URL) {
+            super.init()
+            draggingPasteboard.writeObjects([url as NSURL])
+        }
+
+        func slideDraggedImage(to screenPoint: NSPoint) {}
+        nonisolated override func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
+        func resetSpringLoading() {}
+        func enumerateDraggingItems(options: NSDraggingItemEnumerationOptions, for view: NSView?, classes: [AnyClass],
+                                    searchOptions: [NSPasteboard.ReadingOptionKey: Any],
+                                    using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+    }
+
+    @Test func completedTransfersDoNotKeepClosedPanesAlive() async throws {
+        let tree = try TestTree("left/a.txt", "right/", "state/")
+        let env = try Environment(tree)
+        let services = BrowserServices(transfers: env.queue, visits: Frecency(preferences: env.defaults))
+        let controller = makeWindow(tree.url("left"), second: tree.url("right"), services: services)
+        defer { controller.window?.contentViewController = nil }
+        var other = controller.otherBrowser
+        weak var closedBrowser = other
+        try await waitForBrowser(controller.browser)
+        try await waitForBrowser(try #require(other))
+        controller.browser.setMode(.list, remember: false)
+        controller.browser.select([tree.url("left/a.txt")])
+        controller.copyToOtherPane(nil)
+        await finishRelatedJobs(env.queue, tree: tree)
+        other = nil
+        controller.toggleDualPane(at: nil)
+        let deadline = ContinuousClock.now + .seconds(10)
+        while closedBrowser != nil && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(closedBrowser == nil)
+        #expect(env.queue.jobs.count == 1 && env.queue.jobs.first?.state == .finished)
+        #expect(tree.snapshot() == ["left/", "left/a.txt", "right/", "right/a.txt", "state/", "state/history.sealed"])
+    }
+
+    @Test func fetchJobsReleaseTheirContinuationWhenFinishedOrCancelled() async throws {
+        let tree = try TestTree("state/")
+        let env = try Environment(tree)
+        let services = BrowserServices(transfers: env.queue, visits: Frecency(preferences: env.defaults))
+        for cancelled in [false, true] {
+            var browser: BrowserViewController? = BrowserViewController(services: services)
+            weak var heldBrowser = browser
+            var calls = 0
+            let job = fetchHolding(try #require(browser)) { calls += 1 }
+            browser = nil
+            if cancelled { job.cancel() }
+            env.queue.add(job)
+            await job.finished()
+            let deadline = ContinuousClock.now + .seconds(10)
+            while heldBrowser != nil && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+            #expect(heldBrowser == nil)
+            #expect(calls == (cancelled ? 0 : 1))
+            #expect(job.state == (cancelled ? .cancelled : .finished))
+        }
+        #expect(env.queue.jobs.count == 2 && !env.queue.hasActiveJobs)
+        #expect(tree.snapshot() == ["state/"])
+    }
+
+    private func fetchHolding(_ browser: BrowserViewController, then: @escaping () -> Void) -> ContainerFetchJob {
+        ContainerFetchJob([]) {
+            _ = browser.isLoaded
+            then()
+        }
+    }
+
+    private func makeWindow(_ location: URL, second: URL? = nil, services: BrowserServices) -> BrowserWindowController {
+        _ = NSApplication.shared
+        let controller = BrowserWindowController(location: location, secondPane: second, services: services)
+        controller.split.splitView.autosaveName = nil
+        controller.window?.setFrameAutosaveName("")
+        return controller
+    }
+
+    private func waitForBrowser(_ browser: BrowserViewController) async throws {
+        let deadline = ContinuousClock.now + .seconds(30)
+        while !browser.isLoaded || browser.isLoadingFolder {
+            try #require(ContinuousClock.now < deadline, "The private browser did not finish loading.")
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
     /// Also drain a misrouted job when deliberately breaking queue ownership in a mutation test.
-    private func finishRelatedJobs(_ queue: TransferQueue, tree: TestTree, volume: ScratchVolume) async {
+    private func finishRelatedJobs(_ queue: TransferQueue, tree: TestTree, volume: ScratchVolume? = nil) async {
         await FileOps.undoWork?.value
         for job in queue.jobs { await job.finished() }
-        let roots = [tree.root, volume.root].map { $0.standardizedFileURL.path + "/" }
+        let roots = ([tree.root] + (volume.map { [$0.root] } ?? [])).map { $0.standardizedFileURL.path + "/" }
         for job in TransferQueue.shared.jobs.compactMap({ $0 as? TransferJob }) {
             if job.sources.contains(where: { source in roots.contains { source.standardizedFileURL.path.hasPrefix($0) } }) {
                 await job.finished()

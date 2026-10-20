@@ -2,7 +2,7 @@ import AppKit
 
 /// Sidebar | one or two panes (with the status bar under them) | inspector.
 final class MainSplitViewController: NSSplitViewController {
-    let sidebar = SidebarViewController()
+    let sidebar: SidebarViewController
     let panes: PaneContainerViewController
     let inspector = InspectorViewController()
     let status = StatusBarController()
@@ -11,6 +11,7 @@ final class MainSplitViewController: NSSplitViewController {
     let inspectorItem: NSSplitViewItem
 
     init(firstPane: PaneHostViewController) {
+        sidebar = SidebarViewController(services: firstPane.browser.services)
         panes = PaneContainerViewController(first: firstPane)
         inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
         super.init(nibName: nil, bundle: nil)

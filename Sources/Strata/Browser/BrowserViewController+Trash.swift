@@ -21,7 +21,7 @@ extension BrowserViewController {
         let items = selectedTrashItems
         guard !items.isEmpty else { return }
         let undo = undoManager, window = view.window
-        Task { [weak self] in
+        Task { [weak self, services] in
             let locations = await Trash.originalLocations(of: items)
             var moves: [TransferMove] = []
             var made: [URL] = []
@@ -42,7 +42,7 @@ extension BrowserViewController {
                 moves.append(TransferMove(from: item, to: original))
             }
             if !moves.isEmpty {
-                let job = TransferQueue.shared.enqueue(moves: moves, mode: .move, undo: undo, conflicts: .sheet(for: window),
+                let job = services.transfers.enqueue(moves: moves, mode: .move, undo: undo, conflicts: .sheet(for: window),
                                                        actionName: "Put Back", containers: made)
                 // Stopped or skipped at the conflict sheet: folders made for nothing go again.
                 job.onFinish = { _ in FileOps.removeEmptyFolders(made) }

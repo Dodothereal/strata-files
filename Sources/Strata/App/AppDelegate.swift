@@ -1,6 +1,13 @@
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    let browserServices: BrowserServices
+
+    init(browserServices: BrowserServices = .shared) {
+        self.browserServices = browserServices
+        super.init()
+    }
+
     let undoManager = UndoManager()
     private var windowControllers: [BrowserWindowController] = []
 
@@ -217,7 +224,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        TransferQueue.shared.shouldTerminate(sender)
+        browserServices.transfers.shouldTerminate(sender)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -287,7 +294,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @discardableResult
     func openWindow(at url: URL, select: URL? = nil, secondPane: URL? = nil, tabbedWith parent: NSWindow? = nil) -> BrowserWindowController {
-        let controller = BrowserWindowController(location: url, select: select, secondPane: secondPane)
+        let controller = BrowserWindowController(location: url, select: select, secondPane: secondPane, services: browserServices)
         windowControllers.append(controller)
         controller.onClose = { [weak self, weak controller] in
             self?.windowControllers.removeAll { $0 === controller }

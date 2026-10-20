@@ -10,7 +10,7 @@ enum Destination: Equatable {
 
 /// One side of a window: a browser with its own place and back/forward history.
 final class Pane {
-    let browser = BrowserViewController()
+    let browser: BrowserViewController
     var destination: Destination
     /// The current folder, or the last one shown before a search or Recents.
     var location: URL
@@ -34,7 +34,8 @@ final class Pane {
     var waiting: WaitingFolder?
     let host: PaneHostViewController
 
-    init(location: URL) {
+    init(location: URL, services: BrowserServices = .shared) {
+        browser = BrowserViewController(services: services)
         self.location = location.standardizedFileURL
         destination = .folder(self.location)
         host = PaneHostViewController(browser: browser)

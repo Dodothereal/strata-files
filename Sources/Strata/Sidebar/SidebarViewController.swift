@@ -65,6 +65,16 @@ final class SidebarItem {
 }
 
 final class SidebarViewController: NSViewController {
+    let services: BrowserServices
+
+    init(services: BrowserServices = .shared) {
+        self.services = services
+        tree = FolderTreeController(transfers: services.transfers)
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
     var onSelect: ((SidebarTarget) -> Void)?
     /// "Open in New Tab" from the context menu.
     var onOpenInNewTab: ((URL) -> Void)?
@@ -72,7 +82,7 @@ final class SidebarViewController: NSViewController {
     private let outline = SidebarOutlineView()
     private let placesScroll = NSScrollView()
     /// Folders mode (Prefs.shared.sidebarShowsTree): the tree instead of the sections.
-    private let tree = FolderTreeController()
+    private let tree: FolderTreeController
     /// Opens the location a drag rests on, in the current pane.
     private lazy var springLoader = SpringLoader(view: outline, frame: { [weak self] folder in
         guard let self, let row = row(for: folder) else { return nil }
@@ -174,7 +184,7 @@ final class SidebarViewController: NSViewController {
             + Places.favorites().map(SidebarItem.init)
         let pinned = Set(favorites.compactMap(\.url?.path))
         let home = Places.home.path
-        let frequent = Frecency.shared.ranked()
+        let frequent = services.visits.ranked()
             .filter { !pinned.contains($0.path) && $0.path != home && $0.path != "/" && !Trash.isTrash($0) }
             .prefix(5)
             .map { SidebarItem(Place(title: FileManager.default.displayName(atPath: $0.path), url: $0, symbol: "folder")) }
@@ -485,7 +495,7 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         }
         let operation = FileDrop.operation(urls, into: target, info: info)
         guard !urls.isEmpty, !operation.isEmpty else { return false }
-        TransferQueue.shared.enqueue(urls, to: target, mode: operation == .move ? .move : .copy,
+        services.transfers.enqueue(urls, to: target, mode: operation == .move ? .move : .copy,
                                      undo: view.window?.undoManager, conflicts: .sheet(for: view.window))
         return true
     }

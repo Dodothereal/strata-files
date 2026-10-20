@@ -4,6 +4,7 @@ import AppKit
 /// per row), and Sync. Copies run in the Transfers list, verified, with undo and History; what a mirror removes goes to
 /// the Trash.
 final class CompareController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+    private let transfers: TransferQueue
     private let left: URL
     private let right: URL
     private weak var undo: UndoManager?
@@ -48,7 +49,8 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         }
     }
 
-    init(left: URL, right: URL, undo: UndoManager?) {
+    init(left: URL, right: URL, undo: UndoManager?, transfers: TransferQueue = .shared) {
+        self.transfers = transfers
         self.left = left
         self.right = right
         self.undo = undo
@@ -429,11 +431,11 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
                 var options = TransferEngine.Options()
                 options.verify = true
                 if !toRight.isEmpty {
-                    TransferQueue.shared.enqueue(moves: toRight, destination: right, mode: .copy, options: options, undo: undo,
+                    transfers.enqueue(moves: toRight, destination: right, mode: .copy, options: options, undo: undo,
                                                  conflicts: .replace, actionName: "Sync")
                 }
                 if !toLeft.isEmpty {
-                    TransferQueue.shared.enqueue(moves: toLeft, destination: left, mode: .copy, options: options, undo: undo,
+                    transfers.enqueue(moves: toLeft, destination: left, mode: .copy, options: options, undo: undo,
                                                  conflicts: .replace, actionName: "Sync")
                 }
             }

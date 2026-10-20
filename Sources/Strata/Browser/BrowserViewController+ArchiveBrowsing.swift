@@ -123,7 +123,7 @@ extension BrowserViewController {
             let keep = Set(OpeningArchives.waiters.keys).union(BrowserWindowController.archiveCopiesShown())
             DispatchQueue.global(qos: .utility).async { ArchiveCache.prune(keeping: keep) }
         }
-        TransferQueue.shared.add(job)
+        services.transfers.add(job)
     }
 
     /// Context menu, when archives don't open as folders by default (or for kinds that open in their own apps).
@@ -150,6 +150,6 @@ extension BrowserViewController {
             guard let self, job.state == .finished, let result = job.result else { return }
             delegate?.browser(self, reveal: result)
         }
-        TransferQueue.shared.add(job)
+        services.transfers.add(job)
     }
 }
