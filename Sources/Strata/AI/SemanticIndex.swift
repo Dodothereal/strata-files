@@ -544,7 +544,10 @@ actor SemanticIndex {
         guard let stored = await Self.read(storeURL), stored.version == StoredIndex.currentVersion,
               stored.revision == Embedder.revision, stored.sentences == configuration.sentenceEmbeddings else { return }
         for file in stored.files {
-            guard file.size >= 0, file.modified.isFinite, file.chunks.allSatisfy(\.isValid) else { continue }
+            let context = file.title ?? URL(fileURLWithPath: file.path).deletingPathExtension().lastPathComponent
+            let contextLength = context.utf16.count
+            guard file.size >= 0, file.modified.isFinite,
+                  file.chunks.allSatisfy({ $0.isValid(contextLength: contextLength) }) else { continue }
             var chunks: [IndexedFile.Chunk] = []
             for chunk in file.chunks {
                 let row = allocateRow()
@@ -690,9 +693,11 @@ private nonisolated struct StoredIndex: Codable, Sendable {
         var word: Data
         var sentence: Data
 
-        var isValid: Bool {
+        func isValid(contextLength: Int) -> Bool {
             let textLength = text.utf16.count
-            guard start >= 0, start <= Int.max - textLength, length >= 0, length <= textLength,
+            // Keyword length includes the title or filename added by process, not just the passage text.
+            let (maximumLength, overflow) = textLength.addingReportingOverflow(contextLength)
+            guard !overflow, start >= 0, start <= Int.max - textLength, length >= 0, length <= maximumLength,
                   terms.count % 4 == 0, terms.count / 4 == counts.count, pages.count % 8 == 0 else { return false }
             let hashes = terms.unpacked()
             guard zip(hashes, hashes.dropFirst()).allSatisfy({ $0 < $1 }),

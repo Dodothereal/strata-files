@@ -3,6 +3,33 @@ import Testing
 @testable import Strata
 
 struct SemanticPersistenceSafetyTests {
+    @Test(arguments: [false, true])
+    func shortPassagesKeepFilenameAndTitleTermsAfterReopening(_ title: Bool) async throws {
+        let name = title ? "document.html" : "annual budget report.txt"
+        let source = title ? "<html><head><title>annual budget report</title></head><body>ok</body></html>" : "ok"
+        let tree = try TestTree("state/", name)
+        try source.write(to: tree.url(name), atomically: true, encoding: .utf8)
+        var configuration = SemanticIndex.Configuration(roots: [])
+        configuration.storeDirectory = tree.url("state")
+        let index = SemanticIndex(configuration: configuration)
+        await index.refresh(tree.url(name))
+        await index.save()
+        #expect(await index.indexedFileCount == 1)
+        let saved = try SemanticFixture.read(from: tree.url("state"))
+        let file = try #require(saved.files.first)
+        #expect(file.title == (title ? "annual budget report" : nil))
+        let chunk = try #require(file.chunks.first)
+        // The real writer counts context terms too, even when the passage itself is only two characters.
+        #expect(chunk.length > chunk.text.utf16.count)
+        let bytes = try Data(contentsOf: tree.url("state/index.sealed"))
+        let reopened = SemanticIndex(configuration: configuration)
+        #expect(await reopened.search("annual budget report").first?.url.lastPathComponent == name)
+        #expect(await reopened.indexedFileCount == 1)
+        #expect(try Data(contentsOf: tree.url("state/index.sealed")) == bytes)
+        #expect(tree.text(name) == source)
+        #expect(tree.snapshot() == [name, "state/", "state/index.sealed"].sorted())
+    }
+
     @Test(arguments: ["counts", "partialTerm", "partialPage", "offset", "length", "partialVector", "nonfiniteVector"])
     func malformedPassagesAreSkippedBeforeSearch(_ damage: String) async throws {
         let tree = try TestTree("state/")
