@@ -93,177 +93,127 @@ extension BrowserWindowController {
         }
     }
 
+    /// The palette uses the same validator as native menus, both when offered and immediately before dispatch.
+    /// Controls still receive actions through AppKit; a translated title is never used to identify a command.
+    func paletteCommand(_ command: StrataCommand, title: String? = nil, subtitle: String = "",
+                        shortcut: String? = nil, keywords: [String] = [], selection: [URL]? = nil) -> PaletteItem? {
+        let item = command.menuItem()
+        guard validateCommand(command, item: item) else { return nil }
+        let image = (command.image ?? NSImage(systemSymbolName: "command", accessibilityDescription: nil) ?? NSImage())
+            .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
+        let source = browser
+        let folder = source.targetDirectory
+        let selection = selection ?? source.selectedURLs
+        let results = source.isShowingResults
+        return PaletteItem(title: title ?? item.title, subtitle: subtitle, icon: image, kind: .action,
+                           shortcut: shortcut ?? command.shortcut, keywords: keywords, commandID: command.id) { [weak self, weak source] in
+            guard let self, self.validateCommand(command, item: item), let target = self.commandTarget(command) else { return }
+            // A palette row describes the selection it was made for. A tab/pane/folder change must not redirect it.
+            if command.owner == .browser {
+                guard let source, self.browser === source, source.targetDirectory == folder, source.selectedURLs == selection,
+                      source.isShowingResults == results else { return }
+            }
+            NSApp.sendAction(command.action, to: target, from: item)
+        }
+    }
+
+    private func commandTarget(_ command: StrataCommand) -> NSObject? {
+        switch command.owner {
+        case .browser: browser
+        case .window: self
+        case .application: NSApp.delegate as? AppDelegate
+        case .split: splitController
+        }
+    }
+
+    private func validateCommand(_ command: StrataCommand, item: NSMenuItem) -> Bool {
+        guard let target = commandTarget(command), target.responds(to: command.action) else { return false }
+        if let validator = target as? NSMenuItemValidation { return validator.validateMenuItem(item) }
+        return true
+    }
+
     func commandItems() -> [PaletteItem] {
-        let hasSelection = !browser.selectedURLs.isEmpty
-        // Titles worked out in code (already localized) come through here; literal ones through `command` below.
-        func localizedCommand(_ title: String, _ symbol: String, _ shortcut: String?, keywords: [String] = [],
-                              _ run: @escaping () -> Void) -> PaletteItem {
+        var commands: [PaletteItem] = []
+        let selection = browser.selectedURLs
+        func add(_ command: StrataCommand, title: String? = nil, shortcut: String? = nil, keywords: [String] = []) {
+            if let item = paletteCommand(command, title: title, shortcut: shortcut, keywords: keywords, selection: selection) { commands.append(item) }
+        }
+        func custom(_ id: String, _ title: String, _ symbol: String, _ shortcut: String? = nil,
+                    keywords: [String] = [], run: @escaping () -> Void) {
             let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
-            // The shortcut as currently set (Settings ▸ Shortcuts can change or remove it).
-            let live = shortcut.map { ShortcutStore.shared.live($0) }.flatMap { $0.isEmpty ? nil : $0 }
-            return PaletteItem(title: title, subtitle: "", icon: image, kind: .action, shortcut: live, keywords: keywords, run: run)
+            commands.append(PaletteItem(title: title, subtitle: "", icon: image, kind: .action, shortcut: shortcut,
+                                        keywords: keywords, commandID: id, run: run))
         }
-        func command(_ title: String.LocalizationValue, _ symbol: String, _ shortcut: String?, keywords: [String] = [],
-                     _ run: @escaping () -> Void) -> PaletteItem {
-            localizedCommand(String(localized: title), symbol, shortcut, keywords: keywords, run)
+        if !selection.isEmpty {
+            add(.toggleQuickLook, shortcut: ShortcutStore.shared.live("Space"))
+            add(.addToShelf)
+            add(.editTags, keywords: ["Label", "Color"])
+            add(.share, keywords: ["AirDrop", "Send", "Mail", "Messages"])
+            add(.duplicate)
+            add(.renameSelection, shortcut: selection.count > 1 ? nil : "↩", keywords: ["Batch", "Replace", "Number"])
+            add(.deleteImmediately, keywords: ["Remove", "Erase"])
+            add(.compress, keywords: ["Zip", "Archive"])
+            add(.checkAppsForUpdates, keywords: ["Update", "Upgrade", "Version", "App Store"])
+            add(.extract, keywords: ["Unzip", "Expand", "Decompress"])
+            add(.moveToTrash, keywords: ["Remove", "Erase", "Trash"])
         }
-        var commands = [
-            command("New Folder", "folder.badge.plus", "⇧⌘N") { [weak self] in self?.browser.newFolder(nil) },
-            command("New File", "doc.badge.plus", "⌥⌘N", keywords: ["Text", "Empty", "Document"]) { [weak self] in self?.browser.newFile(nil) },
-            command("New Tab", "plus.rectangle.on.rectangle", "⌘T") { [weak self] in self?.newWindowForTab(nil) },
-            command("New Window", "macwindow.badge.plus", "⌘N") { (NSApp.delegate as? AppDelegate)?.newWindow(nil) },
-            command("Open in Terminal", "terminal", "⌃⌘T") { [weak self] in self?.browser.openInTerminal(nil) },
-            command("Copy Path", "link", "⌥⌘C") { [weak self] in self?.browser.copyPath(nil) },
-            localizedCommand(Prefs.showHidden ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files"),
-                             Prefs.showHidden ? "eye.slash" : "eye.circle", "⇧⌘.") {
-                Prefs.showHidden.toggle()
-            },
-            localizedCommand(Prefs.foldersFirst ? String(localized: "Mix Folders with Files") : String(localized: "Keep Folders on Top"),
-                             "folder", nil) { Prefs.foldersFirst.toggle() },
-            localizedCommand(splitController.splitViewItems.last?.isCollapsed == true ? String(localized: "Show Inspector")
-                                 : String(localized: "Hide Inspector"), "sidebar.right", "⌘I") { [weak self] in
-                self?.splitController.toggleInspector(nil)
-            },
-            localizedCommand(splitController.splitViewItems.first?.isCollapsed == true ? String(localized: "Show Sidebar")
-                                 : String(localized: "Hide Sidebar"), "sidebar.left", "⌃⌘S") { [weak self] in
-                self?.splitController.toggleSidebar(nil)
-            },
-            localizedCommand(Prefs.sidebarShowsTree ? String(localized: "Show Places in Sidebar") : String(localized: "Show Folder Tree in Sidebar"),
-                             "list.bullet.indent", nil, keywords: ["Tree", "Folders", "Favorites", "Navigation", "Hierarchy"]) { [weak self] in
-                self?.toggleFolderTree(nil)
-            },
-            localizedCommand(isDualPane ? String(localized: "Single Pane") : String(localized: "Dual Pane"), "rectangle.split.2x1", "⌘\\") { [weak self] in
-                self?.toggleDualPane(nil)
-            },
-        ]
+        add(.newFolder)
+        add(.newFile, keywords: ["Text", "Empty", "Document"])
+        add(.newWindowForTab)
+        add(.newWindow)
+        add(.openInTerminal)
+        add(.copyPath)
+        add(.toggleHiddenFiles, title: Prefs.showHidden ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files"))
+        add(.toggleFoldersFirst, title: Prefs.foldersFirst ? String(localized: "Mix Folders with Files") : String(localized: "Keep Folders on Top"))
+        add(.toggleInspector, title: splitController.splitViewItems.last?.isCollapsed == true ? String(localized: "Show Inspector") : String(localized: "Hide Inspector"))
+        add(.toggleSidebar, title: splitController.splitViewItems.first?.isCollapsed == true ? String(localized: "Show Sidebar") : String(localized: "Hide Sidebar"))
+        add(.toggleFolderTree, title: Prefs.sidebarShowsTree ? String(localized: "Show Places in Sidebar") : String(localized: "Show Folder Tree in Sidebar"),
+            keywords: ["Tree", "Folders", "Favorites", "Navigation", "Hierarchy"])
+        add(.toggleDualPane, title: isDualPane ? String(localized: "Single Pane") : String(localized: "Dual Pane"))
         if !browser.isShowingResults {
-            commands += [
-                command("View as Icons", "square.grid.2x2", "⌘1") { [weak self] in self?.browser.setMode(.grid); self?.syncViewModeItem() },
-                command("View as List", "list.bullet", "⌘2") { [weak self] in self?.browser.setMode(.list); self?.syncViewModeItem() },
-                command("View as Columns", "rectangle.split.3x1", "⌘3") { [weak self] in self?.browser.setMode(.columns); self?.syncViewModeItem() },
-                command("View as Gallery", "squares.below.rectangle", "⌘4") { [weak self] in
-                    self?.browser.setMode(.gallery)
-                    self?.syncViewModeItem()
-                },
-                command("View as Disk Usage", "square.split.bottomrightquarter", "⌘5") { [weak self] in
-                    self?.browser.setMode(.treemap)
-                    self?.syncViewModeItem()
-                },
-            ]
+            for mode in BrowserViewMode.ordered { add(.view(mode), title: mode.paletteTitle) }
         }
-        commands += [
-            command("Back", "chevron.left", "⌘[") { [weak self] in self?.goBack(nil) },
-            command("Forward", "chevron.right", "⌘]") { [weak self] in self?.goForward(nil) },
-            command("Recents", "clock", "⇧⌘F") { [weak self] in self?.goRecents(nil) },
-            command("Trash", "trash", nil) { [weak self] in self?.goTrash(nil) },
-            command("Empty Trash…", "trash", "⇧⌘⌫", keywords: ["Delete", "Erase"]) {
-                (NSApp.delegate as? AppDelegate)?.emptyTrash(nil)
-            },
-            command("Go to Folder…", "folder.badge.questionmark", "⇧⌘G") { [weak self] in self?.goToFolder(nil) },
-            command("Save Workspace…", "rectangle.stack.badge.plus", nil,
-                    keywords: ["New Workspace", "Create Workspace", "Add Workspace", "Layout", "Setup", "Session", "Tabs"]) { [weak self] in
-                guard let window = self?.window else { return }
-                Workspaces.saveCurrent(from: window)
-            },
-            command("Connect to Server…", "network", "⌥⌘K", keywords: ["SMB", "Network", "Share", "Mount", "NAS", "WebDAV"]) { [weak self] in
-                self?.connectToServer(nil)
-            },
-            command("Undo", "arrow.uturn.backward", "⌘Z") { [weak self] in self?.window?.undoManager?.undo() },
-            command("History…", "clock.arrow.circlepath", "⌥⌘Z") { (NSApp.delegate as? AppDelegate)?.showHistory(nil) },
-            command("Shelf", "tray", "⌥⌘S") { (NSApp.delegate as? AppDelegate)?.toggleShelf(nil) },
-            command("Settings…", "gearshape", "⌘,") { (NSApp.delegate as? AppDelegate)?.showSettings(nil) },
-            command("Keyboard Shortcuts", "keyboard", "⌘/") { (NSApp.delegate as? AppDelegate)?.showShortcuts(nil) },
-            command("Edit Location", "character.cursor.ibeam", "⌘L") { [weak self] in self?.goToFolder(nil) },
-            command("Enclosing Folder", "arrow.up", "⌘↑") { [weak self] in self?.goToEnclosingFolder(nil) },
-            command("Reload", "arrow.clockwise", "⌘R") { [weak self] in self?.browser.reloadFolder(nil) },
-            command("Show in Finder", "macwindow", nil) { [weak self] in self?.browser.showInFinder(nil) },
-            command("Duplicates", "square.on.square", nil) { [weak self] in self?.showDuplicates() },
-        ]
-        if hasSelection {
-            commands.insert(contentsOf: [
-                command("Quick Look", "eye", "Space") { [weak self] in self?.browser.toggleQuickLook(nil) },
-                command("Add to Shelf", "tray.and.arrow.down", nil) { [weak self] in self?.browser.addToShelf(nil) },
-                command("Tags…", "tag", nil, keywords: ["Label", "Color"]) { [weak self] in self?.browser.editTags(nil) },
-                command("Share…", "square.and.arrow.up", nil, keywords: ["AirDrop", "Send", "Mail", "Messages"]) { [weak self] in
-                    self?.browser.share(nil)
-                },
-                command("Duplicate", "plus.square.on.square", "⌘D") { [weak self] in self?.browser.duplicate(nil) },
-                localizedCommand(browser.renameTitle, "pencil", browser.selectedURLs.count > 1 ? nil : "↩",
-                                 keywords: ["Batch", "Replace", "Number"]) { [weak self] in self?.browser.renameSelection(nil) },
-
-                command("Delete Immediately…", "xmark.bin", "⌥⌘⌫", keywords: ["Remove", "Erase"]) { [weak self] in
-                    self?.browser.deleteImmediately(nil)
-                },
-            ], at: 0)
+        add(.goBack)
+        add(.goForward)
+        add(.goRecents)
+        add(.goTrash)
+        add(.emptyTrash, keywords: ["Delete", "Erase"])
+        add(.goToFolder)
+        custom("workspace.save", String(localized: "Save Workspace…"), "rectangle.stack.badge.plus",
+               keywords: ["New Workspace", "Create Workspace", "Add Workspace", "Layout", "Setup", "Session", "Tabs"]) { [weak self] in
+            guard let window = self?.window else { return }
+            Workspaces.saveCurrent(from: window)
         }
-        if let name = groupWorkspaceName, let workspace = Workspaces.named(name) {
-            commands.append(localizedCommand(String(localized: "Update “\(workspace.name)”", comment: "Window ▸ Workspaces: save this window into the workspace it was opened from"),
-                                             "arrow.triangle.2.circlepath", nil, keywords: ["Workspace", "Save"]) { [weak self] in
-                guard let window = self?.window else { return }
-                Workspaces.update(workspace.name, from: window)
-            })
-        }
-        if paneFolders != nil {
-            commands.append(command("Compare with Other Pane…", "arrow.left.arrow.right.square", nil,
-                                    keywords: ["Sync", "Diff", "Mirror", "Synchronize", "Folders"]) { [weak self] in
-                self?.compareWithOtherPane(nil)
-            })
-        }
-        if !browser.selectedURLs.isEmpty, !browser.isShowingTrash, browser.effectiveMode != .treemap, browser.canWriteBesideSelection {
-            commands.insert(localizedCommand(browser.compressTitle, "doc.zipper", nil, keywords: ["Zip", "Archive"]) { [weak self] in
-                self?.browser.compress(nil)
-            }, at: 0)
-        }
-        if !browser.selectedApps.isEmpty {
-            commands.insert(localizedCommand(browser.appUpdatesTitle, "arrow.down.app", nil, keywords: ["Update", "Upgrade", "Version", "App Store"]) { [weak self] in
-                self?.browser.checkAppsForUpdates(nil)
-            }, at: 0)
-        }
-        // Containers selected in the Containers folder: what can be done to them, and a shell in one.
-        let containers = browser.selectedContainers
-        if !containers.isEmpty {
-            for action in ContainerControl.actions(for: containers).reversed() {
-                commands.insert(localizedCommand(ContainerControl.title(action), ContainerControl.symbol(action), nil,
-                                                 keywords: ["Container", "Docker", action.rawValue.capitalized]) { [weak self] in
-                    guard let self else { return }
-                    ContainerControl.run(action, on: browser.selectedContainers, in: window)
-                }, at: 0)
+        add(.connectToServer, keywords: ["SMB", "Network", "Share", "Mount", "NAS", "WebDAV"])
+        if window?.undoManager?.canUndo == true {
+            custom("undo:", String(localized: "Undo"), "arrow.uturn.backward", ShortcutStore.shared.live("⌘Z")) { [weak self] in
+                self?.window?.undoManager?.undo()
             }
         }
-        if !browser.selectedArchives.isEmpty, !browser.isShowingTrash, browser.canWriteBesideSelection {
-            commands.insert(localizedCommand(browser.extractTitle, "archivebox", nil, keywords: ["Unzip", "Expand", "Decompress"]) { [weak self] in
-                self?.browser.extract(nil)
-            }, at: 0)
+        add(.showHistory)
+        add(.toggleShelf)
+        add(.showSettings)
+        add(.showShortcuts)
+        add(.editLocation)
+        add(.goToEnclosingFolder)
+        add(.reloadFolder)
+        add(.showInFinder)
+        custom("duplicates", String(localized: "Duplicates"), "square.on.square") { [weak self] in self?.showDuplicates() }
+        if let name = groupWorkspaceName, let workspace = Workspaces.named(name) {
+            custom("workspace.update", String(localized: "Update “\(workspace.name)”", comment: "Window ▸ Workspaces: save this window into the workspace it was opened from"),
+                   "arrow.triangle.2.circlepath", keywords: ["Workspace", "Save"]) { [weak self] in
+                guard let self, self.groupWorkspaceName == workspace.name, let window = self.window else { return }
+                Workspaces.update(workspace.name, from: window)
+            }
         }
-        // In the Trash: Put Back. Never offered for something inside a trashed folder.
-        let selected = browser.selectedURLs
-        if !selected.isEmpty, browser.isOnServer {
-            // A server has no Trash: deleting there asks first.
-            commands.insert(localizedCommand(String(localized: "Delete…", comment: "Menu command: delete for good (on a server, which has no Trash)"),
-                                             "trash", "⌘⌫", keywords: ["Remove", "Erase", "Trash"]) { [weak self] in self?.browser.moveToTrash(nil) }, at: 0)
-        } else if !selected.isEmpty, selected.allSatisfy(Trash.contains) {
-            commands.insert(command("Put Back", "tray.and.arrow.up", "⌘⌫") { [weak self] in self?.browser.putBack(nil) }, at: 0)
-        } else if !selected.isEmpty, !selected.contains(where: Trash.isInTrash) {
-            commands.insert(command("Move to Trash", "trash", "⌘⌫") { [weak self] in self?.browser.moveToTrash(nil) }, at: 0)
+        add(.compareWithOtherPane, keywords: ["Sync", "Diff", "Mirror", "Synchronize", "Folders"])
+        for action in ContainerControl.actions(for: browser.selectedContainers) {
+            add(.container(action), keywords: ["Container", "Docker", action.rawValue.capitalized])
         }
         commands.append(contentsOf: aiPaletteItems())
         if !Privacy.hasFullDiskAccess {
-            commands.append(command("Grant Full Disk Access…", "lock.open", nil) { NSWorkspace.shared.open(Privacy.settingsURL) })
-        }
-        // A read-only copy (an archive opened as a folder, a container's files): nothing in it changes, so commands that
-        // would do nothing aren't offered. A container's files aren't handed to Finder, the Shelf or the share sheet.
-        if browser.isInsideArchive {
-            // On a server, new files and folders, renaming one item and deleting go to the server.
-            let onServer = browser.isOnServer
-            var hidden = Set((onServer ? ["Tags…", "Duplicate", "Delete Immediately…"]
-                : ["New Folder", "New File", "Tags…", "Duplicate", "Delete Immediately…", "Move to Trash"]).map { String(localized: String.LocalizationValue($0)) })
-            if !onServer || browser.selectedURLs.count > 1 { hidden.insert(browser.renameTitle) }
-            if browser.directory.map(LazyCopies.contains) == true {
-                hidden.formUnion(["Add to Shelf", "Share…", "Show in Finder"].map { String(localized: String.LocalizationValue($0)) })
-            }
-            if browser.canOpenTerminalInContainer == false || browser.serverKind == .s3 { hidden.insert(String(localized: "Open in Terminal")) }
-            commands.removeAll { hidden.contains($0.title) }
+            custom("privacy.fullDiskAccess", String(localized: "Grant Full Disk Access…"), "lock.open") { NSWorkspace.shared.open(Privacy.settingsURL) }
         }
         return commands
     }

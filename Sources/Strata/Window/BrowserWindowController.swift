@@ -446,6 +446,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// Ask Strata needs something to work on: a selection, or a folder with items.
     private var canAskStrata: Bool {
+        guard !browser.isInsideArchive, !browser.isLoadingFolder else { return false }
         guard case .folder = destination else { return !browser.selectedURLs.isEmpty }
         return !browser.selectedURLs.isEmpty || !browser.topLevelEntries.isEmpty
     }
@@ -1094,14 +1095,14 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
         switch id {
         case .back, .forward:
             let isBack = id == .back
+            let command = isBack ? StrataCommand.goBack : .goForward
             let item = NSToolbarItem(itemIdentifier: id)
-            item.label = isBack ? String(localized: "Back", comment: "Toolbar button: go to the previous place")
-                : String(localized: "Forward", comment: "Toolbar button: go to the next place")
+            item.label = command.title
             item.toolTip = isBack ? String(localized: "Back (⌘[)", comment: "Toolbar tooltip with its shortcut")
                 : String(localized: "Forward (⌘])", comment: "Toolbar tooltip with its shortcut")
-            item.image = NSImage(systemSymbolName: isBack ? "chevron.left" : "chevron.right", accessibilityDescription: item.label)
+            item.image = command.image
             item.target = self
-            item.action = isBack ? #selector(goBack(_:)) : #selector(goForward(_:))
+            item.action = command.action
             ToolbarThemeController.applyNavigation(to: item)
             item.visibilityPriority = .high
             return item
@@ -1172,8 +1173,8 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
         switch item.itemIdentifier {
-        case .back: return !pane.backStack.isEmpty
-        case .forward: return !pane.forwardStack.isEmpty
+        case .back: return validateMenuItem(StrataCommand.goBack.menuItem())
+        case .forward: return validateMenuItem(StrataCommand.goForward.menuItem())
         case .viewMode: return !browser.isShowingResults
         default: return true
         }

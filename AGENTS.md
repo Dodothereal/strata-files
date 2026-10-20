@@ -187,6 +187,10 @@ sheet's text before clicking a destructive button. Both builds share preferences
 - Comments explain what and why in plain sentences, in the app's own words (Trash, Put Back, Delete Immediately);
   inline comments only for decisions that aren't obvious. Match the density of the code around you.
 - User-facing text goes through `String(localized:comment:)`; plurals carry `comment: "plural"`; quotes are curly.
+- Shared commands belong in `StrataCommand`: preserve their action/tag identities and existing shortcut overrides.
+  Menus keep native responder routing; the palette uses the same validator and revalidates before dispatch. Never
+  use a translated title as identity. A captured file command must stay bound to its original pane, folder and
+  selection. Test both menu/palette availability and stale actions across view, result and location changes.
 - Safety idioms already in use: `lstat`, `O_NOFOLLOW`, `renamex_np(RENAME_EXCL)`, deleting relative to an open folder,
   identity checks before undo (`FileOps.Landed` for ⌘Z, `OperationLog.identity` for History). Reuse them: an undo
   that trashes or moves items must check each is still the one the operation left there.

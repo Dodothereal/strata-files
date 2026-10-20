@@ -39,6 +39,8 @@ struct PaletteItem {
     var titleMatches: [Int] = []
     /// The file or folder this item opens, to avoid listing it twice.
     var url: URL? = nil
+    /// Stable native action identity, independent of the displayed or translated title.
+    var commandID: String? = nil
     let run: () -> Void
 }
 

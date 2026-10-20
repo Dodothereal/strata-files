@@ -100,6 +100,16 @@ enum BrowserViewMode: Int, CaseIterable {
         }
     }
 
+    var paletteTitle: String {
+        switch self {
+        case .grid: String(localized: "View as Icons")
+        case .list: String(localized: "View as List")
+        case .columns: String(localized: "View as Columns")
+        case .gallery: String(localized: "View as Gallery")
+        case .treemap: String(localized: "View as Disk Usage")
+        }
+    }
+
     var symbolName: String {
         switch self {
         case .list: "list.bullet"
@@ -133,10 +143,8 @@ enum BrowserViewMode: Int, CaseIterable {
     /// View menu items "as Icons" … "as Disk Usage" with ⌘1–⌘5; each item's tag is the mode's raw value.
     static func menuItems(action: Selector) -> [NSMenuItem] {
         ordered.map { mode in
-            let item = NSMenuItem(title: mode.menuTitle, action: action, keyEquivalent: mode.keyEquivalent)
-            item.keyEquivalentModifierMask = .command
-            item.tag = mode.rawValue
-            item.image = mode.image
+            let item = StrataCommand.view(mode).menuItem()
+            item.action = action
             return item
         }
     }

@@ -72,15 +72,8 @@ extension BrowserWindowController {
 
     /// Palette commands for the AI features, to append to `commandItems()`.
     func aiPaletteItems() -> [PaletteItem] {
-        let sparkles = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
         let subtitle = browser.selectedURLs.isEmpty ? String(localized: "Rename, move or organize everything here")
             : String(localized: "Rename, move or organize the selection")
-        let shortcut = ShortcutStore.shared.live("⌥⌘A")
-        return [PaletteItem(title: String(localized: "Ask Strata…", comment: "Command: describe a change for the selected files"),
-                            subtitle: subtitle, icon: sparkles, kind: .action,
-                            shortcut: shortcut.isEmpty ? nil : shortcut) { [weak self] in
-            self?.askStrata(nil)
-        }]
+        return paletteCommand(.askStrata, subtitle: subtitle).map { [$0] } ?? []
     }
 }

@@ -453,28 +453,25 @@ enum DockSearchItems {
     }
 
     /// Commands that make sense without a window in front: a window opens for those that need one.
-    private static func commands() -> [PaletteItem] {
-        func command(_ title: String, _ symbol: String, _ shortcut: String?, keywords: [String] = [], _ run: @escaping () -> Void) -> PaletteItem {
-            let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-                .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
-            let live = shortcut.map { ShortcutStore.shared.live($0) }.flatMap { $0.isEmpty ? nil : $0 }
-            return PaletteItem(title: title, subtitle: "", icon: image, kind: .action, shortcut: live, keywords: keywords) {
+    static func commands() -> [PaletteItem] {
+        func command(_ definition: StrataCommand, keywords: [String] = [], _ run: @escaping () -> Void) -> PaletteItem {
+            let image = definition.image?.withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
+            return PaletteItem(title: definition.title, subtitle: "", icon: image, kind: .action,
+                               shortcut: definition.shortcut, keywords: keywords, commandID: definition.id) {
                 NSApp.activate()
                 run()
             }
         }
-        func send(_ action: Selector) { NSApp.sendAction(action, to: nil, from: nil) }
+        func send(_ command: StrataCommand) { NSApp.sendAction(command.action, to: nil, from: nil) }
         let delegate = NSApp.delegate as? AppDelegate
         return [
-            command(String(localized: "New Window"), "macwindow.badge.plus", "⌘N") { send(#selector(AppDelegate.newWindow(_:))) },
-            command(String(localized: "Connect to Server…"), "network", "⌥⌘K", keywords: ["sftp", "s3", "smb"]) {
-                delegate?.frontController().connectToServer(nil)
-            },
-            command(String(localized: "Recents"), "clock", "⇧⌘F") { delegate?.frontController().goRecents(nil) },
-            command(String(localized: "Settings…"), "gearshape", "⌘,") { send(#selector(AppDelegate.showSettings(_:))) },
-            command(String(localized: "Shelf"), "tray", "⌥⌘S") { send(#selector(AppDelegate.toggleShelf(_:))) },
-            command(String(localized: "Empty Trash…"), "trash.slash", "⇧⌘⌫") { send(#selector(AppDelegate.emptyTrash(_:))) },
-            command(String(localized: "Keyboard Shortcuts"), "keyboard", "⌘/") { send(#selector(AppDelegate.showShortcuts(_:))) },
+            command(.newWindow) { send(.newWindow) },
+            command(.connectToServer, keywords: ["sftp", "s3", "smb"]) { delegate?.frontController().connectToServer(nil) },
+            command(.goRecents) { delegate?.frontController().goRecents(nil) },
+            command(.showSettings) { send(.showSettings) },
+            command(.toggleShelf) { send(.toggleShelf) },
+            command(.emptyTrash) { send(.emptyTrash) },
+            command(.showShortcuts) { send(.showShortcuts) },
         ]
     }
 

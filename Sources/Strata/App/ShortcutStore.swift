@@ -5,6 +5,11 @@ import AppKit
 /// at launch and whenever they change. The palette and the Shortcuts window show the live keys.
 final class ShortcutStore {
     static let shared = ShortcutStore()
+    private let preferences: UserDefaults
+
+    init(preferences: UserDefaults = .standard) {
+        self.preferences = preferences
+    }
 
     /// A key and its modifiers, as a menu item takes them. An empty key means "no shortcut".
     struct Combo: Codable, Equatable, Hashable {
@@ -79,11 +84,11 @@ final class ShortcutStore {
 
     var overrides: [String: Combo] {
         get {
-            guard let data = UserDefaults.standard.data(forKey: Self.overridesKey) else { return [:] }
+            guard let data = preferences.data(forKey: Self.overridesKey) else { return [:] }
             return (try? JSONDecoder().decode([String: Combo].self, from: data)) ?? [:]
         }
         set {
-            UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: Self.overridesKey)
+            preferences.set(try? JSONEncoder().encode(newValue), forKey: Self.overridesKey)
             apply()
             NotificationCenter.default.post(name: .shortcutsChanged, object: nil)
         }
@@ -136,7 +141,7 @@ final class ShortcutStore {
         // Choices for commands that no longer exist go.
         let current = overrides
         let valid = current.filter { items[$0.key] != nil }
-        if valid.count != current.count { UserDefaults.standard.set(try? JSONEncoder().encode(valid), forKey: Self.overridesKey) }
+        if valid.count != current.count { preferences.set(try? JSONEncoder().encode(valid), forKey: Self.overridesKey) }
         apply()
     }
 
@@ -160,6 +165,12 @@ final class ShortcutStore {
             item.keyEquivalent = combo.key
             item.keyEquivalentModifierMask = combo.flags
         }
+    }
+
+    /// The actual menu keys include aliases and Option-alternates, which follow their partner's customized keys.
+    func display(for id: String, fallback: Combo) -> String {
+        guard let item = items[id] else { return fallback.display }
+        return Combo(key: item.keyEquivalent, modifiers: item.keyEquivalentModifierMask.rawValue).display
     }
 
     func combo(for id: String) -> Combo {

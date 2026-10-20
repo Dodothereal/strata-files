@@ -843,5 +843,26 @@
     "replace": "panes.view.bottomAnchor.constraint(equalTo: content.view.bottomAnchor)",
     "rule": "Window: closing a pane keeps its divider out of the shared footer",
     "tests": "PaneDividerTests"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController+Palette.swift",
+    "find": "guard validateCommand(command, item: item) else { return nil }",
+    "replace": "guard true else { return nil }",
+    "rule": "Palette command catalog offers unavailable file actions",
+    "tests": "CommandCatalogTests/paletteAndContextMenuUseNativeAvailability|CommandCatalogTests/archiveAvailability"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController+Palette.swift",
+    "find": "guard let self, self.validateCommand(command, item: item), let target = self.commandTarget(command) else { return }",
+    "replace": "guard let self, let target = self.commandTarget(command) else { return }",
+    "rule": "Palette command catalog runs an action that became unavailable",
+    "tests": "CommandCatalogTests/aCapturedCommandRechecksAvailability"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController+Palette.swift",
+    "find": "if command.owner == .browser {",
+    "replace": "if false {",
+    "rule": "Palette command catalog redirects a captured file action to another folder",
+    "tests": "CommandCatalogTests/commandsCapturedBeforeResultsOrNavigation"
   }
 ]

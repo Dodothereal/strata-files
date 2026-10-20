@@ -19,8 +19,8 @@ final class DockMenu {
     func build() -> NSMenu {
         actions.removeAll()
         let menu = NSMenu()
-        menu.addItem(item(String(localized: "New Window"), symbol: "macwindow.badge.plus", perform: newWindow))
-        menu.addItem(item(String(localized: "Recents"), symbol: "clock", perform: recents))
+        menu.addItem(item(.newWindow, perform: newWindow))
+        menu.addItem(item(.goRecents, perform: recents))
 
         let places = favorites()
         if !places.isEmpty {
@@ -39,6 +39,12 @@ final class DockMenu {
         }
         MenuImages.show(in: menu)
         return menu
+    }
+
+    private func item(_ command: StrataCommand, perform: @escaping @MainActor () -> Void) -> NSMenuItem {
+        let item = item(command.title, symbol: command.symbol ?? "command", perform: perform)
+        item.identifier = NSUserInterfaceItemIdentifier(command.id)
+        return item
     }
 
     private func item(_ title: String, symbol: String, perform: @escaping @MainActor () -> Void) -> NSMenuItem {

@@ -1533,9 +1533,14 @@ final class BrowserViewController: NSViewController {
         func add(_ title: String.LocalizationValue, _ action: Selector, _ symbol: String? = nil) {
             addTitled(String(localized: title), action, symbol)
         }
+        func add(_ command: StrataCommand, title: String? = nil) {
+            let item = command.menuItem(title: title, target: self, withShortcut: false)
+            item.image = command.image
+            menu.addItem(item)
+        }
         func addStackOpenItems() {
             guard !stackProjectFolders().isEmpty else { return }
-            add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
+            add(.openInTerminal)
             let apps = ProjectEditors.installed()
             guard !apps.isEmpty else { return }
             let submenu = NSMenu()
@@ -1557,16 +1562,16 @@ final class BrowserViewController: NSViewController {
         if selected.isEmpty {
             // On a server: a new folder there, or pasting onto it; a shell there (SFTP).
             if isOnServer {
-                add("New Folder", #selector(newFolder(_:)), "folder.badge.plus")
-                add("New File", #selector(newFile(_:)), "doc.badge.plus")
-                if Clipboard.hasFiles { add("Paste", #selector(paste(_:)), "doc.on.clipboard") }
+                add(.newFolder)
+                add(.newFile)
+                if Clipboard.hasFiles { add(.paste) }
                 menu.addItem(.separator())
                 if directory.flatMap({ RemoteCopies.server(containing: $0)?.server.kind }) == .sftp {
-                    add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
+                    add(.openInTerminal)
                 }
-                add("Copy Path", #selector(copyPath(_:)), "link")
+                add(.copyPath)
                 menu.addItem(.separator())
-                addTitled(hiddenFilesTitle, #selector(toggleHiddenFiles(_:)), "eye")
+                add(.toggleHiddenFiles, title: hiddenFilesTitle)
                 return menu
             }
             // Inside an archive opened as a folder nothing is added; Finder is shown the archive itself.
@@ -1574,22 +1579,22 @@ final class BrowserViewController: NSViewController {
                 if directory.map(ContainerCopies.isStack) == true {
                     addStackOpenItems()
                 } else if directory.map(ContainerCopies.engineFolder) == nil {
-                    add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
+                    add(.openInTerminal)
                 }
                 if directory.map(ArchiveCache.contains) == true { add("Show Archive in Finder", #selector(showArchiveInFinder(_:)), "macwindow") }
                 menu.addItem(.separator())
-                addTitled(hiddenFilesTitle, #selector(toggleHiddenFiles(_:)), "eye")
+                add(.toggleHiddenFiles, title: hiddenFilesTitle)
                 return menu
             }
-            add("New Folder", #selector(newFolder(_:)), "folder.badge.plus")
-            add("New File", #selector(newFile(_:)), "doc.badge.plus")
-            if Clipboard.hasFiles { add("Paste", #selector(paste(_:)), "doc.on.clipboard") }
+            add(.newFolder)
+            add(.newFile)
+            if Clipboard.hasFiles { add(.paste) }
             menu.addItem(.separator())
-            add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
-            add("Copy Path", #selector(copyPath(_:)), "link")
-            add("Show in Finder", #selector(showInFinder(_:)), "macwindow")
+            add(.openInTerminal)
+            add(.copyPath)
+            add(.showInFinder)
             menu.addItem(.separator())
-            addTitled(hiddenFilesTitle, #selector(toggleHiddenFiles(_:)), "eye")
+            add(.toggleHiddenFiles, title: hiddenFilesTitle)
             if isShowingTrash {
                 menu.addItem(.separator())
                 addEmptyTrash()
@@ -1605,23 +1610,19 @@ final class BrowserViewController: NSViewController {
         let inTrash = selected.allSatisfy { Trash.contains($0.url) }
         let reachesIntoTrash = !inTrash && selected.contains { Trash.isInTrash($0.url) }
         if inTrash {
-            add("Put Back", #selector(putBack(_:)), "tray.and.arrow.up")
-            add("Delete Immediately…", #selector(deleteImmediately(_:)), "xmark.bin")
+            add(.putBack)
+            add(.deleteImmediately)
             menu.addItem(.separator())
         }
-        add("Open", #selector(openSelection(_:)), "arrow.up.forward.app")
+        add(.openSelection)
         // Containers: what can be done to them, then a shell in one.
         let containers = selectedContainers
         if !containers.isEmpty {
             menu.addItem(.separator())
             for action in ContainerControl.actions(for: containers) {
-                let item = NSMenuItem(title: ContainerControl.title(action), action: #selector(containerAction(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = action.rawValue
-                item.image = NSImage(systemSymbolName: ContainerControl.symbol(action), accessibilityDescription: nil)
-                menu.addItem(item)
+                add(.container(action))
             }
-            add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
+            add(.openInTerminal)
             menu.addItem(.separator())
         }
         // With archives opening normally (Settings), browsing one is still a click away.
@@ -1651,12 +1652,12 @@ final class BrowserViewController: NSViewController {
                 menu.addItem(openWith)
             }
         }
-        if !selectedApps.isEmpty { addTitled(appUpdatesTitle, #selector(checkAppsForUpdates(_:)), "arrow.down.app") }
+        if !selectedApps.isEmpty { add(.checkAppsForUpdates, title: appUpdatesTitle) }
         // iCloud Drive and File Provider folders: bring items here, or free their space.
         let cloud = selectedCloudStatuses
         if !inTrash, cloud.contains(.cloudOnly) { add("Download Now", #selector(downloadNow(_:)), "icloud.and.arrow.down") }
         if !inTrash, cloud.contains(.downloaded) { add("Remove Download", #selector(removeDownload(_:)), "icloud.slash") }
-        add("Quick Look", #selector(toggleQuickLook(_:)), "eye")
+        add(.toggleQuickLook)
         // The system's own item: it keeps its picker alive and shows the share sheet next to the menu. Not for a
         // container's files: they're only read when copied out.
         let inContainer = directory.map(LazyCopies.contains) == true
@@ -1664,45 +1665,45 @@ final class BrowserViewController: NSViewController {
         menu.addItem(.separator())
         // On a server: rename one, delete (it asks: no Trash there), copy out.
         if isOnServer {
-            if selected.count == 1 { addTitled(renameTitle, #selector(renameSelection(_:)), "pencil") }
+            if selected.count == 1 { add(.renameSelection, title: renameTitle) }
             addTitled(String(localized: "Delete…", comment: "Menu command: delete for good (on a server, which has no Trash)"),
                       #selector(moveToTrash(_:)), "trash")
             menu.addItem(.separator())
-            add("Copy", #selector(copy(_:)), "doc.on.doc")
-            add("Copy Path", #selector(copyPath(_:)), "link")
+            add(.copy)
+            add(.copyPath)
             return menu
         }
         // Inside an archive opened as a folder nothing changes: copying out is what's offered.
         let inArchive = isInsideArchive
         if inArchive {
-            add("Copy", #selector(copy(_:)), "doc.on.doc")
-            if !inContainer { add("Add to Shelf", #selector(addToShelf(_:)), "tray.and.arrow.down") }
+            add(.copy)
+            if !inContainer { add(.addToShelf) }
             if containers.isEmpty {
                 if !selectedEntries.isEmpty, selectedEntries.allSatisfy({ ContainerCopies.isStack($0.url) }) {
                     if !stackProjectFolders().isEmpty { menu.addItem(.separator()) }
                     addStackOpenItems()
                 } else {
                     menu.addItem(.separator())
-                    add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
+                    add(.openInTerminal)
                 }
             }
             if directory.map(ArchiveCache.contains) == true { add("Show Archive in Finder", #selector(showArchiveInFinder(_:)), "macwindow") }
             return menu
         }
-        addTitled(renameTitle, #selector(renameSelection(_:)), "pencil")
+        add(.renameSelection, title: renameTitle)
         if inTrash {
             addEmptyTrash()
         } else {
-            addTitled(compressTitle, #selector(compress(_:)), "doc.zipper")
-            if !selectedArchives.isEmpty { addTitled(extractTitle, #selector(extract(_:)), "archivebox") }
-            add("Duplicate", #selector(duplicate(_:)), "plus.square.on.square")
-            if !reachesIntoTrash { add("Move to Trash", #selector(moveToTrash(_:)), "trash") }
+            add(.compress, title: compressTitle)
+            if !selectedArchives.isEmpty { add(.extract, title: extractTitle) }
+            add(.duplicate)
+            if !reachesIntoTrash { add(.moveToTrash) }
         }
         menu.addItem(.separator())
-        add("Copy", #selector(copy(_:)), "doc.on.doc")
-        add("Cut", #selector(cut(_:)), "scissors")
-        add("Copy Path", #selector(copyPath(_:)), "link")
-        add("Add to Shelf", #selector(addToShelf(_:)), "tray.and.arrow.down")
+        add(.copy)
+        add(.cut)
+        add(.copyPath)
+        add(.addToShelf)
         // Finder's tags: the seven colors to click, and Tags… for any tag.
         if !inTrash, selected.allSatisfy({ !$0.isVolume && TagStore.canTag($0.url) }) {
             menu.addItem(.separator())
@@ -1722,12 +1723,12 @@ final class BrowserViewController: NSViewController {
                 do { try TagStore.shared.toggle(tag, on: urls, undo: undoManager) } catch { presentFileError(error) }
             }
             menu.addItem(row)
-            add("Tags…", #selector(editTags(_:)), "tag")
+            add(.editTags)
         }
-        if selectedEntries.contains(where: \.isFolder) { add("Add to Sidebar", #selector(addToSidebar(_:)), "sidebar.left") }
+        if selectedEntries.contains(where: \.isFolder) { add(.addToSidebar) }
         menu.addItem(.separator())
-        add("Open in Terminal", #selector(openInTerminal(_:)), "terminal")
-        add("Show in Finder", #selector(showInFinder(_:)), "macwindow")
+        add(.openInTerminal)
+        add(.showInFinder)
         return menu
     }
 }
