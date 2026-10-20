@@ -73,7 +73,7 @@ p { margin: 0; }
   border-radius: 999px; border: 1px solid transparent;
   transition: transform 0.2s var(--ease), box-shadow 0.25s var(--ease), background 0.2s, border-color 0.2s;
 }
-.btn--sm { font-size: 14px; padding: 7px 14px; }
+.btn--sm { font-size: 14px; padding: 7px 14px; min-height: 44px; min-width: 44px; }
 .btn--lg { font-size: 16px; padding: 13px 24px; }
 .btn--block { width: 100%; }
 .btn--primary {
@@ -117,10 +117,11 @@ kbd, .key {
 }
 .nav.is-scrolled::before { opacity: 1; }
 .nav__inner { display: flex; align-items: center; gap: 24px; height: 64px; }
-.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.02em; }
+.brand { min-height: 44px; display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.02em; }
 .brand img { border-radius: 7px; }
 .brand em { font-style: normal; color: var(--text-3); font-weight: 600; }
 .nav__links { display: flex; gap: 26px; margin: 0 auto; font-size: 14.5px; color: var(--text-2); }
+.nav__links a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; }
 .nav__links a:hover { color: var(--text); }
 .nav__actions { display: flex; gap: 10px; align-items: center; }
 
@@ -144,7 +145,7 @@ kbd, .key {
 .hero__inner { display: flex; flex-direction: column; align-items: center; text-align: center; }
 .pill {
   display: inline-flex; align-items: center; gap: 10px;
-  font-size: 14px; color: var(--text-2);
+  min-height: 44px; font-size: 14px; color: var(--text-2);
   padding: 6px 14px 6px 6px; border-radius: 999px;
   background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border);
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
@@ -282,8 +283,9 @@ html.js .is-in .demo-sizes i { transform: none; }
 .split h2 { font-size: clamp(30px, 3.6vw, 46px); }
 
 /* Tabs */
-.tabs__list { display: flex; justify-content: center; gap: 6px; margin: -20px auto 28px; padding: 5px; width: max-content; max-width: 100%; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); }
+.tabs__list { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: -20px auto 28px; padding: 5px; width: max-content; max-width: 100%; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); }
 .tabs__list button {
+  min-height: 44px; min-width: 44px;
   font: 600 14.5px var(--font); color: var(--text-2); background: none; border: 0; cursor: pointer;
   padding: 8px 18px; border-radius: 999px; display: inline-flex; align-items: center; gap: 8px; transition: background 0.2s, color 0.2s;
 }
@@ -344,12 +346,13 @@ html.js .is-in .demo-sizes i { transform: none; }
 .footer { border-top: 1px solid var(--border); padding: 36px 0 48px; }
 .footer__inner { display: grid; grid-template-columns: auto 1fr; gap: 18px 32px; align-items: center; }
 .footer__links { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: flex-end; font-size: 14.5px; color: var(--text-2); }
+.footer__links a { display: inline-flex; align-items: center; min-height: 44px; }
 .footer__links a:hover { color: var(--text); }
 .footer__about { grid-column: 1 / -1; font-size: 14.5px; color: var(--text-2); }
 .footer__fine { grid-column: 1 / -1; font-size: 13px; color: var(--text-3); }
 
 /* App privacy policy */
-.privacy-policy-link { display: inline-block; margin-top: 20px; }
+.privacy-policy-link { display: inline-flex; align-items: center; min-height: 44px; margin-top: 20px; }
 .privacy-policy-link, .policy__content a { color: var(--violet-2); text-decoration: underline; text-underline-offset: 4px; }
 .policy { max-width: calc(760px + 2 * var(--gutter)); padding-top: 64px; padding-bottom: 96px; }
 .policy__header { padding-bottom: 32px; border-bottom: 1px solid var(--border); }
@@ -425,7 +428,7 @@ html.js .reveal.is-in { opacity: 1; transform: none; }
   .demo-copy__btns { display: none; }
   .key--xl { width: 72px; height: 72px; font-size: 38px; }
   .tabs__list { width: 100%; }
-  .tabs__list button { flex: 1; justify-content: center; padding: 8px 10px; }
+  .tabs__list button { flex: 1 1 auto; justify-content: center; padding: 8px 10px; }
   .tabs__list button kbd { display: none; }
   .keygrid { grid-template-columns: 1fr; }
   .offer { padding: 28px 20px; border-radius: 24px; }

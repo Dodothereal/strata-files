@@ -2,6 +2,7 @@
 // only requests go to GitHub's public API, for the latest release (so Download points straight at the disk image) and
 // the star count.
 (() => {
+  document.documentElement.classList.add('js');
   const REPO = 'cristipufu/strata-files';
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 

@@ -1,7 +1,7 @@
 name: Website
 
 # Publishes stratafiles.app to GitHub Pages: site/ plus the README's screenshots, assembled by scripts/site.sh.
-# Runs when the site or the screenshots change on main, or from the Actions tab.
+# Checks pull requests before publishing main to GitHub Pages.
 on:
   push:
     branches: [main]
@@ -9,6 +9,18 @@ on:
       - "site/**"
       - "docs/screenshots/**"
       - "scripts/site.sh"
+      - "scripts/site-assets.py"
+      - "Tests/site/**"
+      - "Tests/test_site.py"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    paths:
+      - "site/**"
+      - "docs/screenshots/**"
+      - "scripts/site.sh"
+      - "scripts/site-assets.py"
+      - "Tests/site/**"
+      - "Tests/test_site.py"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -17,7 +29,7 @@ permissions:
 
 # One deployment at a time; a newer push replaces one still waiting.
 concurrency:
-  group: pages
+  group: pages-${{ github.event_name == 'pull_request' && github.event.number || 'publish' }}
   cancel-in-progress: true
 
 jobs:
@@ -33,15 +45,38 @@ jobs:
       - name: Install cwebp
         run: sudo apt-get update -qq && sudo apt-get install -y -qq webp
 
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Tests/site/package-lock.json
+
+      - name: Check asset packaging
+        run: python3 -m unittest discover -s Tests -p test_site.py
+
       - name: Assemble the site
+        env:
+          SITE_PREVIOUS_ORIGIN: ${{ github.event_name != 'pull_request' && 'https://stratafiles.app' || '' }}
         run: scripts/site.sh
 
+      - name: Install browser checks
+        working-directory: Tests/site
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Check the website
+        run: npm test --prefix Tests/site
+
       - name: Upload
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: build/site
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10

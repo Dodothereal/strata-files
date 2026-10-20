@@ -49,15 +49,12 @@ for shot in "${shots[@]}"; do
   fi
 done
 
-# The stylesheet goes inline so the first paint doesn't wait for another request (404.html still links it).
-python3 - "$out/index.html" "$out/styles.css" <<'PY'
-import sys
-page, css = sys.argv[1], open(sys.argv[2]).read()
-html = open(page).read()
-link = '<link rel="stylesheet" href="styles.css">'
-assert html.count(link) == 1, "index.html should link styles.css exactly once"
-open(page, "w").write(html.replace(link, "<style>\n" + css + "</style>"))
-PY
+# CI retains previous fingerprinted assets so cached pages keep working after an update.
+if [[ -n "${SITE_PREVIOUS_ORIGIN:-}" ]]; then
+  python3 scripts/site-assets.py "$out" --previous-origin "$SITE_PREVIOUS_ORIGIN"
+else
+  python3 scripts/site-assets.py "$out"
+fi
 echo "Built $out ($(du -sh "$out" | cut -f1))"
 
 if [[ "${1:-}" == "--serve" ]]; then
