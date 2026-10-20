@@ -84,8 +84,8 @@
     "tests": "TrashUndoTests/undoingTwoOperations|TrashUndoTests/undoAndRedoPressed"
   },
   {
-    "file": "Strata/Model/FileOps.swift",
-    "find": "            if Self.disk(expected) != Self.disk(now) { identities[destination.path] = now }",
+    "file": "Strata/Model/LandedFiles.swift",
+    "find": "        if expected.device != now.device { identities[destination.path] = now }",
     "replace": "",
     "rule": "Redo across disks loses track of the item",
     "tests": "TransferTests/aRenameAcross"
@@ -135,30 +135,30 @@
   {
     "file": "Strata/Transfers/TransferEngine.swift",
     "find": "                result.landed = identity\n                hooks.afterLanding?(item.destination)",
-    "replace": "                hooks.afterLanding?(item.destination)\n                result.landed = FileOps.Landed.identity(item.destination.path)",
+    "replace": "                hooks.afterLanding?(item.destination)\n                result.landed = FileIdentity.read(item.destination.path)",
     "rule": "A renamed item's identity is read after it lands",
     "tests": "TransferTests/aFileSwapped"
   },
   {
     "file": "Strata/Transfers/TransferEngine.swift",
-    "find": "        result.landed = FileOps.Landed.identity(target.path)\n        hooks.afterLanding?(target)",
-    "replace": "        hooks.afterLanding?(target)\n        result.landed = FileOps.Landed.identity(target.path)",
+    "find": "        result.landed = FileIdentity.read(target.path)\n        hooks.afterLanding?(target)",
+    "replace": "        hooks.afterLanding?(target)\n        result.landed = FileIdentity.read(target.path)",
     "rule": "A copied item's identity is read after it lands",
     "tests": "TransferTests/aFileSwapped"
   },
   {
-    "file": "Strata/Model/OperationLog.swift",
-    "find": "        return recorded == \"\\(info.st_dev):\\(info.st_ino)\"",
+    "file": "Strata/Model/FileIdentity.swift",
+    "find": "        return read(path)?.legacyHistoryKey == recorded",
     "replace": "        return true",
     "rule": "History's undo trusts identities saved by older versions",
-    "tests": "TrashUndoTests/historyUndoChecksIdentities"
+    "tests": "TrashUndoTests/historyUndoChecksIdentities|FileIdentityTests/decodedHistoryRecognizesBothFormatsAndRefusesReplacements"
   },
   {
-    "file": "Strata/Model/OperationLog.swift",
-    "find": "        guard recorded.contains(\":\"), !recorded.contains(\"/\") else { return identity(path) == recorded }",
+    "file": "Strata/Model/FileIdentity.swift",
+    "find": "        guard recorded.contains(\":\"), !recorded.contains(\"/\") else { return historyKey(at: path) == recorded }",
     "replace": "        guard recorded.contains(\":\"), !recorded.contains(\"/\") else { return true }",
     "rule": "History's undo skips the identity check for current entries",
-    "tests": "TrashUndoTests"
+    "tests": "TrashUndoTests|FileIdentityTests/decodedHistoryRecognizesBothFormatsAndRefusesReplacements"
   },
   {
     "file": "Strata/Transfers/TransferEngine.swift",
@@ -1411,5 +1411,26 @@
     "replace": "",
     "rule": "Plan folder cleanup records ownership when each folder is created",
     "tests": "PlanSafetyTests/runningAPlanDoesOnlyItsCheckedSteps|PlanSafetyTests/undoKeepsAFolderThePlanMadeOnceSomethingElseIsInIt|PlanSafetyTests/nestedFolderCleanupWorksAfterCompleteAndFailedMoves"
+  },
+  {
+    "file": "Strata/Model/FileIdentity.swift",
+    "find": "guard lstat(path, &info) == 0 else { return nil }",
+    "replace": "guard stat(path, &info) == 0 else { return nil }",
+    "rule": "File identity belongs to the symlink itself even when its target is missing",
+    "tests": "FileIdentityTests/identitiesBelongToTheItemAndNeverFollowItsLink"
+  },
+  {
+    "file": "Strata/Model/FileIdentity.swift",
+    "find": "birthSeconds: info.st_birthtimespec.tv_sec",
+    "replace": "birthSeconds: info.st_birthtimespec.tv_sec + 1",
+    "rule": "File identity preserves the birth time read from the actual item",
+    "tests": "FileIdentityTests/identitiesBelongToTheItemAndNeverFollowItsLink"
+  },
+  {
+    "file": "Strata/Model/LandedFiles.swift",
+    "find": "if expected.device != now.device { identities[destination.path] = now }",
+    "replace": "identities[destination.path] = now",
+    "rule": "File identity landing never accepts a same-disk replacement",
+    "tests": "FileIdentityTests/landingRetainsSameDiskIdentityAndOnlyRefreshesItAcrossDisks"
   }
 ]

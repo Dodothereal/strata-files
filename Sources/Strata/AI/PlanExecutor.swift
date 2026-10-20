@@ -55,8 +55,8 @@ final class PlanTransaction {
     /// What `perform` left where, and what `revert` put back: undo and redo each touch only those very items, never
     /// one put in an item's place since. Nil before the first undo: the plan first runs on the items it was checked
     /// against.
-    private var applied = FileOps.Landed()
-    private var restored: FileOps.Landed?
+    private var applied = LandedFiles()
+    private var restored: LandedFiles?
     private var queue: Task<Void, Never>?
 
     init(plan: Plan) {
@@ -90,7 +90,7 @@ final class PlanTransaction {
         created = []
         done = []
         trashed = []
-        applied = FileOps.Landed()
+        applied = LandedFiles()
         // Redone: only what undo put back, still there.
         let moves = restored.map { restored in self.moves.filter { restored.holds($0.from) } } ?? self.moves
         let trashItems = restored.map { restored in self.trashItems.filter(restored.holds) } ?? self.trashItems
@@ -152,7 +152,7 @@ final class PlanTransaction {
     func revert() async {
         // The reverse of `perform`: moves back first (freeing names), then the Trash. Only items still where it put
         // them; what's back is recorded as it lands, for redo.
-        let restored = FileOps.Landed()
+        let restored = LandedFiles()
         self.restored = restored
         func moveBack(_ pairs: [Pair]) async {
             for pair in pairs { restored.expect(pair.from, at: pair.to) }

@@ -70,8 +70,8 @@ final class TransferJob {
     private var journalCreated: [URL] = []
     private var journalMoved: [TransferMove] = []
     private var journalReplaced: [TransferMove] = []
-    /// What each item is where it landed, recorded as it lands (for undo; see `FileOps.Landed`).
-    let landed = FileOps.Landed()
+    /// What each item is where it landed, recorded as it lands (for undo; see `LandedFiles`).
+    let landed = LandedFiles()
 
     // Throughput: rates over a sliding window of recent samples.
     private var samples: [(time: TimeInterval, work: Double, bytes: Int64)] = []
@@ -548,7 +548,7 @@ final class TransferJob {
         case .done, .partial:
             placed.insert(result.destination.standardizedFileURL.path.lowercased())
             // As the engine read it when it put the item there; a retry's, read now.
-            landed.set(result.landed ?? FileOps.Landed.identity(result.destination.path), at: result.destination)
+            landed.set(result.landed ?? FileIdentity.read(result.destination.path), at: result.destination)
             if let replaced = result.replaced { landed.record([replaced.to]) }
             // A move whose original couldn't be (or wasn't) removed leaves the only complete copy at the destination:
             // undo must not trash it.

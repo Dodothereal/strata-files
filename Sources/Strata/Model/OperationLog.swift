@@ -27,8 +27,8 @@ final class OperationLog {
         var replaced: [[String]] = []
         /// Folders made to hold moved items: undo removes them once they're empty again.
         var containers: [String] = []
-        /// Which file each recorded path held right after the operation ("device:inode"): undo only touches those
-        /// same files, never something else that took their place since.
+        /// Which file each recorded path held right after the operation (volume UUID/inode, or device:inode in older
+        /// entries): undo only touches those same files, never something else that took their place since.
         var identities: [String: String] = [:]
         var undone = false
         /// When it was last undone or redone (nil: never since it was done, at `date`).
@@ -170,23 +170,8 @@ final class OperationLog {
         pairs.map { [$0.from.path, $0.to.path] }
     }
 
-    /// The file at `path` as "device:inode", or nil when nothing is there.
-    /// The file at `path` as "<volume UUID>/<inode>" (a disk's device number changes when it's plugged in again, its
-    /// UUID doesn't), or nil when nothing is there.
-    nonisolated static func identity(_ path: String) -> String? {
-        var info = stat()
-        guard lstat(path, &info) == 0 else { return nil }
-        let volume = (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.volumeUUIDStringKey]))?.volumeUUIDString
-        return "\(volume ?? String(info.st_dev))/\(info.st_ino)"
-    }
-
-    /// Identities recorded before volume UUIDs were used ("device:inode") compare by those two.
-    private nonisolated static func sameIdentity(_ recorded: String, _ path: String) -> Bool {
-        guard recorded.contains(":"), !recorded.contains("/") else { return identity(path) == recorded }
-        var info = stat()
-        guard lstat(path, &info) == 0 else { return false }
-        return recorded == "\(info.st_dev):\(info.st_ino)"
-    }
+    /// History's volume UUID/inode key, with compatibility for volumes without UUIDs.
+    nonisolated static func identity(_ path: String) -> String? { FileIdentity.historyKey(at: path) }
 
     /// For each of `urls`: where it was before Strata last put it where it is, and when that happened. Two kinds of
     /// event put an item somewhere: an operation that moved it there (or its redo), and the undo of one that had moved
@@ -201,7 +186,7 @@ final class OperationLog {
                 let here = URL(fileURLWithPath: entry.undone ? pair[0] : pair[1]).standardizedFileURL.path
                 guard wanted.contains(here), found[here].map({ $0.date <= when }) ?? true else { continue }
                 // The identity was recorded where the operation left the file, at `pair[1]`.
-                let same = entry.identities[pair[1]].map { Self.sameIdentity($0, here) } ?? TransferEngine.exists(URL(fileURLWithPath: here))
+                let same = entry.identities[pair[1]].map { FileIdentity.matchesHistory($0, at: here) } ?? TransferEngine.exists(URL(fileURLWithPath: here))
                 guard same else { continue }
                 found[here] = (URL(fileURLWithPath: entry.undone ? pair[1] : pair[0]), when)
             }
@@ -212,7 +197,7 @@ final class OperationLog {
     /// `path` still holds the file the operation left there (entries from before identities were kept: it exists).
     private func holdsOriginal(_ entry: Entry, _ path: String) -> Bool {
         guard let recorded = entry.identities[path] else { return TransferEngine.exists(URL(fileURLWithPath: path)) }
-        return Self.sameIdentity(recorded, path)
+        return FileIdentity.matchesHistory(recorded, at: path)
     }
 
     /// Whether undoing `entry` can still work: the very items the operation left are still where it left them, and

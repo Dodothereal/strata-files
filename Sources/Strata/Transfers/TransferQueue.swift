@@ -280,7 +280,7 @@ enum TransferUndo {
     /// `containers`: folders made for the moved items; undo removes them once they're empty again, redo makes them.
     /// `landed`: what the items are where they went, recorded as each landed (else read now).
     static func register(created: [URL], moved: [TransferMove], replaced: [TransferMove], actionName: String,
-                         undo: UndoManager?, logHistory: Bool = true, containers: [URL] = [], landed: FileOps.Landed? = nil,
+                         undo: UndoManager?, logHistory: Bool = true, containers: [URL] = [], landed: LandedFiles? = nil,
                          queue: TransferQueue) {
         let entry = logHistory
             ? queue.history.recordTransfer(actionName, created: created, moved: moved.map { (from: $0.from, to: $0.to) },
@@ -289,7 +289,7 @@ enum TransferUndo {
         guard let undo, !(created.isEmpty && moved.isEmpty && replaced.isEmpty) else { return }
         if let entry { FileOps.registerLogMark(entry, undone: true, undo, history: queue.history) }
         // Undo touches only these very items: never one put in an item's place since.
-        let landed = landed ?? FileOps.Landed(created + moved.map(\.to) + replaced.map(\.to))
+        let landed = landed ?? LandedFiles(created + moved.map(\.to) + replaced.map(\.to))
         undo.registerUndo(withTarget: undo) { undo in
             MainActor.assumeIsolated {
                 let existing = created.filter(landed.holds)
@@ -320,7 +320,7 @@ enum TransferUndo {
     /// disks. The step undoing it waits for that, so an undo or redo pressed meanwhile still moves exactly what landed.
     final class Step {
         fileprivate enum Outcome {
-            case renamed([TransferMove], FileOps.Landed)
+            case renamed([TransferMove], LandedFiles)
             case moving(TransferJob)
             case nothing
         }
@@ -391,6 +391,6 @@ enum TransferUndo {
         for folder in Set(done.flatMap { [$0.from, $0.to] }.map { $0.deletingLastPathComponent() }) {
             FolderSizer.invalidate(folder)
         }
-        return .renamed(done, FileOps.Landed(done.map(\.to)))
+        return .renamed(done, LandedFiles(done.map(\.to)))
     }
 }

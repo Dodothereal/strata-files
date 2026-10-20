@@ -121,17 +121,17 @@ extension TransferTests {
         // items across again. Each crossing makes a new file, so the ones in `to` at the end aren't the ones there
         // now: that, not the listing alone, shows both steps happened (the listing looks the same before the undo
         // has done anything).
-        let before = FileOps.Landed.identity(to.appending(path: "a.txt").path)
+        let before = FileIdentity.read(to.appending(path: "a.txt").path)
         undo.undo()
         undo.redo()
         await FileOps.undoWork?.value
         await settle {
             tree.snapshot().isEmpty && TestTree.listing(of: to) == ["a.txt", "b.txt"]
-                && FileOps.Landed.identity(to.appending(path: "a.txt").path) != before
+                && FileIdentity.read(to.appending(path: "a.txt").path) != before
         }
         // Every item once, whole, and new there.
         #expect(tree.snapshot().isEmpty && TestTree.listing(of: to) == ["a.txt", "b.txt"])
-        #expect(FileOps.Landed.identity(to.appending(path: "a.txt").path) != before)
+        #expect(FileIdentity.read(to.appending(path: "a.txt").path) != before)
         #expect(try String(contentsOf: to.appending(path: "a.txt"), encoding: .utf8) == "a.txt")
         await volume.eject()
     }

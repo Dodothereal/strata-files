@@ -231,13 +231,17 @@ sheet's text before clicking a destructive button. Both builds share preferences
   use a translated title as identity. A captured file command must stay bound to its original pane, folder and
   selection. Test both menu/palette availability and stale actions across view, result and location changes.
 - Safety idioms already in use: `lstat`, `O_NOFOLLOW`, `renamex_np(RENAME_EXCL)`, deleting relative to an open folder,
-  identity checks before undo (`FileOps.Landed` for ⌘Z, `OperationLog.identity` for History). Reuse them: an undo
+  identity checks before undo (`LandedFiles` for ⌘Z, `OperationLog.identity` for History). Reuse them: an undo
   that trashes or moves items must check each is still the one the operation left there.
 - A decision that needs a window to ask in must not go ahead when there's none (it closed meanwhile): fall back to
   what changes nothing, as `uploadChoice` does.
 - Undo cleanup for folders an operation creates must verify their recorded identity and use nonrecursive empty-folder
   removal. A failed directory listing is not an empty folder. Cover replacement files, folders and symlinks, including
   anything at the link's target; never use recursive removal for this cleanup.
+- File identity reads belong in `FileIdentity`, and live operation ownership belongs in `LandedFiles`. Preserve
+  no-follow reads and record identities when items land, before callbacks can replace them. Runtime identities include
+  birth time; History retains its volume UUID/inode and legacy device:inode formats. Do not silently change those
+  saved representations or replace a same-disk expectation with an identity read later.
 
 ## Commits and releases
 
