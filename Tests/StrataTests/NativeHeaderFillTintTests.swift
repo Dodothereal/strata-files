@@ -4,6 +4,7 @@ import Testing
 
 extension ColorThemeTests {
     @Test func systemRestoresHeaderMaterialsEvenAfterTheyLeaveTheToolbarHierarchy() throws {
+        guard try nativeHeaderSupportsTintOrPreservesFallback() else { return }
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         for accessibility in [false, true] {
@@ -22,6 +23,7 @@ extension ColorThemeTests {
     }
 
     @Test func headerMaterialCreatedAfterTheToolbarMovesIsTintedBeforeAnotherLayout() async throws {
+        guard try nativeHeaderSupportsTintOrPreservesFallback() else { return }
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(palette: .teal), windows: [], highContrast: false)
@@ -57,6 +59,7 @@ extension ColorThemeTests {
     }
 
     @Test func returningHeaderMaterialsKeepTheirTintWhenAppKitResetsTheMaterial() async throws {
+        guard try nativeHeaderSupportsTintOrPreservesFallback() else { return }
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(palette: .teal), windows: [], highContrast: false)
@@ -83,6 +86,7 @@ extension ColorThemeTests {
     }
 
     @Test func realAppKitHeaderFillsAreTintedWithoutChangingTheNativeMaterial() throws {
+        guard try nativeHeaderSupportsTintOrPreservesFallback() else { return }
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         for name in [NSAppearance.Name.aqua, .darkAqua] {
@@ -112,6 +116,7 @@ extension ColorThemeTests {
     }
 
     @Test func unfamiliarHeaderLayersKeepNativeDrawing() throws {
+        guard try nativeHeaderSupportsTintOrPreservesFallback() else { return }
         let (window, material) = nativeHeaderMaterial(appearance: .darkAqua, state: .active)
         let fill = try #require(NativeHeaderFillTint.recognizedFill(in: material))
         let container = try #require(fill.superlayer)
@@ -133,6 +138,7 @@ extension ColorThemeTests {
     }
 
     @Test func aChangedNativeMaterialRestoresItsColorInsteadOfTintingAnUnknownLayer() async throws {
+        guard try nativeHeaderSupportsTintOrPreservesFallback() else { return }
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(palette: .purple), windows: [], highContrast: false)
@@ -160,6 +166,7 @@ extension ColorThemeTests {
     }
 
     @Test func nativeFocusAndAppearanceChangesRetintReplacementFillsAndSystemRestoresThem() async throws {
+        guard try nativeHeaderSupportsTintOrPreservesFallback() else { return }
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(palette: .teal), windows: [], highContrast: false)
@@ -201,4 +208,73 @@ private func nativeHeaderMaterial(appearance: NSAppearance.Name, state: NSVisual
     window.contentView?.layoutSubtreeIfNeeded()
     material.displayIfNeeded()
     return (window, material)
+}
+
+// Virtualized macOS can render titlebar materials with one plain child instead of the live
+// blur/fill/adaptive structure. Verify the fallback there; the tests above still exercise the
+// actual tint and restoration on machines that provide the supported native structure.
+private func nativeHeaderSupportsTintOrPreservesFallback() throws -> Bool {
+    let (probeWindow, probe) = nativeHeaderMaterial(appearance: .darkAqua, state: .active)
+    let simplified = probe.layer?.sublayers?.first?.sublayers?.count == 1
+    #expect(!probeWindow.isVisible)
+    guard simplified else { return true }
+    let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
+    defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
+    for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+        for state in [NSVisualEffectView.State.active, .inactive] {
+            let (window, material) = nativeHeaderMaterial(appearance: appearance, state: state)
+            let root = try #require(material.layer)
+            let original = NativeLayerSnapshot(root)
+            #expect(NativeHeaderFillTint.recognizedFill(in: material) == nil)
+            let tint = NativeHeaderFillTint(material)
+            for palette in ColorTheme.allCases where palette != .system {
+                ThemeStyle.apply(ColorThemeOptions(palette: palette), windows: [], highContrast: false)
+                tint.apply(enabled: true)
+                #expect(NativeLayerSnapshot(root) == original,
+                        "Unsupported native rendering must retain every layer, color, filter and mask.")
+            }
+            tint.restore()
+            #expect(NativeLayerSnapshot(root) == original)
+            #expect(material.material == .titlebar && material.blendingMode == .withinWindow)
+            #expect(material.state == state && material.alphaValue == 1 && material.subviews.isEmpty)
+            #expect(!material.isHidden && !window.isVisible)
+        }
+    }
+    return false
+}
+
+private struct NativeLayerSnapshot: Equatable {
+    let identity: ObjectIdentifier
+    let frame: CGRect
+    let bounds: CGRect
+    let opacity: Float
+    let hidden: Bool
+    let background: CGColor?
+    let border: CGColor?
+    let borderWidth: CGFloat
+    let cornerRadius: CGFloat
+    let mask: ObjectIdentifier?
+    let contents: String
+    let filters: String
+    let backgroundFilters: String
+    let compositingFilter: String
+    let children: [NativeLayerSnapshot]
+
+    init(_ layer: CALayer) {
+        identity = ObjectIdentifier(layer)
+        frame = layer.frame
+        bounds = layer.bounds
+        opacity = layer.opacity
+        hidden = layer.isHidden
+        background = layer.backgroundColor
+        border = layer.borderColor
+        borderWidth = layer.borderWidth
+        cornerRadius = layer.cornerRadius
+        mask = layer.mask.map(ObjectIdentifier.init)
+        contents = String(describing: layer.contents)
+        filters = String(describing: layer.filters)
+        backgroundFilters = String(describing: layer.backgroundFilters)
+        compositingFilter = String(describing: layer.compositingFilter)
+        children = (layer.sublayers ?? []).map(NativeLayerSnapshot.init)
+    }
 }
