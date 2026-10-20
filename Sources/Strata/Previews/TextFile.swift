@@ -19,8 +19,15 @@ nonisolated struct TextFile: Sendable {
 
     /// Up to `limit` bytes from the start of `url`, and whether there was more.
     static func readPrefix(_ url: URL, limit: Int) throws -> (Data, Bool) {
-        let handle = try FileHandle(forReadingFrom: url)
+        guard limit >= 0, limit < Int.max else { throw PreviewError.unsupported }
+        // A name ending in .txt can still be a FIFO or a device. Open without waiting for a writer and
+        // inspect that descriptor, so a path replacement cannot bypass the regular-file check.
+        let descriptor = open(url.path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         defer { try? handle.close() }
+        var status = stat()
+        guard fstat(descriptor, &status) == 0, status.st_mode & S_IFMT == S_IFREG else { throw PreviewError.unsupported }
         let data = try handle.read(upToCount: limit + 1) ?? Data()
         return data.count > limit ? (data.prefix(limit), true) : (data, false)
     }

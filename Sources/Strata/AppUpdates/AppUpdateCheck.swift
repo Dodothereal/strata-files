@@ -50,9 +50,7 @@ nonisolated struct InstalledApp: Sendable, Equatable {
     static let maximumInfoSize = 1 << 20
 
     private static func plist(at url: URL) -> [String: Any]? {
-        var status = stat()
-        guard stat(url.path, &status) == 0, status.st_mode & S_IFMT == S_IFREG, status.st_size <= maximumInfoSize,
-              let data = try? Data(contentsOf: url) else { return nil }
+        guard let (data, truncated) = try? TextFile.readPrefix(url, limit: maximumInfoSize), !truncated else { return nil }
         return try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
     }
 
