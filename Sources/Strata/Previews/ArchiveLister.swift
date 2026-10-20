@@ -64,6 +64,8 @@ nonisolated struct ArchiveListing: Sendable {
 nonisolated enum ArchiveLister {
     static let timeout: TimeInterval = 10
     static let entryLimit = 50_000
+    private static let pathDepthLimit = 128
+    private static let nodeLimit = 100_000
 
     @concurrent
     static func list(_ url: URL, kind: ArchiveKind) async throws -> ArchiveListing {
@@ -73,13 +75,16 @@ nonisolated enum ArchiveLister {
         }
         let run = try await ProcessRunner.run(executable, arguments, timeout: timeout)
         try Task.checkCancellation()
+        return try parse(run, kind: kind)
+    }
+
+    static func parse(_ run: ProcessRunner.Result, kind: ArchiveKind, now: Date = Date()) throws -> ArchiveListing {
         let output = String(decoding: run.output, as: UTF8.self)
 
         var entries: [(path: String, isDirectory: Bool, size: Int64, date: Date?)] = []
         var compressed: Int64?
         var uncompressedTotal: Int64?
         var seen = 0
-        let now = Date()
         for line in output.split(separator: "\n", omittingEmptySubsequences: true) {
             let parsed = kind == .zip ? parseZipInfo(line) : parseTar(line, now: now)
             if let parsed {
@@ -101,17 +106,22 @@ nonisolated enum ArchiveLister {
         }
 
         let root = ArchiveNode(name: "", isDirectory: true)
-        var files = 0, folders = 0
+        var files = 0, folders = 0, displayedEntries = 0
         var bytes: Int64 = 0
         for entry in entries {
-            let components = entry.path.split(separator: "/").filter { $0 != "." }
+            let path = entry.path.split(separator: "/", maxSplits: pathDepthLimit)
+            guard path.count <= pathDepthLimit else { continue }
+            let components = path.filter { $0 != "." }
             guard let last = components.last else { continue }
+            // Explicit entries also create implicit folders. Bound both memory and recursive tree depth.
+            guard files + folders + components.count <= nodeLimit else { break }
+            displayedEntries += 1
             var parent = root
             for component in components.dropLast() { parent = parent.folder(component, created: &folders) }
             if entry.isDirectory {
                 parent.folder(last, created: &folders).modified = entry.date
             } else {
-                parent.children.append(ArchiveNode(name: String(last), isDirectory: false, size: entry.size, modified: entry.date))
+                parent.children.append(ArchiveNode(name: String(last), isDirectory: false, size: max(0, entry.size), modified: entry.date))
                 files += 1
                 // A crafted listing can claim sizes that overflow.
                 bytes = bytes.addingReportingOverflow(max(0, entry.size)).overflow ? .max : bytes + max(0, entry.size)
@@ -121,8 +131,8 @@ nonisolated enum ArchiveLister {
 
         let note: String? = if run.timedOut {
             String(localized: "Stopped after \(Int(timeout)) s", comment: "Archive listing stopped after this many seconds")
-        } else if run.truncated || seen > entries.count {
-            String(localized: "Showing first \(entries.count.formatted())", comment: "Preview footer note: only the first part is shown (a count or a size)")
+        } else if run.truncated || seen > displayedEntries {
+            String(localized: "Showing first \(displayedEntries.formatted())", comment: "Preview footer note: only the first part is shown (a count or a size)")
         } else {
             nil
         }
@@ -135,7 +145,10 @@ nonisolated enum ArchiveLister {
     private static func sortAndTotal(_ node: ArchiveNode) -> Int64 {
         guard node.isDirectory else { return node.size }
         node.folders = [:]
-        node.size = node.children.reduce(0) { $0 + sortAndTotal($1) }
+        node.size = node.children.reduce(0) { total, child in
+            let (sum, overflow) = total.addingReportingOverflow(sortAndTotal(child))
+            return overflow ? .max : sum
+        }
         node.children.sort { a, b in
             a.isDirectory != b.isDirectory ? a.isDirectory : a.name.localizedStandardCompare(b.name) == .orderedAscending
         }
@@ -203,7 +216,8 @@ nonisolated enum ArchiveLister {
 
     /// Both tools print local wall-clock time. `mktime` is ~40× faster than DateFormatter, which matters at 50,000 entries.
     private static func localDate(year: Int, month: Int, day: Int, hour: Int = 0, minute: Int = 0, second: Int = 0) -> Date? {
-        guard (1...12).contains(month), (1...31).contains(day) else { return nil }
+        guard (1...9999).contains(year), (1...12).contains(month), (1...31).contains(day),
+              (0...23).contains(hour), (0...59).contains(minute), (0...60).contains(second) else { return nil }
         var time = tm()
         time.tm_year = Int32(year - 1900)
         time.tm_mon = Int32(month - 1)
