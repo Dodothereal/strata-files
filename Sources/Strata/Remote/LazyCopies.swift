@@ -4,72 +4,18 @@ import Foundation
 /// in common (a folder is listed when it's shown, files are fetched before they're opened, previewed, dragged or
 /// copied, placeholders stand in until then) goes through here, whichever kind a path is in.
 nonisolated enum LazyCopies {
-    static func contains(_ url: URL) -> Bool {
-        ContainerCopies.contains(url) || RemoteCopies.contains(url)
-    }
+    private static let providers = CopyProviders.live
 
-    static func isPlaceholder(_ url: URL) -> Bool {
-        ContainerCopies.isPlaceholder(url) || RemoteCopies.isPlaceholder(url)
-    }
-
-    /// Brings `folder` up to date with its container or server.
-    static func refresh(_ folder: URL) async {
-        if RemoteCopies.contains(folder) {
-            await RemoteFiles.shared.refresh(folder)
-        } else if ContainerCopies.contains(folder) {
-            await ContainerFiles.shared.refresh(folder)
-        }
-    }
-
-    /// The next `refresh` of `folder` lists it again.
-    static func invalidate(_ folder: URL) async {
-        if RemoteCopies.contains(folder) {
-            await RemoteFiles.shared.invalidate(folder)
-        } else if ContainerCopies.contains(folder) {
-            await ContainerFiles.shared.invalidate(folder)
-        }
-    }
-
-    /// Lists the folders on the way to `url` so it exists in the copy. False when it isn't there.
-    static func reveal(_ url: URL) async -> Bool {
-        if RemoteCopies.contains(url) { return await RemoteFiles.shared.reveal(url) }
-        return await ContainerFiles.shared.reveal(url)
-    }
-
-    static func fetch(_ urls: [URL]) async throws {
-        let remote = urls.filter(RemoteCopies.contains)
-        if !remote.isEmpty { try await RemoteFiles.shared.fetch(remote) }
-        let containers = urls.filter(ContainerCopies.contains)
-        if !containers.isEmpty { try await ContainerFiles.shared.fetch(containers) }
-    }
-
-    static func fetchSelection(_ urls: [URL], limit: Int64) async {
-        if urls.contains(where: RemoteCopies.contains) {
-            await RemoteFiles.shared.fetchSelection(urls.filter(RemoteCopies.contains), limit: limit)
-        } else {
-            await ContainerFiles.shared.fetchSelection(urls, limit: limit)
-        }
-    }
-
-    /// Placeholders fetched and folders complete, before they're copied out.
-    static func prepareForCopying(_ urls: [URL]) async throws {
-        let remote = urls.filter(RemoteCopies.contains)
-        if !remote.isEmpty { try await RemoteFiles.shared.prepareForCopying(remote) }
-        let containers = urls.filter(ContainerCopies.contains)
-        if !containers.isEmpty { try await ContainerFiles.shared.prepareForCopying(containers) }
-    }
-
-    /// What went wrong reading `url` from where it lives, in a sentence.
-    static func message(for error: Error, about url: URL) -> String {
-        if RemoteCopies.contains(url) { return RemoteFiles.message(for: error) }
-        if let source = ContainerCopies.copy(containing: url)?.source { return ContainerFiles.message(for: error, source: source) }
-        return error.localizedDescription
-    }
-
-    /// Where an item really is: "web:/etc/hosts" (a container), "deploy@web-1:/srv/app" (a server).
-    static func displayPath(_ url: URL) -> String? {
-        RemoteCopies.displayPath(url) ?? ContainerCopies.apparentPath(url)
-    }
+    static func contains(_ url: URL) -> Bool { providers.contains(url) }
+    static func isPlaceholder(_ url: URL) -> Bool { providers.isPlaceholder(url) }
+    static func refresh(_ folder: URL) async { await providers.refresh(folder) }
+    static func invalidate(_ folder: URL) async { await providers.invalidate(folder) }
+    static func reveal(_ url: URL) async -> Bool { await providers.reveal(url) }
+    static func fetch(_ urls: [URL]) async throws { try await providers.fetch(urls) }
+    static func fetchSelection(_ urls: [URL], limit: Int64) async { await providers.fetchSelection(urls, limit: limit) }
+    static func prepareForCopying(_ urls: [URL]) async throws { try await providers.prepareForCopying(urls) }
+    static func message(for error: Error, about url: URL) -> String { providers.message(for: error, about: url) }
+    static func displayPath(_ url: URL) -> String? { providers.displayPath(url) }
 
     /// Where items copied to the clipboard from a copy are staged (see `stageForClipboard`), next to the copies.
     static let clipboardRoot: URL = RemoteCopies.root.deletingLastPathComponent()
@@ -116,6 +62,6 @@ nonisolated enum LazyCopies {
 
     /// The container or server an item comes from, by name.
     static func sourceName(_ url: URL) -> String? {
-        RemoteCopies.server(containing: url)?.server.name ?? ContainerCopies.copy(containing: url)?.source.name
+        providers.sourceName(url)
     }
 }

@@ -206,6 +206,10 @@ sheet's text before clicking a destructive button. Both builds share preferences
 - Folder read scheduling belongs in `DirectoryReadSession`: each presentation owns its generation, rejects late
   success and error responses, and invalidates reads when removed or replaced by results. Inject `DirectoryReader`
   for controlled completion tests; keep callbacks weak so pending I/O cannot retain closed browsers.
+- Common reads of server and container copies go through `CopyProvider` / `CopyProviders`. Keep each URL with its
+  owning provider, propagate fetch/preparation errors, and retain the existing bounded selection-prefetch policy.
+  Provider-specific write, permission and archive behavior stays in its implementation. Inject providers or server
+  services for tests; never let a fixture fall back to a live connection.
 - Post-operation selection and rename wait for entries to be applied, not an elapsed delay. Keep the original pane
   and navigation revision; leaving and returning is still a different navigation. Cancel pending renames when their
   column is removed, selection or mode changes, or its read fails. Preserve each view's selection policy, including

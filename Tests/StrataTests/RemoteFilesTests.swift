@@ -48,6 +48,29 @@ struct RemoteFilesTests {
         for _ in 0..<100 where !condition() { try? await Task.sleep(for: .milliseconds(50)) }
     }
 
+    @Test func theProviderInterfaceUsesItsInjectedServerAndPreservesFetchedFiles() async throws {
+        defer { cleanUp() }
+        let original = sandbox.snapshot()
+        let providers = CopyProviders(servers: files, containers: ContainerFiles())
+        await providers.refresh(folder)
+        let big = folder.appending(path: "big.bin")
+        #expect(providers.contains(big) && providers.isPlaceholder(big))
+        #expect(providers.sourceName(big) == remote.name)
+        #expect(providers.displayPath(big) == "localhost:" + server.appending(path: "big.bin").path)
+        try await providers.fetch([big])
+        #expect(!providers.isPlaceholder(big))
+        #expect(try Data(contentsOf: big) == Data(repeating: 7, count: 2_000_000))
+        let attributes = try FileManager.default.attributesOfItem(atPath: big.path)
+        #expect((attributes[.posixPermissions] as? NSNumber).map { $0.intValue & 0o222 } == 0)
+        #expect(getxattr(big.path, "com.apple.quarantine", nil, 0, 0, XATTR_NOFOLLOW) > 0)
+        // Relisting leaves already-fetched contents intact; ordinary local paths never reach the provider.
+        await providers.invalidate(folder)
+        await providers.refresh(folder)
+        try await providers.prepareForCopying([big, server.appending(path: "big.bin")])
+        #expect(try Data(contentsOf: big) == Data(contentsOf: server.appending(path: "big.bin")))
+        #expect(sandbox.snapshot() == original)
+    }
+
     @Test func listsIntoTheCopy() async throws {
         defer { cleanUp() }
         await files.refresh(folder)

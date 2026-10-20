@@ -1180,5 +1180,33 @@
     "replace": "            // Mutation: search edits leave captured actions alive.",
     "rule": "Applied browser actions search edits leave stale selections waiting",
     "tests": "DirectoryReadSessionTests/changingSearchTextScopeOrCaseCancelsCapturedActions"
+  },
+  {
+    "file": "Strata/Remote/CopyProviders.swift",
+    "find": "items[index].append(url)",
+    "replace": "items[0].append(url)",
+    "rule": "Copy provider routing mixed selections go to the wrong provider",
+    "tests": "CopyProvidersTests/mixedReadsKeepExactURLsAndOnlyOneOwnerPerItem"
+  },
+  {
+    "file": "Strata/Remote/CopyProviders.swift",
+    "find": "for (provider, items) in groups(urls) { try await provider.prepareForCopying(items) }",
+    "replace": "for (provider, items) in groups(urls) { try? await provider.prepareForCopying(items) }",
+    "rule": "Copy provider routing failed preparation is reported as successful",
+    "tests": "CopyProvidersTests/failedFetchesAndCopyPreparationPropagateBeforeStartingAnotherProvider"
+  },
+  {
+    "file": "Strata/Remote/CopyProviders.swift",
+    "find": "if let (provider, items) = groups(urls).first { await provider.fetchSelection(items, limit: limit) }",
+    "replace": "for (provider, items) in groups(urls) { await provider.fetchSelection(items, limit: limit) }",
+    "rule": "Copy provider routing each provider spends the same prefetch budget",
+    "tests": "CopyProvidersTests/selectionPrefetchKeepsItsSingleProviderBudget"
+  },
+  {
+    "file": "Strata/Remote/CopyProviders.swift",
+    "find": "self.init([ServerCopyProvider(files: servers), ContainerCopyProvider(files: containers)])",
+    "replace": "self.init([ServerCopyProvider(files: servers)])",
+    "rule": "Copy provider routing the live facade forgets container copies",
+    "tests": "CopyProvidersTests/theLiveFacadeRecognizesBothCopyFamiliesWithoutClaimingTheirNeighbors"
   }
 ]
