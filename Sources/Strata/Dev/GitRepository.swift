@@ -258,34 +258,50 @@ nonisolated enum GitRunner {
         stdout.finish(within: 1)
         stderr.finish(within: 0.2)
 
-        return GitRunResult(exitCode: process.terminationStatus, output: stdout.data,
-                            errorOutput: String(decoding: stderr.data, as: UTF8.self), timedOut: flag.isSet,
+        let readError = stdout.readError ?? stderr.readError
+        return GitRunResult(exitCode: readError == nil ? process.terminationStatus : -1, output: stdout.data,
+                            errorOutput: readError ?? String(decoding: stderr.data, as: UTF8.self), timedOut: flag.isSet,
                             duration: Date().timeIntervalSince(start))
     }
 }
 
 /// Accumulates one pipe's output on a background queue until EOF.
-nonisolated private final class PipeCollector: @unchecked Sendable {
+nonisolated final class PipeCollector: @unchecked Sendable {
     let pipe = Pipe()
     private let lock = NSLock()
     private var buffer = Data()
     private var reachedEOF = false
+    private var failure: String?
     private let eof = DispatchSemaphore(value: 0)
 
     init() {
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let chunk = handle.availableData
-            guard let self else { return }
-            if chunk.isEmpty {
-                handle.readabilityHandler = nil
-                self.lock.withLock {
-                    guard !self.reachedEOF else { return }
-                    self.reachedEOF = true
-                    self.eof.signal()
-                }
-            } else {
-                self.lock.withLock { self.buffer.append(chunk) }
-            }
+            self?.receive(handle)
+        }
+    }
+
+    func receive(_ handle: FileHandle) {
+        let chunk: Data
+        do {
+            chunk = try handle.read(upToCount: 64 * 1024) ?? Data()
+        } catch {
+            lock.withLock { failure = error.localizedDescription }
+            finishReading(handle)
+            return
+        }
+        if chunk.isEmpty {
+            finishReading(handle)
+        } else {
+            lock.withLock { buffer.append(chunk) }
+        }
+    }
+
+    private func finishReading(_ handle: FileHandle) {
+        handle.readabilityHandler = nil
+        lock.withLock {
+            guard !reachedEOF else { return }
+            reachedEOF = true
+            eof.signal()
         }
     }
 
@@ -295,6 +311,7 @@ nonisolated private final class PipeCollector: @unchecked Sendable {
     }
 
     var data: Data { lock.withLock { buffer } }
+    var readError: String? { lock.withLock { failure } }
 }
 
 nonisolated private final class TimeoutFlag: @unchecked Sendable {

@@ -517,8 +517,7 @@ nonisolated final class SFTPClient: @unchecked Sendable {
     private func readErrors() {
         let handle = errors.fileHandleForReading
         while true {
-            let data = handle.availableData
-            guard !data.isEmpty else { break }
+            guard let data = try? handle.read(upToCount: 64 * 1024), !data.isEmpty else { break }
             let text = String(decoding: data, as: UTF8.self)
             lock.withLock {
                 stderrText = String((stderrText + text).suffix(600)).trimmingCharacters(in: .whitespacesAndNewlines)
