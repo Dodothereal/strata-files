@@ -402,18 +402,23 @@ nonisolated enum IndexSearch {
                 // how many leading parts each folder's path has matched (instead of walking every candidate's
                 // ancestors, which made such searches ~100× slower).
                 let chains = query.pathTerms.map { Array($0.dropLast()) } + query.scopeNames.map { [$0] }
-                let progress = chains.map { ancestorProgress($0, columns, count) }
-                DispatchQueue.concurrentPerform(iterations: chunks) { chunk in
-                    let lower = count * chunk / chunks
-                    let upper = count * (chunk + 1) / chunks
-                    var found: [(id: Int32, score: Int32)] = []
-                    for id in lower..<upper {
-                        if let score = match(id, query, columns, scopeID, wantedExtensions, now, progress) {
-                            found.append((Int32(id), Int32(score)))
+                func collect<Progress: FixedWidthInteger & Sendable>(_: Progress.Type) {
+                    let progress: [[Progress]] = chains.map { ancestorProgress($0, columns, count) }
+                    DispatchQueue.concurrentPerform(iterations: chunks) { chunk in
+                        let lower = count * chunk / chunks
+                        let upper = count * (chunk + 1) / chunks
+                        var found: [(id: Int32, score: Int32)] = []
+                        for id in lower..<upper {
+                            if let score = match(id, query, columns, scopeID, wantedExtensions, now, progress) {
+                                found.append((Int32(id), Int32(score)))
+                            }
                         }
+                        partials.set(chunk, found)
                     }
-                    partials.set(chunk, found)
                 }
+                // Keep ordinary searches compact; deep paths can match more than 255 ancestors.
+                if chains.contains(where: { $0.count > Int(UInt8.max) }) { collect(UInt32.self) }
+                else { collect(UInt8.self) }
             }
             return partials.all
         }
@@ -438,8 +443,8 @@ nonisolated enum IndexSearch {
     }
 
     // Called under the read lock from many threads at once.
-    private static func match(_ i: Int, _ query: IndexQuery, _ c: IndexStore.Columns, _ scopeID: Int32?,
-                              _ extensions: [UInt64], _ now: Int, _ progress: [[UInt8]]) -> Int? {
+    private static func match<Progress: FixedWidthInteger>(_ i: Int, _ query: IndexQuery, _ c: IndexStore.Columns, _ scopeID: Int32?,
+                              _ extensions: [UInt64], _ now: Int, _ progress: [[Progress]]) -> Int? {
         let flags = c.flags[i]
         if flags & IndexStore.Flag.deleted != 0 || c.parent[i] < 0 { return nil }
         if !query.includeNoise && flags & IndexStore.Flag.noise != 0 { return nil }
@@ -534,8 +539,8 @@ nonisolated enum IndexSearch {
     /// For each entry, how many of `parts` (in order) are found in the names along its path, root first, itself
     /// included. Parents have smaller ids than their children, so one forward pass computes it; only folders can be
     /// ancestors, so files just inherit.
-    private static func ancestorProgress(_ parts: [[UInt8]], _ c: IndexStore.Columns, _ count: Int) -> [UInt8] {
-        var progress = [UInt8](repeating: 0, count: count)
+    private static func ancestorProgress<Progress: FixedWidthInteger>(_ parts: [[UInt8]], _ c: IndexStore.Columns, _ count: Int) -> [Progress] {
+        var progress = [Progress](repeating: 0, count: count)
         guard !parts.isEmpty else { return progress }
         for i in 0..<count {
             let p = Int(c.parent[i])
