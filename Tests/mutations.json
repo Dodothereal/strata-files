@@ -1222,5 +1222,75 @@
     "replace": "        pendingRename = url",
     "rule": "Applied browser actions earlier reveal and keyboard requests override the new rename",
     "tests": "DirectoryReadSessionTests/aPendingColumnRevealDoesNotOverrideARenameRequestedWhileItLoads"
+  },
+  {
+    "file": "Strata/Remote/CopyListings.swift",
+    "find": "if let current = running[key] { return current.request }",
+    "replace": "if false, let current = running[key] { return current.request }",
+    "rule": "Copy listing coordination starts a second read for an already running folder",
+    "tests": "CopyListingsTests/callersShareOneReadAndFreshnessExpiresAtItsBoundary"
+  },
+  {
+    "file": "Strata/Remote/CopyListings.swift",
+    "find": "guard current.request.id == request.id else { return true }",
+    "replace": "// Mutation: accept an obsolete completion.",
+    "rule": "Copy listing coordination lets an old waiter erase its replacement",
+    "tests": "CopyListingsTests/lateWaitersCannotEraseTheReplacementOrMakeTheirOldResponseFresh"
+  },
+  {
+    "file": "Strata/Remote/CopyListings.swift",
+    "find": "if current.invalidated { return true }",
+    "replace": "if false { return true }",
+    "rule": "Copy listing coordination marks an invalidated response fresh",
+    "tests": "CopyListingsTests/lateWaitersCannotEraseTheReplacementOrMakeTheirOldResponseFresh"
+  },
+  {
+    "file": "Strata/Remote/CopyListings.swift",
+    "find": "key == path || key.hasPrefix(path == \"/\" ? \"/\" : path + \"/\")",
+    "replace": "key.hasPrefix(path)",
+    "rule": "Copy listing coordination invalidates neighboring names as descendants",
+    "tests": "CopyListingsTests/invalidationIncludesDescendantsButNeverLookalikesOrOtherCopies"
+  },
+  {
+    "file": "Strata/Remote/CopyListings.swift",
+    "find": "freshUntil = freshUntil.filter { !Self.contains($0.key, under: path) }",
+    "replace": "// Mutation: keep expired listings.",
+    "rule": "Copy listing coordination keeps cached listings after invalidation",
+    "tests": "CopyListingsTests/invalidationIncludesDescendantsButNeverLookalikesOrOtherCopies"
+  },
+  {
+    "file": "Strata/Remote/CopyListings.swift",
+    "find": "running = running.filter { !Self.contains($0.key, under: path) }",
+    "replace": "// Mutation: keep removed requests.",
+    "rule": "Copy listing coordination lets a removed copy retain its pending read",
+    "tests": "CopyListingsTests/forgottenCopiesCannotBeRevivedByOldCompletions"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "listings.invalidate(under: key)",
+    "replace": "// Mutation: ignore reload.",
+    "rule": "Copy listing coordination ignores a server reload during its read",
+    "tests": "RemoteFilesTests/invalidatingAnInFlightListingReadsAgainBeforeReportingItFresh"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "listings.invalidate(under: key)",
+    "replace": "// Mutation: ignore reload.",
+    "rule": "Copy listing coordination ignores a container reload during its read",
+    "tests": "CopyListingsTests/containerListingsUseTheSharedInvalidationRulesBeforeReportingFreshness"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "for task in listings.tasks(under: top) { _ = await task.value }",
+    "replace": "// Mutation: remove before the reader finishes.",
+    "rule": "Copy listing coordination removes a server copy before its listing finishes",
+    "tests": "RemoteFilesTests/discardingACopyDrainsItsListingBeforeRemovingIt"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "func discard(_ top: URL) async {",
+    "replace": "func discard(_ top: URL) async {\n        return // Mutation: omit copy teardown.",
+    "rule": "Copy listing coordination leaves a container copy alive after discard",
+    "tests": "CopyListingsTests/discardingAContainerCopyDrainsItsListingBeforeRemovingIt"
   }
 ]

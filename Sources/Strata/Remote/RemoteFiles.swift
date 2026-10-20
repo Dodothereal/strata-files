@@ -21,14 +21,12 @@ actor RemoteFiles {
 
     /// Where connections come from (tests give a local one).
     private let backends: @Sendable (String) async throws -> any RemoteBackend
-    private var listings: [String: Task<TimeInterval?, Never>] = [:]
-    private var freshUntil: [String: Date] = [:]
-    private var stale: Set<String> = []
+    private var listings = CopyListings()
     private var fetches: [String: Task<Void, Error>] = [:]
     /// Listed permissions of files still to fetch, by local path.
     private var modes: [String: UInt32] = [:]
     /// Servers whose copies are being removed: nothing new starts in them.
-    private var closing: Set<String> = []
+    private(set) var closing: Set<String> = []
 
     init(backends: @escaping @Sendable (String) async throws -> any RemoteBackend = { try await RemoteSessions.shared.backend(for: $0) }) {
         self.backends = backends
@@ -43,26 +41,18 @@ actor RemoteFiles {
         guard let (server, top) = RemoteCopies.server(containing: real), let path = RemoteCopies.remotePath(of: real, top: top),
               !closing.contains(server.id) else { return }
         let key = real.path
-        if let running = listings[key] {
-            _ = await running.value
-            guard stale.remove(key) != nil else { return }
-        } else if let until = freshUntil[key], Date() < until {
-            return
+        while !closing.contains(server.id), let request = listings.request(for: key, start: {
+            Task { await self.list(real, path: path, server: server, top: top) }
+        }) {
+            let fresh = await request.task.value
+            guard listings.finish(request, for: key, freshFor: fresh) else { return }
         }
-        let task = Task { await self.list(real, path: path, server: server, top: top) }
-        listings[key] = task
-        let fresh = await task.value
-        listings[key] = nil
-        freshUntil[key] = fresh.map { Date().addingTimeInterval($0) }
-        if freshUntil.count > 4000 { freshUntil = freshUntil.filter { $0.value > Date() } }
     }
 
     /// The next `refresh` of `folder` (and of folders in it) lists it again, even one under way.
     func invalidate(_ folder: URL) {
         let key = folder.resolvingSymlinksInPath().standardizedFileURL.path
-        let inside: (String) -> Bool = { $0 == key || $0.hasPrefix(key + "/") }
-        freshUntil = freshUntil.filter { !inside($0.key) }
-        for running in listings.keys where inside(running) { stale.insert(running) }
+        listings.invalidate(under: key)
     }
 
     /// Makes `url`, a path in a server's copy, exist by listing the folders on the way to it from the top. False when
@@ -225,8 +215,8 @@ actor RemoteFiles {
         let top = RemoteCopies.top(of: id).standardizedFileURL.path
         let inside: (String) -> Bool = { $0 == top || $0.hasPrefix(top + "/") }
         for (key, task) in fetches where inside(key) { task.cancel() }
-        for (key, task) in listings where inside(key) { _ = await task.value }
-        freshUntil = freshUntil.filter { !inside($0.key) }
+        for task in listings.tasks(under: top) { _ = await task.value }
+        listings.forget(under: top)
         modes = modes.filter { !inside($0.key) }
         RemoteCopies.remove(id)
     }

@@ -31,6 +31,13 @@ nonisolated struct ListedEntry: Sendable, Equatable {
     static func saneSize(_ size: Int64) -> Int64 { min(max(size, 0), 1 << 44) }
 }
 
+/// A listing from the shell or archive reader, before it is applied to the local copy.
+nonisolated struct ContainerListingResult: Sendable {
+    let entries: [ListedEntry]
+    let contents: [String: Data]
+    let freshFor: TimeInterval
+}
+
 /// Reads containers' files into their copies (see `ContainerCopies`).
 ///
 /// A folder is listed when it's shown: by a small script run in the container as the container's own user (fast, but
@@ -54,11 +61,15 @@ actor ContainerFiles {
     /// Longest an archive-stream listing may take.
     static let archiveBudget: TimeInterval = 120
 
-    private var listings: [String: Task<TimeInterval?, Never>] = [:]
-    /// Until when each folder's listing counts as current.
-    private var freshUntil: [String: Date] = [:]
-    /// Folders reloaded while being listed: listed again once that finishes.
-    private var stale: Set<String> = []
+    private let readListing: @Sendable (ContainerSource, String) async throws -> ContainerListingResult
+
+    init(readListing: @escaping @Sendable (ContainerSource, String) async throws -> ContainerListingResult = {
+        try await ContainerFiles.loadListing($0, path: $1)
+    }) {
+        self.readListing = readListing
+    }
+
+    private var listings = CopyListings()
     private var fetches: [String: Shared] = [:]
     private var trees: [String: Shared] = [:]
     /// Placeholders' permissions in the container, from their listing (a secret only its owner may read isn't fetched
@@ -78,7 +89,7 @@ actor ContainerFiles {
     /// Background fetches of small files, by copy (top folder path).
     private var eager: [String: [UUID: Task<Void, Never>]] = [:]
     /// Copies being removed: nothing new starts in them.
-    private var closing: Set<String> = []
+    private(set) var closing: Set<String> = []
 
     /// Brings the copy's `folder` up to date with the container. Problems are reported with `.containerCopyProblem`;
     /// what's in the copy stays as it was.
@@ -92,45 +103,35 @@ actor ContainerFiles {
         guard let (source, top) = ContainerCopies.copy(containing: real), let path = ContainerCopies.containerPath(of: real, top: top),
               !closing.contains(top.standardizedFileURL.path) else { return }
         let key = real.path
-        if let running = listings[key] {
-            _ = await running.value
-            guard stale.remove(key) != nil else { return }
-        } else if let until = freshUntil[key], Date() < until {
-            return
+        while !closing.contains(top.standardizedFileURL.path), let request = listings.request(for: key, start: {
+            Task { await self.list(real, path: path, source: source, top: top) }
+        }) {
+            let fresh = await request.task.value
+            guard listings.finish(request, for: key, freshFor: fresh) else { return }
         }
-        let task = Task { await self.list(real, path: path, source: source, top: top) }
-        listings[key] = task
-        let fresh = await task.value
-        listings[key] = nil
-        freshUntil[key] = fresh.map { Date().addingTimeInterval($0) }
-        if freshUntil.count > 4000 { freshUntil = freshUntil.filter { $0.value > Date() } }
     }
 
     /// The Containers folder: one folder per container, matching the engine's list. A container that's gone takes its
     /// folder with it; one made again under the same name starts over (its files aren't the old one's).
     private func syncContainers(_ folder: URL, engine: ContainerEngine) async {
         let key = folder.path
-        if let running = listings[key] {
-            _ = await running.value
-            return
-        }
-        if let until = freshUntil[key], Date() < until { return }
-        let task = Task<TimeInterval?, Never> {
-            do {
-                let list = try await blocking { try ContainerAPI.containers(engine) }
-                let gone = try await blocking { try CopyWriter.syncContainers(list, engine: engine, in: folder) }
-                for top in gone { await self.discard(top) }
-                if !gone.isEmpty { _ = try await blocking { try CopyWriter.syncContainers(list, engine: engine, in: folder) } }
-                return 2
-            } catch {
-                await Self.reportEngine(error, folder: folder, engine: engine)
-                return nil
+        while let request = listings.request(for: key, start: {
+            Task<TimeInterval?, Never> {
+                do {
+                    let list = try await blocking { try ContainerAPI.containers(engine) }
+                    let gone = try await blocking { try CopyWriter.syncContainers(list, engine: engine, in: folder) }
+                    for top in gone { await self.discard(top) }
+                    if !gone.isEmpty { _ = try await blocking { try CopyWriter.syncContainers(list, engine: engine, in: folder) } }
+                    return 2
+                } catch {
+                    await Self.reportEngine(error, folder: folder, engine: engine)
+                    return nil
+                }
             }
+        }) {
+            let fresh = await request.task.value
+            guard listings.finish(request, for: key, freshFor: fresh) else { return }
         }
-        listings[key] = task
-        let fresh = await task.value
-        listings[key] = nil
-        freshUntil[key] = fresh.map { Date().addingTimeInterval($0) }
     }
 
     /// The folder for `container` in its engine's Containers folder, ready to browse. One made again under the same
@@ -150,9 +151,7 @@ actor ContainerFiles {
     /// the list too), even one already under way.
     func invalidate(_ folder: URL) {
         let key = folder.resolvingSymlinksInPath().standardizedFileURL.path
-        let inside: (String) -> Bool = { $0 == key || $0.hasPrefix(key + "/") }
-        freshUntil = freshUntil.filter { !inside($0.key) }
-        for running in listings.keys where inside(running) { stale.insert(running) }
+        listings.invalidate(under: key)
     }
 
     /// Makes `url`, a path in a container's files, exist in its copy by listing the folders on the way to it from `/`
@@ -172,22 +171,10 @@ actor ContainerFiles {
 
     /// Lists and applies one folder; how long the result stays current, or nil when it failed.
     private func list(_ folder: URL, path: String, source: ContainerSource, top: URL) async -> TimeInterval? {
-        let engine = source.engine
-        let id = source.id
         let topKey = top.standardizedFileURL.path
         do {
-            var entries: [ListedEntry]
-            var contents: [String: Data] = [:]
-            var fresh = Self.freshFor
-            do {
-                entries = try await blocking { try ContainerListing.viaShell(engine, id: id, path: path) }
-            } catch let error as ContainerAPIError where error != .notFound && !Self.engineIsGone(error) {
-                // Stopped, no shell, or a folder the container's user can't read: the archive stream works on any.
-                let result = try await blocking { try ContainerListing.viaArchive(engine, id: id, path: path) }
-                entries = result.entries
-                contents = result.contents
-                fresh = Self.archiveFreshFor
-            }
+            let result = try await readListing(source, path)
+            let entries = result.entries, contents = result.contents, fresh = result.freshFor
             guard !closing.contains(topKey) else { return nil }
             let listed = entries, files = contents
             let eager = try await blocking { try CopyWriter.apply(listed, contents: files, to: folder, containerPath: path, top: top) }
@@ -243,11 +230,11 @@ actor ContainerFiles {
         let fetching = fetches.filter { inside($0.key) }.map(\.value.task) + trees.filter { inside($0.key) }.map(\.value.task)
         background.forEach { $0.cancel() }
         fetching.forEach { $0.cancel() }
-        let listing = listings.filter { inside($0.key) }.map(\.value)
+        let listing = listings.tasks(under: path)
         for task in background { await task.value }
         for task in fetching { _ = try? await task.value }
         for task in listing { _ = await task.value }
-        freshUntil = freshUntil.filter { !inside($0.key) }
+        listings.forget(under: path)
         modes = modes.filter { !inside($0.key) }
         _ = try? await blocking { ContainerCopies.remove(top) }
     }
@@ -287,7 +274,7 @@ actor ContainerFiles {
         trees[key] = shared
         defer { if trees[key] === shared { trees[key] = nil } }
         try await join(shared)
-        freshUntil = freshUntil.filter { !($0.key == key || $0.key.hasPrefix(key + "/")) }
+        listings.expire(under: key)
     }
 
     /// The selected files worth fetching right away: placeholders everyone may read in the container, up to `limit`
@@ -360,6 +347,18 @@ actor ContainerFiles {
     private func giveUp(_ shared: Shared) {
         shared.gaveUp += 1
         if shared.gaveUp >= shared.waiters { shared.task.cancel() }
+    }
+
+    private nonisolated static func loadListing(_ source: ContainerSource, path: String) async throws -> ContainerListingResult {
+        let engine = source.engine, id = source.id
+        do {
+            let entries = try await blocking { try ContainerListing.viaShell(engine, id: id, path: path) }
+            return ContainerListingResult(entries: entries, contents: [:], freshFor: freshFor)
+        } catch let error as ContainerAPIError where error != .notFound && !engineIsGone(error) {
+            // A stopped container, a missing shell, or restricted folder can still be read from its archive stream.
+            let result = try await blocking { try ContainerListing.viaArchive(engine, id: id, path: path) }
+            return ContainerListingResult(entries: result.entries, contents: result.contents, freshFor: archiveFreshFor)
+        }
     }
 
     private static func engineIsGone(_ error: ContainerAPIError) -> Bool {

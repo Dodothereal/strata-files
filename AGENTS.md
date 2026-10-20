@@ -210,6 +210,9 @@ sheet's text before clicking a destructive button. Both builds share preferences
   owning provider, propagate fetch/preparation errors, and retain the existing bounded selection-prefetch policy.
   Provider-specific write, permission and archive behavior stays in its implementation. Inject providers or server
   services for tests; never let a fixture fall back to a live connection.
+- Listing coalescing and freshness belong in `CopyListings`, owned by each provider actor. Invalidation during a
+  read requires another read; an old waiter cannot clear its replacement or make it fresh. Drain listings before
+  removing a copy. Inject container listing readers or server backends to test held responses without live services.
 - Post-operation selection and rename wait for entries to be applied, not an elapsed delay. Keep the original pane
   and navigation revision; leaving and returning is still a different navigation. Cancel pending renames when their
   column is removed, explicit selection or mode changes, or its read fails. A reload dropping the old selection must

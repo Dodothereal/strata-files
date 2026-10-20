@@ -71,6 +71,55 @@ struct RemoteFilesTests {
         #expect(sandbox.snapshot() == original)
     }
 
+    @Test func invalidatingAnInFlightListingReadsAgainBeforeReportingItFresh() async throws {
+        defer { cleanUp() }
+        let original = sandbox.snapshot()
+        let before = ListedEntry(name: "before.txt", kind: .file, size: 10, mode: 0o600, modified: nil, linkTarget: "")
+        let after = ListedEntry(name: "after.txt", kind: .file, size: 20, mode: 0o600, modified: nil, linkTarget: "")
+        let backend = HeldListingBackend(next: [after])
+        defer { Task { await backend.finishFirst([]) } }
+        let files = RemoteFiles(backends: { _ in backend })
+        let reading = Task { await files.refresh(folder) }
+        await backend.waitUntilStarted()
+        await files.invalidate(folder)
+        await backend.finishFirst([before])
+        await reading.value
+        #expect(await backend.calls == 2)
+        #expect(TestTree.listing(of: folder) == ["after.txt"])
+        // Only the post-invalidation response is fresh: another caller uses it without another request.
+        await files.refresh(folder)
+        #expect(await backend.calls == 2)
+        await files.discard(remote.id)
+        #expect(!FileManager.default.fileExists(atPath: folder.path))
+        await files.refresh(folder)
+        #expect(await backend.calls == 3)
+        #expect(TestTree.listing(of: folder) == ["after.txt"])
+        #expect(sandbox.snapshot() == original)
+    }
+
+    @Test func discardingACopyDrainsItsListingBeforeRemovingIt() async throws {
+        defer { cleanUp() }
+        let original = sandbox.snapshot()
+        let item = ListedEntry(name: "late.txt", kind: .file, size: 10, mode: 0o600, modified: nil, linkTarget: "")
+        let backend = HeldListingBackend(next: [item])
+        defer { Task { await backend.finishFirst([]) } }
+        let files = RemoteFiles(backends: { _ in backend })
+        let reading = Task { await files.refresh(folder) }
+        await backend.waitUntilStarted()
+        await files.invalidate(folder)
+        var removed = false
+        let removing = Task { await files.discard(remote.id); removed = true }
+        // The held response makes teardown a stable phase. No elapsed-time assumption or live server is involved.
+        while !(await files.closing.contains(remote.id)) && !removed { await Task.yield() }
+        #expect(!removed)
+        await backend.finishFirst([item])
+        await reading.value
+        await removing.value
+        #expect(await backend.calls == 1)
+        #expect(!FileManager.default.fileExists(atPath: RemoteCopies.top(of: remote.id).path))
+        #expect(sandbox.snapshot() == original)
+    }
+
     @Test func listsIntoTheCopy() async throws {
         defer { cleanUp() }
         await files.refresh(folder)
@@ -323,4 +372,40 @@ struct RemoteFilesTests {
         #expect(RemotePath.parent("/a") == "/")
         cleanUp()
     }
+}
+
+/// No network or filesystem operations: hold the first list response and answer subsequent lists immediately.
+private actor HeldListingBackend: RemoteBackend {
+    let next: [ListedEntry]
+    private(set) var calls = 0
+    private var first: CheckedContinuation<[ListedEntry], Never>?
+    private var started: CheckedContinuation<Void, Never>?
+
+    init(next: [ListedEntry]) { self.next = next }
+    func waitUntilStarted() async {
+        if calls > 0 { return }
+        await withCheckedContinuation { started = $0 }
+    }
+    func finishFirst(_ entries: [ListedEntry]) {
+        first?.resume(returning: entries)
+        first = nil
+    }
+    func list(_ path: String) async throws -> [ListedEntry] {
+        calls += 1
+        if calls > 1 { return next }
+        return await withCheckedContinuation { continuation in
+            first = continuation
+            started?.resume()
+            started = nil
+        }
+    }
+    func home() async throws -> String { "/" }
+    func download(_ path: String, to destination: URL, limit: Int64, progress: @escaping @Sendable (Int64) -> Void, stop: StopFlag) async throws { throw CocoaError(.featureUnsupported) }
+    func upload(_ source: URL, to path: String, modified: Date?, progress: @escaping @Sendable (Int64) -> Void, stop: StopFlag) async throws { throw CocoaError(.featureUnsupported) }
+    func makeFolder(_ path: String) async throws { throw CocoaError(.featureUnsupported) }
+    func rename(_ path: String, to newPath: String) async throws { throw CocoaError(.featureUnsupported) }
+    func remove(_ path: String) async throws { throw CocoaError(.featureUnsupported) }
+    func kind(of path: String) async throws -> RemoteItemKind? { nil }
+    nonisolated var isAlive: Bool { true }
+    nonisolated func close() {}
 }
