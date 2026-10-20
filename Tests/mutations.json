@@ -1,5 +1,12 @@
 [
   {
+    "file": "Strata/Model/OperationLog.swift",
+    "find": "guard paths.allSatisfy({ $0.count == 2 }) else {",
+    "replace": "guard true else {",
+    "rule": "Malformed History pairs reach undo",
+    "tests": "HistoryDecodingSafetyTests"
+  },
+  {
     "file": "Strata/Model/FileOps.swift",
     "find": "        !Trash.isTrash(anySpelling: url) && !Trash.isInTrash(url)",
     "replace": "        !Trash.isInTrash(url)",

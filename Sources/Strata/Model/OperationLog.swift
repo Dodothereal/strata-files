@@ -61,6 +61,12 @@ final class OperationLog {
             identities = try c.decodeIfPresent([String: String].self, forKey: .identities) ?? [:]
             undone = try c.decodeIfPresent(Bool.self, forKey: .undone) ?? false
             changed = try c.decodeIfPresent(Date.self, forKey: .changed)
+            for (key, paths) in [(CodingKeys.pairs, pairs), (.replaced, replaced)] {
+                guard paths.allSatisfy({ $0.count == 2 }) else {
+                    throw DecodingError.dataCorruptedError(forKey: key, in: c,
+                                                          debugDescription: "History needs a source and destination for each move.")
+                }
+            }
         }
 
         /// `name` as History shows it, in the app's language.
