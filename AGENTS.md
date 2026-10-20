@@ -203,6 +203,9 @@ sheet's text before clicking a destructive button. Both builds share preferences
 - Comments explain what and why in plain sentences, in the app's own words (Trash, Put Back, Delete Immediately);
   inline comments only for decisions that aren't obvious. Match the density of the code around you.
 - User-facing text goes through `String(localized:comment:)`; plurals carry `comment: "plural"`; quotes are curly.
+- Browser entries, filtered rows and path lookup belong to `BrowserListing`. Preserve node identity on refresh,
+  create fresh roots on navigation, and validate a whole result update before changing any node. Keep native
+  selection, expansion and editing in the AppKit controller; publish entries before applying pending actions.
 - Folder read scheduling belongs in `DirectoryReadSession`: each presentation owns its generation, rejects late
   success and error responses, and invalidates reads when removed or replaced by results. Inject `DirectoryReader`
   for controlled completion tests; keep callbacks weak so pending I/O cannot retain closed browsers.

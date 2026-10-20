@@ -1432,5 +1432,33 @@
     "replace": "identities[destination.path] = now",
     "rule": "File identity landing never accepts a same-disk replacement",
     "tests": "FileIdentityTests/landingRetainsSameDiskIdentityAndOnlyRefreshesItAcrossDisks"
+  },
+  {
+    "file": "Strata/Browser/BrowserListing.swift",
+    "find": "let previous = preservingNodes ? nodesByPath : [:]",
+    "replace": "let previous: [String: FileNode] = [:]",
+    "rule": "Browser listing refresh discards expanded row identities",
+    "tests": "BrowserListingTests/refreshPreservesRootAndChildIdentityButNavigationDoesNot"
+  },
+  {
+    "file": "Strata/Browser/BrowserListing.swift",
+    "find": "if !changed.isEmpty, sorted { return nil }",
+    "replace": "if false, sorted { return nil }",
+    "rule": "Browser listing applies changed sorted results without reordering",
+    "tests": "BrowserListingTests/resultUpdatesAreAtomicAndKeepExistingOrder|BrowserListingTests/resultRefreshRetainsNativeSelectionAndResortsChangedValues"
+  },
+  {
+    "file": "Strata/Browser/BrowserListing.swift",
+    "find": "        if let children = node.children { stack.append(contentsOf: children) }",
+    "replace": "        if let children = node.children { _ = children }",
+    "rule": "Browser listing loses lookup for expanded and grouped files",
+    "tests": "BrowserListingTests/refreshPreservesRootAndChildIdentityButNavigationDoesNot|BrowserListingTests/groupsIndexTheirFilesInsteadOfTheirHeaders"
+  },
+  {
+    "file": "Strata/Browser/BrowserListing.swift",
+    "find": "        guard nodesByPath.count == nodes.count else { return nil }\n",
+    "replace": "",
+    "rule": "Browser listing refresh keeps duplicate old paths and misses a new result",
+    "tests": "BrowserListingTests/duplicateExistingResultsRequireAFullReplacement"
   }
 ]

@@ -16,25 +16,6 @@ protocol BrowserViewControllerDelegate: AnyObject {
     func browser(_ browser: BrowserViewController, reveal url: URL)
 }
 
-/// One row in the list. Children load the first time a folder is expanded.
-final class FileNode {
-    var entry: FileEntry
-    weak var parent: FileNode?
-    var children: [FileNode]?
-    var isLoadingChildren = false
-    var matchIndices: [Int] = []
-    /// Set on header rows that group other rows (duplicate sets); they aren't files themselves.
-    var groupTitle: String?
-    var groupDetail: String?
-
-    init(entry: FileEntry, parent: FileNode? = nil) {
-        self.entry = entry
-        self.parent = parent
-    }
-
-    var url: URL { entry.url }
-}
-
 enum SortKey: String {
     case name, modified, created, added, size, kind, dimensions, width, height, duration
     case fileExtension = "extension"
@@ -119,7 +100,7 @@ final class BrowserViewController: NSViewController {
     private var columnWidthsBeforeResults: [(NSUserInterfaceItemIdentifier, CGFloat)] = []
     /// Folder sizes for the sort in progress, by standardized path.
     private var sizeMemo: [String: Int64]?
-    private(set) var filter = ""
+    var filter: String { listing.filter }
     private(set) var availableCapacity: Int64?
 
     let outlineView = FileOutlineView()
@@ -129,10 +110,9 @@ final class BrowserViewController: NSViewController {
     private let sizer = FolderSizer()
     let mediaInfo = MediaInfoLoader()
 
-    private var nodes: [FileNode] = []
-    private var rows: [FileNode] = []
-    /// Rows by standardized path: folder URLs from directory listings end in "/", URLs built elsewhere don't.
-    private var nodesByPath: [String: FileNode] = [:]
+    private let listing = BrowserListing()
+    private var nodes: [FileNode] { listing.nodes }
+    private var rows: [FileNode] { listing.rows }
     private var generation: Int { directoryReads.generation }
     /// Fetching the selection from a container (see `fetchSelectedContainerFiles`).
     var containerFetch: Task<Void, Never>?
@@ -353,7 +333,7 @@ final class BrowserViewController: NSViewController {
         if isNewDirectory {
             cancelPendingActions()
             deferredApply = nil
-            filter = ""
+            listing.setFilter("")
             filterPill.update(query: "", matches: 0)
             sizer.cancelPending()
             mediaInfo.cancelPending()
@@ -378,9 +358,7 @@ final class BrowserViewController: NSViewController {
     }
 
     private func showLoading() {
-        nodes = []
-        rows = []
-        nodesByPath = [:]
+        listing.clear()
         outlineView.reloadData()
         scrollToTop()
         pushContent()
@@ -440,18 +418,8 @@ final class BrowserViewController: NSViewController {
             return
         }
         deferredApply = nil
-        let previous = preservingState ? nodesByPath : [:]
         let expanded = preservingState ? nodes.filter { outlineView.isItemExpanded($0) } : []
-        nodes = entries.map { entry in
-            if let node = previous[Self.key(entry.url)], node.parent == nil {
-                node.entry = entry
-                return node
-            }
-            return FileNode(entry: entry)
-        }
-        sort(&nodes)
-        rebuildIndex()
-        applyFilter()
+        listing.replace(entries, preservingNodes: preservingState, sort: sort)
         isLoaded = true
         outlineView.reloadData()
         if fromTop { scrollToTop() }
@@ -488,37 +456,18 @@ final class BrowserViewController: NSViewController {
             CloudStore.shared.load(entries.map(\.url), in: url)
             node.isLoadingChildren = false
             guard gen == generation else { return }
-            let old = Dictionary((node.children ?? []).map { ($0.url, $0) }, uniquingKeysWith: { a, _ in a })
-            var children = entries.map { entry -> FileNode in
-                if let existing = old[entry.url] {
-                    existing.entry = entry
-                    return existing
-                }
-                return FileNode(entry: entry, parent: node)
-            }
-            sort(&children)
-            node.children = children
-            rebuildIndex()
+            listing.replaceChildren(of: node, with: entries, sort: sort)
             outlineView.reloadItem(node, reloadChildren: true)
         }
     }
 
-    static func key(_ url: URL) -> String { url.standardizedFileURL.path }
+    static func key(_ url: URL) -> String { BrowserListing.key(url) }
 
-    private func node(for url: URL) -> FileNode? { nodesByPath[Self.key(url)] }
+    private func node(for url: URL) -> FileNode? { listing.node(for: url) }
 
     /// The URL a row of this folder uses for `url`. Icons, columns and disk usage match paths exactly, and a listing
     /// reached through a symlink doesn't spell them like the folder does ("/tmp/x" lists "/private/tmp/x/a").
     private func rowURL(_ url: URL) -> URL { node(for: url)?.url ?? url }
-
-    private func rebuildIndex() {
-        nodesByPath.removeAll(keepingCapacity: true)
-        var stack = nodes
-        while let node = stack.popLast() {
-            if node.groupTitle == nil { nodesByPath[Self.key(node.url)] = node }
-            if let children = node.children { stack.append(contentsOf: children) }
-        }
-    }
 
     private func showError(_ error: Error) {
         cancelPendingActions()
@@ -526,9 +475,7 @@ final class BrowserViewController: NSViewController {
         loadError = error
         isLoaded = true
         isLoadingFolder = false
-        nodes = []
-        rows = []
-        nodesByPath = [:]
+        listing.clear()
         outlineView.reloadData()
         // Icons, Columns, Gallery and Disk Usage keep their own copy of the items: clear it too.
         pushContent()
@@ -602,11 +549,10 @@ final class BrowserViewController: NSViewController {
         resultsSummary = nil
         loadError = nil
         isLoaded = true
-        nodes = entries.map { FileNode(entry: $0) }
+        listing.replace(entries, preservingNodes: false, sort: { nodes in
+            if !outlineView.sortDescriptors.isEmpty { sort(&nodes) }
+        })
         localizeResultNames()
-        if !outlineView.sortDescriptors.isEmpty { sort(&nodes) }
-        rebuildIndex()
-        applyFilter()
         outlineView.reloadData()
         select(selection, scroll: false)
         pendingSelection = nil
@@ -618,28 +564,16 @@ final class BrowserViewController: NSViewController {
     /// When `entries` are the files already listed (in any order: a clicked column header sorts them), takes their new
     /// sizes and dates and returns true. Otherwise changes nothing and returns false.
     private func updateResultsInPlace(_ entries: [FileEntry]) -> Bool {
-        guard entries.count == nodes.count, nodes.allSatisfy({ $0.groupTitle == nil && $0.children == nil }) else { return false }
-        var byPath: [String: FileEntry] = [:]
-        byPath.reserveCapacity(entries.count)
-        for entry in entries { byPath[Self.key(entry.url)] = entry }
-        guard byPath.count == entries.count else { return false }
-        var changed: [(FileNode, FileEntry)] = []
-        for node in nodes {
-            guard let entry = byPath[Self.key(node.url)] else { return false }
-            if entry != node.entry { changed.append((node, entry)) }
-        }
-        // A new size or date can move a row in a sorted list: that takes the full reload.
-        if !changed.isEmpty, !outlineView.sortDescriptors.isEmpty { return false }
+        guard let changed = listing.updateResults(entries, sorted: !outlineView.sortDescriptors.isEmpty) else { return false }
         guard !changed.isEmpty else { return true }
         var rowsToReload = IndexSet()
-        for (node, entry) in changed {
-            node.entry = entry
+        for node in changed {
             let row = outlineView.row(forItem: node)
             if row >= 0 { rowsToReload.insert(row) }
         }
         outlineView.reloadData(forRowIndexes: exceptRenaming(rowsToReload), columnIndexes: IndexSet(integersIn: 0..<outlineView.numberOfColumns))
         delegate?.browserContentDidChange(self)
-        if changed.contains(where: { outlineView.selectedRowIndexes.contains(outlineView.row(forItem: $0.0)) }) {
+        if changed.contains(where: { outlineView.selectedRowIndexes.contains(outlineView.row(forItem: $0)) }) {
             delegate?.browserSelectionDidChange(self)
         }
         return true
@@ -653,17 +587,8 @@ final class BrowserViewController: NSViewController {
         resultsSummary = summary
         loadError = nil
         isLoaded = true
-        nodes = groups.compactMap { group in
-            guard let first = group.entries.first else { return nil }
-            let header = FileNode(entry: first)
-            header.groupTitle = group.title
-            header.groupDetail = group.detail
-            header.children = group.entries.map { FileNode(entry: $0, parent: header) }
-            return header
-        }
+        listing.replaceGroups(groups)
         localizeResultNames()
-        rebuildIndex()
-        applyFilter()
         outlineView.reloadData()
         outlineView.expandItem(nil, expandChildren: true)
         if let pendingSelection { select(pendingSelection, scroll: true) }
@@ -690,8 +615,9 @@ final class BrowserViewController: NSViewController {
                 changed = true
             }
             guard changed else { return }
-            if !outlineView.sortDescriptors.isEmpty, resultsSummary == nil { sort(&nodes) }
-            applyFilter()
+            listing.sort { nodes in
+                if !outlineView.sortDescriptors.isEmpty, resultsSummary == nil { sort(&nodes) }
+            }
             outlineView.reloadData()
             for node in expanded { outlineView.expandItem(node) }
             select(selection, scroll: false)
@@ -703,9 +629,7 @@ final class BrowserViewController: NSViewController {
     func showMessage(symbol: String, title: String, message: String = "") {
         enterResults()
         directoryReads.invalidate()
-        nodes = []
-        rows = []
-        nodesByPath = [:]
+        listing.clear()
         resultsSummary = ""
         outlineView.reloadData()
         emptyState.show(symbol: symbol, title: title, message: message)
@@ -728,7 +652,7 @@ final class BrowserViewController: NSViewController {
             outlineView.tableColumn(withIdentifier: .kind)?.width = 120
             outlineView.tableColumn(withIdentifier: .location)?.isHidden = false
             fitNameColumn()
-            filter = ""
+            listing.setFilter("")
             filterPill.update(query: "", matches: 0)
         }
     }
@@ -800,8 +724,7 @@ final class BrowserViewController: NSViewController {
 
     func setFilter(_ text: String) {
         guard text != filter else { return }
-        filter = text
-        applyFilter()
+        listing.setFilter(text)
         outlineView.reloadData()
         if !rows.isEmpty {
             outlineView.selectRowIndexes([0], byExtendingSelection: false)
@@ -812,27 +735,6 @@ final class BrowserViewController: NSViewController {
         if let first = rows.first, activeView != nil { activeView?.select([first.url], scroll: true) }
         updateEmptyState()
         delegate?.browserContentDidChange(self)
-    }
-
-    private func applyFilter() {
-        guard !filter.isEmpty else {
-            for node in nodes { node.matchIndices = [] }
-            rows = nodes
-            return
-        }
-        var scored: [(node: FileNode, score: Int)] = []
-        for node in nodes {
-            if let match = node.entry.nameMatch(filter) {
-                node.matchIndices = match.indices
-                scored.append((node, match.score))
-            } else {
-                node.matchIndices = []
-            }
-        }
-        rows = scored.sorted {
-            $0.score != $1.score ? $0.score > $1.score
-                : $0.node.entry.displayName.localizedStandardCompare($1.node.entry.displayName) == .orderedAscending
-        }.map(\.node)
     }
 
     /// Re-sorts after folder sizes arrive while sorting by size, animating rows into place.
@@ -856,8 +758,7 @@ final class BrowserViewController: NSViewController {
             working.remove(at: current)
             working.insert(node, at: target)
         }
-        nodes = sorted
-        rows = sorted
+        listing.reorderRoots(sorted)
         outlineView.endUpdates()
         if mode == .grid || mode == .columns || mode == .gallery { pushContent() }
     }
@@ -1309,7 +1210,7 @@ final class BrowserViewController: NSViewController {
     }
 
     @objc private func prefsChanged() {
-        sort(&nodes)
+        listing.sort(using: sort)
         refresh()
     }
 
@@ -1891,8 +1792,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         ascending = direction
         if remember { Prefs.shared.sortColumn = key.rawValue; Prefs.shared.sortAscending = direction }
         let selection = selectedURLs
-        sort(&nodes)
-        applyFilter()
+        listing.sort(using: sort)
         outlineView.reloadData()
         pushContent()
         select(selection, scroll: false)

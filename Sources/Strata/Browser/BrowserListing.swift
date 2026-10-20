@@ -1,0 +1,148 @@
+import Foundation
+
+/// One row in the list. Children load the first time a folder is expanded.
+final class FileNode {
+    var entry: FileEntry
+    weak var parent: FileNode?
+    var children: [FileNode]?
+    var isLoadingChildren = false
+    var matchIndices: [Int] = []
+    /// Set on header rows that group other rows (duplicate sets); they aren't files themselves.
+    var groupTitle: String?
+    var groupDetail: String?
+
+    init(entry: FileEntry, parent: FileNode? = nil) {
+        self.entry = entry
+        self.parent = parent
+    }
+
+    var url: URL { entry.url }
+}
+
+/// Owns the browser's entries, filtered rows and path lookup together. AppKit owns selection and expansion;
+/// refreshing this tree preserves row identities so native outline state can be restored.
+final class BrowserListing {
+    private(set) var nodes: [FileNode] = []
+    private(set) var rows: [FileNode] = []
+    private(set) var filter = ""
+    /// Folder URLs may have a trailing slash; commands and restored selections may omit it.
+    private var nodesByPath: [String: FileNode] = [:]
+
+    static func key(_ url: URL) -> String { url.standardizedFileURL.path }
+
+    func node(for url: URL) -> FileNode? { nodesByPath[Self.key(url)] }
+
+    func clear() {
+        nodes = []
+        rows = []
+        nodesByPath = [:]
+    }
+
+    func replace(_ entries: [FileEntry], preservingNodes: Bool, sort: (inout [FileNode]) -> Void) {
+        let previous = preservingNodes ? nodesByPath : [:]
+        var replacement = entries.map { entry in
+            if let node = previous[Self.key(entry.url)], node.parent == nil {
+                node.entry = entry
+                return node
+            }
+            return FileNode(entry: entry)
+        }
+        sort(&replacement)
+        nodes = replacement
+        rebuildIndex()
+        applyFilter()
+    }
+
+    func replaceChildren(of node: FileNode, with entries: [FileEntry], sort: (inout [FileNode]) -> Void) {
+        let old = Dictionary((node.children ?? []).map { ($0.url, $0) }, uniquingKeysWith: { a, _ in a })
+        var children = entries.map { entry -> FileNode in
+            if let existing = old[entry.url] {
+                existing.entry = entry
+                return existing
+            }
+            return FileNode(entry: entry, parent: node)
+        }
+        sort(&children)
+        node.children = children
+        rebuildIndex()
+    }
+
+    func replaceGroups(_ groups: [(title: String, detail: String, entries: [FileEntry])]) {
+        nodes = groups.compactMap { group in
+            guard let first = group.entries.first else { return nil }
+            let header = FileNode(entry: first)
+            header.groupTitle = group.title
+            header.groupDetail = group.detail
+            header.children = group.entries.map { FileNode(entry: $0, parent: header) }
+            return header
+        }
+        rebuildIndex()
+        applyFilter()
+    }
+
+    /// Returns changed nodes, or nil when a full replacement is needed. Validate the whole set before mutating:
+    /// a missing file, duplicate path or changed sorted value must not leave a partially updated listing.
+    func updateResults(_ entries: [FileEntry], sorted: Bool) -> [FileNode]? {
+        guard nodesByPath.count == nodes.count else { return nil }
+        guard entries.count == nodes.count, nodes.allSatisfy({ $0.groupTitle == nil && $0.children == nil }) else { return nil }
+        var byPath: [String: FileEntry] = [:]
+        byPath.reserveCapacity(entries.count)
+        for entry in entries { byPath[Self.key(entry.url)] = entry }
+        guard byPath.count == entries.count else { return nil }
+        var changed: [(FileNode, FileEntry)] = []
+        for node in nodes {
+            guard let entry = byPath[Self.key(node.url)] else { return nil }
+            if entry != node.entry { changed.append((node, entry)) }
+        }
+        if !changed.isEmpty, sorted { return nil }
+        for (node, entry) in changed { node.entry = entry }
+        return changed.map { $0.0 }
+    }
+
+    func setFilter(_ text: String) {
+        filter = text
+        applyFilter()
+    }
+
+    func sort(using sort: (inout [FileNode]) -> Void) {
+        var sorted = nodes
+        sort(&sorted)
+        reorderRoots(sorted)
+    }
+
+    /// Applies an order already calculated for native row-move animation. The nodes themselves are unchanged.
+    func reorderRoots(_ sorted: [FileNode]) {
+        nodes = sorted
+        applyFilter()
+    }
+
+    private func rebuildIndex() {
+        nodesByPath.removeAll(keepingCapacity: true)
+        var stack = nodes
+        while let node = stack.popLast() {
+            if node.groupTitle == nil { nodesByPath[Self.key(node.url)] = node }
+            if let children = node.children { stack.append(contentsOf: children) }
+        }
+    }
+
+    private func applyFilter() {
+        guard !filter.isEmpty else {
+            for node in nodes { node.matchIndices = [] }
+            rows = nodes
+            return
+        }
+        var scored: [(node: FileNode, score: Int)] = []
+        for node in nodes {
+            if let match = node.entry.nameMatch(filter) {
+                node.matchIndices = match.indices
+                scored.append((node, match.score))
+            } else {
+                node.matchIndices = []
+            }
+        }
+        rows = scored.sorted {
+            $0.score != $1.score ? $0.score > $1.score
+                : $0.node.entry.displayName.localizedStandardCompare($1.node.entry.displayName) == .orderedAscending
+        }.map(\.node)
+    }
+}
