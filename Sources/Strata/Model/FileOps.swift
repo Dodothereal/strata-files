@@ -446,7 +446,8 @@ enum FileOps {
     /// moves have worked (the inverse flips it back); `folders` are recreated first if they've gone (the folders an AI
     /// plan made, removed by undoing it).
     static func registerMoveUndo(_ moves: [Move], _ actionName: String, _ undo: UndoManager?, entry: UUID? = nil,
-                                 marksUndone: Bool = true, recreating folders: [URL] = [], landed: Landed? = nil) {
+                                 marksUndone: Bool = true, recreating folders: [URL] = [], landed: Landed? = nil,
+                                 history: OperationLog = .shared) {
         guard !moves.isEmpty else { return }
         let landed = landed ?? Landed(moves.map(\.to))
         register(actionName, undo) { undo in
@@ -465,13 +466,13 @@ enum FileOps {
                     let (done, error) = await moveAll(back)
                     done.forEach { returned.arrived($0.to) }
                     if let error { throw error }
-                    if let entry { OperationLog.shared.setUndone(entry, marksUndone) }
+                    if let entry { history.setUndone(entry, marksUndone) }
                 } catch {
                     reportUndoFailure(actionName, error)
                 }
             }
             registerMoveUndo(moves.reversed().map { (from: $0.to, to: $0.from) }, actionName, undo, entry: entry,
-                             marksUndone: !marksUndone, landed: returned)
+                             marksUndone: !marksUndone, landed: returned, history: history)
         }
     }
 

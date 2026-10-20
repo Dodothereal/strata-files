@@ -102,8 +102,10 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
   frees it after its last use and its folder goes with it, so a test that only expects refusals passes without
   checking anything.
 - If a check you broke on purpose still passes, `touch` the file and run again: the build can miss quick edits.
-- Test runs never touch your History, index or keychain: in a debug build that isn't Strata itself,
-  `SecureStorage.isTestRun` puts the stores in a temporary folder with a throwaway key. Keep it that way.
+- Saved-state storage defaults to a temporary context with a throwaway key in every build configuration. Only
+  `main.swift` opts into application storage, before creating services. Tests inject `SecureStorage.Context` for
+  independent stores; never opt into application storage or use the real keychain. Keep authenticated store names
+  relative to the injected root and retain the owning History instance through Undo/Redo.
 - Tests that use the real Trash remove exactly what they put there (`tree.removeFromTrash()`). Never empty the real
   Trash: cleanup must match the saved file identity, because a restored item's old Trash path can be reused by
   another file. Cover that reuse explicitly; a historical path alone is not ownership. `Trash.empty(_:)` takes
@@ -140,8 +142,8 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
   `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --sanitize address --scratch-path .build/sanitizers/address --disable-automatic-resolution --jobs 4`.
   CI runs this as a separate job on pull requests and main; Release repeats it before signing, including on tags.
   Investigate sanitizer diagnostics instead of suppressing them, retrying until green or skipping affected tests.
-  Keep the debug configuration: release tests would use real app stores because `SecureStorage.isTestRun` is
-  debug-only. Sanitizers do not instrument prebuilt system frameworks or prove unexecuted paths safe.
+  Sanitizers do not instrument prebuilt system frameworks or prove unexecuted paths safe. Optimized persistence
+  tests also use temporary storage; preferences and other dependencies still need explicit test isolation.
   Apple's Undefined Behavior Sanitizer supports C-based languages, not Swift; accepting the compiler flag is not
   evidence of Swift coverage. Strata currently has no C/C++/Objective-C source targets to instrument with it.
 - Treat file contents, authenticated saved data, process output and macOS callback values as external input.

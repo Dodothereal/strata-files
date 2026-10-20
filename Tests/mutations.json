@@ -542,9 +542,9 @@
   },
   {
     "file": "Strata/Model/SecureStorage.swift",
-    "find": "    static let caches: URL = isTestRun",
-    "replace": "    static let caches: URL = false",
-    "rule": "Tests use the app's own caches",
+    "find": "caches: directory.appending(path: \"Caches\", directoryHint: .isDirectory),",
+    "replace": "caches: directory.deletingLastPathComponent().appending(path: \"Caches\", directoryHint: .isDirectory),",
+    "rule": "Storage isolation puts test caches outside their own context",
     "tests": "DeleteScopeTests/testsKeep"
   },
   {
@@ -864,5 +864,47 @@
     "replace": "if false {",
     "rule": "Palette command catalog redirects a captured file action to another folder",
     "tests": "CommandCatalogTests/commandsCapturedBeforeResultsOrNavigation"
+  },
+  {
+    "file": "Strata/Model/SecureStorage.swift",
+    "find": "init(url: URL, storage: Context = SecureStorage.current) throws {\n            guard let key = storage.key else { throw Failure() }\n            self.url = url",
+    "replace": "init(url: URL, storage: Context = SecureStorage.current) throws {\n            let key = storage.key ?? SymmetricKey(size: .bits256)\n            self.url = url",
+    "rule": "Storage isolation replaces a store when its key is unavailable",
+    "tests": "StorageContextTests/keyProvider"
+  },
+  {
+    "file": "Strata/Model/OperationLog.swift",
+    "find": "recreating: entry.containers.map { URL(fileURLWithPath: $0) }, history: self)",
+    "replace": "recreating: entry.containers.map { URL(fileURLWithPath: $0) })",
+    "rule": "Storage isolation sends History redo to the global journal",
+    "tests": "StorageContextTests/historyUndo"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "marksUndone: !marksUndone, landed: returned, history: history)",
+    "replace": "marksUndone: !marksUndone, landed: returned)",
+    "rule": "Storage isolation loses the History owner on the next Undo cycle",
+    "tests": "StorageContextTests/historyUndo"
+  },
+  {
+    "file": "Strata/Model/OperationLog.swift",
+    "find": "SecureStorage.removeLegacy(storage.url(\"history.json\"))",
+    "replace": "SecureStorage.removeLegacy(storage.url(\"../second/history.json\"))",
+    "rule": "Storage isolation removes another contexts legacy History",
+    "tests": "StorageContextTests/historyRemoves"
+  },
+  {
+    "file": "Strata/Model/SecureStorage.swift",
+    "find": "let base = directory.absoluteURL.path + \"/\"",
+    "replace": "let base = SecureStorage.directory.absoluteURL.path + \"/\"",
+    "rule": "Storage isolation authenticates names against the global directory",
+    "tests": "StorageContextTests/storeNames"
+  },
+  {
+    "file": "Strata/Model/SecureStorage.swift",
+    "find": "                state = .resolved(key)\n",
+    "replace": "",
+    "rule": "Storage isolation retries an unavailable key for every access",
+    "tests": "StorageContextTests/keyProvider"
   }
 ]

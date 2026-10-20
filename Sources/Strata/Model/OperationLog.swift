@@ -102,20 +102,22 @@ final class OperationLog {
 
     private(set) var entries: [Entry] = []
     private let file: URL
+    private let storage: SecureStorage.Context
     private let limit = 500
 
-    private init() {
-        file = SecureStorage.url("history.sealed")
-        entries = Self.readEntries(from: file)
+    init(storage: SecureStorage.Context = SecureStorage.current) {
+        self.storage = storage
+        file = storage.url("history.sealed")
+        entries = Self.readEntries(from: file, storage: storage)
         // Never import a plain history file: anything running as you could plant one, and undoing its entries would
         // move files with Strata's access. One from an earlier build is simply removed.
-        SecureStorage.removeLegacy(SecureStorage.url("history.json"))
+        SecureStorage.removeLegacy(storage.url("history.json"))
     }
 
     // A bad record must not hide valid neighbors. Authentication and the JSON array itself still have to be
     // intact; loading never repairs or overwrites the saved file.
-    nonisolated static func readEntries(from file: URL) -> [Entry] {
-        guard let data = SecureStorage.read(file),
+    nonisolated static func readEntries(from file: URL, storage: SecureStorage.Context = SecureStorage.current) -> [Entry] {
+        guard let data = storage.read(file),
               let decoded = try? JSONDecoder().decode([SavedEntry].self, from: data) else { return [] }
         return decoded.compactMap(\.entry)
     }
@@ -269,7 +271,7 @@ final class OperationLog {
     /// and marks the entry live again once that has worked.
     private func registerRedo(_ entry: Entry, _ done: [FileOps.Move], _ undoManager: UndoManager?) {
         FileOps.registerMoveUndo(done, entry.name, undoManager, entry: entry.id, marksUndone: false,
-                                 recreating: entry.containers.map { URL(fileURLWithPath: $0) })
+                                 recreating: entry.containers.map { URL(fileURLWithPath: $0) }, history: self)
     }
 
     func clear() {
@@ -285,7 +287,7 @@ final class OperationLog {
     }
 
     private func save() {
-        if let data = try? JSONEncoder().encode(entries) { try? SecureStorage.write(data, to: file) }
+        if let data = try? JSONEncoder().encode(entries) { try? storage.write(data, to: file) }
         NotificationCenter.default.post(name: .operationLogChanged, object: self)
     }
 }
