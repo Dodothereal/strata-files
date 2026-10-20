@@ -39,7 +39,7 @@ final class FileIndex {
     }
 
     /// Number of entries, including ones deleted since the last full scan.
-    var itemCount: Int { store?.read { store?.count ?? 0 } ?? 0 }
+    var itemCount: Int { store?.read { $0.count } ?? 0 }
 
     func rebuild() {
         guard started else { return }
@@ -72,7 +72,7 @@ final class FileIndex {
     func folderSize(_ url: URL) -> FolderSize? {
         guard let store else { return nil }
         let path = url.standardizedFileURL.path
-        return store.read {
+        return store.read { store in
             guard let id = store.lookup(path), store.isDirectory(id), !isExcludedLocked(store, id) else { return nil }
             return FolderSize(bytes: store.size[Int(id)], files: Int(store.fileCount[Int(id)]))
         }
@@ -83,7 +83,7 @@ final class FileIndex {
     func childFolderSizes(_ folder: URL) -> [String: FolderSize] {
         guard let store else { return [:] }
         let base = folder.standardizedFileURL.path
-        return store.read {
+        return store.read { store in
             guard let id = store.lookup(base) else { return [:] }
             var sizes: [String: FolderSize] = [:]
             let prefix = base == "/" ? "/" : base + "/"
@@ -95,7 +95,7 @@ final class FileIndex {
     }
 
     /// Excluded folders are present as entries but never descended into, so their size would read as zero.
-    private func isExcludedLocked(_ store: IndexStore, _ id: Int32) -> Bool {
+    private func isExcludedLocked(_ store: borrowing IndexStore.Storage, _ id: Int32) -> Bool {
         store.firstChild[Int(id)] < 0 && store.size[Int(id)] == 0 && excludedPaths.contains(store.path(of: id))
     }
 
@@ -119,7 +119,7 @@ final class FileIndex {
         guard let store else { return nil }
         let base = folder.resolvingSymlinksInPath().standardizedFileURL.path
         let prefix = base == "/" ? "/" : base + "/"
-        let roots = store.read { store.roots.map(\.path) }
+        let roots = store.read { store in store.roots.map(\.path) }
             .filter { $0.hasPrefix(prefix) }
             .map { FolderSearch.IndexedParts.Root(path: $0, depth: $0.dropFirst(prefix.count).split(separator: "/").count) }
         return roots.isEmpty ? nil : FolderSearch.IndexedParts(store: store, roots: roots)
@@ -133,10 +133,10 @@ final class FileIndex {
         let path = folder.resolvingSymlinksInPath().standardizedFileURL.path
         if excludedPaths.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return false }
         // A disk mounted inside an indexed folder isn't in the index: the scanner stops at mount points.
-        guard let root = store.read({ store.roots.first { path == $0.path || path.hasPrefix($0.path + "/") } }),
+        guard let root = store.read({ store in store.roots.first { path == $0.path || path.hasPrefix($0.path + "/") } }),
               Self.sameVolume(path, root.path) else { return false }
         // A folder, not a symlink that happens to share its name (those aren't followed into).
-        return store.read {
+        return store.read { store in
             guard let id = store.lookup(path) else { return false }
             return store.flags[Int(id)] & (IndexStore.Flag.directory | IndexStore.Flag.symlink) == IndexStore.Flag.directory
         }

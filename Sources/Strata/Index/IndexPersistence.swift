@@ -30,7 +30,7 @@ nonisolated enum IndexPersistence {
             column.withUnsafeBytes { put($0) }
         }
 
-        store.read {
+        store.read { store in
             put(magic)
             put(version)
             put(eventID)
@@ -102,31 +102,33 @@ nonisolated enum IndexPersistence {
         for _ in 0..<Int(try get(UInt32.self)) { header.excluded.append(try getString()) }
 
         let store = IndexStore()
-        store.parent = try getColumn(Int32.self)
-        store.firstChild = try getColumn(Int32.self)
-        store.nextSibling = try getColumn(Int32.self)
-        store.nameStart = try getColumn(UInt32.self)
-        store.nameLength = try getColumn(UInt16.self)
-        store.size = try getColumn(Int64.self)
-        store.fileCount = try getColumn(UInt32.self)
-        store.mtime = try getColumn(UInt32.self)
-        store.fileKey = try getColumn(UInt32.self)
-        store.flags = try getColumn(UInt8.self)
-        store.names = try getColumn(UInt8.self)
-        store.roots = header.roots
-        let count = store.parent.count
-        guard [store.firstChild.count, store.nextSibling.count, store.nameStart.count, store.nameLength.count,
-               store.size.count, store.fileCount.count, store.mtime.count, store.fileKey.count,
-               store.flags.count].allSatisfy({ $0 == count })
-        else { throw Corrupt() }
-        try reader.finish()
-        guard validStructure(store) else { throw Corrupt() }
+        try store.write { store in
+            store.parent = try getColumn(Int32.self)
+            store.firstChild = try getColumn(Int32.self)
+            store.nextSibling = try getColumn(Int32.self)
+            store.nameStart = try getColumn(UInt32.self)
+            store.nameLength = try getColumn(UInt16.self)
+            store.size = try getColumn(Int64.self)
+            store.fileCount = try getColumn(UInt32.self)
+            store.mtime = try getColumn(UInt32.self)
+            store.fileKey = try getColumn(UInt32.self)
+            store.flags = try getColumn(UInt8.self)
+            store.names = try getColumn(UInt8.self)
+            store.roots = header.roots
+            let count = store.parent.count
+            guard [store.firstChild.count, store.nextSibling.count, store.nameStart.count, store.nameLength.count,
+                   store.size.count, store.fileCount.count, store.mtime.count, store.fileKey.count,
+                   store.flags.count].allSatisfy({ $0 == count })
+            else { throw Corrupt() }
+            try reader.finish()
+            guard validStructure(store) else { throw Corrupt() }
+        }
         return (store, header)
     }
 
     /// Authentication protects bytes, not the invariants of an index saved by an earlier build.
     /// Check offsets and links before search can dereference them or walk an ancestor chain.
-    private static func validStructure(_ store: IndexStore) -> Bool {
+    private static func validStructure(_ store: borrowing IndexStore.Storage) -> Bool {
         let count = store.count
         guard count <= Int32.max else { return false }
         func validLink(_ id: Int32) -> Bool { id == -1 || (id >= 0 && Int(id) < count) }

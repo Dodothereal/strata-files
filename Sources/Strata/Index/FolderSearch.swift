@@ -62,18 +62,18 @@ nonisolated final class FolderSearch: @unchecked Sendable {
     /// task pool.
     func start() {
         DispatchQueue.global(qos: .userInitiated).async { [self] in
-            let root = store.write { store.addRoot(path: folder, mtime: 0) }
+            let root = store.write { store in store.addRoot(path: folder, mtime: 0) }
             scanner.scan([(id: root, path: folder)], threads: IndexScanner.threadCount(for: folder))
             if !scanner.isCancelled {
                 // Skipped folders were listed but not read: their totals come from the index, so sizes above them add up.
                 let totals = indexed.map { parts in
-                    parts.store.read {
+                    parts.store.read { store in
                         parts.roots.compactMap { root in
-                            parts.store.lookup(root.path).map { (root.path, parts.store.size[Int($0)], parts.store.fileCount[Int($0)]) }
+                            store.lookup(root.path).map { (root.path, store.size[Int($0)], store.fileCount[Int($0)]) }
                         }
                     }
                 } ?? []
-                store.write {
+                store.write { store in
                     for (path, size, files) in totals {
                         guard let id = store.lookup(path) else { continue }
                         store.size[Int(id)] = size

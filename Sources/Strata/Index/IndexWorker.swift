@@ -103,7 +103,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         onPhase?(.loading)
         let loadResult = Result { try IndexPersistence.load(from: config.file) }
         if case .success(let (loaded, header)) = loadResult, header.roots.map(\.path) == config.roots {
-            log.info("Loaded \(loaded.count) entries, replaying events since \(header.eventID)")
+            log.info("Loaded \(loaded.read { $0.count }) entries, replaying events since \(header.eventID)")
             store = loaded
             onStore?(loaded)
             onPhase?(.ready)
@@ -129,9 +129,9 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         events.stop()
         let startEventID = FSEventsStream.currentEventID
         let fresh = IndexStore()
-        fresh.reserve(entries: IndexStore.estimatedEntries(under: config.roots))
+        fresh.write { $0.reserve(entries: IndexStore.estimatedEntries(under: config.roots)) }
         let scanner = IndexScanner(store: fresh, excluded: config.excluded, noiseFolders: config.noise)
-        let roots = fresh.write { config.roots.map { (fresh.addRoot(path: $0, mtime: 0), $0) } }
+        let roots = fresh.write { fresh in config.roots.map { (fresh.addRoot(path: $0, mtime: 0), $0) } }
         onPhase?(.scanning(items: 0))
         scanning.withLock { $0 = true }
         defer { scanning.withLock { $0 = false } }
@@ -141,7 +141,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         progress.resume()
         scanner.scan(roots.map { (id: $0.0, path: $0.1) })
         progress.cancel()
-        fresh.write { fresh.aggregate() }
+        fresh.write { fresh in fresh.aggregate() }
         store = fresh
         lastEventID = startEventID
         rescanNeeded = false
@@ -165,10 +165,10 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         guard old != config.excluded else { return }
         // Newly allowed folders get scanned; newly excluded ones are emptied.
         for path in old.subtracting(config.excluded).sorted() {
-            if let id = store.read({ store.lookup(path) }) { _ = refreshFolder(id, path, deep: true) }
+            if let id = store.read({ store in store.lookup(path) }) { _ = refreshFolder(id, path, deep: true) }
         }
         for path in config.excluded.subtracting(old).sorted() {
-            store.write {
+            store.write { store in
                 guard let id = store.lookup(path) else { return }
                 store.removeChildren(store.children(of: id), of: id)
             }
@@ -242,12 +242,12 @@ nonisolated final class IndexWorker: @unchecked Sendable {
             if deep { deepRoots.append(path) }
             // The folder may be new: refresh the nearest ancestor we already know about.
             var target = path
-            var id = store.read { store.lookup(target) }
+            var id = store.read { store in store.lookup(target) }
             while id == nil, target.count > 1 {
                 target = (target as NSString).deletingLastPathComponent
-                id = store.read { store.lookup(target) }
+                id = store.read { store in store.lookup(target) }
             }
-            guard let id, store.read({ store.isDirectory(id) }) else { continue }
+            guard let id, store.read({ store in store.isDirectory(id) }) else { continue }
             if refreshFolder(id, target, deep: deep) { changed = true }
         }
         // Coalesced events may cover unchanged folders. Only actual differences need a save and a UI refresh.
@@ -262,13 +262,13 @@ nonisolated final class IndexWorker: @unchecked Sendable {
     /// the saved file and every search grow with them. Past a quarter of the index, rebuild it without them.
     private func compactIfNeeded() {
         guard let store else { return }
-        let (total, deleted) = store.read { (store.count, store.deletedCount()) }
+        let (total, deleted) = store.read { store in (store.count, store.deletedCount()) }
         guard deleted >= 50_000, deleted * 4 >= total else { return }
-        let fresh = store.read { store.compacted() }
+        let fresh = store.read { store in store.compacted() }
         self.store = fresh
         dirty = true
         onStore?(fresh)
-        log.info("Compacted index: \(total) → \(fresh.count) entries")
+        log.info("Compacted index: \(total) → \(fresh.read { $0.count }) entries")
     }
 
     private func markChanged() {
@@ -296,7 +296,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
             return false
         }
         if error == ENOENT || error == ENOTDIR {
-            return store.write {
+            return store.write { store in
                 let existed = store.flags[Int(id)] & IndexStore.Flag.deleted == 0
                 store.remove(id)
                 return existed
@@ -309,7 +309,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         var newFolders: [(id: Int32, path: String)] = []
         var existingFolders: [(id: Int32, path: String)] = []
         var changed = false
-        let firstNew: Int32 = store.write {
+        let firstNew: Int32 = store.write { store in
             let firstNew = Int32(store.count)
             var existing: [String: Int32] = [:]
             for child in store.children(of: id) { existing[store.name(child)] = child }
@@ -381,7 +381,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
             watchdog.cancel()
             if scanner.isCancelled { interrupted = true }
         }
-        store.write { store.integrateNew(from: firstNew) }
+        store.write { store in store.integrateNew(from: firstNew) }
         for folder in existingFolders {
             if refreshFolder(folder.id, folder.path, deep: true) { changed = true }
         }

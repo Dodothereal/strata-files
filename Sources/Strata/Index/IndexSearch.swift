@@ -336,7 +336,7 @@ nonisolated enum IndexSearch {
     static func run(_ query: IndexQuery, in store: IndexStore, limit: Int) -> (hits: [IndexHit], total: Int) {
         let matched = matches(query, in: store)
         let best = top(matched, limit)
-        let hits = store.read {
+        let hits = store.read { store in
             best.map { item -> IndexHit in
                 let id = Int(item.id)
                 return IndexHit(path: store.path(of: item.id), isDirectory: store.flags[id] & IndexStore.Flag.directory != 0,
@@ -377,7 +377,7 @@ nonisolated enum IndexSearch {
 
     /// Every entry matching `query`, with its score (under the read lock).
     private static func matches(_ query: IndexQuery, in store: IndexStore) -> [(id: Int32, score: Int32)] {
-        store.read {
+        store.read { store in
             let count = store.count
             guard count > 0, !query.isEmpty else { return [] }
             let scopeID: Int32? = query.scopePath.flatMap { store.lookup($0) }
@@ -426,7 +426,7 @@ nonisolated enum IndexSearch {
 
     /// Files changed recently, newest first, skipping folders, hidden items and noise such as caches.
     static func recent(in store: IndexStore, since: UInt32, limit: Int) -> [IndexHit] {
-        store.read {
+        store.read { store in
             var found: [(id: Int32, mtime: UInt32)] = []
             let skip = IndexStore.Flag.directory | IndexStore.Flag.noise | IndexStore.Flag.hidden | IndexStore.Flag.deleted
             // App internals carry the noise flag, so the skip mask already leaves them out.

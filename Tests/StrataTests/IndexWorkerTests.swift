@@ -60,8 +60,8 @@ struct IndexWorkerTests {
         await save(fixture.worker)
         #expect(try Data(contentsOf: fixture.config.file) == saved)
         #expect(fixture.changes.withLock { $0 } == 0)
-        #expect(fixture.store.read { fixture.store.lookup(tree.url(".state/history.sealed").path) } == nil)
-        #expect(fixture.store.read { fixture.store.lookup(tree.url(".state-lookalike/visible.txt").path) } != nil)
+        #expect(fixture.store.read { $0.lookup(tree.url(".state/history.sealed").path) } == nil)
+        #expect(fixture.store.read { $0.lookup(tree.url(".state-lookalike/visible.txt").path) } != nil)
         #expect(tree.snapshot() == [".state-lookalike/", ".state-lookalike/visible.txt", ".state/",
                                     ".state/history.sealed", ".state/index.sealed", ".state/index.sealed.temporary.tmp", "a.txt"])
     }
@@ -76,8 +76,8 @@ struct IndexWorkerTests {
         ])
         await save(fixture.worker)
         let (loaded, _) = try IndexPersistence.load(from: fixture.config.file)
-        #expect(loaded.lookup(tree.url("files/new.txt").path) != nil)
-        #expect(loaded.lookup(tree.url(".state/history.sealed").path) == nil)
+        #expect(loaded.read { $0.lookup(tree.url("files/new.txt").path) } != nil)
+        #expect(loaded.read { $0.lookup(tree.url(".state/history.sealed").path) } == nil)
         #expect(tree.text("files/a.txt") == "files/a.txt")
         #expect(tree.snapshot() == [".state/", ".state/history.sealed", ".state/index.sealed", "files/", "files/a.txt", "files/new.txt"])
     }
@@ -136,12 +136,12 @@ struct IndexWorkerTests {
         ])
         await save(fixture.worker)
         let (loaded, _) = try IndexPersistence.load(from: fixture.config.file)
-        let a = try #require(loaded.lookup(tree.url("a").path))
-        let b = try #require(loaded.lookup(tree.url("b").path))
-        #expect(loaded.size[Int(a)] == Int64(first.count))
-        #expect(loaded.size[Int(b)] == Int64(second.count + "b/new/added.txt".utf8.count))
-        #expect(loaded.fileCount[Int(b)] == 2)
-        #expect(loaded.lookup(tree.url("b/new/added.txt").path) != nil)
+        let a = try #require(loaded.read { $0.lookup(tree.url("a").path) })
+        let b = try #require(loaded.read { $0.lookup(tree.url("b").path) })
+        #expect(loaded.read { $0.size[Int(a)] } == Int64(first.count))
+        #expect(loaded.read { $0.size[Int(b)] } == Int64(second.count + "b/new/added.txt".utf8.count))
+        #expect(loaded.read { $0.fileCount[Int(b)] } == 2)
+        #expect(loaded.read { $0.lookup(tree.url("b/new/added.txt").path) } != nil)
         #expect(tree.text("untouched/z.txt") == "untouched/z.txt")
         #expect(tree.snapshot() == [".state/", ".state/index.sealed", "a/", "a/deep/", "a/deep/x.txt", "b/",
                                     "b/new/", "b/new/added.txt", "b/y.txt", "untouched/", "untouched/z.txt"])
@@ -154,8 +154,8 @@ struct IndexWorkerTests {
         fixture.worker.receive([.init(path: tree.url("files/removed").path, flags: 0, id: 1)])
         await save(fixture.worker)
         let (loaded, _) = try IndexPersistence.load(from: fixture.config.file)
-        #expect(loaded.lookup(tree.url("files/removed").path) == nil)
-        #expect(loaded.lookup(tree.url("files/kept.txt").path) != nil)
+        #expect(loaded.read { $0.lookup(tree.url("files/removed").path) } == nil)
+        #expect(loaded.read { $0.lookup(tree.url("files/kept.txt").path) } != nil)
         #expect(fixture.changes.withLock { $0 } > 0)
         #expect(tree.snapshot() == [".state/", ".state/index.sealed", "files/", "files/kept.txt"])
     }
@@ -164,8 +164,8 @@ struct IndexWorkerTests {
     func changesWithoutDifferentFileSizesStillPersist(_ change: String) async throws {
         let tree = try TestTree(".state/", "files/file.txt", "files/folder/", "kept/")
         let fixture = try await start(tree)
-        let folder = try #require(fixture.store.read { fixture.store.lookup(tree.url("files/folder").path) })
-        let oldKey = fixture.store.read { fixture.store.fileKey[Int(folder)] }
+        let folder = try #require(fixture.store.read { $0.lookup(tree.url("files/folder").path) })
+        let oldKey = fixture.store.read { $0.fileKey[Int(folder)] }
         switch change {
         case "hidden":
             try #require(chflags(tree.url("files/file.txt").path, UInt32(UF_HIDDEN)) == 0)
@@ -180,11 +180,11 @@ struct IndexWorkerTests {
         fixture.worker.receive([.init(path: tree.url("files").path, flags: 0, id: 1)])
         await save(fixture.worker)
         let (loaded, _) = try IndexPersistence.load(from: fixture.config.file)
-        let file = try #require(loaded.lookup(tree.url("files/file.txt").path))
-        let replacement = try #require(loaded.lookup(tree.url("files/folder").path))
-        if change == "hidden" { #expect(loaded.flags[Int(file)] & IndexStore.Flag.hidden != 0) }
-        if change == "mtime" { #expect(loaded.mtime[Int(file)] == 1_234_567) }
-        if change == "replacement" { #expect(loaded.fileKey[Int(replacement)] != oldKey) }
+        let file = try #require(loaded.read { $0.lookup(tree.url("files/file.txt").path) })
+        let replacement = try #require(loaded.read { $0.lookup(tree.url("files/folder").path) })
+        if change == "hidden" { #expect(loaded.read { $0.flags[Int(file)] } & IndexStore.Flag.hidden != 0) }
+        if change == "mtime" { #expect(loaded.read { $0.mtime[Int(file)] } == 1_234_567) }
+        if change == "replacement" { #expect(loaded.read { $0.fileKey[Int(replacement)] } != oldKey) }
         #expect(fixture.changes.withLock { $0 } > 0)
         #expect(tree.text("files/file.txt") == "files/file.txt")
         let listing = [".state/", ".state/index.sealed", "files/", "files/file.txt", "files/folder/", "kept/"]
@@ -200,8 +200,8 @@ struct IndexWorkerTests {
         await save(fixture.worker)
         let (loaded, header) = try IndexPersistence.load(from: config.file)
         #expect(header.excluded.contains(tree.url("private").path))
-        #expect(loaded.lookup(tree.url("private/a.txt").path) == nil)
-        #expect(loaded.lookup(tree.url("private-lookalike/b.txt").path) != nil)
+        #expect(loaded.read { $0.lookup(tree.url("private/a.txt").path) } == nil)
+        #expect(loaded.read { $0.lookup(tree.url("private-lookalike/b.txt").path) } != nil)
         #expect(tree.text("private/a.txt") == "private/a.txt")
         #expect(tree.snapshot() == [".state/", ".state/index.sealed", "private-lookalike/", "private-lookalike/b.txt",
                                     "private/", "private/a.txt"])

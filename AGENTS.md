@@ -217,6 +217,10 @@ sheet's text before clicking a destructive button. Both builds share preferences
   caller; stop the download only after the last caller stops. Keep cancelled tasks until they finish, drain both
   explicit and background downloads before removing a copy, and coalesce overlapping removals. Late cleanup must
   not clear a reopened copy's requests. Inject container content readers for controlled lifecycle tests.
+- Index columns belong to `IndexStore.Storage`: borrow them inside `read`, mutate them inside `write`, and keep
+  related column changes in one write scope. Never reenter the same store's lock from a scope. Returning a column
+  creates a copy-on-write snapshot; avoid those copies in hot paths. Raw column pointers must stay inside
+  `withColumns`, with parallel searches joined before the scope ends. Keep compact storage and buffer-growth tests.
 - Post-operation selection and rename wait for entries to be applied, not an elapsed delay. Keep the original pane
   and navigation revision; leaving and returning is still a different navigation. Cancel pending renames when their
   column is removed, explicit selection or mode changes, or its read fails. A reload dropping the old selection must

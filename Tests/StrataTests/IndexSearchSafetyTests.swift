@@ -6,13 +6,15 @@ struct IndexSearchSafetyTests {
     @Test(arguments: [1, 254, 255, 256, 300])
     func deepPathQueriesKeepMatchingWithoutOverflow(_ depth: Int) {
         let store = IndexStore()
-        var parent = store.addRoot(path: "/synthetic", mtime: 0)
-        for index in 0...depth {
-            let name = Array((index == depth ? "target.txt" : "a").utf8)
-            let item = ScannedItem(nameOffset: 0, nameLength: name.count, isDirectory: index < depth,
-                                   isPackage: false, isSymlink: false, isHidden: false, isMountPoint: false,
-                                   size: 0, mtime: 0)
-            parent = name.withUnsafeBytes { store.appendChildren([item], nameBuffer: $0, of: parent).lowerBound }
+        store.write { store in
+            var parent = store.addRoot(path: "/synthetic", mtime: 0)
+            for index in 0...depth {
+                let name = Array((index == depth ? "target.txt" : "a").utf8)
+                let item = ScannedItem(nameOffset: 0, nameLength: name.count, isDirectory: index < depth,
+                                       isPackage: false, isSymlink: false, isHidden: false, isMountPoint: false,
+                                       size: 0, mtime: 0)
+                parent = name.withUnsafeBytes { store.appendChildren([item], nameBuffer: $0, of: parent).lowerBound }
+            }
         }
         let path = String(repeating: "a/", count: depth)
         let result = IndexSearch.run(IndexQuery.parse(path + "target"), in: store, limit: 10)

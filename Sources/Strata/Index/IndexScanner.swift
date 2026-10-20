@@ -201,7 +201,7 @@ nonisolated final class IndexScanner: @unchecked Sendable {
                 if !excluded.contains(path) { folders.append((offset, path, noiseFolders.contains(path))) }
             }
             let ownNoise = names.withUnsafeBytes { IndexStore.ownNoise(items, nameBuffer: $0) }
-            let ids = store.write {
+            let ids = store.write { store in
                 let ids = names.withUnsafeBytes { store.appendChildren(items, nameBuffer: $0, of: job.id, ownNoise: ownNoise) }
                 for folder in folders where folder.noise {
                     store.flags[Int(ids.lowerBound) + folder.offset] |= IndexStore.Flag.noise

@@ -14,7 +14,7 @@ nonisolated struct DuplicateGroup: Sendable {
 /// last 64 KB, then a full SHA-256 only for files that still look identical.
 nonisolated enum DuplicateFinder {
     static func candidates(in store: IndexStore, minSize: Int64) -> [[(path: String, size: Int64)]] {
-        store.read {
+        store.read { store in
             var bySize: [Int64: [Int32]] = [:]
             let skip = IndexStore.Flag.directory | IndexStore.Flag.noise | IndexStore.Flag.hidden | IndexStore.Flag.deleted
                 | IndexStore.Flag.symlink

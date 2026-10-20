@@ -1383,5 +1383,19 @@
     "replace": "        // Mutation: leave the prefetched copy behind.",
     "rule": "Copy fetch coordination background disconnect leaves its copy behind",
     "tests": "RemoteFilesTests/disconnectAlsoDrainsAutomaticallyPrefetchedFiles"
+  },
+  {
+    "file": "Strata/Index/IndexStore.swift",
+    "find": "fresh.fileKey.append(fileKey[old])",
+    "replace": "fresh.fileKey.append(0)",
+    "rule": "Index compaction keeps the identity of each surviving entry",
+    "tests": "IndexStoreAccessTests/compactionKeepsLiveMetadataAndCreatesIndependentStorage"
+  },
+  {
+    "file": "Strata/Index/IndexSearch.swift",
+    "find": "let upper = count * (chunk + 1) / chunks",
+    "replace": "let upper = count * chunk / chunks",
+    "rule": "Index parallel search includes the complete range of every worker",
+    "tests": "IndexStoreAccessTests/parallelSearchJoinsAllColumnReadersBeforeReturning"
   }
 ]
