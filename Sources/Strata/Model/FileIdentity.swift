@@ -11,7 +11,11 @@ nonisolated struct FileIdentity: Sendable, Equatable {
     static func read(_ path: String) -> FileIdentity? {
         var info = stat()
         guard lstat(path, &info) == 0 else { return nil }
-        return FileIdentity(device: info.st_dev, inode: info.st_ino,
+        return from(info)
+    }
+
+    static func from(_ info: stat) -> FileIdentity {
+        FileIdentity(device: info.st_dev, inode: info.st_ino,
                             birthSeconds: info.st_birthtimespec.tv_sec, birthNanoseconds: info.st_birthtimespec.tv_nsec)
     }
 

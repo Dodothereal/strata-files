@@ -367,8 +367,8 @@
   },
   {
     "file": "Strata/AI/PlanExecutor.swift",
-    "find": "        FileOps.removeEmptyFolders(created.filter(applied.holds))",
-    "replace": "        for folder in created.filter(applied.holds) { try? FileManager.default.removeItem(at: folder) }",
+    "find": "        createdFolders.removeEmpty()",
+    "replace": "        for folder in created { try? FileManager.default.removeItem(at: folder) }",
     "rule": "Undo of a plan removes a folder something was put in",
     "tests": "PlanSafetyTests"
   },
@@ -613,10 +613,10 @@
   },
   {
     "file": "Strata/Model/FileOps.swift",
-    "find": "if let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path), names == [\".DS_Store\"] {",
-    "replace": "if let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path), names.contains(\".DS_Store\") {",
+    "find": "else if name != \".\" && name != \"..\" { empty = false; break }",
+    "replace": "else if name != \".\" && name != \"..\" { continue }",
     "rule": "Finder's records are removed from a folder that holds other things",
-    "tests": "TrashUndoTests/onlyEmptyFolders"
+    "tests": "TrashUndoTests/onlyEmptyFolders|CreatedFolderOwnershipTests/cleanupKeepsUnreadableFoldersAndAnythingBeyondFinderRecords"
   },
   {
     "file": "Strata/Model/ArchiveCache.swift",
@@ -874,15 +874,15 @@
   },
   {
     "file": "Strata/Model/OperationLog.swift",
-    "find": "recreating: entry.containers.map { URL(fileURLWithPath: $0) }, history: self)",
-    "replace": "recreating: entry.containers.map { URL(fileURLWithPath: $0) })",
+    "find": "containers: .make(containers), history: self)",
+    "replace": "containers: .make(containers))",
     "rule": "Storage isolation sends History redo to the global journal",
     "tests": "StorageContextTests/historyUndo"
   },
   {
     "file": "Strata/Model/FileOps.swift",
-    "find": "marksUndone: !marksUndone, landed: returned, history: history)",
-    "replace": "marksUndone: !marksUndone, landed: returned)",
+    "find": "marksUndone: !marksUndone, containers: containers.inverse, landed: returned, history: history)",
+    "replace": "marksUndone: !marksUndone, containers: containers.inverse, landed: returned)",
     "rule": "Storage isolation loses the History owner on the next Undo cycle",
     "tests": "StorageContextTests/historyUndo"
   },
@@ -972,8 +972,8 @@
   },
   {
     "file": "Strata/Transfers/TransferQueue.swift",
-    "find": "registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse, queue: queue)",
-    "replace": "registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse, queue: .shared)",
+    "find": "registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse, queue: queue, historyEntry: historyEntry)",
+    "replace": "registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse, queue: .shared, historyEntry: historyEntry)",
     "rule": "Transfer ownership repeated Redo loses its queue",
     "tests": "TransferContextTests/crossDiskUndoAndRedoUseTheOriginalQueue"
   },
@@ -1400,14 +1400,14 @@
   },
   {
     "file": "Strata/AI/PlanExecutor.swift",
-    "find": "FileOps.removeEmptyFolders(created.filter(applied.holds))",
-    "replace": "FileOps.removeEmptyFolders(created)",
+    "find": "createdFolders.removeEmpty()",
+    "replace": "CreatedFolders(created).removeEmpty()",
     "rule": "Plan folder cleanup preserves replacement files folders and links",
     "tests": "PlanSafetyTests/undoKeepsAReplacementAtACreatedFolderPath"
   },
   {
     "file": "Strata/AI/PlanExecutor.swift",
-    "find": "                applied.record([folder])\n",
+    "find": "                createdFolders.record([folder])\n",
     "replace": "",
     "rule": "Plan folder cleanup records ownership when each folder is created",
     "tests": "PlanSafetyTests/runningAPlanDoesOnlyItsCheckedSteps|PlanSafetyTests/undoKeepsAFolderThePlanMadeOnceSomethingElseIsInIt|PlanSafetyTests/nestedFolderCleanupWorksAfterCompleteAndFailedMoves"
@@ -1587,5 +1587,76 @@
     "replace": "Places.favorites().map(\\.url)",
     "rule": "Browser preferences path suggestions use another favorites store",
     "tests": "BrowserPreferencesTests/favoriteCommandsAndPathSuggestionsUseTheirOwningStore"
+  },
+  {
+    "file": "Strata/Model/CreatedFolders.swift",
+    "find": "FileOps.removeEmptyFolders(urls, identities: identities)",
+    "replace": "FileOps.removeEmptyFolders(urls, identities: Dictionary(uniqueKeysWithValues: urls.compactMap { url in FileIdentity.read(url.path).map { (url.path, $0) } }))",
+    "rule": "Created folder ownership cleanup does not adopt replacements",
+    "tests": "CreatedFolderOwnershipTests/liveUndoLeavesReplacementContainers|CreatedFolderOwnershipTests/historyUndoLeavesReplacementContainers"
+  },
+  {
+    "file": "Strata/Transfers/TransferJob.swift",
+    "find": "logHistory: logsHistory, containers: containers, landed: landed, queue: queue)",
+    "replace": "logHistory: logsHistory, containers: CreatedFolders(containers.urls), landed: landed, queue: queue)",
+    "rule": "Created folder ownership is captured before a job can suspend",
+    "tests": "CreatedFolderOwnershipTests/liveUndoLeavesReplacementContainers|CreatedFolderOwnershipTests/historyUndoLeavesReplacementContainers"
+  },
+  {
+    "file": "Strata/Model/CreatedFolders.swift",
+    "find": "recorded[url.path], let identity",
+    "replace": "recorded[url.path] ?? FileIdentity.historyKey(at: url.path), let identity",
+    "rule": "Created folder ownership missing in old History is not guessed",
+    "tests": "CreatedFolderOwnershipTests/olderHistoryRestoresFilesWithoutRemovingUnidentifiedContainers"
+  },
+  {
+    "file": "Strata/Model/CreatedFolders.swift",
+    "find": "                record([url])\n",
+    "replace": "",
+    "rule": "Created folder ownership follows directories made again by Redo",
+    "tests": "CreatedFolderOwnershipTests/redoUpdatesOwnershipForLiveAndSavedHistory"
+  },
+  {
+    "file": "Strata/Model/OperationLog.swift",
+    "find": "        entries[index].identities.merge(updates) { _, new in new }\n",
+    "replace": "",
+    "rule": "Created folder ownership in saved History follows Redo",
+    "tests": "CreatedFolderOwnershipTests/redoUpdatesOwnershipForLiveAndSavedHistory"
+  },
+  {
+    "file": "Strata/Model/CreatedFolders.swift",
+    "find": "if !continueAfterFailure { throw error }",
+    "replace": "throw error",
+    "rule": "Created folder ownership recreation can continue after one failure",
+    "tests": "CreatedFolderOwnershipTests/recreationRecordsOnlyFoldersItMakesAndKeepsTryingWhenRequested"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "            job.onFinish = { _ in containers.finish() }\n",
+    "replace": "",
+    "rule": "Created folder ownership cleanup waits for cross-disk completion",
+    "tests": "CreatedFolderOwnershipTests/crossDiskUndoFinishesBeforeRemovingItsCreatedFolders"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "edits": [
+      {
+        "find": "O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC",
+        "replace": "O_RDONLY | O_DIRECTORY | O_CLOEXEC"
+      },
+      {
+        "find": "guard fstat(fd, &info) == 0, FileIdentity.from(info) == expected else { continue }",
+        "replace": "guard fstat(fd, &info) == 0 else { continue }"
+      }
+    ],
+    "rule": "Created folder ownership cleanup never follows links for Finder records",
+    "tests": "CreatedFolderOwnershipTests/emptyFolderCleanupNeverFollowsALinkForFinderRecords"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "job.containers = containerOwnership ?? CreatedFolders(containers)",
+    "replace": "job.containers = CreatedFolders(containers)",
+    "rule": "Created folder ownership supplied before queueing is retained through cancellation",
+    "tests": "CreatedFolderOwnershipTests/cancelledJobsKeepTheOwnershipCapturedBeforeTheyWereQueued"
   }
 ]

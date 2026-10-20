@@ -250,6 +250,10 @@ sheet's text before clicking a destructive button. Both builds share preferences
 - Undo cleanup for folders an operation creates must verify their recorded identity and use nonrecursive empty-folder
   removal. A failed directory listing is not an empty folder. Cover replacement files, folders and symlinks, including
   anything at the link's target; never use recursive removal for this cleanup.
+- `CreatedFolders` captures that ownership when folders are made, before alerts or asynchronous transfers, and is
+  shared by live Undo, History and cancellation cleanup. Redo records the folders it recreates and updates their
+  saved History identities. Old records without container identities may restore files but must not remove those
+  folders. Read and remove Finder records relative to an owned, opened directory; never follow a cleanup symlink.
 - File identity reads belong in `FileIdentity`, and live operation ownership belongs in `LandedFiles`. Preserve
   no-follow reads and record identities when items land, before callbacks can replace them. Runtime identities include
   birth time; History retains its volume UUID/inode and legacy device:inode formats. Do not silently change those

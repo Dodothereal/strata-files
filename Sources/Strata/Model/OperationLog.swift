@@ -35,13 +35,15 @@ final class OperationLog {
         var changed: Date?
 
         init(name: String, kind: Kind, pairs: [[String]] = [], created: [String] = [], replaced: [[String]] = [],
-             containers: [String] = []) {
+             containers: [String] = [], containerIdentities: [String: String] = [:]) {
             self.name = name
             self.kind = kind
             self.pairs = pairs
             self.created = created
             self.replaced = replaced
             self.containers = containers
+            let containerPaths = Set(containers)
+            identities = containerIdentities.filter { containerPaths.contains($0.key) }
             for path in pairs.map({ $0[1] }) + created + replaced.map({ $0[1] }) {
                 identities[path] = OperationLog.identity(path)
             }
@@ -145,17 +147,21 @@ final class OperationLog {
     /// One entry for a whole copy or move job, including what it replaced.
     @discardableResult
     func recordTransfer(_ name: String, created: [URL], moved: [(from: URL, to: URL)],
-                        replaced: [(from: URL, to: URL)], containers: [URL] = []) -> UUID? {
+                        replaced: [(from: URL, to: URL)], containers: [URL] = [],
+                        containerIdentities: [String: String]? = nil) -> UUID? {
         guard !(created.isEmpty && moved.isEmpty) else { return nil }
         return append(Entry(name: name, kind: created.isEmpty ? .move : .create, pairs: Self.paths(moved),
-                            created: created.map(\.path), replaced: Self.paths(replaced), containers: containers.map(\.path)))
+                            created: created.map(\.path), replaced: Self.paths(replaced), containers: containers.map(\.path),
+                            containerIdentities: containerIdentities ?? CreatedFolders(containers).historyIdentities))
     }
 
     /// One entry for an applied Ask Strata plan: its moves (Trash included) and the folders it made for them.
     @discardableResult
-    func recordPlan(_ name: String, moved: [(from: URL, to: URL)], containers: [URL]) -> UUID? {
+    func recordPlan(_ name: String, moved: [(from: URL, to: URL)], containers: [URL],
+                    containerIdentities: [String: String]? = nil) -> UUID? {
         guard !moved.isEmpty else { return nil }
-        return append(Entry(name: name, kind: .move, pairs: Self.paths(moved), containers: containers.map(\.path)))
+        return append(Entry(name: name, kind: .move, pairs: Self.paths(moved), containers: containers.map(\.path),
+                            containerIdentities: containerIdentities ?? CreatedFolders(containers).historyIdentities))
     }
 
     /// Keeps an entry in step with ⌘Z and ⇧⌘Z (undoing marks it undone; redoing marks it done again).
@@ -163,6 +169,17 @@ final class OperationLog {
         guard let index = entries.firstIndex(where: { $0.id == id }), entries[index].undone != undone else { return }
         entries[index].undone = undone
         entries[index].changed = Date()
+        save()
+    }
+
+    /// Redo can recreate containers with new identities. Update only the folders already belonging to this entry,
+    /// using the identities captured by the recreation, never whatever happens to occupy their paths later.
+    func updateContainerIdentities(_ id: UUID, _ identities: [String: String]) {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        let containers = Set(entries[index].containers)
+        let updates = identities.filter { containers.contains($0.key) && entries[index].identities[$0.key] != $0.value }
+        guard !updates.isEmpty else { return }
+        entries[index].identities.merge(updates) { _, new in new }
         save()
     }
 
@@ -228,6 +245,7 @@ final class OperationLog {
                 NSLocalizedDescriptionKey: String(localized: "“\(entry.displayName)” can’t be undone: its items have moved or changed since."),
             ])
         }
+        let containers = CreatedFolders(paths: entry.containers, recorded: entry.identities)
         // Everything happens without registering undo piecemeal; one ⌘Z afterwards puts it all back (below).
         var done: [FileOps.Move] = []
         let existing = entry.created.filter { holdsOriginal(entry, $0) }.map { URL(fileURLWithPath: $0) }
@@ -242,21 +260,21 @@ final class OperationLog {
             } catch {
                 // Part of it may have moved: keep ⌘Z able to put back what did.
                 registerRedo(entry, done + back.filter { !TransferEngine.exists($0.from) && TransferEngine.exists($0.to) },
-                             undoManager)
+                             undoManager, containers: containers)
                 throw error
             }
         }
         // Only what is (still) empty: never remove something put there since.
-        FileOps.removeEmptyFolders(entry.containers.map { URL(fileURLWithPath: $0) })
+        containers.removeEmpty()
         setUndone(entry.id, true)
-        registerRedo(entry, done, undoManager)
+        registerRedo(entry, done, undoManager, containers: containers)
     }
 
     /// ⌘Z right after a History undo redoes the whole operation in one step (recreating any folders it had made)
     /// and marks the entry live again once that has worked.
-    private func registerRedo(_ entry: Entry, _ done: [FileOps.Move], _ undoManager: UndoManager?) {
+    private func registerRedo(_ entry: Entry, _ done: [FileOps.Move], _ undoManager: UndoManager?, containers: CreatedFolders) {
         FileOps.registerMoveUndo(done, entry.name, undoManager, entry: entry.id, marksUndone: false,
-                                 recreating: entry.containers.map { URL(fileURLWithPath: $0) }, history: self)
+                                 containers: .make(containers), history: self)
     }
 
     func clear() {

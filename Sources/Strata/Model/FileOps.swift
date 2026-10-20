@@ -234,16 +234,42 @@ enum FileOps {
         return moved
     }
 
-    /// Removes each folder only if it's empty (a Finder `.DS_Store` aside), innermost first. `rmdir` refuses a folder
-    /// that isn't empty, so nothing put there in the meantime is ever deleted.
-    nonisolated static func removeEmptyFolders(_ folders: [URL]) {
+    /// Removes owned, empty folders innermost first. Read and remove Finder's records relative to the opened folder,
+    /// never through a link or a reused path. Failed reads leave the folder alone; removal is always nonrecursive.
+    nonisolated static func removeEmptyFolders(_ folders: [URL], identities: [String: FileIdentity]) {
         for folder in folders.sorted(by: { $0.path.count > $1.path.count }) {
-            let store = folder.appending(path: ".DS_Store").path
-            // Only once the folder holds nothing else: the records file alone doesn't keep it.
-            if let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path), names == [".DS_Store"] {
-                unlink(store)
+            guard let expected = identities[folder.path] else { continue }
+            let parent = open(folder.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+            guard parent >= 0 else { continue }
+            defer { close(parent) }
+            let fd = openat(parent, folder.lastPathComponent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard fd >= 0 else { continue }
+            defer { close(fd) }
+            var info = stat()
+            guard fstat(fd, &info) == 0, FileIdentity.from(info) == expected else { continue }
+            let copy = dup(fd)
+            guard copy >= 0 else { continue }
+            guard let listing = fdopendir(copy) else { close(copy); continue }
+            defer { closedir(listing) }
+            var records = false, empty = true
+            while true {
+                errno = 0
+                guard let entry = readdir(listing) else {
+                    if errno != 0 { empty = false }
+                    break
+                }
+                let name = withUnsafePointer(to: &entry.pointee.d_name) {
+                    $0.withMemoryRebound(to: CChar.self, capacity: Int(entry.pointee.d_namlen) + 1) { String(cString: $0) }
+                }
+                if name == ".DS_Store" { records = true }
+                else if name != "." && name != ".." { empty = false; break }
             }
-            rmdir(folder.path)
+            guard empty, fstatat(parent, folder.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) == 0,
+                  FileIdentity.from(info) == expected else { continue }
+            if records { unlinkat(fd, ".DS_Store", 0) }
+            guard fstatat(parent, folder.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) == 0,
+                  FileIdentity.from(info) == expected else { continue }
+            unlinkat(parent, folder.lastPathComponent, AT_REMOVEDIR)
         }
     }
 
@@ -394,10 +420,10 @@ enum FileOps {
     /// away, inside the undo handler, so it lands on the redo stack (registering it later from a task would put it
     /// back on the undo stack); the moves run after the steps before (`undoWork`) and take only what's still where
     /// they left it (`landed`, recorded as each lands). History entry `entry` is marked `marksUndone` only once the
-    /// moves have worked (the inverse flips it back); `folders` are recreated first if they've gone (the folders an AI
-    /// plan made, removed by undoing it).
+    /// moves have worked (the inverse flips it back). Containers made for the operation are recreated before Redo
+    /// and removed after Undo only while their recorded identities still match and they are empty.
     static func registerMoveUndo(_ moves: [Move], _ actionName: String, _ undo: UndoManager?, entry: UUID? = nil,
-                                 marksUndone: Bool = true, recreating folders: [URL] = [], landed: LandedFiles? = nil,
+                                 marksUndone: Bool = true, containers: CreatedFolders.Change = .none, landed: LandedFiles? = nil,
                                  history: OperationLog = .shared) {
         guard !moves.isEmpty else { return }
         let landed = landed ?? LandedFiles(moves.map(\.to))
@@ -408,14 +434,14 @@ enum FileOps {
                 guard !back.isEmpty else { return }
                 for pair in back { returned.expect(pair.from, at: pair.to) }
                 do {
-                    for folder in folders where !FileManager.default.fileExists(atPath: folder.path) {
-                        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                    }
                     guard !back.contains(where: { ReadOnlyCopies.contains($0.from) || ReadOnlyCopies.contains($0.to) }) else {
                         throw insideArchiveError
                     }
+                    try containers.prepare()
+                    if let entry { history.updateContainerIdentities(entry, containers.historyIdentities) }
                     let (done, error) = await moveAll(back)
                     done.forEach { returned.arrived($0.to) }
+                    containers.finish()
                     if let error { throw error }
                     if let entry { history.setUndone(entry, marksUndone) }
                 } catch {
@@ -423,7 +449,7 @@ enum FileOps {
                 }
             }
             registerMoveUndo(moves.reversed().map { (from: $0.to, to: $0.from) }, actionName, undo, entry: entry,
-                             marksUndone: !marksUndone, landed: returned, history: history)
+                             marksUndone: !marksUndone, containers: containers.inverse, landed: returned, history: history)
         }
     }
 

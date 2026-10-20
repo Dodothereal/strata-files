@@ -142,8 +142,8 @@ struct TrashUndoTests {
     @Test func onlyEmptyFoldersGoWhenTheirItemsDo() throws {
         let tree = try TestTree("empty/", "records/", "records/.DS_Store", "mine/", "mine/.DS_Store", "mine/keep.txt",
                                 "deep/", "deep/inner/", "door -> mine")
-        FileOps.removeEmptyFolders([tree.url("empty"), tree.url("records"), tree.url("mine"), tree.url("deep"),
-                                    tree.url("deep/inner"), tree.url("door")])
+        CreatedFolders([tree.url("empty"), tree.url("records"), tree.url("mine"), tree.url("deep"),
+                        tree.url("deep/inner"), tree.url("door")]).removeEmpty()
         // Empty (Finder's records aside): gone, innermost first. Anything else in one, or a link: stays as it was.
         #expect(tree.snapshot() == ["door -> mine", "mine/", "mine/.DS_Store", "mine/keep.txt"])
     }

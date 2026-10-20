@@ -64,7 +64,8 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 | Sync (copies and extras to the Trash) | `FolderCompare.defaultAction`, `syncPlan` | `FolderSyncTests/*` |
 | Compress | `Archiver.compress`, `place` | `MetadataEditTests/compressingAddsOneArchiveAndNeverReplacesOne`, `aLinkIsArchivedAsALink` |
 | Extract and browse an archive | `Archiver.extract`, `extractContents` | `ArchiveSafetyTests/*`, including `browsingAnArchiveNeverReplacesAnExistingFolder` for the copy used to browse |
-| Ask Strata plans (rename, move, trash, new folders), their undo and redo | `PlanValidator`, `PlanExecutor`, `PlanTransaction`; created folders use `LandedFiles` and `removeEmptyFolders` | `PlanSafetyTests/*`, including `undoKeepsAReplacementAtACreatedFolderPath` |
+| Ask Strata plans (rename, move, trash, new folders), their undo and redo | `PlanValidator`, `PlanExecutor`, `PlanTransaction`; created folders use `CreatedFolders` and `removeEmptyFolders` | `PlanSafetyTests/*`, including `undoKeepsAReplacementAtACreatedFolderPath` |
+| Cleanup and recreation of folders made for Put Back, queued transfers and History | `CreatedFolders`, `TransferUndo`, `OperationLog.undo`, `FileOps.removeEmptyFolders` | `CreatedFolderOwnershipTests/*` covers captured ownership, replacements before and after transfer completion, symlink targets, failed reads, legacy History, repeated Undo/Redo and cross-disk completion |
 | Project cleanup | `ProjectDetector.detectSync`, `isRealDirectory` | `ProjectCleanupTests/*` |
 | Git for status badges (a browsed repository's own commands never run, and a disabled driver is no longer required) | `GitRunner.runBlocking`, `hardening`, `repositoryFilterOverrides` | `GitSafetyTests/*` |
 
@@ -188,6 +189,7 @@ belong to.
 | `Index/IndexStore :: remove`, `unlink` (an in-memory tree, not files) | `PathQueryTests/*` |
 | `Model/ArchiveCache :: finish`, `touch` | `CacheRemovalTests/aNewCopyReplacesOnlyOlderCopiesOfTheSameArchive`, `pruningTakesOnlyStaleCopies` |
 | `Model/CloudStatus :: removeDownload` | `DeleteScopeTests/removeDownloadAsksToFreeExactlyTheItemsChosen`, `removeDownloadFreesOnlyWhatsAlsoInTheCloud` |
+| `Model/CreatedFolders :: makeMissing` | `CreatedFolderOwnershipTests/recreationRecordsOnlyFoldersItMakesAndKeepsTryingWhenRequested`, `redoUpdatesOwnershipForLiveAndSavedHistory`, `crossDiskUndoFinishesBeforeRemovingItsCreatedFolders` |
 | `Model/FileInfoEditing :: setComment`, `setLocked`, `setAccess` | `MetadataEditTests/aCommentChangesOnlyTheComment`, `lockingTouchesOnlyThatItem`, `permissionsChangeOnlyThatAccessOnThatItem` |
 | `Model/FileOps :: rename`, `moveAll`, `moveItem`, `newFolder`, `newFile`, `trash`, `trashItems`, `removeEmptyFolders`, `registerMoveUndo` | `InlineRenameTests/*`, `RenameTests/*`, `NewFileTests/*`, `TrashUndoTests/*`, `AcrossDisksTests/*` |
 | `Model/Places :: eject` (hands the disk to macOS) | not a file change; see above |

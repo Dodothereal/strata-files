@@ -24,7 +24,7 @@ extension BrowserViewController {
         Task { [weak self, services] in
             let locations = await Trash.originalLocations(of: items)
             var moves: [TransferMove] = []
-            var made: [URL] = []
+            let made = CreatedFolders()
             var failures: [(url: URL, error: Error)] = []
             for item in items {
                 guard let original = locations[item] else { continue }
@@ -33,7 +33,7 @@ extension BrowserViewController {
                     let missing = Self.missingFolders(down: folder)
                     do {
                         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                        made += missing
+                        made.record(missing)
                     } catch {
                         failures.append((item, error))
                         continue
@@ -43,9 +43,9 @@ extension BrowserViewController {
             }
             if !moves.isEmpty {
                 let job = services.transfers.enqueue(moves: moves, mode: .move, undo: undo, conflicts: .sheet(for: window),
-                                                       actionName: "Put Back", containers: made)
+                                                       actionName: "Put Back", containerOwnership: made)
                 // Stopped or skipped at the conflict sheet: folders made for nothing go again.
-                job.onFinish = { _ in FileOps.removeEmptyFolders(made) }
+                job.onFinish = { _ in made.removeEmpty() }
             }
             let unknown = items.filter { locations[$0] == nil }
             if !unknown.isEmpty { self?.explainUnknownOrigin(unknown) }

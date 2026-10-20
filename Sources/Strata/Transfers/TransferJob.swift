@@ -50,7 +50,7 @@ final class TransferJob {
     /// What History and the Edit menu call the job, when not "Copy" or "Move" ("Put Back").
     var actionName: String?
     /// Folders made for the job's items beforehand: undo removes them once they're empty again.
-    var containers: [URL] = []
+    var containers = CreatedFolders()
     /// Items moved so far, with where they actually landed (a clash may have renamed them).
     private(set) var completedMoves: [TransferMove] = []
     private weak var queue: TransferQueue?

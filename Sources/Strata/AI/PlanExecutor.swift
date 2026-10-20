@@ -56,6 +56,7 @@ final class PlanTransaction {
     /// one put in an item's place since. Nil before the first undo: the plan first runs on the items it was checked
     /// against.
     private var applied = LandedFiles()
+    private var createdFolders = CreatedFolders()
     private var restored: LandedFiles?
     private var queue: Task<Void, Never>?
 
@@ -82,7 +83,7 @@ final class PlanTransaction {
 
     func record(_ name: String) -> UUID? {
         // In the order `perform` did them (Trash first), so undoing from History reverses them correctly.
-        OperationLog.shared.recordPlan(name, moved: (trashed + done).map { (from: $0.from, to: $0.to) }, containers: created)
+        OperationLog.shared.recordPlan(name, moved: (trashed + done).map { (from: $0.from, to: $0.to) }, containers: created, containerIdentities: createdFolders.historyIdentities)
     }
 
     func perform() async -> PlanExecutor.Outcome {
@@ -91,6 +92,7 @@ final class PlanTransaction {
         done = []
         trashed = []
         applied = LandedFiles()
+        createdFolders = CreatedFolders()
         // Redone: only what undo put back, still there.
         let moves = restored.map { restored in self.moves.filter { restored.holds($0.from) } } ?? self.moves
         let trashItems = restored.map { restored in self.trashItems.filter(restored.holds) } ?? self.trashItems
@@ -100,7 +102,7 @@ final class PlanTransaction {
             do {
                 try fm.createDirectory(at: folder, withIntermediateDirectories: false)
                 created.append(folder)
-                applied.record([folder])
+                createdFolders.record([folder])
             } catch {
                 outcome.failures.append(String(localized: "Couldn’t create “\(folder.lastPathComponent)”: \(error.localizedDescription)"))
             }
@@ -172,7 +174,7 @@ final class PlanTransaction {
         await moveBack(done.filter { applied.holds($0.to) }.reversed().map { (from: $0.to, to: $0.from) })
         await moveBack(trashed.reversed().filter { applied.holds($0.to) }.map { (from: $0.to, to: $0.from) })
         // A name alone does not belong to the plan: the user may have replaced its folder while it was applied.
-        FileOps.removeEmptyFolders(created.filter(applied.holds))
+        createdFolders.removeEmpty()
     }
 
     /// Case-only renames ("photo.jpg" → "Photo.jpg") go through a temporary name on case-insensitive volumes.
