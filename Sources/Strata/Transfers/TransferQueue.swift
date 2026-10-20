@@ -19,17 +19,29 @@ final class TransferQueue {
     private var ticker: Task<Void, Never>?
     private var notifyScheduled = false
 
-    init() {}
+    let preferences: Prefs
+    let history: OperationLog
+
+    init(preferences: Prefs = .shared, history: OperationLog = .shared) {
+        self.preferences = preferences
+        self.history = history
+    }
+
+    var defaultOptions: TransferEngine.Options {
+        var options = TransferEngine.Options()
+        options.verify = preferences.verifyCopies
+        return options
+    }
 
     // MARK: - Public
 
     /// Copies or moves `sources` into the folder `destination`. Name clashes go to `conflicts`; with `verify`, every
     /// copied file is read back and compared (SHA-256). When the job finishes, its undo is registered on `undo`.
     @discardableResult
-    func enqueue(_ sources: [URL], to destination: URL, mode: TransferMode, verify: Bool = Prefs.shared.verifyCopies,
+    func enqueue(_ sources: [URL], to destination: URL, mode: TransferMode, verify: Bool? = nil,
                  undo: UndoManager?, conflicts: ConflictResolver) -> TransferJob {
         var options = TransferEngine.Options()
-        options.verify = verify
+        options.verify = verify ?? preferences.verifyCopies
         return enqueue(sources, to: destination, mode: mode, options: options, undo: undo, conflicts: conflicts)
     }
 
@@ -44,13 +56,13 @@ final class TransferQueue {
     /// Item-by-item destinations, for undoing moves whose items came from different folders.
     @discardableResult
     func enqueue(moves: [TransferMove], destination: URL? = nil, mode: TransferMode,
-                 options: TransferEngine.Options = .userDefault, undo: UndoManager?, conflicts: ConflictResolver,
+                 options: TransferEngine.Options? = nil, undo: UndoManager?, conflicts: ConflictResolver,
                  logHistory: Bool = true, actionName: String? = nil, containers: [URL] = []) -> TransferJob {
         // An archive opened as a folder is a temporary copy: nothing goes into it, and what leaves it is copied.
         let moves = moves.filter { !ReadOnlyCopies.contains($0.to) }
         let mode = mode == .move && moves.contains(where: { ReadOnlyCopies.contains($0.from) }) ? .copy : mode
         let folder = destination ?? moves.first?.to.deletingLastPathComponent() ?? URL(fileURLWithPath: "/")
-        let job = TransferJob(mode: mode, moves: moves, destination: folder, options: options, undo: undo,
+        let job = TransferJob(mode: mode, moves: moves, destination: folder, options: options ?? defaultOptions, undo: undo,
                               conflicts: conflicts, queue: self)
         job.logsHistory = logHistory
         job.actionName = actionName
@@ -106,10 +118,10 @@ final class TransferQueue {
     private func startNextArchiveJob() {
         let archiveJobs = jobs.compactMap { $0 as? ArchiveJob }
         // Opening an archive to browse is something you're waiting on: it doesn't queue behind a long Extract.
-        for job in archiveJobs where job.isBrowse && job.state == .queued { job.start() }
+        for job in archiveJobs where job.isBrowse && job.state == .queued { job.start(on: self) }
         guard !archiveJobs.contains(where: { !$0.isBrowse && ($0.state == .running || $0.state == .scanning) }),
               let next = archiveJobs.first(where: { !$0.isBrowse && $0.state == .queued }) else { return }
-        next.start()
+        next.start(on: self)
         startTicking()
     }
 
@@ -268,13 +280,14 @@ enum TransferUndo {
     /// `containers`: folders made for the moved items; undo removes them once they're empty again, redo makes them.
     /// `landed`: what the items are where they went, recorded as each landed (else read now).
     static func register(created: [URL], moved: [TransferMove], replaced: [TransferMove], actionName: String,
-                         undo: UndoManager?, logHistory: Bool = true, containers: [URL] = [], landed: FileOps.Landed? = nil) {
+                         undo: UndoManager?, logHistory: Bool = true, containers: [URL] = [], landed: FileOps.Landed? = nil,
+                         queue: TransferQueue) {
         let entry = logHistory
-            ? OperationLog.shared.recordTransfer(actionName, created: created, moved: moved.map { (from: $0.from, to: $0.to) },
+            ? queue.history.recordTransfer(actionName, created: created, moved: moved.map { (from: $0.from, to: $0.to) },
                                                  replaced: replaced.map { (from: $0.from, to: $0.to) }, containers: containers)
             : nil
         guard let undo, !(created.isEmpty && moved.isEmpty && replaced.isEmpty) else { return }
-        if let entry { FileOps.registerLogMark(entry, undone: true, undo) }
+        if let entry { FileOps.registerLogMark(entry, undone: true, undo, history: queue.history) }
         // Undo touches only these very items: never one put in an item's place since.
         let landed = landed ?? FileOps.Landed(created + moved.map(\.to) + replaced.map(\.to))
         undo.registerUndo(withTarget: undo) { undo in
@@ -284,7 +297,8 @@ enum TransferUndo {
                 // Moved items go back first, then whatever they replaced comes out of the Trash into the freed spots.
                 let back = moved.filter { landed.holds($0.to) }.reversed().map(\.reversed)
                     + replaced.filter { landed.holds($0.to) }.reversed().map(\.reversed)
-                perform(back, actionName: actionName, undo: undo, containers: containers.isEmpty ? .none : .remove(containers))
+                perform(back, actionName: actionName, undo: undo, containers: containers.isEmpty ? .none : .remove(containers),
+                        queue: queue)
                 undo.setActionName(OperationLog.displayName(actionName))
             }
         }
@@ -293,12 +307,13 @@ enum TransferUndo {
 
     /// Moves items and registers the inverse right away, so redo works even when the moves themselves take a while.
     /// Same-disk moves are instant renames done here; anything crossing disks becomes a queued job with progress.
-    static func perform(_ moves: [TransferMove], actionName: String, undo: UndoManager?, containers: Containers = .none) {
+    static func perform(_ moves: [TransferMove], actionName: String, undo: UndoManager?, containers: Containers = .none,
+                        queue: TransferQueue) {
         guard !moves.isEmpty else { return }
         let step = Step()
-        step.settle(start(moves, containers: containers))
+        step.settle(start(moves, containers: containers, queue: queue))
         guard let undo else { return }
-        registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse)
+        registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse, queue: queue)
     }
 
     /// One step of undo or redo and what it moved: known at once for renames on one disk, once its job is done across
@@ -334,21 +349,22 @@ enum TransferUndo {
 
     /// Registers undoing `step` (moving back what it moved, once that's known), with `containers` for those moves. The
     /// undo's own inverse is registered while it runs, so it lands on the right stack.
-    private static func registerInverse(of step: Step, actionName: String, undo: UndoManager, containers: Containers) {
+    private static func registerInverse(of step: Step, actionName: String, undo: UndoManager, containers: Containers,
+                                        queue: TransferQueue) {
         undo.registerUndo(withTarget: undo) { undo in
             MainActor.assumeIsolated {
                 let next = Step()
-                registerInverse(of: next, actionName: actionName, undo: undo, containers: containers.inverse)
+                registerInverse(of: next, actionName: actionName, undo: undo, containers: containers.inverse, queue: queue)
                 FileOps.afterUndoWork {
                     let back = await step.landed().reversed().map(\.reversed)
-                    next.settle(start(back, containers: containers))
+                    next.settle(start(back, containers: containers, queue: queue))
                 }
             }
         }
         undo.setActionName(OperationLog.displayName(actionName))
     }
 
-    fileprivate static func start(_ moves: [TransferMove], containers: Containers) -> Step.Outcome {
+    fileprivate static func start(_ moves: [TransferMove], containers: Containers, queue: TransferQueue) -> Step.Outcome {
         guard !moves.isEmpty else { return .nothing }
         // Made first, so the destination's disk can be told (a missing folder has none).
         if case .make(let folders) = containers {
@@ -361,7 +377,7 @@ enum TransferUndo {
         }
         guard sameDisk else {
             // Part of an undo or redo: History already has the operation.
-            let job = TransferQueue.shared.enqueue(moves: moves, mode: .move, undo: nil, conflicts: .keepBoth,
+            let job = queue.enqueue(moves: moves, mode: .move, undo: nil, conflicts: .keepBoth,
                                                    logHistory: false)
             if case .remove(let folders) = containers { job.onFinish = { _ in FileOps.removeEmptyFolders(folders) } }
             return .moving(job)
@@ -376,14 +392,5 @@ enum TransferUndo {
             FolderSizer.invalidate(folder)
         }
         return .renamed(done, FileOps.Landed(done.map(\.to)))
-    }
-}
-
-extension TransferEngine.Options {
-    /// Options for transfers the user starts, following Settings (Verify copies).
-    static var userDefault: TransferEngine.Options {
-        var options = TransferEngine.Options()
-        options.verify = Prefs.shared.verifyCopies
-        return options
     }
 }

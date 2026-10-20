@@ -127,8 +127,8 @@
   },
   {
     "file": "Strata/Transfers/TransferJob.swift",
-    "find": "                              logHistory: logsHistory, containers: containers, landed: landed)",
-    "replace": "                              logHistory: logsHistory, containers: containers)",
+    "find": "                              logHistory: logsHistory, containers: containers, landed: landed, queue: queue)",
+    "replace": "                              logHistory: logsHistory, containers: containers, queue: queue)",
     "rule": "A job records its items only when done, not as they land",
     "tests": "TransferTests/undoingACopyLeavesAFileSwappedInWhileTheJobRan"
   },
@@ -934,5 +934,68 @@
     "replace": "        self.notifications = notifications\n        defaults.register(defaults: [\"foldersFirst\": true, \"gridIconSize\": 72.0])",
     "rule": "Preference isolation registers defaults into every suite",
     "tests": "PreferencesTests/creatingPreferences"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "options.verify = verify ?? preferences.verifyCopies",
+    "replace": "options.verify = verify ?? !preferences.verifyCopies",
+    "rule": "Transfer ownership ignores its verification preference",
+    "tests": "TransferContextTests/queueUsesItsOwnCurrentPreferencesAndExplicitOverrides"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "options: options ?? defaultOptions, undo: undo",
+    "replace": "options: options ?? .init(verify: !preferences.verifyCopies), undo: undo",
+    "rule": "Transfer ownership item destinations ignore the queue verification preference",
+    "tests": "TransferContextTests/queueUsesItsOwnCurrentPreferencesAndExplicitOverrides"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "queue.history.recordTransfer(actionName",
+    "replace": "OperationLog.shared.recordTransfer(actionName",
+    "rule": "Transfer ownership records in the global History",
+    "tests": "TransferContextTests/transferHistoryAndRepeatedUndoStayWithTheirOwner"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "history: queue.history)",
+    "replace": "history: .shared)",
+    "rule": "Transfer ownership marks the global History on Undo",
+    "tests": "TransferContextTests/transferHistoryAndRepeatedUndoStayWithTheirOwner"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "let job = queue.enqueue(moves: moves",
+    "replace": "let job = TransferQueue.shared.enqueue(moves: moves",
+    "rule": "Transfer ownership cross-disk Undo uses the global queue",
+    "tests": "TransferContextTests/crossDiskUndoAndRedoUseTheOriginalQueue"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse, queue: queue)",
+    "replace": "registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse, queue: .shared)",
+    "rule": "Transfer ownership repeated Redo loses its queue",
+    "tests": "TransferContextTests/crossDiskUndoAndRedoUseTheOriginalQueue"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveJob.swift",
+    "find": "undo: undoManager, queue: queue)",
+    "replace": "undo: undoManager, queue: .shared)",
+    "rule": "Transfer ownership archive records in the global History",
+    "tests": "TransferContextTests/queuedArchivesRecordInTheirOwnersHistory"
+  },
+  {
+    "file": "Strata/Transfers/TransferJob.swift",
+    "find": "private weak var queue: TransferQueue?",
+    "replace": "private var queue: TransferQueue?",
+    "rule": "Transfer ownership completed jobs retain their queue forever",
+    "tests": "TransferContextTests/failedJobsRetryWithTheirHistoryAndCompletedJobsReleaseTheirQueue"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "registerLogMark(id, undone: !undone, undo, history: history)",
+    "replace": "registerLogMark(id, undone: !undone, undo)",
+    "rule": "Transfer ownership Redo marks the global History",
+    "tests": "TransferContextTests/transferHistoryAndRepeatedUndoStayWithTheirOwner"
   }
 ]

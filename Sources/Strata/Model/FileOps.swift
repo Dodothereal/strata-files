@@ -406,11 +406,11 @@ enum FileOps {
 
     /// Registers, in the current undo group, flipping History entry `id` to `undone` (and back on redo), so the
     /// History window agrees with ⌘Z and ⇧⌘Z.
-    static func registerLogMark(_ id: UUID, undone: Bool, _ undo: UndoManager) {
+    static func registerLogMark(_ id: UUID, undone: Bool, _ undo: UndoManager, history: OperationLog = .shared) {
         undo.registerUndo(withTarget: undo) { undo in
             MainActor.assumeIsolated {
-                OperationLog.shared.setUndone(id, undone)
-                registerLogMark(id, undone: !undone, undo)
+                history.setUndone(id, undone)
+                registerLogMark(id, undone: !undone, undo, history: history)
             }
         }
     }

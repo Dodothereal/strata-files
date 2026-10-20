@@ -61,11 +61,11 @@ final class ArchiveJob {
     /// Waiting for another archive job to finish (they run one at a time).
     var isWaiting: Bool { state == .queued }
 
-    func start() {
+    func start(on queue: TransferQueue) {
         guard state == .queued else { return }
         state = .running
         onChange?(self)
-        task = Task { await run() }
+        task = Task { await run(on: queue) }
     }
 
     func cancel() {
@@ -95,14 +95,14 @@ final class ArchiveJob {
         entriesDone = control.entriesDone
     }
 
-    private func run() async {
+    private func run(on queue: TransferQueue) async {
         do {
             let url: URL
             switch operation {
             case .compress(let items):
                 let control = control
                 url = try await Self.onWorkerThread { try Archiver.compress(items, control: control) }
-                register(url, actionName: "Compress")
+                register(url, actionName: "Compress", queue: queue)
             case .extract(let archive, let folder):
                 let kind = try Self.kind(archive)
                 let inspection = try await inspect(archive, kind: kind)
@@ -110,7 +110,7 @@ final class ArchiveJob {
                 url = try await Self.onWorkerThread {
                     try Archiver.extract(archive, kind: kind, inspection: inspection, into: folder, control: control)
                 }
-                register(url, actionName: "Extract")
+                register(url, actionName: "Extract", queue: queue)
             case .browse(let archive, let folder):
                 let kind = try Self.kind(archive)
                 let inspection = try await inspect(archive, kind: kind)
@@ -147,8 +147,8 @@ final class ArchiveJob {
     }
 
     /// History and ⌘Z for what the job made: undo moves it to the Trash.
-    private func register(_ url: URL, actionName: String) {
-        TransferUndo.register(created: [url], moved: [], replaced: [], actionName: actionName, undo: undoManager)
+    private func register(_ url: URL, actionName: String, queue: TransferQueue) {
+        TransferUndo.register(created: [url], moved: [], replaced: [], actionName: actionName, undo: undoManager, queue: queue)
         FolderSizer.invalidate(url.deletingLastPathComponent())
     }
 

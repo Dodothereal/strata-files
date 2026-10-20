@@ -101,7 +101,7 @@ final class TransferJob {
     var canPause: Bool { state == .running }
     var canResume: Bool { state == .paused }
     var canCancel: Bool { state.isActive }
-    var canRetry: Bool { (state == .finished || state == .failed) && (!failures.isEmpty || errorMessage != nil) }
+    var canRetry: Bool { queue != nil && (state == .finished || state == .failed) && (!failures.isEmpty || errorMessage != nil) }
 
     var totalWork: Double {
         Double(totalBytes) * (options.verify ? 2 : 1) + Double(totalFiles) * Self.fileWeight
@@ -171,7 +171,7 @@ final class TransferJob {
 
     /// Runs the failed parts again: whole items that failed, single files inside items, or removing originals.
     func retryFailed() {
-        guard canRetry else { return }
+        guard canRetry, let queue else { return }
         let previous = failures
         failures = []
         errorMessage = nil
@@ -179,16 +179,23 @@ final class TransferJob {
         state = .scanning
         isRunningPass = true
         changed()
-        Task { await runRetry(previous) }
+        Task {
+            await runRetry(previous)
+            withExtendedLifetime(queue) {}
+        }
     }
 
     // MARK: - Running
 
     func start() {
-        guard !started else { return }
+        guard !started, let queue else { return }
         started = true
         isRunningPass = true
-        Task { await run() }
+        // Keep the owner alive through completion, without a permanent queue → job → queue cycle.
+        Task {
+            await run()
+            withExtendedLifetime(queue) {}
+        }
     }
 
     /// Waits until the current pass (first run or a retry) is over: finished, failed or cancelled.
@@ -612,6 +619,7 @@ final class TransferJob {
     }
 
     private func registerUndo() {
+        guard let queue else { return }
         let created = journalCreated, moved = journalMoved, replaced = journalReplaced
         journalCreated = []
         journalMoved = []
@@ -620,7 +628,7 @@ final class TransferJob {
         let movedDestinations = Set(moved.map(\.to))
         TransferUndo.register(created: created.filter { !movedDestinations.contains($0) }, moved: moved,
                               replaced: replaced, actionName: actionName ?? (mode == .copy ? "Copy" : "Move"), undo: undoManager,
-                              logHistory: logsHistory, containers: containers, landed: landed)
+                              logHistory: logsHistory, containers: containers, landed: landed, queue: queue)
     }
 
     // MARK: - Progress
