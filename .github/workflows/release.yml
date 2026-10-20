@@ -86,6 +86,9 @@ jobs:
           fi
           python3 scripts/localize.py check --all --complete
 
+      - name: Run all app regressions before signing
+        run: swift test
+
       - name: Work out the version
         id: version
         env:

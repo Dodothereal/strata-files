@@ -42,36 +42,59 @@ unchecked external input.
 | Content-index persistence | Malformed keyword arrays or lengths crashed the test process during scoring. | Skip malformed documents before allocating rows. Validate array shapes, lengths, page marks and vector dimensions/finite values; use unaligned-safe packed reads. Valid neighboring documents remain searchable. |
 | Text and bundle metadata | A FIFO named like text was consumed by a preview; an empty FIFO could instead block. The bundle reader separately checked a path and then read it without a byte bound. | Open nonblocking, inspect the opened descriptor, accept regular files only, then read a bounded prefix. Bundle metadata shares this reader. Tests preserve FIFO bytes, regular files, links and bundle behavior. |
 | Process output | Reading a closed pipe through `availableData` raised an uncaught Objective-C exception and aborted the test process. | Use throwing reads. Git reports a failed run if output cannot be read, rather than accepting partial output as success. SSH diagnostic reads end safely on failure. Cover closed pipes, ordinary output/EOF and existing Git/remote integration. |
-| SQLite previews | A view allocated a 16 MiB value despite the existing query timeout; the test expected refusal and failed. This was a bounded reproduction, not an OOM test. | Set an 8 MiB SQLite value/row limit. Oversized rows use the existing preview error presentation. Ordinary tables/views still read without changing the database or creating sidecars. |
-| History decoding | Saved move/replacement arrays with 0, 1 or 3 elements were accepted, although undo indexes exactly two elements. | Reject malformed pairs while decoding. Preserve valid and older History formats. Add a mutation removing the check and verify the regression tests catch it. |
+| SQLite previews | A view allocated a 16 MiB value despite the existing query timeout; the test expected refusal and failed. This was a bounded reproduction, not an OOM test. | Set an 8 MiB SQLite value/row limit. Oversized values use the existing preview error presentation while retaining earlier rows. Test the exact boundary, stored and computed values, and ordinary tables/views without changing the database or creating sidecars. |
+| History decoding | Saved move/replacement arrays with 0, 1 or 3 elements were accepted, although undo indexes exactly two elements. | Reject malformed pairs while decoding; skip invalid independent records while preserving valid neighbors, their order and older formats. Never rewrite History while loading or salvage unauthenticated bytes. Test truncated JSON, malformed records and tampered ciphertext; removing the pair check is caught by the regression tests. |
 
 The persisted-data cases use intentionally malformed, correctly encrypted fixtures.
 They do not demonstrate bypasses of SecureStorage authentication or remote access to
 those stores. The checks protect readers from invalid structures produced by a bad writer
 or earlier build, in addition to the existing cryptographic integrity checks.
 
-SQLite's limit is a deliberate preview trade-off: a legitimate individual value or
-encoded row above 8 MiB is refused even when the overall database is otherwise valid.
-The database itself may be much larger. SQLite documents that its length limit applies
-to both individual values and encoded rows, and recommends lower limits for untrusted
-inputs: [SQLite implementation limits](https://www.sqlite.org/limits.html).
+SQLite's limit is a deliberate preview trade-off: a legitimate individual value above
+8 MiB is refused even when the overall database is otherwise valid. Rows read before the
+failure remain visible alongside the error. The database itself may be much larger.
+SQLite also applies this limit when encoding whole rows, but a stored row whose separate
+values each fit can still be read without constructing that combined encoding. Tests
+cover both cases: [SQLite implementation limits](https://www.sqlite.org/limits.html).
+
+A native SQLite fixture confirmed that `length(blob)` and `octet_length(text)` can read
+metadata for stored 16 MiB cells under the limit. That does not establish a safe generic
+placeholder implementation: views and computed columns can allocate before a size check,
+and rewriting their expressions can change evaluation behavior. This patch retains the
+explicit error rather than changing arbitrary queries. A more permissive stored-table
+preview would be separate work with its own type, schema and expression coverage.
+
+## Prevention
+
+The regressions are runtime tests in the ordinary Swift suite, so local development and
+pull-request CI exercise the real readers and helpers. No source-pattern linter was added.
+`AGENTS.md` now requires before/after reproductions, boundary fixtures, saved-data
+validation and preservation, allocation limits before expansion, throwing I/O and
+observable behavior assertions. It excludes fixed sleeps, memory/timing thresholds and
+source-text assertions as substitutes for behavioral regression tests.
+
+Release previously ran localization validation but not the Swift suite. It now runs all
+Swift tests before importing signing credentials on both tags and manual runs. CI also
+runs when that release workflow changes. This blocks release on a failing regression;
+it does not prove that untested inputs or platform behavior cannot fail.
 
 ## Validation
 
-The baseline passed 437 Swift tests in 51 suites. The final run passed 466 tests in
-62 suites, including 29 new regression tests and their parameterized edge cases.
+The baseline passed 437 Swift tests in 51 suites. The final run passed 471 tests in
+62 suites, including 34 new regression tests and their parameterized edge cases.
 Five before-fix reproductions terminated their test processes: archive totals, deep path
 search, unbounded grid layout, malformed content-index scoring and closed-pipe reads.
 
 Final checks:
 
-- Full Swift suite: 466 tests passed in 41.150 seconds.
-- Optimized app build: passed with all fixes, including the final History guard.
+- Full Swift suite: 471 tests passed in 42.417 seconds.
+- Optimized app build: passed with all fixes, including independent History-record decoding.
 - Python build/localization/resource tooling: 39 tests passed.
 - Localization extraction: 1,417 strings, no new or removed keys; completeness passed.
 - Destructive-action audit: all 117 discovered functions documented and covered by a mutation or a stated exemption.
 - Theme-color audit: passed, with the existing 61 reviewed exceptions.
-- New History mutation: caught; the source was restored and the complete suite passed afterward.
+- History pair-validation mutation: caught again with the independent-record loader; the original source was restored.
+- Workflow YAML: both modified workflows parsed successfully; hosted execution is pending a push.
 - Whitespace/error checks: `git diff --check` passed.
 
 Useful commands:

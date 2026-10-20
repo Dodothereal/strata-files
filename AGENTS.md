@@ -36,7 +36,8 @@ python3 scripts/audit-theme-colors.py    # no unreviewed surface colors or unthe
   merged. Run `python3 -m unittest discover -s Tests -p 'test_*.py'` for the checker and generated-resource regressions.
 - CI on every push: **CI** (build + `swift test`), **Translations** (complete catalogs and `en.json` matches the code).
   Tags run **Release**, which repeats extraction, completeness and localization regression tests before importing
-  signing credentials, signing or publishing. Do not bypass this gate or release with incomplete translations.
+  signing credentials, signing or publishing. The full Swift suite must also pass in Release before signing,
+  including on tags and manual runs. Do not bypass these gates or release with incomplete translations.
 - UI backgrounds and borders use `ThemeStyle`. The regular `swift test` suite and CI also run the color audit.
   `python3 scripts/audit-theme-colors.py --list` inventories direct colors. Only deliberate native defaults, semantic
   artwork and document colors belong in `Tests/theme-colors.json`, with an exact use count and a reviewed reason;
@@ -121,6 +122,32 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
   reach the whole Mac. Never exercise top-level or escaping deletes against it; use `RecordingBackend`.
 - View controllers can be tested without a window: `BrowserViewController`, `ColumnBrowserViewController` and
   `BrowserWindowController` (two panes) all load, select and run commands headless.
+
+## Preventing crashes and resource exhaustion
+
+- A crash fix needs a headless regression that calls the real affected reader, decoder, layout or process helper.
+  Prove it fails before the fix and passes afterward. Keep these tests in `Tests/StrataTests` so ordinary local
+  `swift test`, pull-request CI and the Release workflow all run them. Do not substitute regex checks, source-text
+  assertions, or tests of a duplicate implementation for runtime behavior.
+- Treat file contents, authenticated saved data, process output and macOS callback values as external input.
+  Validate array shapes, offsets, counts, parent/child links and cycles before indexing or walking them. Verify
+  CF type IDs before casts, and finite values and representable ranges before numeric conversion. Exercise empty,
+  truncated, malformed, minimum/maximum and just-over-limit inputs alongside ordinary valid inputs.
+- Authentication does not prove a saved structure is valid. Preserve valid neighboring records when records are
+  independent; reject an invalid linked structure as a whole through its existing recovery path. Never salvage
+  unauthenticated bytes or overwrite the saved file just because a read failed. Test older supported formats,
+  valid-record preservation and byte-for-byte preservation of the input file.
+- Apply byte, nesting, entry and output limits before allocation or expansion. A time budget cannot interrupt one
+  expensive library instruction. Test limits with bounded fixtures, including values on either side of the boundary;
+  never deliberately exhaust the machine's memory. For files that could be replaced while opening, inspect the
+  opened descriptor and reject nonregular input before reading, as `TextFile.readPrefix` does.
+- Use throwing Foundation I/O APIs where available. Swift `do`/`catch` does not catch Objective-C exceptions from
+  older APIs. Cover closed handles and ordinary output/EOF. A failed read must not report partial output as success;
+  a partial preview must expose its error while keeping rows already read.
+- Assert observable results and unchanged fixture files. Avoid fixed sleeps, wall-clock performance thresholds,
+  exact RSS expectations, nondeterministic random inputs and tests that depend on installed apps or live services.
+  Use explicit completion signals, deterministic boundary fixtures and controlled failures. Measure performance
+  separately under matched conditions; passing tests establish only the cases exercised.
 
 ## Checking the real app
 
