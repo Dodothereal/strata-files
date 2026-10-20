@@ -1148,7 +1148,7 @@
   },
   {
     "file": "Strata/Views/ColumnBrowserViewController.swift",
-    "find": "        cancelPendingRename()\n        guard let index = panes.firstIndex(where: { $0 === pane }) else { return }",
+    "find": "        if !afterReload { cancelPendingRename() }\n        guard let index = panes.firstIndex(where: { $0 === pane }) else { return }",
     "replace": "        guard let index = panes.firstIndex(where: { $0 === pane }) else { return }",
     "rule": "Applied browser actions changed column selection leaves an old rename pending",
     "tests": "DirectoryReadSessionTests/deferredColumnRenamesStopAfterNavigationSelectionModeChangesAndErrors"
@@ -1208,5 +1208,19 @@
     "replace": "self.init([ServerCopyProvider(files: servers)])",
     "rule": "Copy provider routing the live facade forgets container copies",
     "tests": "CopyProvidersTests/theLiveFacadeRecognizesBothCopyFamiliesWithoutClaimingTheirNeighbors"
+  },
+  {
+    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "find": "controller?.selectionChanged(in: self, afterReload: true)",
+    "replace": "controller?.selectionChanged(in: self)",
+    "rule": "Applied browser actions a refreshed selection cancels the newly created items rename",
+    "tests": "DirectoryReadSessionTests/aColumnReloadCanDropTheOldSelectionWithoutCancellingTheNewItemsRename"
+  },
+  {
+    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "find": "        pendingReveal = []\n        if focusWhenLoaded === pane { focusWhenLoaded = nil }\n        pendingRename = url",
+    "replace": "        pendingRename = url",
+    "rule": "Applied browser actions earlier reveal and keyboard requests override the new rename",
+    "tests": "DirectoryReadSessionTests/aPendingColumnRevealDoesNotOverrideARenameRequestedWhileItLoads"
   }
 ]

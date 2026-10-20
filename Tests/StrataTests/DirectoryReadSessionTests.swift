@@ -394,6 +394,62 @@ struct DirectoryReadSessionTests {
         #expect(tree.snapshot() == ["else.txt", "folder/", "folder/keep.txt", "folder/new.txt", "folder/old.txt"])
     }
 
+    @Test func aColumnReloadCanDropTheOldSelectionWithoutCancellingTheNewItemsRename() async throws {
+        for name in ["new.txt", "new/"] {
+            let tree = try TestTree("folder/old.txt", "folder/" + name, "folder/keep.txt", "else.txt")
+            let original = tree.snapshot()
+            let reads = Reads()
+            defer { reads.stop() }
+            let (browser, pane) = try await deeperColumn(tree, reads: reads)
+            let new = try #require(FileEntry(url: tree.url("folder/" + name)))
+            browser.renameWhenShown(new.url, in: tree.url("folder"))
+            let work = try #require(pane.directoryReads.task)
+            // The old selected item disappears from the listing at the same time the created item becomes visible.
+            try await reads.request(2).finish(.success([new]))
+            await work.value
+            let field = try #require(views(browser.view, of: InlineRenameField.self).first)
+            #expect(field.stringValue == new.name && browser.selectedURLs == [new.url])
+            #expect(tree.snapshot() == original)
+        }
+    }
+
+    @Test func aPendingColumnRevealDoesNotOverrideARenameRequestedWhileItLoads() async throws {
+        for keyboard in [false, true] {
+            let tree = try TestTree("folder/old.txt", "folder/new.txt", "else.txt")
+            let reads = Reads()
+            defer { reads.stop() }
+            let browser = browser(reads)
+            browser.setMode(.columns, remember: false)
+            browser.load(tree.root)
+            let initial = try #require(browser.directoryReads.task)
+            let root = try ["folder", "else.txt"].map { try #require(FileEntry(url: tree.url($0))) }
+            try await reads.request(0).finish(.success(root))
+            await initial.value
+            browser.select([tree.url(keyboard ? "folder" : "folder/old.txt")])
+            if keyboard {
+                let rootPane = try #require(views(browser.columns.view, of: ColumnPane.self).first)
+                let right = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                                         windowNumber: 0, context: nil, characters: "\u{F703}",
+                                                         charactersIgnoringModifiers: "\u{F703}", isARepeat: false, keyCode: 124))
+                rootPane.tableView.keyDown(with: right)
+            }
+            let previous = try await reads.request(1)
+            let pane = try #require(views(browser.columns.view, of: ColumnPane.self).last)
+            let oldRead = try #require(pane.directoryReads.task)
+            browser.renameWhenShown(tree.url("folder/new.txt"), in: tree.url("folder"))
+            let currentRead = try #require(pane.directoryReads.task)
+            let entries = try ["old.txt", "new.txt"].map { try #require(FileEntry(url: tree.url("folder/" + $0))) }
+            try await reads.request(2).finish(.success(entries))
+            await currentRead.value
+            previous.finish(.success([entries[0]]))
+            await oldRead.value
+            browser.columns.view.layoutSubtreeIfNeeded()
+            let field = try #require(views(browser.view, of: InlineRenameField.self).first)
+            #expect(field.stringValue == "new.txt" && browser.selectedURLs == [entries[1].url])
+            #expect(tree.snapshot() == ["else.txt", "folder/", "folder/new.txt", "folder/old.txt"])
+        }
+    }
+
     @Test func deferredColumnRenamesStopAfterNavigationSelectionModeChangesAndErrors() async throws {
         let tree = try TestTree("folder/old.txt", "folder/new.txt", "folder/keep.txt", "else.txt")
         let entries = try ["old.txt", "new.txt", "keep.txt"].map { try #require(FileEntry(url: tree.url("folder/" + $0))) }

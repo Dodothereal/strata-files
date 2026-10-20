@@ -218,8 +218,9 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     // MARK: - Pane callbacks
 
-    fileprivate func selectionChanged(in pane: ColumnPane) {
-        cancelPendingRename()
+    fileprivate func selectionChanged(in pane: ColumnPane, afterReload: Bool = false) {
+        // A refreshed listing may drop the old selection just as the new item becomes available for rename.
+        if !afterReload { cancelPendingRename() }
         guard let index = panes.firstIndex(where: { $0 === pane }) else { return }
         activeIndex = index
         let selected = pane.selectedEntries
@@ -391,6 +392,8 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     func renameWhenShown(_ url: URL, in folder: URL) {
         guard let pane = panes.first(where: { $0.folder.standardizedFileURL.fileViewKey == folder.standardizedFileURL.fileViewKey }) else { return }
+        pendingReveal = []
+        if focusWhenLoaded === pane { focusWhenLoaded = nil }
         pendingRename = url
         renameWhenLoaded = pane
         pane.reload()
@@ -661,7 +664,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         let rows = IndexSet(before.compactMap { rowByKey[$0] })
         tableView.selectRowIndexes(rows, byExtendingSelection: false)
         suppressSelection = false
-        if rows.count != before.count { controller?.selectionChanged(in: self) }
+        if rows.count != before.count { controller?.selectionChanged(in: self, afterReload: true) }
         controller?.paneLoaded(self, firstLoad: !wasLoaded)
     }
 

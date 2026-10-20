@@ -212,7 +212,8 @@ sheet's text before clicking a destructive button. Both builds share preferences
   services for tests; never let a fixture fall back to a live connection.
 - Post-operation selection and rename wait for entries to be applied, not an elapsed delay. Keep the original pane
   and navigation revision; leaving and returning is still a different navigation. Cancel pending renames when their
-  column is removed, selection or mode changes, or its read fails. Preserve each view's selection policy, including
+  column is removed, explicit selection or mode changes, or its read fails. A reload dropping the old selection must
+  still allow the newly created item's pending rename. Preserve each view's selection policy, including
   Gallery's preview item. A listing deferred during native inline editing must still match the current read generation.
 - Shared commands belong in `StrataCommand`: preserve their action/tag identities and existing shortcut overrides.
   Menus keep native responder routing; the palette uses the same validator and revalidates before dispatch. Never
