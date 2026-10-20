@@ -544,6 +544,7 @@ actor SemanticIndex {
         guard let stored = await Self.read(storeURL), stored.version == StoredIndex.currentVersion,
               stored.revision == Embedder.revision, stored.sentences == configuration.sentenceEmbeddings else { return }
         for file in stored.files {
+            guard file.size >= 0, file.modified.isFinite, file.chunks.allSatisfy(\.isValid) else { continue }
             var chunks: [IndexedFile.Chunk] = []
             for chunk in file.chunks {
                 let row = allocateRow()
@@ -688,6 +689,25 @@ private nonisolated struct StoredIndex: Codable, Sendable {
         /// Float16 bit patterns; empty when the passage had no vector.
         var word: Data
         var sentence: Data
+
+        var isValid: Bool {
+            let textLength = text.utf16.count
+            guard start >= 0, start <= Int.max - textLength, length >= 0, length <= textLength,
+                  terms.count % 4 == 0, terms.count / 4 == counts.count, pages.count % 8 == 0 else { return false }
+            let hashes = terms.unpacked()
+            guard zip(hashes, hashes.dropFirst()).allSatisfy({ $0 < $1 }),
+                  counts.allSatisfy({ $0 > 0 }), counts.reduce(0, { $0 + Int($1) }) <= length else { return false }
+            let marks = PageMark.unpack(pages)
+            guard marks.allSatisfy({ $0.offset <= textLength && $0.page > 0 }),
+                  zip(marks, marks.dropFirst()).allSatisfy({ $0.offset <= $1.offset }) else { return false }
+            func validVector(_ data: Data, dimension: Int) -> Bool {
+                guard !data.isEmpty else { return true }
+                guard data.count == dimension * 2 else { return false }
+                return data.halves()?.allSatisfy { $0 & 0x7c00 != 0x7c00 } == true
+            }
+            return validVector(word, dimension: Embedder.wordDimension)
+                && validVector(sentence, dimension: Embedder.sentenceDimension)
+        }
     }
 
     struct File: Codable, Sendable {
@@ -710,11 +730,15 @@ private nonisolated extension Data {
     }
 
     func unpacked() -> [UInt32] {
-        withUnsafeBytes { raw in raw.bindMemory(to: UInt32.self).map { UInt32(littleEndian: $0) } }
+        withUnsafeBytes { raw in
+            (0..<(raw.count / 4)).map { UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: $0 * 4, as: UInt32.self)) }
+        }
     }
 
     func halves() -> [UInt16]? {
-        isEmpty ? nil : withUnsafeBytes { raw in Array(raw.bindMemory(to: UInt16.self)) }
+        isEmpty ? nil : withUnsafeBytes { raw in
+            (0..<(raw.count / 2)).map { raw.loadUnaligned(fromByteOffset: $0 * 2, as: UInt16.self) }
+        }
     }
 }
 
