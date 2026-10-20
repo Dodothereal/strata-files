@@ -12,8 +12,10 @@ import Testing
                                progress: TransferProgress())
     }
 
-    private func discard(_ result: TransferItemResult) {
-        if let trashed = result.replaced?.to, Trash.isInTrash(trashed) { try? FileManager.default.removeItem(at: trashed) }
+    private func trashCleanup(for result: TransferItemResult) -> () -> Void {
+        guard let trashed = result.replaced?.to else { return {} }
+        let identity = OperationLog.identity(trashed.path)
+        return { TestTree.removeFromTrash(trashed, matching: identity) }
     }
 
     /// Hidden temporary names ("·name.strata-XXXXXXXX") a replace writes under, left behind.
@@ -37,7 +39,8 @@ import Testing
                 for name in ["a.txt", "b.txt", "c.txt"] {
                     let result = run(TransferItem(source: other.url("from/" + name), destination: other.url("to/" + name),
                                                  operation: operation, decision: replacing ? .replace : nil), verify: true)
-                    defer { discard(result) }
+                    let cleanup = trashCleanup(for: result)
+                    defer { cleanup() }
                     #expect(result.outcome == .done && result.failures.isEmpty)
                     #expect(other.text("to/" + name) == "from/" + name)
                 }
@@ -245,7 +248,8 @@ import Testing
         let tree = try TestTree("from/", "from/a.txt", "to/", "to/a.txt", "to/b.txt")
         let result = run(TransferItem(source: tree.url("from/a.txt"), destination: tree.url("to/a.txt"), operation: .copy,
                                       decision: .replace))
-        defer { discard(result) }
+        let cleanup = trashCleanup(for: result)
+        defer { cleanup() }
         #expect(result.outcome == .done)
         #expect(tree.text("to/a.txt") == "from/a.txt" && tree.text("to/b.txt") == "to/b.txt")
         let trashed = try #require(result.replaced?.to)
@@ -259,7 +263,8 @@ import Testing
         let tree = try TestTree("from/", "from/a/", "from/a/new.txt", "to/", "to/a/", "to/a/old.txt")
         let result = run(TransferItem(source: tree.url("from/a"), destination: tree.url("to/a"), operation: .rename,
                                       decision: .replace))
-        defer { discard(result) }
+        let cleanup = trashCleanup(for: result)
+        defer { cleanup() }
         #expect(result.outcome == .done && result.sourceRemoved)
         #expect(tree.snapshot() == ["from/", "to/", "to/a/", "to/a/new.txt"])
     }
@@ -277,7 +282,8 @@ import Testing
         try unrelatedTransfersKeepTheirFiles(alongside: tree)
         let result = run(TransferItem(source: tree.url("from/a.txt"), destination: tree.url("to/a.txt"), operation: .copy,
                                       decision: .replace), verify: true)
-        defer { discard(result) }
+        let cleanup = trashCleanup(for: result)
+        defer { cleanup() }
         #expect(result.outcome == .failed && result.replaced == nil)
         #expect(tree.text("to/a.txt") == "to/a.txt" && tree.text("from/a.txt") == "from/a.txt")
         #expect(leftovers(tree).isEmpty)

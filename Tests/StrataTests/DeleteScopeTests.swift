@@ -94,7 +94,7 @@ struct DeleteScopeTests {
         defer {
             for entry in OperationLog.shared.entries {
                 for pair in entry.pairs where pair[0] == inside.path && Trash.isInTrash(URL(fileURLWithPath: pair[1])) {
-                    try? FileManager.default.removeItem(atPath: pair[1])
+                    TestTree.removeFromTrash(URL(fileURLWithPath: pair[1]), matching: entry.identities[pair[1]])
                 }
             }
         }

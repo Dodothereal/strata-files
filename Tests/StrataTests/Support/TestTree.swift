@@ -90,9 +90,15 @@ final class TestTree {
         for entry in OperationLog.shared.entries {
             for pair in entry.pairs + entry.replaced where pair[0].hasPrefix(prefix) {
                 let trashed = URL(fileURLWithPath: pair[1])
-                if Trash.isInTrash(trashed) { try? FileManager.default.removeItem(at: trashed) }
+                Self.removeFromTrash(trashed, matching: entry.identities[pair[1]])
             }
         }
+    }
+
+    /// Restoring an item frees its old Trash name for another test. Cleanup must still identify our own file.
+    static func removeFromTrash(_ url: URL, matching identity: String?) {
+        guard Trash.isInTrash(url), let identity, OperationLog.identity(url.path) == identity else { return }
+        try? FileManager.default.removeItem(at: url)
     }
 
     /// What a file says (each file starts out holding its own path).

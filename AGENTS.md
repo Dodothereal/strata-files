@@ -105,7 +105,9 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
 - Test runs never touch your History, index or keychain: in a debug build that isn't Strata itself,
   `SecureStorage.isTestRun` puts the stores in a temporary folder with a throwaway key. Keep it that way.
 - Tests that use the real Trash remove exactly what they put there (`tree.removeFromTrash()`). Never empty the real
-  Trash: `Trash.empty(_:)` takes the folders, so pass a fake one. Never trash or delete a real Trash, even to show
+  Trash: cleanup must match the saved file identity, because a restored item's old Trash path can be reused by
+  another file. Cover that reuse explicitly; a historical path alone is not ownership. `Trash.empty(_:)` takes
+  the folders, so pass a fake one. Never trash or delete a real Trash, even to show
   it's refused: test the decision (`FileOps.canTrash`, `deletionPlan`) instead. Don't use `NSPasteboard.general` or
   Strata's preferences in tests: clipboard tests set `Clipboard.pasteboard` to a named pasteboard of their own.
 - Suites run in parallel and CI machines are slower: poll for a condition, never a fixed sleep; never compare listings

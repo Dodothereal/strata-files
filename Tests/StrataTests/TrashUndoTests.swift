@@ -11,6 +11,39 @@ struct TrashUndoTests {
         OperationLog.shared.entries.last { $0.pairs.contains { $0[0].hasPrefix(tree.root.path + "/") } }
     }
 
+    @Test(arguments: [false, true])
+    func cleanupLeavesAnotherFixturesFileAtAReusedTrashPath(_ replacement: Bool) throws {
+        let name = "strata-cleanup-\(UUID().uuidString).txt"
+        let first = try TestTree(name, "kept.txt")
+        let second = try TestTree(name, "kept.txt")
+        defer {
+            first.removeFromTrash()
+            second.removeFromTrash()
+        }
+        try Data("second fixture".utf8).write(to: second.url(name))
+        var result: NSURL?
+        try FileManager.default.trashItem(at: first.url(name), resultingItemURL: &result)
+        let trashed = try #require(result) as URL
+        let moved = [(from: first.url(name), to: trashed)]
+        if replacement {
+            OperationLog.shared.recordTransfer("Copy", created: [first.url("kept.txt")], moved: [], replaced: moved)
+        } else {
+            OperationLog.shared.recordMove("Move to Trash", moved)
+        }
+        // Reuse only this test's unique Trash slot. moveItem refuses if something else took it meanwhile.
+        try FileManager.default.moveItem(at: trashed, to: first.url(name))
+        try FileManager.default.moveItem(at: second.url(name), to: trashed)
+        OperationLog.shared.recordMove("Move to Trash", [(from: second.url(name), to: trashed)])
+
+        first.removeFromTrash()
+        TestTree.removeFromTrash(trashed, matching: nil)
+        #expect((try? String(contentsOf: trashed, encoding: .utf8)) == "second fixture")
+        second.removeFromTrash()
+        #expect(!FileManager.default.fileExists(atPath: trashed.path))
+        #expect(first.snapshot() == ["kept.txt", name].sorted())
+        #expect(second.snapshot() == ["kept.txt"])
+    }
+
     // MARK: - Move to Trash
 
     @Test func onlyTheSelectionGoesAndUndoPutsItBack() async throws {
