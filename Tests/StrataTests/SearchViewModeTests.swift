@@ -72,8 +72,8 @@ struct SearchViewModeTests {
     }
 
     @Test func staleViewActionsInResultsKeepTheFolderPreferenceAndExactSelection() throws {
-        let saved = Prefs.viewMode
-        defer { if Prefs.viewMode != saved { Prefs.viewMode = saved } }
+        let saved = Prefs.shared.viewMode
+        defer { if Prefs.shared.viewMode != saved { Prefs.shared.viewMode = saved } }
         let tree = try TestTree("left/", "left/a.zip", "right/", "right/a.zip")
         let browser = BrowserViewController()
         browser.loadViewIfNeeded()
@@ -89,12 +89,12 @@ struct SearchViewModeTests {
             menu.tag = mode.rawValue
             browser.setViewMode(menu)
             #expect(browser.mode == .columns && browser.effectiveMode == .list)
-            #expect(Prefs.viewMode == saved)
+            #expect(Prefs.shared.viewMode == saved)
             #expect(browser.selectedURLs == [tree.url("right/a.zip")])
         }
         browser.setMode(.grid, remember: false)
         #expect(browser.mode == .grid && browser.effectiveMode == .list)
-        #expect(Prefs.viewMode == saved)
+        #expect(Prefs.shared.viewMode == saved)
         #expect(browser.selectedURLs == [tree.url("right/a.zip")])
         #expect(tree.snapshot() == ["left/", "left/a.zip", "right/", "right/a.zip"])
     }
@@ -135,8 +135,8 @@ struct SearchViewModeTests {
 
     @Test func resultsHideViewCommandsAndIgnoreAPaletteActionCapturedInTheFolder() async throws {
         let _ = NSApplication.shared
-        let saved = Prefs.viewMode
-        defer { if Prefs.viewMode != saved { Prefs.viewMode = saved } }
+        let saved = Prefs.shared.viewMode
+        defer { if Prefs.shared.viewMode != saved { Prefs.shared.viewMode = saved } }
         let tree = try TestTree("a.zip")
         let controller = BrowserWindowController(location: tree.root)
         controller.split.splitView.autosaveName = nil
@@ -154,7 +154,7 @@ struct SearchViewModeTests {
         #expect(!controller.commandItems().contains { titles.contains($0.title) })
         for command in viewCommands { command.run() }
         #expect(controller.browser.mode == .gallery)
-        #expect(Prefs.viewMode == saved)
+        #expect(Prefs.shared.viewMode == saved)
         #expect(controller.browser.selectedURLs == [tree.url("a.zip")])
         controller.navigate(to: tree.root)
         try await waitForLoad(controller.browser)

@@ -35,7 +35,7 @@ enum Places {
 
     /// The sidebar's favorites: your own list once you've added, removed or reordered any, else the defaults.
     static func favorites() -> [Place] {
-        guard let paths = Prefs.favoritePaths else { return defaultFavorites() }
+        guard let paths = Prefs.shared.favoritePaths else { return defaultFavorites() }
         let defaults = defaultFavorites()
         return paths.compactMap { path in
             var isDirectory: ObjCBool = false
@@ -59,12 +59,12 @@ enum Places {
         current.removeAll { paths.contains($0.path) }
         let at = min(max(0, (index ?? current.count + before) - before), current.count)
         current.insert(contentsOf: folders, at: at)
-        Prefs.favoritePaths = current.map(\.path)
+        Prefs.shared.favoritePaths = current.map(\.path)
     }
 
     static func removeFavorite(_ url: URL) {
         let path = url.standardizedFileURL.path
-        Prefs.favoritePaths = favorites().map(\.url.standardizedFileURL.path).filter { $0 != path }
+        Prefs.shared.favoritePaths = favorites().map(\.url.standardizedFileURL.path).filter { $0 != path }
     }
 
     static func defaultFavorites() -> [Place] {

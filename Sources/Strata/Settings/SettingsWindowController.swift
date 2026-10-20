@@ -101,8 +101,8 @@ private struct PrefToggle: View {
 }
 
 private struct GeneralSettings: View {
-    @State private var returnOpens = Prefs.returnOpens
-    @State private var atHome = Prefs.newWindowsAtHome
+    @State private var returnOpens = Prefs.shared.returnOpens
+    @State private var atHome = Prefs.shared.newWindowsAtHome
     @State private var isFileViewer = FileViewer.isStrata
 
     var body: some View {
@@ -110,19 +110,19 @@ private struct GeneralSettings: View {
             LanguageSection()
             Section("Browsing") {
                 PrefToggle(title: "Show hidden files", caption: "Also ⇧⌘. in any window.",
-                           get: { Prefs.showHidden }, set: { Prefs.showHidden = $0 })
+                           get: { Prefs.shared.showHidden }, set: { Prefs.shared.showHidden = $0 })
                 PrefToggle(title: "Keep folders on top", caption: nil,
-                           get: { Prefs.foldersFirst }, set: { Prefs.foldersFirst = $0 })
+                           get: { Prefs.shared.foldersFirst }, set: { Prefs.shared.foldersFirst = $0 })
                 PrefToggle(title: "Reopen windows from last time", caption: "Windows, tabs and panes come back when Strata starts.",
-                           get: { Prefs.reopenWindows }, set: { Prefs.reopenWindows = $0 })
+                           get: { Prefs.shared.reopenWindows }, set: { Prefs.shared.reopenWindows = $0 })
                 PrefToggle(title: "Open archives like folders",
                            caption: "Opening a zip (or tar, 7z, rar…) shows what's inside; copy things out from there. Extract unpacks it.",
-                           get: { Prefs.openArchivesAsFolders }, set: { Prefs.openArchivesAsFolders = $0 })
-                Picker("Return key", selection: Binding(get: { returnOpens }, set: { returnOpens = $0; Prefs.returnOpens = $0 })) {
+                           get: { Prefs.shared.openArchivesAsFolders }, set: { Prefs.shared.openArchivesAsFolders = $0 })
+                Picker("Return key", selection: Binding(get: { returnOpens }, set: { returnOpens = $0; Prefs.shared.returnOpens = $0 })) {
                     Text("Renames the selection (like Finder)").tag(false)
                     Text("Opens the selection").tag(true)
                 }
-                Picker("New windows open", selection: Binding(get: { atHome }, set: { atHome = $0; Prefs.newWindowsAtHome = $0 })) {
+                Picker("New windows open", selection: Binding(get: { atHome }, set: { atHome = $0; Prefs.shared.newWindowsAtHome = $0 })) {
                     Text("Where you left off").tag(false)
                     Text("Your home folder").tag(true)
                 }
@@ -134,12 +134,12 @@ private struct GeneralSettings: View {
             Section("Copying") {
                 PrefToggle(title: "Verify copies",
                            caption: "Reads every copied file back and compares it with the original. Slower, but catches failing disks and cables.",
-                           get: { Prefs.verifyCopies }, set: { Prefs.verifyCopies = $0 })
+                           get: { Prefs.shared.verifyCopies }, set: { Prefs.shared.verifyCopies = $0 })
             }
             Section("Dock") {
                 PrefToggle(title: "Search box in the Dock",
                            caption: "A search box next to Strata in the Dock finds apps, files and folders as you type. Strata needs Accessibility access to place it, and keeps a few empty tiles in the Dock for it.",
-                           get: { Prefs.dockSearch }, set: { Prefs.dockSearch = $0; DockSearch.shared.apply() })
+                           get: { Prefs.shared.dockSearch }, set: { Prefs.shared.dockSearch = $0; DockSearch.shared.apply() })
             }
             Section {
                 Toggle(isOn: Binding(get: { isFileViewer }, set: { isFileViewer = $0; FileViewer.setStrata($0) })) {
@@ -168,13 +168,13 @@ private struct GeneralSettings: View {
 
 /// The extension File ▸ New File gives a file. Saved as you type, once it's one an extension can be.
 private struct NewFileExtensionField: View {
-    @State private var text = Prefs.newFileExtension
+    @State private var text = Prefs.shared.newFileExtension
 
     var body: some View {
         LabeledContent("Extension") {
             ThemeTextField(String(localized: "Extension"), text: Binding(get: { text }, set: { typed in
                 text = typed
-                if FileOps.newFileExtension(typed) != nil { Prefs.newFileExtension = typed }
+                if FileOps.newFileExtension(typed) != nil { Prefs.shared.newFileExtension = typed }
             }))
         }
         if let ext = FileOps.newFileExtension(text) {
@@ -261,13 +261,13 @@ private struct IndexSettings: View {
 }
 
 private struct TerminalSettings: View {
-    @State private var selection = Prefs.terminal ?? ""
+    @State private var selection = Prefs.shared.terminal ?? ""
 
     var body: some View {
         Form {
-            Picker("Open in Terminal uses", selection: Binding(get: { selection }, set: { selection = $0; Prefs.terminal = $0.isEmpty ? nil : $0 })) {
+            Picker("Open in Terminal uses", selection: Binding(get: { selection }, set: { selection = $0; Prefs.shared.terminal = $0.isEmpty ? nil : $0 })) {
                 Text("Automatic").tag("")
-                ForEach(Prefs.terminals.filter { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0.bundleID) != nil },
+                ForEach(Prefs.shared.terminals.filter { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0.bundleID) != nil },
                         id: \.bundleID) { terminal in
                     Text(terminal.name).tag(terminal.bundleID)
                 }

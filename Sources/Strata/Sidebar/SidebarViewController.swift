@@ -71,7 +71,7 @@ final class SidebarViewController: NSViewController {
 
     private let outline = SidebarOutlineView()
     private let placesScroll = NSScrollView()
-    /// Folders mode (Prefs.sidebarShowsTree): the tree instead of the sections.
+    /// Folders mode (Prefs.shared.sidebarShowsTree): the tree instead of the sections.
     private let tree = FolderTreeController()
     /// Opens the location a drag rests on, in the current pane.
     private lazy var springLoader = SpringLoader(view: outline, frame: { [weak self] folder in
@@ -241,7 +241,7 @@ final class SidebarViewController: NSViewController {
     /// Every section open except those you've hidden. The sidebar is rebuilt whenever a window comes forward (and
     /// when disks, servers or tags change), and that mustn't open them again.
     private func applyCollapsed() {
-        let collapsed = Prefs.collapsedSidebarSections
+        let collapsed = Prefs.shared.collapsedSidebarSections
         applyingCollapsed = true
         for section in sections {
             if collapsed.contains(section.id) { outline.collapseItem(section) } else { outline.expandItem(section) }
@@ -258,7 +258,7 @@ final class SidebarViewController: NSViewController {
 
     /// Places or Folders, as set.
     private func showMode() {
-        let showsTree = Prefs.sidebarShowsTree
+        let showsTree = Prefs.shared.sidebarShowsTree
         let hiding = showsTree ? placesScroll : tree.view
         let hadFocus = (view.window?.firstResponder as? NSView).map { $0.isDescendant(of: hiding) } ?? false
         placesScroll.isHidden = showsTree
@@ -355,10 +355,10 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     /// Hide or Show on a section's title: remembered for every window and the next launch.
     private func sectionToggled(_ notification: Notification, collapsed: Bool) {
         guard !applyingCollapsed, let section = notification.userInfo?["NSObject"] as? SidebarSection else { return }
-        var hidden = Prefs.collapsedSidebarSections
+        var hidden = Prefs.shared.collapsedSidebarSections
         guard hidden.contains(section.id) != collapsed else { return }
         if collapsed { hidden.insert(section.id) } else { hidden.remove(section.id) }
-        Prefs.collapsedSidebarSections = hidden
+        Prefs.shared.collapsedSidebarSections = hidden
         NotificationCenter.default.post(name: .sidebarSectionsCollapsed, object: self)
     }
 

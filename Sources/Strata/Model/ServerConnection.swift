@@ -43,19 +43,19 @@ nonisolated enum ServerConnection {
         return components.string ?? url.absoluteString
     }
 
-    static var recents: [String] {
-        (UserDefaults.standard.stringArray(forKey: recentsKey) ?? []).filter { !$0.isEmpty }
+    @MainActor static var recents: [String] {
+        (Prefs.shared.defaults.stringArray(forKey: recentsKey) ?? []).filter { !$0.isEmpty }
     }
 
-    static func remember(_ url: URL) {
+    @MainActor static func remember(_ url: URL) {
         let shown = displayString(url)
         var list = recents.filter { $0.caseInsensitiveCompare(shown) != .orderedSame }
         list.insert(shown, at: 0)
-        UserDefaults.standard.set(Array(list.prefix(recentLimit)), forKey: recentsKey)
+        Prefs.shared.defaults.set(Array(list.prefix(recentLimit)), forKey: recentsKey)
     }
 
-    static func clearRecents() {
-        UserDefaults.standard.removeObject(forKey: recentsKey)
+    @MainActor static func clearRecents() {
+        Prefs.shared.defaults.removeObject(forKey: recentsKey)
     }
 
     /// A mount in progress, which can be stopped. It finishes exactly once: with what NetFS reports, or (cancelled)

@@ -10,10 +10,14 @@ final class Frecency {
     }
 
     private let key = "frecency.v1"
+    private let preferences: UserDefaults
+    private let now: () -> Date
     private var visits: [String: Visit] = [:]
 
-    private init() {
-        if let data = UserDefaults.standard.data(forKey: key),
+    init(preferences: UserDefaults = Prefs.shared.defaults, now: @escaping () -> Date = Date.init) {
+        self.preferences = preferences
+        self.now = now
+        if let data = preferences.data(forKey: key),
            let decoded = try? JSONDecoder().decode([String: Visit].self, from: data) {
             visits = decoded
         }
@@ -21,20 +25,20 @@ final class Frecency {
 
     func record(_ url: URL) {
         let path = url.standardizedFileURL.path
-        var visit = visits[path] ?? Visit(count: 0, last: .now)
+        var visit = visits[path] ?? Visit(count: 0, last: now())
         visit.count += 1
-        visit.last = .now
+        visit.last = now()
         visits[path] = visit
         if visits.count > 600 {
             let keep = ranked().prefix(500).map(\.path)
             visits = visits.filter { keep.contains($0.key) }
         }
-        if let data = try? JSONEncoder().encode(visits) { UserDefaults.standard.set(data, forKey: key) }
+        if let data = try? JSONEncoder().encode(visits) { preferences.set(data, forKey: key) }
     }
 
     /// Visited folders, best first, skipping ones that no longer exist.
     func ranked() -> [URL] {
-        let now = Date.now
+        let now = now()
         return visits
             .map { (path: $0.key, score: score($0.value, now: now)) }
             .sorted { $0.score > $1.score }

@@ -87,7 +87,7 @@ final class PathSuggestions {
     private func inside(_ path: String, keepTrailingSlash: Bool) async -> [PathSuggestion] {
         let directory = keepTrailingSlash ? path : (path as NSString).deletingLastPathComponent
         let prefix = keepTrailingSlash ? "" : (path as NSString).lastPathComponent
-        let showHidden = Prefs.showHidden || prefix.hasPrefix(".")
+        let showHidden = Prefs.shared.showHidden || prefix.hasPrefix(".")
         let key = directory + (showHidden ? "\u{0}hidden" : "")
         let folders: [URL]
         if let cached = listings[key] {

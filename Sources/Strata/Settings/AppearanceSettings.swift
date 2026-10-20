@@ -2,16 +2,16 @@ import SwiftUI
 
 /// Settings ▸ Appearance: color themes, light or dark, row spacing and the size of file names.
 struct AppearanceSettings: View {
-    @State private var theme = Prefs.theme
-    @State private var colors = Prefs.colorThemeOptions
-    @State private var density = Prefs.density
-    @State private var size = Prefs.nameTextSize
-    @State private var previews = Prefs.showIconPreviews
+    @State private var theme = Prefs.shared.theme
+    @State private var colors = Prefs.shared.colorThemeOptions
+    @State private var density = Prefs.shared.density
+    @State private var size = Prefs.shared.nameTextSize
+    @State private var previews = Prefs.shared.showIconPreviews
 
     var body: some View {
         Form {
             Section("Theme") {
-                Picker("Appearance", selection: Binding(get: { theme }, set: { theme = $0; Prefs.theme = $0 })) {
+                Picker("Appearance", selection: Binding(get: { theme }, set: { theme = $0; Prefs.shared.theme = $0 })) {
                     Text("Match the System").tag(0)
                     Text("Light").tag(1)
                     Text("Dark").tag(2)
@@ -23,7 +23,7 @@ struct AppearanceSettings: View {
                         ForEach(ColorTheme.allCases, id: \.self) { palette in
                             Button {
                                 colors.palette = palette
-                                Prefs.colorThemeOptions = colors
+                                Prefs.shared.colorThemeOptions = colors
                             } label: {
                                 ThemePreview(palette: palette, selected: colors.palette == palette, options: colors)
                             }
@@ -36,7 +36,7 @@ struct AppearanceSettings: View {
                 .padding(.vertical, 6)
                 Picker("Window tint", selection: Binding(get: { colors.tintsWindow }, set: {
                     colors.tintsWindow = $0
-                    Prefs.colorThemeOptions = colors
+                    Prefs.shared.colorThemeOptions = colors
                 })) {
                     Text("Off", comment: "Window tint setting").tag(false)
                     Text("On").tag(true)
@@ -45,7 +45,7 @@ struct AppearanceSettings: View {
                 .disabled(colors.palette == .system)
             }
             Section("Files") {
-                Picker("Density", selection: Binding(get: { density }, set: { density = $0; Prefs.density = $0 })) {
+                Picker("Density", selection: Binding(get: { density }, set: { density = $0; Prefs.shared.density = $0 })) {
                     Text("Compact").tag(0)
                     Text("Regular").tag(1)
                     Text("Spacious").tag(2)
@@ -53,7 +53,7 @@ struct AppearanceSettings: View {
                 .pickerStyle(.segmented)
                 HStack {
                     Text("Text size")
-                    Slider(value: Binding(get: { size }, set: { size = $0.rounded(); Prefs.nameTextSize = $0.rounded() }), in: 11...16, step: 1) {
+                    Slider(value: Binding(get: { size }, set: { size = $0.rounded(); Prefs.shared.nameTextSize = $0.rounded() }), in: 11...16, step: 1) {
                         Text("Text size")
                     } minimumValueLabel: {
                         Text(verbatim: "A").font(.system(size: 10))
@@ -68,7 +68,7 @@ struct AppearanceSettings: View {
                     .font(.system(size: size))
                     .padding(.vertical, [2.0, 5.0, 9.0][min(max(density, 0), 2)])
                     .accessibilityLabel("Preview of a file name at this size")
-                Toggle(isOn: Binding(get: { previews }, set: { previews = $0; Prefs.showIconPreviews = $0 })) {
+                Toggle(isOn: Binding(get: { previews }, set: { previews = $0; Prefs.shared.showIconPreviews = $0 })) {
                     Text("Show icon previews")
                     Text("Pictures, documents and movies show a thumbnail of their contents in place of their icon.")
                 }
@@ -81,10 +81,10 @@ struct AppearanceSettings: View {
         .modifier(ThemedFormBackground())
         // ⌘+ / ⌘− in the list change the size while this is open.
         .onReceive(NotificationCenter.default.publisher(for: .appearanceChanged)) { _ in
-            if size != Prefs.nameTextSize { size = Prefs.nameTextSize }
-            if theme != Prefs.theme { theme = Prefs.theme }
+            if size != Prefs.shared.nameTextSize { size = Prefs.shared.nameTextSize }
+            if theme != Prefs.shared.theme { theme = Prefs.shared.theme }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .colorThemeChanged)) { _ in colors = Prefs.colorThemeOptions }
+        .onReceive(NotificationCenter.default.publisher(for: .colorThemeChanged)) { _ in colors = Prefs.shared.colorThemeOptions }
     }
 }
 

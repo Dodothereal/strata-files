@@ -28,17 +28,17 @@ enum Privacy {
         for relative in ["Desktop", "Documents", "Downloads"] {
             let root = home + "/" + relative
             guard path == root || path.hasPrefix(root + "/") else { continue }
-            var known = UserDefaults.standard.stringArray(forKey: accessibleKey) ?? []
+            var known = Prefs.shared.defaults.stringArray(forKey: accessibleKey) ?? []
             guard !known.contains(root) else { return }
             known.append(root)
-            UserDefaults.standard.set(known, forKey: accessibleKey)
+            Prefs.shared.defaults.set(known, forKey: accessibleKey)
             FileIndex.shared.refreshConfig()
             return
         }
     }
 
     static func isKnownAccessible(_ path: String) -> Bool {
-        (UserDefaults.standard.stringArray(forKey: accessibleKey) ?? []).contains(path)
+        (Prefs.shared.defaults.stringArray(forKey: accessibleKey) ?? []).contains(path)
     }
 
     static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles")!
@@ -158,7 +158,7 @@ final class WelcomeSheetController: NSWindowController {
     @objc private func dismiss() {
         timer?.invalidate()
         if let window, let parent = window.sheetParent { parent.endSheet(window) }
-        UserDefaults.standard.set(true, forKey: "welcomeShown")
+        Prefs.shared.defaults.set(true, forKey: "welcomeShown")
     }
 }
 

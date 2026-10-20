@@ -26,7 +26,7 @@ final class TransferQueue {
     /// Copies or moves `sources` into the folder `destination`. Name clashes go to `conflicts`; with `verify`, every
     /// copied file is read back and compared (SHA-256). When the job finishes, its undo is registered on `undo`.
     @discardableResult
-    func enqueue(_ sources: [URL], to destination: URL, mode: TransferMode, verify: Bool = Prefs.verifyCopies,
+    func enqueue(_ sources: [URL], to destination: URL, mode: TransferMode, verify: Bool = Prefs.shared.verifyCopies,
                  undo: UndoManager?, conflicts: ConflictResolver) -> TransferJob {
         var options = TransferEngine.Options()
         options.verify = verify
@@ -383,7 +383,7 @@ extension TransferEngine.Options {
     /// Options for transfers the user starts, following Settings (Verify copies).
     static var userDefault: TransferEngine.Options {
         var options = TransferEngine.Options()
-        options.verify = Prefs.verifyCopies
+        options.verify = Prefs.shared.verifyCopies
         return options
     }
 }

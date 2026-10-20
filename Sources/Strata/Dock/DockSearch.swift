@@ -70,7 +70,7 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     /// Matches Settings: the gap and the box when it's on, neither when it's turned off. At launch with it off, the Dock
     /// isn't touched at all.
     func apply(atLaunch: Bool = false) {
-        if Prefs.dockSearch {
+        if Prefs.shared.dockSearch {
             enable()
         } else if !atLaunch {
             disable()

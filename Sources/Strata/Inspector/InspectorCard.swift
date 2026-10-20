@@ -116,9 +116,9 @@ final class InspectorCard: NSView, ColorThemeUpdating {
     private var defaultsKey: String { "inspector.collapsed." + id }
 
     var isCollapsed: Bool {
-        get { UserDefaults.standard.bool(forKey: defaultsKey) }
+        get { Prefs.shared.defaults.bool(forKey: defaultsKey) }
         set {
-            UserDefaults.standard.set(newValue, forKey: defaultsKey)
+            Prefs.shared.defaults.set(newValue, forKey: defaultsKey)
             apply(collapsed: newValue, animated: true)
         }
     }

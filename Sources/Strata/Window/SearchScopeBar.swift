@@ -112,11 +112,11 @@ enum SavedSearches {
 
     static var all: [SavedSearch] {
         get {
-            guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+            guard let data = Prefs.shared.defaults.data(forKey: key) else { return [] }
             return (try? JSONDecoder().decode([SavedSearch].self, from: data)) ?? []
         }
         set {
-            UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: key)
+            Prefs.shared.defaults.set(try? JSONEncoder().encode(newValue), forKey: key)
             NotificationCenter.default.post(name: .savedSearchesChanged, object: nil)
         }
     }

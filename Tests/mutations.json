@@ -906,5 +906,33 @@
     "replace": "",
     "rule": "Storage isolation retries an unavailable key for every access",
     "tests": "StorageContextTests/keyProvider"
+  },
+  {
+    "file": "Strata/App/Prefs.swift",
+    "find": "guard let defaults = UserDefaults(suiteName: testDomain) else {",
+    "replace": "guard let defaults = Optional(UserDefaults.standard) else {",
+    "rule": "Preference isolation tests select the standard app defaults",
+    "tests": "PreferencesTests/processPreferences"
+  },
+  {
+    "file": "Strata/App/Prefs.swift",
+    "find": "        self.notifications = notifications",
+    "replace": "        self.notifications = .default",
+    "rule": "Preference isolation broadcasts independent settings into other environments",
+    "tests": "PreferencesTests/independentSettings"
+  },
+  {
+    "file": "Strata/App/Prefs.swift",
+    "find": "get { (defaults.persistentDomain(forName: domainName)?[\"AppleLanguages\"] as? [String])?.first ?? \"\" }",
+    "replace": "get { defaults.stringArray(forKey: \"AppleLanguages\")?.first ?? \"\" }",
+    "rule": "Preference isolation treats inherited language as an explicit app override",
+    "tests": "PreferencesTests/languageOverride"
+  },
+  {
+    "file": "Strata/App/Prefs.swift",
+    "find": "        self.notifications = notifications",
+    "replace": "        self.notifications = notifications\n        defaults.register(defaults: [\"foldersFirst\": true, \"gridIconSize\": 72.0])",
+    "rule": "Preference isolation registers defaults into every suite",
+    "tests": "PreferencesTests/creatingPreferences"
   }
 ]

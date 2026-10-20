@@ -37,7 +37,7 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
 
     init(editing server: RemoteServer? = nil) {
         editing = server
-        kind = server.map { $0.kind == .s3 ? .s3 : .sftp } ?? Kind(rawValue: UserDefaults.standard.integer(forKey: "connectKind")) ?? .share
+        kind = server.map { $0.kind == .s3 ? .s3 : .sftp } ?? Kind(rawValue: Prefs.shared.defaults.integer(forKey: "connectKind")) ?? .share
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -173,7 +173,7 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
 
     @objc private func kindChanged(_ sender: NSSegmentedControl) {
         kind = Kind(rawValue: sender.selectedSegment) ?? .share
-        UserDefaults.standard.set(kind.rawValue, forKey: "connectKind")
+        Prefs.shared.defaults.set(kind.rawValue, forKey: "connectKind")
         message.isHidden = true
         showKind()
         focusFirstField()

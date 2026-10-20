@@ -305,7 +305,7 @@ enum FileViewStyle {
 
     private static var cachedFonts: (size: Double, regular: NSFont, bold: NSFont)?
     private static var fonts: (regular: NSFont, bold: NSFont) {
-        let size = Prefs.nameTextSize
+        let size = Prefs.shared.nameTextSize
         if let cached = cachedFonts, cached.size == size { return (cached.regular, cached.bold) }
         let made = (NSFont.systemFont(ofSize: size), NSFont.systemFont(ofSize: size, weight: .bold))
         cachedFonts = (size, made.0, made.1)
@@ -314,17 +314,17 @@ enum FileViewStyle {
 
     /// List rows: compact, regular or spacious, and taller for bigger names.
     static var listRowHeight: CGFloat {
-        [22, 26, 32][min(max(Prefs.density, 0), 2)] + CGFloat(Prefs.nameTextSize - 13).rounded(.up)
+        [22, 26, 32][min(max(Prefs.shared.density, 0), 2)] + CGFloat(Prefs.shared.nameTextSize - 13).rounded(.up)
     }
 
     /// Column rows, a little tighter than the list's.
     static var columnRowHeight: CGFloat {
-        [20, 24, 30][min(max(Prefs.density, 0), 2)] + CGFloat(Prefs.nameTextSize - 13).rounded(.up)
+        [20, 24, 30][min(max(Prefs.shared.density, 0), 2)] + CGFloat(Prefs.shared.nameTextSize - 13).rounded(.up)
     }
 
     /// Light, dark, or the system's (Settings ▸ Appearance).
     static func applyTheme() {
-        switch Prefs.theme {
+        switch Prefs.shared.theme {
         case 1: NSApp.appearance = NSAppearance(named: .aqua)
         case 2: NSApp.appearance = NSAppearance(named: .darkAqua)
         default: NSApp.appearance = nil

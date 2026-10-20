@@ -18,8 +18,23 @@ import Testing
         try await body(board)
     }
 
-    private func wait(until condition: () -> Bool) async {
-        for _ in 0..<100 where !condition() { try? await Task.sleep(for: .milliseconds(30)) }
+    private func wait(until condition: () -> Bool) async throws {
+        let deadline = ContinuousClock.now + .seconds(30)
+        while !condition() {
+            try #require(ContinuousClock.now < deadline, "The temporary browser did not finish loading.")
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    private func finishPaste(into folder: URL, sources: Set<URL>) async throws {
+        let job = try #require(TransferQueue.shared.jobs.compactMap { $0 as? TransferJob }.last {
+            $0.destination == folder.standardizedFileURL
+        })
+        #expect(Set(job.sources.map(\.path)) == Set(sources.map { $0.standardizedFileURL.path }))
+        // One item can arrive while another is still being moved. Wait for the entire pass, including metadata.
+        await job.finished()
+        #expect(job.state == .finished)
+        #expect(job.failures.isEmpty)
     }
 
     @Test func aPasteAfterCutMovesOnlyWhatWasCut() async throws {
@@ -27,12 +42,12 @@ import Testing
             let tree = try TestTree("left/", "left/a.txt", "left/ab.txt", "left/b/", "left/b/c.txt", "right/", "right/d.txt")
             let window = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"))
             let other = try #require(window.otherBrowser)
-            await wait { window.browser.itemCount == 3 && other.itemCount == 1 }
+            try await wait { window.browser.isLoaded && other.isLoaded && window.browser.itemCount == 3 && other.itemCount == 1 }
             window.browser.select([tree.url("left/a.txt"), tree.url("left/b")])
             window.browser.cut(nil)
             #expect(Clipboard.isCut(tree.url("left/a.txt")) && !Clipboard.isCut(tree.url("left/ab.txt")))
             other.paste(nil)
-            await wait { tree.snapshot().contains("right/b/c.txt") }
+            try await finishPaste(into: tree.url("right"), sources: [tree.url("left/a.txt"), tree.url("left/b")])
             #expect(tree.snapshot() == ["left/", "left/ab.txt", "right/", "right/a.txt", "right/b/", "right/b/c.txt", "right/d.txt"])
             // The Cut is used up: nothing is marked any more.
             #expect(!Clipboard.read().isCut && !Clipboard.isCut(tree.url("left/a.txt")))
@@ -66,13 +81,13 @@ import Testing
             let tree = try TestTree("left/", "left/a.txt", "right/")
             let window = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"))
             let other = try #require(window.otherBrowser)
-            await wait { window.browser.itemCount == 1 && other.itemCount == 0 }
+            try await wait { window.browser.isLoaded && other.isLoaded && window.browser.itemCount == 1 && other.itemCount == 0 }
             window.browser.select([tree.url("left/a.txt")])
             window.browser.cut(nil)
             board.clearContents()
             board.writeObjects([tree.url("left/a.txt") as NSURL])
             other.paste(nil)
-            await wait { tree.snapshot().contains("right/a.txt") }
+            try await finishPaste(into: tree.url("right"), sources: [tree.url("left/a.txt")])
             #expect(tree.snapshot() == ["left/", "left/a.txt", "right/", "right/a.txt"])
         }
     }

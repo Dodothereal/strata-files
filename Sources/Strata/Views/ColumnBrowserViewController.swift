@@ -10,7 +10,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     var onLocationChange: ((URL) -> Void)?
     /// Order for columns this view loads itself (the first column keeps the browser's order).
     var sortComparator: @MainActor (FileEntry, FileEntry) -> Bool = ColumnBrowserViewController.defaultOrder
-    var showHidden: () -> Bool = { Prefs.showHidden }
+    var showHidden: () -> Bool = { Prefs.shared.showHidden }
     var defaultColumnWidth: CGFloat = 230
     var previewColumnWidth: CGFloat = 290
 
@@ -36,7 +36,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     required init?(coder: NSCoder) { fatalError() }
 
     static func defaultOrder(_ a: FileEntry, _ b: FileEntry) -> Bool {
-        if Prefs.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
+        if Prefs.shared.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
         return a.displayName.localizedStandardCompare(b.displayName) == .orderedAscending
     }
 
@@ -881,7 +881,7 @@ final class ColumnCellView: NSTableCellView, ColorThemeUpdating {
                    cloud: CloudStatus? = nil, scale: CGFloat = 2) {
         isFolder = entry.isFolder
         nameCell.configure(name: entry.displayName, icon: IconCache.shared.icon(for: entry), matches: matches, dimmed: dimmed, git: git,
-                           tags: tags, cloud: cloud, thumbnail: Prefs.showIconPreviews ? entry : nil, scale: scale)
+                           tags: tags, cloud: cloud, thumbnail: Prefs.shared.showIconPreviews ? entry : nil, scale: scale)
         applyTruncation()
         chevron.isHidden = !entry.isFolder
         setAccessibilityLabel(entry.isFolder

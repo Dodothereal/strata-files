@@ -205,7 +205,7 @@ final class ContainerInspectorView: NSView {
         if let folder = shown.directory.flatMap(StackProjects.existing) {
             let row = FlowView(spacing: 6, lineSpacing: 6)
             let terminal = ActionButton(String(localized: "Open in Terminal", comment: "Menu command: open a shell in the selected folder"), symbol: "terminal") {
-                guard let app = Prefs.terminalURL else { return NSSound.beep() }
+                guard let app = Prefs.shared.terminalURL else { return NSSound.beep() }
                 ProjectEditors.open(folder, with: app)
             }
             terminal.toolTip = String(localized: "Open the project folder in your terminal", comment: "Inspector, a Compose project: tooltip on Open in Terminal")

@@ -152,7 +152,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// View ▸ Folder Tree in Sidebar: the tree of folders instead of Favorites, Locations and the rest (every window).
     @objc func toggleFolderTree(_ sender: Any?) {
-        Prefs.sidebarShowsTree.toggle()
+        Prefs.shared.sidebarShowsTree.toggle()
         if split.splitViewItems.first?.isCollapsed == true { split.toggleSidebar(nil) }
     }
 
@@ -315,7 +315,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             // An archive's copy is temporary: it doesn't become a frequent place or where the next window opens.
             if !ReadOnlyCopies.contains(url) {
                 if countVisit { Frecency.shared.record(url) }
-                Prefs.lastLocation = url
+                Prefs.shared.lastLocation = url
             }
         case .search, .recents:
             runSearch(in: p)
@@ -476,7 +476,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func sidebarModeChanged(_ sender: NSToolbarItemGroup) {
         let tree = sender.selectedIndex == 1
-        if tree != Prefs.sidebarShowsTree { Prefs.sidebarShowsTree = tree }
+        if tree != Prefs.shared.sidebarShowsTree { Prefs.shared.sidebarShowsTree = tree }
         if split.splitViewItems.first?.isCollapsed == true { split.toggleSidebar(nil) }
     }
 
@@ -493,7 +493,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// Every window's switch follows the setting (it's the same for all of them).
     @objc private func sidebarModePrefChanged() {
-        sidebarModeItem?.selectedIndex = Prefs.sidebarShowsTree ? 1 : 0
+        sidebarModeItem?.selectedIndex = Prefs.shared.sidebarShowsTree ? 1 : 0
     }
 
     @objc private func viewModeChanged(_ sender: NSToolbarItemGroup) {
@@ -1125,7 +1125,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             item.controlRepresentation = .expanded
             item.subitems[0].toolTip = String(localized: "Favorites, disks and other places", comment: "Tooltip of the sidebar's Places switch")
             item.subitems[1].toolTip = String(localized: "Every folder, as a tree", comment: "Tooltip of the sidebar's Folders switch")
-            item.selectedIndex = Prefs.sidebarShowsTree ? 1 : 0
+            item.selectedIndex = Prefs.shared.sidebarShowsTree ? 1 : 0
             item.visibilityPriority = .low
             sidebarModeItem = item
             return item
@@ -1191,7 +1191,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
             item.state = isDualPane ? .on : .off
             return true
         case #selector(toggleFolderTree(_:)):
-            item.state = Prefs.sidebarShowsTree ? .on : .off
+            item.state = Prefs.shared.sidebarShowsTree ? .on : .off
             return true
         case #selector(focusOtherPane(_:)):
             return isDualPane

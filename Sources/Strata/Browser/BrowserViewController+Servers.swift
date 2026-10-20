@@ -45,7 +45,7 @@ extension BrowserViewController {
     /// An empty "untitled.txt" on the server, like New File on this Mac.
     func newFileOnServer(in folder: URL) {
         let existing = Set(((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).map { $0.lowercased() })
-        let ext = Prefs.newFileExtension
+        let ext = Prefs.shared.newFileExtension
         let base = FileOps.newFileName(extension: "")
         var name = FileOps.newFileName(extension: ext)
         var number = 2

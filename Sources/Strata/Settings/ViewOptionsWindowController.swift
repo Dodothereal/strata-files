@@ -21,15 +21,15 @@ final class ViewOptionsWindowController: NSWindowController {
 }
 
 struct ViewOptionsView: View {
-    @State private var options = Prefs.iconViewOptions
-    @State private var iconSize = Prefs.gridIconSize
-    @State private var previews = Prefs.showIconPreviews
-    @State private var hiddenColumns = Prefs.hiddenListColumns
+    @State private var options = Prefs.shared.iconViewOptions
+    @State private var iconSize = Prefs.shared.gridIconSize
+    @State private var previews = Prefs.shared.showIconPreviews
+    @State private var hiddenColumns = Prefs.shared.hiddenListColumns
 
     var body: some View {
         Form {
             Section("Icons") {
-                Slider(value: Binding(get: { iconSize }, set: { iconSize = $0; Prefs.gridIconSize = $0 }), in: 32...256) {
+                Slider(value: Binding(get: { iconSize }, set: { iconSize = $0; Prefs.shared.gridIconSize = $0 }), in: 32...256) {
                     Text("Icon size")
                 }
                 Toggle("Show item info", isOn: $options.showsInfo)
@@ -40,13 +40,13 @@ struct ViewOptionsView: View {
                 .disabled(!options.showsInfo)
                 Text("Pictures and movies show their dimensions. Other files show their size.")
                     .font(.caption).foregroundStyle(.secondary)
-                Toggle("Show icon previews", isOn: Binding(get: { previews }, set: { previews = $0; Prefs.showIconPreviews = $0 }))
+                Toggle("Show icon previews", isOn: Binding(get: { previews }, set: { previews = $0; Prefs.shared.showIconPreviews = $0 }))
             }
             Section("List columns") {
                 ForEach(ListColumn.allCases, id: \.self) { column in
                     Toggle(column.title, isOn: Binding(get: { !hiddenColumns.contains(column.rawValue) }, set: { shown in
                         if shown { hiddenColumns.remove(column.rawValue) } else { hiddenColumns.insert(column.rawValue) }
-                        Prefs.hiddenListColumns = hiddenColumns
+                        Prefs.shared.hiddenListColumns = hiddenColumns
                     }))
                 }
             }
@@ -55,13 +55,13 @@ struct ViewOptionsView: View {
         .formStyle(.grouped)
         .modifier(ThemedFormBackground())
         .onChange(of: options) { _, value in
-            if value != Prefs.iconViewOptions { Prefs.iconViewOptions = value }
+            if value != Prefs.shared.iconViewOptions { Prefs.shared.iconViewOptions = value }
         }
         .onReceive(NotificationCenter.default.publisher(for: .viewOptionsChanged)) { _ in
-            options = Prefs.iconViewOptions
-            iconSize = Prefs.gridIconSize
+            options = Prefs.shared.iconViewOptions
+            iconSize = Prefs.shared.gridIconSize
         }
-        .onReceive(NotificationCenter.default.publisher(for: .appearanceChanged)) { _ in previews = Prefs.showIconPreviews }
-        .onReceive(NotificationCenter.default.publisher(for: .listColumnsChanged)) { _ in hiddenColumns = Prefs.hiddenListColumns }
+        .onReceive(NotificationCenter.default.publisher(for: .appearanceChanged)) { _ in previews = Prefs.shared.showIconPreviews }
+        .onReceive(NotificationCenter.default.publisher(for: .listColumnsChanged)) { _ in hiddenColumns = Prefs.shared.hiddenListColumns }
     }
 }

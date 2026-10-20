@@ -140,7 +140,7 @@ final class TagStore {
     var suggestions: [FinderTag] {
         let standard = FinderTag.standard
         let standardNames = Set(standard.map { $0.name.lowercased() })
-        let recent = (UserDefaults.standard.stringArray(forKey: Self.recentKey) ?? [])
+        let recent = (Prefs.shared.defaults.stringArray(forKey: Self.recentKey) ?? [])
             .filter { !standardNames.contains($0.lowercased()) }
             .map { FinderTag(name: $0, color: 0) }
         return standard + recent
@@ -148,9 +148,9 @@ final class TagStore {
 
     /// Takes a tag out of the suggestions (and the sidebar). The colored ones always stay.
     func forget(_ name: String) {
-        var recent = UserDefaults.standard.stringArray(forKey: Self.recentKey) ?? []
+        var recent = Prefs.shared.defaults.stringArray(forKey: Self.recentKey) ?? []
         recent.removeAll { $0.caseInsensitiveCompare(name) == .orderedSame }
-        UserDefaults.standard.set(recent, forKey: Self.recentKey)
+        Prefs.shared.defaults.set(recent, forKey: Self.recentKey)
         NotificationCenter.default.post(name: .tagsChanged, object: [URL]())
     }
 
@@ -210,12 +210,12 @@ final class TagStore {
     /// Names you added here, for suggestions and the sidebar (only those you chose, most recent first).
     private func remember(_ names: [String]) {
         guard !names.isEmpty else { return }
-        var recent = UserDefaults.standard.stringArray(forKey: Self.recentKey) ?? []
+        var recent = Prefs.shared.defaults.stringArray(forKey: Self.recentKey) ?? []
         for name in names.reversed() {
             recent.removeAll { $0.caseInsensitiveCompare(name) == .orderedSame }
             recent.insert(name, at: 0)
         }
-        UserDefaults.standard.set(Array(recent.prefix(30)), forKey: Self.recentKey)
+        Prefs.shared.defaults.set(Array(recent.prefix(30)), forKey: Self.recentKey)
     }
 
     /// A new tag's color: one of the colored tags by name, else none.

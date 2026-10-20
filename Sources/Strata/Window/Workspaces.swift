@@ -11,12 +11,12 @@ enum Workspaces {
     /// Sorted by name.
     static var all: [Workspace] {
         get {
-            guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+            guard let data = Prefs.shared.defaults.data(forKey: key) else { return [] }
             return (try? JSONDecoder().decode([Workspace].self, from: data)) ?? []
         }
         set {
             let sorted = newValue.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-            UserDefaults.standard.set(try? JSONEncoder().encode(sorted), forKey: key)
+            Prefs.shared.defaults.set(try? JSONEncoder().encode(sorted), forKey: key)
             NotificationCenter.default.post(name: .workspacesChanged, object: nil)
         }
     }

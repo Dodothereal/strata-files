@@ -240,7 +240,7 @@ final class GridViewController: NSViewController, FileCollectionController {
             item.itemView.cloudBadge.status = cloud
             item.itemView.setTags(tags)
             item.itemView.configure(name: entry.displayName, matches: matches[entry.url.fileViewKey] ?? [],
-                                    detail: showsItemInfo ? folderSizeText?(entry) ?? ItemInfoLoader.shared.immediate(entry, showHidden: Prefs.showHidden) : nil,
+                                    detail: showsItemInfo ? folderSizeText?(entry) ?? ItemInfoLoader.shared.immediate(entry, showHidden: Prefs.shared.showHidden) : nil,
                                     metrics: layout.metrics)
             item.updateState()
         }

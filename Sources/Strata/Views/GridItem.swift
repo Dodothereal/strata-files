@@ -418,7 +418,7 @@ final class GridItem: NSCollectionViewItem {
         let sameFile = self.entry == entry
         self.entry = entry
         self.dimmed = dimmed
-        let showHidden = Prefs.showHidden
+        let showHidden = Prefs.shared.showHidden
         let detail = showsInfo ? folderSizeText ?? ItemInfoLoader.shared.immediate(entry, showHidden: showHidden) : nil
         itemView.configure(name: entry.displayName, matches: matches, detail: detail, metrics: metrics)
         itemView.setAccessibilityHelp(entry.kind)
@@ -439,7 +439,7 @@ final class GridItem: NSCollectionViewItem {
     func loadImage(_ entry: FileEntry, size: CGFloat, scale: CGFloat, keepCurrent: Bool) {
         FileThumbnails.shared.cancel(thumbnailTicket)
         thumbnailTicket = nil
-        let canThumbnail = Prefs.showIconPreviews && FileThumbnails.canThumbnail(entry)
+        let canThumbnail = Prefs.shared.showIconPreviews && FileThumbnails.canThumbnail(entry)
         let cached = canThumbnail ? FileThumbnails.shared.cached(entry, size: size, scale: scale) : nil
         if let cached {
             itemView.setImage(cached.image, animated: false, upscale: !cached.exact)

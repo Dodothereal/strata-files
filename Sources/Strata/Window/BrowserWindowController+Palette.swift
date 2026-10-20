@@ -164,11 +164,11 @@ extension BrowserWindowController {
         add(.newWindow)
         add(.openInTerminal)
         add(.copyPath)
-        add(.toggleHiddenFiles, title: Prefs.showHidden ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files"))
-        add(.toggleFoldersFirst, title: Prefs.foldersFirst ? String(localized: "Mix Folders with Files") : String(localized: "Keep Folders on Top"))
+        add(.toggleHiddenFiles, title: Prefs.shared.showHidden ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files"))
+        add(.toggleFoldersFirst, title: Prefs.shared.foldersFirst ? String(localized: "Mix Folders with Files") : String(localized: "Keep Folders on Top"))
         add(.toggleInspector, title: splitController.splitViewItems.last?.isCollapsed == true ? String(localized: "Show Inspector") : String(localized: "Hide Inspector"))
         add(.toggleSidebar, title: splitController.splitViewItems.first?.isCollapsed == true ? String(localized: "Show Sidebar") : String(localized: "Hide Sidebar"))
-        add(.toggleFolderTree, title: Prefs.sidebarShowsTree ? String(localized: "Show Places in Sidebar") : String(localized: "Show Folder Tree in Sidebar"),
+        add(.toggleFolderTree, title: Prefs.shared.sidebarShowsTree ? String(localized: "Show Places in Sidebar") : String(localized: "Show Folder Tree in Sidebar"),
             keywords: ["Tree", "Folders", "Favorites", "Navigation", "Hierarchy"])
         add(.toggleDualPane, title: isDualPane ? String(localized: "Single Pane") : String(localized: "Dual Pane"))
         if !browser.isShowingResults {

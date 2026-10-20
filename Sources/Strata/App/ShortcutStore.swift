@@ -7,7 +7,7 @@ final class ShortcutStore {
     static let shared = ShortcutStore()
     private let preferences: UserDefaults
 
-    init(preferences: UserDefaults = .standard) {
+    init(preferences: UserDefaults = Prefs.shared.defaults) {
         self.preferences = preferences
     }
 

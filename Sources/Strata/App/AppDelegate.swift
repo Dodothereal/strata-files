@@ -5,7 +5,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowControllers: [BrowserWindowController] = []
 
     func applicationWillFinishLaunching(_ notification: Notification) {
-        Prefs.register()
         // Before anything opens (a strata:// link or `strata -w` arrives before launching finishes): saved servers are
         // known, and copies a crash left are set aside (removed once launched).
         RemoteServers.load()
@@ -13,21 +12,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.raiseFileLimit()
         registerRevealHandler()
         FileViewStyle.applyTheme()
-        ThemeStyle.apply(Prefs.colorThemeOptions, windows: [])
+        ThemeStyle.apply(Prefs.shared.colorThemeOptions, windows: [])
         NotificationCenter.default.addObserver(forName: .appearanceChanged, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated {
                 FileViewStyle.applyTheme()
-                ThemeStyle.apply(Prefs.colorThemeOptions, windows: NSApp.windows)
+                ThemeStyle.apply(Prefs.shared.colorThemeOptions, windows: NSApp.windows)
             }
         }
         NotificationCenter.default.addObserver(forName: .colorThemeChanged, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { ThemeStyle.apply(Prefs.colorThemeOptions, windows: NSApp.windows) }
+            MainActor.assumeIsolated { ThemeStyle.apply(Prefs.shared.colorThemeOptions, windows: NSApp.windows) }
         }
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
                                                           object: nil, queue: .main) { _ in
             MainActor.assumeIsolated {
                 FileViewStyle.applyTheme()
-                ThemeStyle.apply(Prefs.colorThemeOptions, windows: NSApp.windows)
+                ThemeStyle.apply(Prefs.shared.colorThemeOptions, windows: NSApp.windows)
             }
         }
         NSApp.mainMenu = MainMenu.build()
@@ -71,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if windowControllers.isEmpty, !restoreSession() { openWindow(at: startLocation) }
         DockSearch.shared.apply(atLaunch: true)
-        if !Privacy.hasFullDiskAccess, !UserDefaults.standard.bool(forKey: "welcomeShown"),
+        if !Privacy.hasFullDiskAccess, !Prefs.shared.defaults.bool(forKey: "welcomeShown"),
            let window = windowControllers.first?.window {
             let sheet = WelcomeSheetController()
             sheet.onGranted = { [weak self] in self?.windowControllers.forEach { $0.privacyChanged() } }
@@ -213,8 +212,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Where a new window opens: Settings ▸ "New windows open" (where you left off, or home).
     private var startLocation: URL {
-        let last = Prefs.lastLocation.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
-        return Prefs.newWindowsAtHome ? Places.home : last ?? Places.home
+        let last = Prefs.shared.lastLocation.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+        return Prefs.shared.newWindowsAtHome ? Places.home : last ?? Places.home
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -254,12 +253,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // waiting for a share keep its address.
             windows.append(Workspaces.workspace(named: controllers[0].groupWorkspaceName ?? "", of: controllers))
         }
-        UserDefaults.standard.set(try? JSONEncoder().encode(windows), forKey: Self.sessionKey)
+        Prefs.shared.defaults.set(try? JSONEncoder().encode(windows), forKey: Self.sessionKey)
     }
 
     /// Reopens the last session's windows (Settings ▸ General ▸ Reopen windows). False when there's nothing to open.
     private func restoreSession() -> Bool {
-        guard Prefs.reopenWindows, let data = UserDefaults.standard.data(forKey: Self.sessionKey),
+        guard Prefs.shared.reopenWindows, let data = Prefs.shared.defaults.data(forKey: Self.sessionKey),
               let windows = try? JSONDecoder().decode([Workspace].self, from: data) else { return false }
         var opened = false
         // Back to front, so the frontmost window ends up in front again. Folders that are gone are skipped.
@@ -319,7 +318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func newWindow(_ sender: Any?) {
         let current = (NSApp.keyWindow?.windowController as? BrowserWindowController)?.location
-        openWindow(at: Prefs.newWindowsAtHome ? Places.home : current ?? Places.home)
+        openWindow(at: Prefs.shared.newWindowsAtHome ? Places.home : current ?? Places.home)
     }
 
     private lazy var dockMenu = DockMenu(favorites: Places.favorites, newWindow: { [weak self] in

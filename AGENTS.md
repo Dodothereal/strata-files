@@ -106,6 +106,12 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
   `main.swift` opts into application storage, before creating services. Tests inject `SecureStorage.Context` for
   independent stores; never opt into application storage or use the real keychain. Keep authenticated store names
   relative to the injected root and retain the owning History instance through Undo/Redo.
+- App preferences also default to a private domain until `main.swift` explicitly selects the application domain.
+  Inject `Prefs` with a named `UserDefaults` suite and its own notification center when testing settings. Keep the
+  suite alive through persistence checks and remove only that suite afterward. App-owned settings use the selected
+  defaults; macOS-wide spring loading and default-file-manager settings keep their explicit system scope. Native
+  defaults registration is process-wide even across named suites: keep app fallback values in the typed getters,
+  and use an additional private suite when testing inherited preferences.
 - Tests that use the real Trash remove exactly what they put there (`tree.removeFromTrash()`). Never empty the real
   Trash: cleanup must match the saved file identity, because a restored item's old Trash path can be reused by
   another file. Cover that reuse explicitly; a historical path alone is not ownership. `Trash.empty(_:)` takes
@@ -160,6 +166,9 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
   expensive library instruction. Test limits with bounded fixtures, including values on either side of the boundary;
   never deliberately exhaust the machine's memory. For files that could be replaced while opening, inspect the
   opened descriptor and reject nonregular input before reading, as `TextFile.readPrefix` does.
+- C callbacks such as `atexit` must be registered from a nonisolated function when the system may call them on
+  another thread. A closure created in a MainActor context can assert at runtime even when its body only uses
+  thread-safe APIs. Include process shutdown when validating lifecycle changes.
 - Use throwing Foundation I/O APIs where available. Swift `do`/`catch` does not catch Objective-C exceptions from
   older APIs. Preserve streaming semantics when replacing an API: cover short pipe output while the writer stays
   open, as well as read failures and EOF. A failed read must not report partial output as success;

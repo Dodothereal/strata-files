@@ -14,13 +14,13 @@ enum RemoteServers {
 
     static var all: [RemoteServer] {
         get {
-            guard let data = UserDefaults.standard.data(forKey: key),
+            guard let data = Prefs.shared.defaults.data(forKey: key),
                   let saved = try? JSONDecoder().decode([RemoteServer].self, from: data) else { return [] }
             // Only what would be accepted if typed in again.
             return saved.filter { $0.validate() == nil && UUID(uuidString: $0.id) != nil }
         }
         set {
-            UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: key)
+            Prefs.shared.defaults.set(try? JSONEncoder().encode(newValue), forKey: key)
             RemoteRegistry.update(newValue)
             NotificationCenter.default.post(name: .remoteServersChanged, object: nil)
         }

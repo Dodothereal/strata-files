@@ -186,7 +186,7 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         syncButton.isEnabled = false
         spinner.startAnimation(nil)
         summary.stringValue = String(localized: "Comparing…")
-        let left = left, right = right, contents = contents.state == .on, hidden = Prefs.showHidden
+        let left = left, right = right, contents = contents.state == .on, hidden = Prefs.shared.showHidden
         let progress: @Sendable (Int) -> Void = { [weak self] count in
             Task { @MainActor in
                 guard let self, self.control === control else { return }

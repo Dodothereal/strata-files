@@ -21,7 +21,7 @@ extension BrowserViewController {
     /// Whether opening `entry` shows its contents (zip, tar, 7z, rar, unless turned off in Settings). Disk images,
     /// packages and installers keep opening in their own apps.
     func opensAsFolder(_ entry: FileEntry) -> Bool {
-        Prefs.openArchivesAsFolders && !entry.isFolder && Self.browsableByDefault(entry.name)
+        Prefs.shared.openArchivesAsFolders && !entry.isFolder && Self.browsableByDefault(entry.name)
     }
 
     static func browsableByDefault(_ name: String) -> Bool {

@@ -44,7 +44,7 @@ extension BrowserViewController {
         guard newMode != mode else { return }
         let selection = selectedURLs
         setStoredMode(newMode)
-        if remember { Prefs.viewMode = newMode.rawValue }
+        if remember { Prefs.shared.viewMode = newMode.rawValue }
         installActiveView()
         pushContent()
         select(selection)
@@ -56,22 +56,22 @@ extension BrowserViewController {
     @objc func biggerIcons(_ sender: Any?) {
         guard effectiveMode == .grid else { return stepTextSize(1) }
         grid.setIconSize(min(256, grid.iconSize * 1.25), animated: true)
-        Prefs.gridIconSize = Double(grid.iconSize)
+        Prefs.shared.gridIconSize = Double(grid.iconSize)
     }
 
     @objc func smallerIcons(_ sender: Any?) {
         guard effectiveMode == .grid else { return stepTextSize(-1) }
         grid.setIconSize(max(32, grid.iconSize / 1.25), animated: true)
-        Prefs.gridIconSize = Double(grid.iconSize)
+        Prefs.shared.gridIconSize = Double(grid.iconSize)
     }
 
     /// The text size's range is 11–16 pt; past an end there's nothing to do.
     static let textSizes: ClosedRange<Double> = 11...16
 
     private func stepTextSize(_ delta: Double) {
-        let size = min(max(Prefs.nameTextSize + delta, Self.textSizes.lowerBound), Self.textSizes.upperBound)
-        guard size != Prefs.nameTextSize else { return NSSound.beep() }
-        Prefs.nameTextSize = size
+        let size = min(max(Prefs.shared.nameTextSize + delta, Self.textSizes.lowerBound), Self.textSizes.upperBound)
+        guard size != Prefs.shared.nameTextSize else { return NSSound.beep() }
+        Prefs.shared.nameTextSize = size
     }
 
     /// Shows the active presentation's view on top of the list (the list's scroll view hides).
@@ -140,10 +140,10 @@ extension BrowserViewController {
         if let gridController { return gridController }
         let controller = GridViewController()
         controller.fileDelegate = self
-        controller.setIconSize(CGFloat(Prefs.gridIconSize), animated: false)
-        controller.showsItemInfo = Prefs.iconViewOptions.showsInfo
+        controller.setIconSize(CGFloat(Prefs.shared.gridIconSize), animated: false)
+        controller.showsItemInfo = Prefs.shared.iconViewOptions.showsInfo
         controller.folderSizeText = { [weak self] entry in
-            guard Prefs.iconViewOptions.folderInfo == .size else { return nil }
+            guard Prefs.shared.iconViewOptions.folderInfo == .size else { return nil }
             return self?.iconFolderSizeText(entry)
         }
         gridController = controller
@@ -235,7 +235,7 @@ extension BrowserViewController: FileCollectionViewDelegate {
             setFilter("")
         case .returnKey:
             // Disk Usage can't rename in place, so Return opens there.
-            if filter.isEmpty && !Prefs.returnOpens && effectiveMode != .treemap { renameSelection(nil) } else { openSelection(nil) }
+            if filter.isEmpty && !Prefs.shared.returnOpens && effectiveMode != .treemap { renameSelection(nil) } else { openSelection(nil) }
         case .space:
             if filter.isEmpty { toggleQuickLook(nil) } else { setFilter(filter + " ") }
         case .tab:

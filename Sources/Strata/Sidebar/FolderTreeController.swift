@@ -194,11 +194,11 @@ final class FolderTreeController: NSViewController {
         if let current { reveal(current) }
     }
 
-    private var showedHidden = Prefs.showHidden
+    private var showedHidden = Prefs.shared.showHidden
 
     @objc private func prefsChanged() {
-        guard Prefs.showHidden != showedHidden else { return }
-        showedHidden = Prefs.showHidden
+        guard Prefs.shared.showHidden != showedHidden else { return }
+        showedHidden = Prefs.shared.showHidden
         if isActive { rebuild() } else { roots = []; outline.reloadData() }
     }
 
@@ -216,7 +216,7 @@ final class FolderTreeController: NSViewController {
         if let then { node.waiters.append(then) }
         guard !node.isLoading else { return }
         node.isLoading = true
-        let url = node.url, hidden = Prefs.showHidden, generation = generation
+        let url = node.url, hidden = Prefs.shared.showHidden, generation = generation
         Self.reads.async {
             let folders = Self.subfolders(of: url, includeHidden: hidden)
             DispatchQueue.main.async { [weak self] in
@@ -253,7 +253,7 @@ final class FolderTreeController: NSViewController {
                 && !Privacy.measuringWouldPrompt(child.url, browsing: node.url)
         }
         guard !candidates.isEmpty else { return }
-        let urls = candidates.map(\.url), hidden = Prefs.showHidden, generation = generation
+        let urls = candidates.map(\.url), hidden = Prefs.shared.showHidden, generation = generation
         Self.lookAheads.async {
             let answers = urls.map { Self.hasSubfolder($0, includeHidden: hidden) }
             DispatchQueue.main.async { [weak self] in
@@ -366,7 +366,7 @@ final class FolderTreeController: NSViewController {
         }
         node.isRefreshing = true
         node.refreshes += 1
-        let token = node.refreshes, url = node.url, hidden = Prefs.showHidden, generation = generation
+        let token = node.refreshes, url = node.url, hidden = Prefs.shared.showHidden, generation = generation
         Self.reads.async {
             let folders = Self.subfolders(of: url, includeHidden: hidden)
             DispatchQueue.main.async { [weak self] in
