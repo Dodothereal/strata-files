@@ -159,7 +159,7 @@ extension BrowserViewController {
 
     var columns: ColumnBrowserViewController {
         if let columnController { return columnController }
-        let controller = ColumnBrowserViewController()
+        let controller = ColumnBrowserViewController(directoryReader: services.directories)
         controller.applicationFolders = applicationFolders
         controller.fileDelegate = self
         controller.onLocationChange = { [weak self] url in

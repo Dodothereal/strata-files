@@ -7,9 +7,11 @@ final class BrowserServices {
 
     let transfers: TransferQueue
     let visits: Frecency
+    let directories: DirectoryReader
 
-    init(transfers: TransferQueue, visits: Frecency) {
+    init(transfers: TransferQueue, visits: Frecency, directories: DirectoryReader = .live) {
         self.transfers = transfers
         self.visits = visits
+        self.directories = directories
     }
 }

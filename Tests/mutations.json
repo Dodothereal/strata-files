@@ -1068,5 +1068,40 @@
     "replace": "",
     "rule": "Browser service ownership terminal fetch jobs retain their continuation",
     "tests": "TransferContextTests/fetchJobsReleaseTheirContinuationWhenFinishedOrCancelled"
+  },
+  {
+    "file": "Strata/Browser/DirectoryReadSession.swift",
+    "find": "guard let self, generation == self.generation, !Task.isCancelled else { return }",
+    "replace": "guard let self else { return }",
+    "rule": "Directory read ownership stale successes and errors reach the current presentation",
+    "tests": "DirectoryReadSessionTests"
+  },
+  {
+    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "find": "        directoryReads.invalidate()\n        watchers = []",
+    "replace": "        watchers = []",
+    "rule": "Directory read ownership removed columns apply outstanding reads",
+    "tests": "DirectoryReadSessionTests/columnsRejectStaleReadsAndStopApplyingAfterTeardown"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "        let selection = selectedURLs\n        enterResults()\n        directoryReads.invalidate()",
+    "replace": "        let selection = selectedURLs\n        enterResults()",
+    "rule": "Directory read ownership a folder response replaces search results",
+    "tests": "DirectoryReadSessionTests/resultsAndMessagesInvalidateOutstandingFolderReads"
+  },
+  {
+    "file": "Strata/Browser/DirectoryReadSession.swift",
+    "find": "            task = nil\n            receive(result, generation)",
+    "replace": "            receive(result, generation)\n            task = nil",
+    "rule": "Directory read ownership a completion erases the next read task",
+    "tests": "DirectoryReadSessionTests/aCompletionCanStartTheNextReadWithoutLosingItsTask"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "directoryReads.load(url, showHidden: Prefs.shared.showHidden, applications: applicationFolders) { [weak self] result, gen in\n            guard let self else { return }",
+    "replace": "directoryReads.load(url, showHidden: Prefs.shared.showHidden, applications: applicationFolders) { [self] result, gen in",
+    "rule": "Directory read ownership outstanding reads retain closed browsers",
+    "tests": "DirectoryReadSessionTests/pendingReadsDoNotKeepTheirBrowserAlive"
   }
 ]

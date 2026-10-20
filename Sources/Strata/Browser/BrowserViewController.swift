@@ -62,9 +62,11 @@ private extension NSUserInterfaceItemIdentifier {
 
 final class BrowserViewController: NSViewController {
     let services: BrowserServices
+    let directoryReads: DirectoryReadSession
 
     init(services: BrowserServices = .shared) {
         self.services = services
+        directoryReads = DirectoryReadSession(reader: services.directories)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -131,7 +133,7 @@ final class BrowserViewController: NSViewController {
     private var rows: [FileNode] = []
     /// Rows by standardized path: folder URLs from directory listings end in "/", URLs built elsewhere don't.
     private var nodesByPath: [String: FileNode] = [:]
-    private var generation = 0
+    private var generation: Int { directoryReads.generation }
     /// Fetching the selection from a container (see `fetchSelectedContainerFiles`).
     var containerFetch: Task<Void, Never>?
     private var watchers: [DirectoryWatcher] = []
@@ -398,13 +400,10 @@ final class BrowserViewController: NSViewController {
 
     private func reload(scrollToTop: Bool) {
         guard let url = directory else { return }
-        generation += 1
-        let gen = generation
-        let showHidden = Prefs.shared.showHidden
-        Task {
-            do {
-                let entries = try await DirectoryLoader.load(url, showHidden: showHidden, applications: applicationFolders)
-                guard gen == generation else { return }
+        directoryReads.load(url, showHidden: Prefs.shared.showHidden, applications: applicationFolders) { [weak self] result, gen in
+            guard let self else { return }
+            switch result {
+            case .success(let entries):
                 TagStore.shared.load(entries, in: url)
                 CloudStore.shared.load(entries.map(\.url), in: url)
                 loadError = nil
@@ -413,14 +412,15 @@ final class BrowserViewController: NSViewController {
                 let isNewFolder = opensAtTop
                 opensAtTop = false
                 apply(entries, preservingState: !(scrollToTop || isNewFolder), fromTop: scrollToTop || isNewFolder)
-            } catch {
-                guard gen == generation else { return }
+            case .failure(let error):
                 showError(error)
             }
-            let capacity = await Self.availableCapacity(of: url)
-            guard gen == generation else { return }
-            availableCapacity = capacity
-            delegate?.browserContentDidChange(self)
+            Task { [weak self] in
+                let capacity = await Self.availableCapacity(of: url)
+                guard let self, gen == generation else { return }
+                availableCapacity = capacity
+                delegate?.browserContentDidChange(self)
+            }
         }
     }
 
@@ -478,8 +478,10 @@ final class BrowserViewController: NSViewController {
         let gen = generation
         let url = node.url
         let showHidden = Prefs.shared.showHidden
-        Task {
-            let entries = (try? await DirectoryLoader.load(url, showHidden: showHidden, applications: applicationFolders)) ?? []
+        let reader = services.directories, applications = applicationFolders
+        Task { [weak self] in
+            let entries = (try? await reader.load(url, showHidden: showHidden, applications: applications)) ?? []
+            guard let self else { return }
             TagStore.shared.load(entries, in: url)
             CloudStore.shared.load(entries.map(\.url), in: url)
             node.isLoadingChildren = false
@@ -591,7 +593,7 @@ final class BrowserViewController: NSViewController {
         // nobody picked.
         let selection = selectedURLs
         enterResults()
-        generation += 1
+        directoryReads.invalidate()
         resultsTotal = total
         resultsSummary = nil
         loadError = nil
@@ -641,7 +643,7 @@ final class BrowserViewController: NSViewController {
     /// Shows groups of files under header rows, all expanded (duplicate sets).
     func showGroups(_ groups: [(title: String, detail: String, entries: [FileEntry])], summary: String) {
         enterResults()
-        generation += 1
+        directoryReads.invalidate()
         resultsTotal = groups.count
         resultsSummary = summary
         loadError = nil
@@ -693,7 +695,7 @@ final class BrowserViewController: NSViewController {
     /// Replaces the list with a message while results are being computed.
     func showMessage(symbol: String, title: String, message: String = "") {
         enterResults()
-        generation += 1
+        directoryReads.invalidate()
         nodes = []
         rows = []
         nodesByPath = [:]

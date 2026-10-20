@@ -5,6 +5,7 @@ import AppKit
 final class ColumnBrowserViewController: NSViewController, FileCollectionController {
     weak var fileDelegate: FileCollectionViewDelegate?
     var applicationFolders = ApplicationsFolders.standard
+    let directoryReader: DirectoryReader
     /// The folder the user is "in": the selected folder, or the folder of the focused column. Drive the path bar
     /// and window title from it (without reloading the browser).
     var onLocationChange: ((URL) -> Void)?
@@ -28,7 +29,8 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     private var lastReportedSelection: [URL] = []
     private var renameField: InlineRenameField?
 
-    init(scrollView: NSScrollView = NSScrollView()) {
+    init(scrollView: NSScrollView = NSScrollView(), directoryReader: DirectoryReader = .live) {
+        self.directoryReader = directoryReader
         self.scrollView = scrollView
         super.init(nibName: nil, bundle: nil)
     }
@@ -463,7 +465,8 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     /// Shown instead of rows when the folder can't be read.
     private let message = NSTextField(wrappingLabelWithString: "")
     private var watchers: [DirectoryWatcher] = []
-    private var generation = 0
+    let directoryReads: DirectoryReadSession
+    private var generation: Int { directoryReads.generation }
     private var suppressSelection = false
     private var order: (@MainActor (FileEntry, FileEntry) -> Bool)?
     private var deferred: ([FileEntry], [String: [Int]])?
@@ -478,6 +481,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     init(folder: URL, controller: ColumnBrowserViewController) {
         self.folder = folder
         self.controller = controller
+        directoryReads = DirectoryReadSession(reader: controller.directoryReader)
         super.init(frame: .zero)
 
         let column = NSTableColumn(identifier: .init("name"))
@@ -557,7 +561,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     }
 
     func tearDown() {
-        generation += 1
+        directoryReads.invalidate()
         watchers = []
     }
 
@@ -573,8 +577,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     }
 
     private func reload() {
-        generation += 1
-        let gen = generation
+        let gen = generation + 1
         let folder = folder
         let showHidden = showHidden
         let applications = controller?.applicationFolders ?? .standard
@@ -586,10 +589,8 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
                 }
             }
         }
-        Task { [weak self] in
-            let result: Result<[FileEntry], Error>
-            do { result = .success(try await DirectoryLoader.load(folder, showHidden: showHidden, applications: applications)) } catch { result = .failure(error) }
-            guard let self, gen == self.generation else { return }
+        directoryReads.load(folder, showHidden: showHidden, applications: applications) { [weak self] result, _ in
+            guard let self else { return }
             self.spinner.stopAnimation(nil)
             switch result {
             case .success(let entries):

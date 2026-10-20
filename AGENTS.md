@@ -203,6 +203,9 @@ sheet's text before clicking a destructive button. Both builds share preferences
 - Comments explain what and why in plain sentences, in the app's own words (Trash, Put Back, Delete Immediately);
   inline comments only for decisions that aren't obvious. Match the density of the code around you.
 - User-facing text goes through `String(localized:comment:)`; plurals carry `comment: "plural"`; quotes are curly.
+- Folder read scheduling belongs in `DirectoryReadSession`: each presentation owns its generation, rejects late
+  success and error responses, and invalidates reads when removed or replaced by results. Inject `DirectoryReader`
+  for controlled completion tests; keep callbacks weak so pending I/O cannot retain closed browsers.
 - Shared commands belong in `StrataCommand`: preserve their action/tag identities and existing shortcut overrides.
   Menus keep native responder routing; the palette uses the same validator and revalidates before dispatch. Never
   use a translated title as identity. A captured file command must stay bound to its original pane, folder and
