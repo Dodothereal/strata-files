@@ -259,6 +259,19 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         go(.folder(url.standardizedFileURL), select: select, recordHistory: recordHistory)
     }
 
+    /// Inspector mount links can point into a copy that has not been listed yet. Its owner prepares the path before
+    /// the pane navigates; an ordinary local folder opens immediately.
+    @discardableResult
+    func openFolder(_ folder: URL) -> Task<Void, Never>? {
+        guard !isClosed else { return nil }
+        let copies = services.copies
+        guard copies.contains(folder) else { navigate(to: folder); return nil }
+        return openFolder(operation: {
+            guard await copies.reveal(folder) else { throw CocoaError(.fileReadNoSuchFile) }
+            return folder
+        }, failed: { _ in NSSound.beep() })
+    }
+
     private func open(_ target: SidebarTarget) {
         switch target {
         case .folder(let url): navigate(to: url)
@@ -365,7 +378,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             p.folderEntry = FileEntry(url: url)
             p.browser.load(url, select: select)
             // An archive's copy is temporary: it doesn't become a frequent place or where the next window opens.
-            if !ReadOnlyCopies.contains(url) {
+            if !ReadOnlyCopies.contains(url) && !services.copies.contains(url) {
                 if countVisit { services.visits.record(url) }
                 services.preferences.lastLocation = url
             }
@@ -391,7 +404,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             split.sidebar.highlight(.folder(url))
             window?.title = Places.displayName(url)
             // Not a container's copy: dragging the title's icon would hand out what isn't fully read yet.
-            window?.representedURL = LazyCopies.contains(url) ? nil : url
+            window?.representedURL = services.copies.contains(url) ? nil : url
             setSearchField("")
             split.scopeBar.isHidden = true
             updateNotice(for: url)
@@ -1027,16 +1040,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         let browser = browser
         let location = location
         split.inspector.onShowFolder = { [weak self] folder, item in self?.navigate(to: folder, select: item) }
-        split.inspector.onOpenFolder = { [weak self] folder in
-            guard LazyCopies.contains(folder) else {
-                self?.navigate(to: folder)
-                return
-            }
-            // A mount's path in a container: listed on the way there first, if it hasn't been browsed yet.
-            Task { [weak self] in
-                if await LazyCopies.reveal(folder) { self?.navigate(to: folder) } else { NSSound.beep() }
-            }
-        }
+        split.inspector.onOpenFolder = { [weak self] folder in self?.openFolder(folder) }
         split.inspector.onOpenContainer = { [weak self] id in self?.openContainer(id) }
         split.inspector.show(entries: browser.selectedEntries, folder: folder,
                              folderSize: { url in browser.folderSize(url, request: true) },

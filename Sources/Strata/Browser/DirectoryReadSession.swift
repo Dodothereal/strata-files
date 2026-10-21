@@ -4,9 +4,21 @@ import Foundation
 /// loader; tests can hold a read open and deliver success or failure in a chosen order.
 nonisolated struct DirectoryReader: Sendable {
     let read: @Sendable (URL, Bool, ApplicationsFolders) async throws -> [FileEntry]
+    let invalidate: @Sendable (URL) async -> Void
 
-    static let live = DirectoryReader { folder, hidden, applications in
-        try await DirectoryLoader.load(folder, showHidden: hidden, applications: applications)
+    static let live = DirectoryReader(copies: .live)
+
+    init(invalidate: @escaping @Sendable (URL) async -> Void = { _ in },
+         read: @escaping @Sendable (URL, Bool, ApplicationsFolders) async throws -> [FileEntry]) {
+        self.read = read
+        self.invalidate = invalidate
+    }
+
+    init(copies: CopyProviders) {
+        invalidate = { await copies.invalidate($0) }
+        read = { folder, hidden, applications in
+            try await DirectoryLoader.load(folder, showHidden: hidden, applications: applications, copies: copies)
+        }
     }
 
     func load(_ folder: URL, showHidden: Bool, applications: ApplicationsFolders) async throws -> [FileEntry] {
@@ -33,12 +45,19 @@ final class DirectoryReadSession {
 
     @discardableResult
     func load(_ folder: URL, showHidden: Bool, applications: ApplicationsFolders,
+              invalidateCopy: Bool = false,
               receive: @escaping (Result<[FileEntry], Error>, Int) -> Void) -> Task<Void, Never> {
         invalidate()
         let generation = generation, reader = reader
         let work = Task { [weak self] in
             let result: Result<[FileEntry], Error>
-            do { result = .success(try await reader.load(folder, showHidden: showHidden, applications: applications)) }
+            do {
+                if invalidateCopy {
+                    await reader.invalidate(folder)
+                    try Task.checkCancellation()
+                }
+                result = .success(try await reader.load(folder, showHidden: showHidden, applications: applications))
+            }
             catch { result = .failure(error) }
             guard let self, generation == self.generation, !Task.isCancelled else { return }
             task = nil

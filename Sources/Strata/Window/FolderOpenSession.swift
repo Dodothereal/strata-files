@@ -11,7 +11,7 @@ final class FolderOpenSession {
 
     private(set) var request: Request?
     private(set) var notice: Notice?
-    private var task: Task<Void, Never>?
+    private(set) var task: Task<Void, Never>?
 
     isolated deinit { cancel() }
 

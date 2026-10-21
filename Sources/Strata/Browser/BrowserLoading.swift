@@ -46,11 +46,11 @@ final class BrowserLoading {
         }
     }
 
-    func reload(showHidden: Bool, applications: ApplicationsFolders, scrollToTop: Bool,
+    func reload(showHidden: Bool, applications: ApplicationsFolders, scrollToTop: Bool, invalidateCopy: Bool = false,
                 receive: @escaping (Result<Delivery, Error>) -> Void, capacityChanged: @escaping () -> Void) {
         guard let directory else { return }
         cancelAuxiliaryReads()
-        reads.load(directory, showHidden: showHidden, applications: applications) { [weak self] result, generation in
+        reads.load(directory, showHidden: showHidden, applications: applications, invalidateCopy: invalidateCopy) { [weak self] result, generation in
             guard let self else { return }
             isLoadingFolder = false
             switch result {

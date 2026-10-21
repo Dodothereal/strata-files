@@ -48,7 +48,8 @@ struct RemoteEnvironmentTests {
         let remote: RemoteServices
         let services: BrowserServices
 
-        init(_ tree: TestTree, folder: String, notifications: NotificationCenter, saved: [RemoteServer] = []) throws {
+        init(_ tree: TestTree, folder: String, notifications: NotificationCenter, saved: [RemoteServer] = [],
+             reader: DirectoryReader? = DirectoryReader { _, _, _ in [] }) throws {
             defaults = try #require(UserDefaults(suiteName: domain))
             defaults.set(try JSONEncoder().encode(saved), forKey: "remoteServers")
             preferences = Prefs(defaults: defaults, domainName: domain)
@@ -57,7 +58,7 @@ struct RemoteEnvironmentTests {
                 copyRoot: tree.url(folder + "/cache"), connector: network.connector, notifications: notifications)
             let storage = SecureStorage.Context(directory: tree.url(folder + "/state"), caches: tree.url(folder + "/state/Caches"), key: nil)
             services = BrowserServices(transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage)),
-                visits: Frecency(preferences: defaults), directories: DirectoryReader { _, _, _ in [] },
+                visits: Frecency(preferences: defaults), directories: reader,
                 preferences: preferences, remote: remote)
         }
 
@@ -80,6 +81,28 @@ struct RemoteEnvironmentTests {
                   section.id == "servers" else { return [] }
             return section.items
         }
+    }
+
+    @Test func defaultWindowReadersUseTheirRemoteEnvironmentWithoutAnOverride() async throws {
+        let tree = try TestTree("left/keep", "right/keep"), center = NotificationCenter()
+        let a = server(name: "Left"), b = server(a.id, name: "Right")
+        let left = try Environment(tree, folder: "left", notifications: center, saved: [a], reader: nil)
+        let right = try Environment(tree, folder: "right", notifications: center, saved: [b], reader: nil)
+        let lt = try left.remote.copies.prepare(a), rt = try right.remote.copies.prepare(b)
+        let before = tree.snapshot()
+        #expect(left.services.copies.contains(lt) && !left.services.copies.contains(rt))
+        #expect(right.services.copies.contains(rt) && !right.services.copies.contains(lt))
+        #expect(try await left.services.directories.load(lt, showHidden: false, applications: .standard).isEmpty)
+        #expect(left.network.logins.withLock { $0.count } == 1)
+        #expect(right.network.logins.withLock { $0.isEmpty })
+        #expect(try await right.services.directories.load(rt, showHidden: false, applications: .standard).isEmpty)
+        #expect(right.network.logins.withLock { $0.count } == 1)
+        #expect(left.network.logins.withLock { $0.map(\.0) } == [a])
+        #expect(right.network.logins.withLock { $0.map(\.0) } == [b])
+        await left.remote.sessions.disconnect(a.id)
+        await right.remote.sessions.disconnect(b.id)
+        withExtendedLifetime((left, right)) {}
+        #expect(tree.snapshot() == before)
     }
 
     @Test func sidebarsAndFolderTreesKeepTheirServerStoreStatusAndNotifications() throws {

@@ -363,20 +363,22 @@ final class BrowserViewController: NSViewController {
     }
 
     /// Re-reads the current folder, keeping selection, expanded folders and scroll position.
-    @objc func refresh() {
+    @objc func refresh() { refresh(invalidateCopy: false) }
+
+    private func refresh(invalidateCopy: Bool) {
         guard directory != nil, !isShowingResults else { return }
         TagStore.shared.invalidate(directory)
         // FSEvents normally keeps git status current; without it, entries changing is our cue.
         if let observation = gitObservation, !observation.isWatching {
             GitStatusStore.shared.invalidate(root: observation.repository.root)
         }
-        if pendingSelection == nil { pendingSelection = selectedURLs }
-        reload(scrollToTop: false)
+        reload(scrollToTop: false, invalidateCopy: invalidateCopy)
     }
 
-    private func reload(scrollToTop: Bool) {
+    private func reload(scrollToTop: Bool, invalidateCopy: Bool = false) {
         guard let url = directory else { return }
-        loading.reload(showHidden: preferences.showHidden, applications: applicationFolders, scrollToTop: scrollToTop) { [weak self] result in
+        loading.reload(showHidden: preferences.showHidden, applications: applicationFolders, scrollToTop: scrollToTop,
+                       invalidateCopy: invalidateCopy) { [weak self] result in
             guard let self else { return }
             switch result {
             case .success(let delivery):
@@ -401,6 +403,8 @@ final class BrowserViewController: NSViewController {
             return
         }
         deferredApply = nil
+        // A refresh may wait on a provider or native editing. Preserve the latest selection, not its starting one.
+        let selection = pendingSelection ?? (preservingState ? selectedURLs : [])
         let expanded = preservingState ? nodes.filter { outlineView.isItemExpanded($0) } : []
         listing.replace(entries, preservingNodes: preservingState, sort: sort)
         loading.applied()
@@ -413,7 +417,7 @@ final class BrowserViewController: NSViewController {
         // Icons, columns and disk usage get the new rows first: selecting or renaming before that looked in the
         // previous folder's items, so a revealed file or a new folder came up unselected outside the list.
         pushContent(animated: preservingState)
-        select(pendingSelection ?? [])
+        select(selection)
         pendingSelection = nil
         if let rename = pendingRename, node(for: rename) != nil {
             pendingRename = nil
@@ -1139,15 +1143,8 @@ final class BrowserViewController: NSViewController {
     @objc func reloadFolder(_ sender: Any?) {
         for node in nodes where node.entry.isDirectory { FolderSizer.invalidate(node.url) }
         if let repository = gitObservation?.repository { GitStatusStore.shared.refresh(repository, force: true) }
-        // A container's folder is read from the container again, not just from its copy.
-        if let directory, LazyCopies.contains(directory) {
-            Task {
-                await LazyCopies.invalidate(directory)
-                refresh()
-            }
-            return
-        }
-        refresh()
+        // Invalidation and the following read belong to the same request, cancelled together on navigation.
+        refresh(invalidateCopy: true)
     }
 
     @objc private func prefsChanged() {

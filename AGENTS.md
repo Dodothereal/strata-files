@@ -252,6 +252,10 @@ sheet's text before clicking a destructive button. Both builds share preferences
 - Folder read scheduling belongs in `DirectoryReadSession`: each presentation owns its generation, rejects late
   success and error responses, and invalidates reads when removed or replaced by results. Inject `DirectoryReader`
   for controlled completion tests; keep callbacks weak so pending I/O cannot retain closed browsers.
+  Explicit Reload invalidation and the following listing belong to that same cancellable request. Check cancellation
+  after invalidation; an old Reload must not start a read after navigation or a newer Reload.
+  Preserve ordinary refresh selections when entries are applied, so choices made during I/O are retained. Keep
+  explicit pending selections (including an empty selection) distinct from that preservation fallback.
 - `BrowserLoading` owns folder state, expanded-row reads and free-space work. Invalidate child reads before reusing
   rows; coalesce them by node identity, and keep that identity alive until the read ends. A late response cannot
   clear its replacement. Keep free-space results with their folder, including when applying entries navigates again.
@@ -261,6 +265,9 @@ sheet's text before clicking a destructive button. Both builds share preferences
   owning provider, propagate fetch/preparation errors, and retain the existing bounded selection-prefetch policy.
   Provider-specific write, permission and archive behavior stays in its implementation. Inject providers or server
   services for tests; never let a fixture fall back to a live connection.
+  `BrowserServices.copies` and its default directory reader share the window's server environment. Inspector folder
+  links prepare their path through that owner and navigate through the originating pane's `FolderOpenSession`.
+  Provider cache paths must not become remembered local locations or draggable window-title URLs.
 - `RemoteFiles` and its `CopyProvider` adapter use the same `RemoteCopyStore` for server lookup, paths, placeholders,
   download staging and removal. An injected backend must not fall back to the application's copy root. Test identical
   server IDs in independent roots, including refused cross-environment writes and scoped cleanup. Prepare and remove

@@ -1099,15 +1099,15 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "loading.reload(showHidden: preferences.showHidden, applications: applicationFolders, scrollToTop: scrollToTop) { [weak self] result in\n            guard let self else { return }",
-    "replace": "loading.reload(showHidden: preferences.showHidden, applications: applicationFolders, scrollToTop: scrollToTop) { [self] result in",
+    "find": "loading.reload(showHidden: preferences.showHidden, applications: applicationFolders, scrollToTop: scrollToTop,\n                       invalidateCopy: invalidateCopy) { [weak self] result in\n            guard let self else { return }",
+    "replace": "loading.reload(showHidden: preferences.showHidden, applications: applicationFolders, scrollToTop: scrollToTop,\n                       invalidateCopy: invalidateCopy) { [self] result in",
     "rule": "Directory read ownership outstanding reads retain closed browsers",
     "tests": "DirectoryReadSessionTests/pendingReadsDoNotKeepTheirBrowserAlive"
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "if pendingSelection == nil { pendingSelection = selectedURLs }",
-    "replace": "if pendingSelection?.isEmpty != false { pendingSelection = selectedURLs }",
+    "find": "let selection = pendingSelection ?? (preservingState ? selectedURLs : [])",
+    "replace": "let selection = pendingSelection.flatMap { $0.isEmpty ? nil : $0 } ?? (preservingState ? selectedURLs : [])",
     "rule": "Applied browser actions explicit empty selection is replaced by the old selection",
     "tests": "DirectoryReadSessionTests/aReloadHonorsEmptySelectionAndEachViewsSelectionPolicy"
   },
@@ -2932,5 +2932,82 @@
     "replace": "    @objc func containerCopyProblem(_ notification: Notification) {",
     "rule": "Pane opening ownership an old listing failure replaces the Cancel button",
     "tests": "RemoteSessionOwnershipTests/aPendingOpeningNoticeFollowsItsPaneAndSurvivesOldListingFailures"
+  },
+  {
+    "file": "Strata/Browser/BrowserServices.swift",
+    "find": "copies ?? CopyProviders(servers: remote.files, containers: .shared)",
+    "replace": "copies ?? .live",
+    "rule": "Provider directory ownership default copies ignore their server environment",
+    "tests": "RemoteEnvironmentTests/defaultWindowReadersUseTheirRemoteEnvironmentWithoutAnOverride"
+  },
+  {
+    "file": "Strata/Browser/BrowserServices.swift",
+    "find": "directories ?? DirectoryReader(copies: self.copies)",
+    "replace": "directories ?? .live",
+    "rule": "Provider directory ownership default reader ignores its providers",
+    "tests": "InspectorFolderOpeningTests/independentDirectoryReadersUseTheirOwnProvidersAndKeepNativeHiddenFileFiltering"
+  },
+  {
+    "file": "Strata/Model/FileEntry.swift",
+    "find": "if copies.contains(directory) { await copies.refresh(directory) }",
+    "replace": "",
+    "rule": "Provider directory ownership directory reading skips provider preparation",
+    "tests": "InspectorFolderOpeningTests/independentDirectoryReadersUseTheirOwnProvidersAndKeepNativeHiddenFileFiltering"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "let copies = services.copies",
+    "replace": "let copies = CopyProviders.live",
+    "rule": "Provider directory ownership Inspector opening bypasses its provider",
+    "tests": "InspectorFolderOpeningTests/providerFoldersArePreparedWithoutBecomingLocalSavedLocationsOrDraggableTitles"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "guard await copies.reveal(folder) else { throw CocoaError(.fileReadNoSuchFile) }",
+    "replace": "guard true else { throw CocoaError(.fileReadNoSuchFile) }",
+    "rule": "Provider directory ownership Inspector opening skips path preparation",
+    "tests": "InspectorFolderOpeningTests/providerFoldersArePreparedWithoutBecomingLocalSavedLocationsOrDraggableTitles"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "if !ReadOnlyCopies.contains(url) && !services.copies.contains(url) {",
+    "replace": "if !ReadOnlyCopies.contains(url) {",
+    "rule": "Provider directory ownership provider paths become saved local destinations",
+    "tests": "InspectorFolderOpeningTests/providerFoldersArePreparedWithoutBecomingLocalSavedLocationsOrDraggableTitles"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "window?.representedURL = services.copies.contains(url) ? nil : url",
+    "replace": "window?.representedURL = url",
+    "rule": "Provider directory ownership provider paths become draggable incomplete copies",
+    "tests": "InspectorFolderOpeningTests/providerFoldersArePreparedWithoutBecomingLocalSavedLocationsOrDraggableTitles"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "refresh(invalidateCopy: true)",
+    "replace": "refresh(invalidateCopy: false)",
+    "rule": "Provider directory ownership explicit Reload keeps a stale provider listing",
+    "tests": "InspectorFolderOpeningTests/explicitReloadInvalidatesTheSameProviderBeforeReadingAgain"
+  },
+  {
+    "file": "Strata/Browser/DirectoryReadSession.swift",
+    "find": "invalidate = { await copies.invalidate($0) }",
+    "replace": "invalidate = { _ in }",
+    "rule": "Provider directory ownership reader invalidation ignores its provider",
+    "tests": "InspectorFolderOpeningTests/explicitReloadInvalidatesTheSameProviderBeforeReadingAgain"
+  },
+  {
+    "file": "Strata/Browser/DirectoryReadSession.swift",
+    "find": "await reader.invalidate(folder)\n                    try Task.checkCancellation()",
+    "replace": "await reader.invalidate(folder)",
+    "rule": "Provider directory ownership cancelled invalidation starts another listing",
+    "tests": "InspectorFolderOpeningTests/navigatingDuringInvalidationCannotReloadTheNewFolder|InspectorFolderOpeningTests/repeatedReloadsDiscardSupersededInvalidationsInEitherCompletionOrder|InspectorFolderOpeningTests/aPendingInvalidationCannotKeepItsReadSessionAlive"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "        reload(scrollToTop: false, invalidateCopy: invalidateCopy)",
+    "replace": "        if pendingSelection == nil { pendingSelection = selectedURLs }\n        reload(scrollToTop: false, invalidateCopy: invalidateCopy)",
+    "rule": "Provider directory ownership Reload restores the selection from before its wait",
+    "tests": "InspectorFolderOpeningTests/selectionsChangedDuringReloadAreNotReplacedByItsStartingSelection"
   }
 ]
