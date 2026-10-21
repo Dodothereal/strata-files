@@ -61,13 +61,15 @@ actor ContainerFiles {
     /// Longest an archive-stream listing may take.
     static let archiveBudget: TimeInterval = 120
 
+    private let now: @Sendable () -> Date
     private let removeCopy: @Sendable (URL) async -> Void
     private var removals: [String: Task<Void, Never>] = [:]
     private let readListing: @Sendable (ContainerSource, String) async throws -> ContainerListingResult
     private let readFile: @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void
     private let readTree: @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void
 
-    init(readListing: @escaping @Sendable (ContainerSource, String) async throws -> ContainerListingResult = {
+    init(now: @escaping @Sendable () -> Date = { Date() },
+         readListing: @escaping @Sendable (ContainerSource, String) async throws -> ContainerListingResult = {
         try await ContainerFiles.loadListing($0, path: $1)
     }, readFile: @escaping @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void = { source, path, url, stop in
         try await blocking { try CopyWriter.fetchFile(source.engine, id: source.id, containerPath: path, to: url, stop: stop) }
@@ -76,6 +78,7 @@ actor ContainerFiles {
     }, removeCopy: @escaping @Sendable (URL) async -> Void = { url in
         _ = try? await blocking { ContainerCopies.remove(url) }
     }) {
+        self.now = now
         self.removeCopy = removeCopy
         self.readListing = readListing
         self.readFile = readFile
@@ -105,11 +108,11 @@ actor ContainerFiles {
         guard let (source, top) = ContainerCopies.copy(containing: real), let path = ContainerCopies.containerPath(of: real, top: top),
               !closing.contains(top.standardizedFileURL.path) else { return }
         let key = real.path
-        while !closing.contains(top.standardizedFileURL.path), let request = listings.request(for: key, start: {
+        while !closing.contains(top.standardizedFileURL.path), let request = listings.request(for: key, now: now(), start: {
             Task { await self.list(real, path: path, source: source, top: top) }
         }) {
             let fresh = await request.task.value
-            guard listings.finish(request, for: key, freshFor: fresh) else { return }
+            guard listings.finish(request, for: key, freshFor: fresh, now: now()) else { return }
         }
     }
 
@@ -117,7 +120,7 @@ actor ContainerFiles {
     /// folder with it; one made again under the same name starts over (its files aren't the old one's).
     private func syncContainers(_ folder: URL, engine: ContainerEngine) async {
         let key = folder.path
-        while let request = listings.request(for: key, start: {
+        while let request = listings.request(for: key, now: now(), start: {
             Task<TimeInterval?, Never> {
                 do {
                     let list = try await blocking { try ContainerAPI.containers(engine) }
@@ -132,7 +135,7 @@ actor ContainerFiles {
             }
         }) {
             let fresh = await request.task.value
-            guard listings.finish(request, for: key, freshFor: fresh) else { return }
+            guard listings.finish(request, for: key, freshFor: fresh, now: now()) else { return }
         }
     }
 

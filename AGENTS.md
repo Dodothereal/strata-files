@@ -127,6 +127,8 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
   of shared folders like `$TMPDIR`. `for _ in 0..<n where !done() { sleep }` skips rather than stops, so it only
   works for a condition that stays true once met: after ⌘Z or ⇧⌘Z, whose steps pass through states that can equal the
   one expected, `await FileOps.undoWork?.value` instead (undo and redo work runs there, in order).
+- Cache freshness tests inject a clock and advance it explicitly, including expiry boundaries and delayed reads.
+  A test runner resuming within a real-time cache lifetime is not a reliable synchronization condition.
 - A test helper that blocks (a `Process`, a semaphore) runs on a Dispatch queue, never on the main thread or in a
   `@concurrent` function: other suites' file work waits on those (see `ScratchVolume`, a disk image for moves across
   disks). Suites sharing global state (`RemoteRegistry`, `TransferEngine.hooks`) run as one

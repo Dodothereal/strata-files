@@ -19,6 +19,7 @@ actor RemoteFiles {
     /// …and this many.
     static let eagerFolderCount = 100
 
+    private let now: @Sendable () -> Date
     private let removeCopy: @Sendable (String) -> Void
     private var removals: [String: Task<Void, Never>] = [:]
     /// Where connections come from (tests give a local one).
@@ -31,9 +32,11 @@ actor RemoteFiles {
     /// Servers whose copies are being removed: nothing new starts in them.
     private(set) var closing: Set<String> = []
 
-    init(backends: @escaping @Sendable (String) async throws -> any RemoteBackend = { try await RemoteSessions.shared.backend(for: $0) },
+    init(now: @escaping @Sendable () -> Date = { Date() },
+         backends: @escaping @Sendable (String) async throws -> any RemoteBackend = { try await RemoteSessions.shared.backend(for: $0) },
          removeCopy: @escaping @Sendable (String) -> Void = { RemoteCopies.remove($0) }) {
         self.backends = backends
+        self.now = now
         self.removeCopy = removeCopy
     }
 
@@ -46,11 +49,11 @@ actor RemoteFiles {
         guard let (server, top) = RemoteCopies.server(containing: real), let path = RemoteCopies.remotePath(of: real, top: top),
               !closing.contains(server.id) else { return }
         let key = real.path
-        while !closing.contains(server.id), let request = listings.request(for: key, start: {
+        while !closing.contains(server.id), let request = listings.request(for: key, now: now(), start: {
             Task { await self.list(real, path: path, server: server, top: top) }
         }) {
             let fresh = await request.task.value
-            guard listings.finish(request, for: key, freshFor: fresh) else { return }
+            guard listings.finish(request, for: key, freshFor: fresh, now: now()) else { return }
         }
     }
 

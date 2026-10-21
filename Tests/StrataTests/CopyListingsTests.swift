@@ -133,25 +133,34 @@ struct CopyListingsTests {
         let after = ListedEntry(name: "after.txt", kind: .file, size: 20, mode: 0o600, modified: nil, linkTarget: "")
         let replies = ListingReplies(next: [after])
         defer { Task { await replies.finish([]) } }
-        let files = ContainerFiles(readListing: { source, path in
+        let clock = TestClock()
+        let files = ContainerFiles(now: clock.now, readListing: { source, path in
             #expect(source.id == container.id && path == "/")
             return ContainerListingResult(entries: await replies.list(), contents: [:], freshFor: 15)
         })
         let reading = Task { await files.refresh(top) }
         await replies.waitUntilStarted()
         await files.invalidate(top)
+        clock.advance(by: 30)
         await replies.finish([before])
         await reading.value
         #expect(await replies.calls == 2)
         #expect(TestTree.listing(of: top) == ["after.txt"])
         #expect(ContainerCopies.isPlaceholder(top.appending(path: "after.txt")))
+        clock.advance(by: 14)
         await files.refresh(top)
         #expect(await replies.calls == 2)
+        clock.advance(by: 1)
+        await files.refresh(top)
+        #expect(await replies.calls == 3)
+        clock.advance(by: 15)
+        await files.refresh(top)
+        #expect(await replies.calls == 4)
         await files.discard(top)
         #expect(!FileManager.default.fileExists(atPath: top.path))
         let reopened = try ContainerCopies.prepare(container, on: engine)
         await files.refresh(reopened)
-        #expect(await replies.calls == 3)
+        #expect(await replies.calls == 5)
         #expect(TestTree.listing(of: reopened) == ["after.txt"])
         #expect(tree.snapshot() == ["untouched.txt"])
     }

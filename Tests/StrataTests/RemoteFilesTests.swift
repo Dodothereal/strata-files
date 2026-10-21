@@ -78,21 +78,30 @@ struct RemoteFilesTests {
         let after = ListedEntry(name: "after.txt", kind: .file, size: 20, mode: 0o600, modified: nil, linkTarget: "")
         let backend = HeldListingBackend(next: [after])
         defer { Task { await backend.finishFirst([]) } }
-        let files = RemoteFiles(backends: { _ in backend })
+        let clock = TestClock()
+        let files = RemoteFiles(now: clock.now, backends: { _ in backend })
         let reading = Task { await files.refresh(folder) }
         await backend.waitUntilStarted()
         await files.invalidate(folder)
+        clock.advance(by: RemoteFiles.freshFor * 2)
         await backend.finishFirst([before])
         await reading.value
         #expect(await backend.calls == 2)
         #expect(TestTree.listing(of: folder) == ["after.txt"])
-        // Only the post-invalidation response is fresh: another caller uses it without another request.
+        // Freshness begins when the replacement read finishes, regardless of how long the first read took.
+        clock.advance(by: RemoteFiles.freshFor - 1)
         await files.refresh(folder)
         #expect(await backend.calls == 2)
+        clock.advance(by: 1)
+        await files.refresh(folder)
+        #expect(await backend.calls == 3)
+        clock.advance(by: RemoteFiles.freshFor)
+        await files.refresh(folder)
+        #expect(await backend.calls == 4)
         await files.discard(remote.id)
         #expect(!FileManager.default.fileExists(atPath: folder.path))
         await files.refresh(folder)
-        #expect(await backend.calls == 3)
+        #expect(await backend.calls == 5)
         #expect(TestTree.listing(of: folder) == ["after.txt"])
         #expect(sandbox.snapshot() == original)
     }

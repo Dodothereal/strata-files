@@ -1847,5 +1847,19 @@
     "replace": "if let current = currentWindow(), let controller = current.windowController as? BrowserWindowController { controller.services.workspaces.update(name, from: current) }",
     "rule": "Workspace ownership menu updates stay with their original window after focus changes",
     "tests": "WorkspaceOwnershipTests/menuPaletteAndSaveSheetUseTheirWindowOwner"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "self.now = now",
+    "replace": "self.now = { Date() }",
+    "rule": "Listing freshness clock controls cache reuse and expiry for servers",
+    "tests": "RemoteFilesTests/invalidatingAnInFlightListingReadsAgainBeforeReportingItFresh"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "self.now = now",
+    "replace": "self.now = { Date() }",
+    "rule": "Listing freshness clock controls cache reuse and expiry for containers",
+    "tests": "CopyListingsTests/containerListingsUseTheSharedInvalidationRulesBeforeReportingFreshness"
   }
 ]
