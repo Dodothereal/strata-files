@@ -15,7 +15,7 @@ nonisolated enum ServerConnection {
     static func url(from text: String) -> Result<URL, Problem> {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .failure(Problem(message: String(localized: "Type a server address, like smb://server/share."))) }
-        guard !trimmed.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else {
+        guard !trimmed.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
             return .failure(Problem(message: String(localized: "That address has characters a server address can’t.")))
         }
         let spelled = trimmed.contains("://") ? trimmed : "smb://" + trimmed

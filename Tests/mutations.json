@@ -2085,5 +2085,12 @@
     "replace": "if let backend = backends[id] {",
     "rule": "Remote session ownership rechecks current connections after a dropped status callback",
     "tests": "RemoteSessionOwnershipTests/reconnectingDuringDroppedStatusPublicationReusesTheNewConnection"
+  },
+  {
+    "file": "Strata/Model/ServerConnection.swift",
+    "find": "guard !trimmed.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {",
+    "replace": "guard true else {",
+    "rule": "Share addresses refuse embedded control characters before mounting",
+    "tests": "ServerAddressTests/shareAddressesAcceptOrdinaryTextAndRejectEmbeddedControls"
   }
 ]
