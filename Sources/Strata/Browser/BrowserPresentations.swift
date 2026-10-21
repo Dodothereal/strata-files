@@ -49,7 +49,8 @@ final class BrowserPresentations {
 
     func grid(in browser: BrowserViewController) -> GridViewController {
         if let gridController { return gridController }
-        let controller = GridViewController(preferences: browser.preferences)
+        let controller = GridViewController(preferences: browser.preferences, thumbnails: browser.services.thumbnails,
+                                            itemInfo: browser.services.itemInfo)
         controller.fileDelegate = browser
         controller.setIconSize(CGFloat(browser.preferences.gridIconSize), animated: false)
         controller.showsItemInfo = browser.preferences.iconViewOptions.showsInfo
@@ -63,7 +64,8 @@ final class BrowserPresentations {
 
     func columns(in browser: BrowserViewController) -> ColumnBrowserViewController {
         if let columnController { return columnController }
-        let controller = ColumnBrowserViewController(directoryReader: browser.services.directories, preferences: browser.preferences)
+        let controller = ColumnBrowserViewController(directoryReader: browser.services.directories, preferences: browser.preferences,
+                                                     thumbnails: browser.services.thumbnails, itemInfo: browser.services.itemInfo)
         controller.applicationFolders = browser.applicationFolders
         controller.fileDelegate = browser
         controller.onLocationChange = { [weak browser] url in
@@ -76,7 +78,7 @@ final class BrowserPresentations {
 
     func gallery(in browser: BrowserViewController) -> GalleryViewController {
         if let galleryController { return galleryController }
-        let controller = GalleryViewController()
+        let controller = GalleryViewController(thumbnails: browser.services.thumbnails)
         controller.fileDelegate = browser
         galleryController = controller
         return controller

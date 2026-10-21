@@ -3243,5 +3243,110 @@
     ],
     "rule": "Provider media ownership queued work reads a newly invalidated copy",
     "tests": "ProviderMediaInfoTests/queuedReadsRecheckAvailabilityAndKeepTheFourReaderLimit"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "if services.copies.contains(url) { return nil }",
+    "replace": "",
+    "rule": "Provider thumbnail and info ownership folder sizing measures a provider folder",
+    "tests": "ProviderThumbnailInfoTests/providerFoldersAreNotMeasuredForListIconsOrDiskUsage"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "if services.copies.contains(node.url) { return \"—\" }",
+    "replace": "",
+    "rule": "Provider thumbnail and info ownership List Size column shows ellipsis for a provider folder",
+    "tests": "ProviderThumbnailInfoTests/providerFoldersAreNotMeasuredForListIconsOrDiskUsage"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, !services.copies.contains(entry.url), let directory else { return false }",
+    "replace": "guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, let directory else { return false }",
+    "rule": "Provider thumbnail and info ownership browser canMeasure allows a provider folder",
+    "tests": "ProviderThumbnailInfoTests/providerFoldersAreNotMeasuredForListIconsOrDiskUsage"
+  },
+  {
+    "file": "Strata/Views/FileThumbnails.swift",
+    "find": "guard Self.canThumbnail(entry, copies: copies) else {\n            invalidate(entry)\n            return false\n        }",
+    "replace": "guard Self.canThumbnail(entry, copies: copies) else {\n            return false\n        }",
+    "rule": "Provider thumbnail and info ownership placeholder check skips invalidating cached or pending thumbnails",
+    "tests": "ProviderThumbnailInfoTests/thumbnailsRespectProvidersInvalidatePlaceholdersAndNeverRecordPlaceholderFailures"
+  },
+  {
+    "file": "Strata/Views/FileThumbnails.swift",
+    "find": "func cached(_ entry: FileEntry, size: CGFloat, scale: CGFloat) -> (image: NSImage, exact: Bool)? {\n        guard canThumbnail(entry) else { return nil }",
+    "replace": "func cached(_ entry: FileEntry, size: CGFloat, scale: CGFloat) -> (image: NSImage, exact: Bool)? {",
+    "rule": "Provider thumbnail and info ownership cached thumbnails are returned for placeholders",
+    "tests": "ProviderThumbnailInfoTests/thumbnailsRespectProvidersInvalidatePlaceholdersAndNeverRecordPlaceholderFailures"
+  },
+  {
+    "file": "Strata/Views/FileThumbnails.swift",
+    "find": "guard canThumbnail(entry.entry) else { return }",
+    "replace": "",
+    "rule": "Provider thumbnail and info ownership late thumbnail completion caches or poisons a placeholder",
+    "tests": "ProviderThumbnailInfoTests/thumbnailsRespectProvidersInvalidatePlaceholdersAndNeverRecordPlaceholderFailures"
+  },
+  {
+    "file": "Strata/Views/FileThumbnails.swift",
+    "find": "guard needsLoading(entry) else {\n            return entry.isDirectory ? nil : entry.size.map(Format.bytes)\n        }",
+    "replace": "if !Self.canLoad(entry, copies: copies) {\n            return entry.isDirectory ? nil : entry.size.map(Format.bytes)\n        }",
+    "rule": "Provider thumbnail and info ownership immediate item info skips invalidating cached dimensions",
+    "tests": "ProviderThumbnailInfoTests/itemInfoRespectsProvidersUsesInjectedMediaReaderAndInvalidatesPlaceholders"
+  },
+  {
+    "file": "Strata/Views/FileThumbnails.swift",
+    "find": "guard Self.canLoad(entry, copies: copies) else {\n            invalidate(entry)\n            return false\n        }",
+    "replace": "guard Self.canLoad(entry, copies: copies) else {\n            return false\n        }",
+    "rule": "Provider thumbnail and info ownership item info check skips invalidating cached or running reads",
+    "tests": "ProviderThumbnailInfoTests/itemInfoCancelsAndDiscardsInFlightReadsWhenCopyBecomesAPlaceholderOrLoaderReleases"
+  },
+  {
+    "file": "Strata/Views/FileThumbnails.swift",
+    "find": "guard Self.canLoad(entry, copies: copies) else {\n                    guard let self else { return }",
+    "replace": "guard true else {\n                    guard let self else { return }",
+    "rule": "Provider thumbnail and info ownership scheduled item info reads a copy that became a placeholder",
+    "tests": "ProviderThumbnailInfoTests/itemInfoCancelsAndDiscardsInFlightReadsWhenCopyBecomesAPlaceholderOrLoaderReleases"
+  },
+  {
+    "file": "Strata/Views/FileThumbnails.swift",
+    "find": "guard needsLoading(entry) else {\n                    drop(key, generation: generation)\n                    return\n                }",
+    "replace": "",
+    "rule": "Provider thumbnail and info ownership completed item info caches fallback size for an invalidated copy",
+    "tests": "ProviderThumbnailInfoTests/itemInfoCancelsAndDiscardsInFlightReadsWhenCopyBecomesAPlaceholderOrLoaderReleases"
+  },
+  {
+    "file": "Strata/Views/FileThumbnails.swift",
+    "find": "isolated deinit { tasks.values.forEach { $0.cancel() } }",
+    "replace": "isolated deinit {}",
+    "rule": "Provider thumbnail and info ownership released item info loader leaves its task running",
+    "tests": "ProviderThumbnailInfoTests/itemInfoCancelsAndDiscardsInFlightReadsWhenCopyBecomesAPlaceholderOrLoaderReleases"
+  },
+  {
+    "file": "Strata/Views/ColumnPreviewPane.swift",
+    "find": "let wantsDimensions = entry.contentType?.conforms(to: .image) == true && itemInfo.needsLoading(entry)",
+    "replace": "let wantsDimensions = entry.contentType?.conforms(to: .image) == true",
+    "rule": "Provider thumbnail and info ownership column preview shows ellipsis dimensions for a placeholder image",
+    "tests": "ProviderThumbnailInfoTests/allViewsAndQuickLookTransitionUseTheirOwnThumbnailsAndItemInfoAcrossFetch"
+  },
+  {
+    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "find": "if let preview, let entry = preview.entry { preview.show(entry) }",
+    "replace": "",
+    "rule": "Provider thumbnail and info ownership column preview does not refresh when a placeholder is fetched",
+    "tests": "ProviderThumbnailInfoTests/allViewsAndQuickLookTransitionUseTheirOwnThumbnailsAndItemInfoAcrossFetch"
+  },
+  {
+    "file": "Strata/Views/GalleryViewController.swift",
+    "find": "if reconfigure {\n            schedulePreview(now: true, force: true)\n        }",
+    "replace": "",
+    "rule": "Provider thumbnail and info ownership gallery preview does not refresh when a placeholder is fetched",
+    "tests": "ProviderThumbnailInfoTests/allViewsAndQuickLookTransitionUseTheirOwnThumbnailsAndItemInfoAcrossFetch"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "let thumbnail = services.thumbnails.cached(entry, size: NameCellView.iconSide, scale: scale)",
+    "replace": "let thumbnail = FileThumbnails.shared.cached(entry, size: NameCellView.iconSide, scale: scale)",
+    "rule": "Provider thumbnail and info ownership Quick Look transition image ignores the browser's thumbnail store",
+    "tests": "ProviderThumbnailInfoTests/allViewsAndQuickLookTransitionUseTheirOwnThumbnailsAndItemInfoAcrossFetch"
   }
 ]

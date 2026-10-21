@@ -29,7 +29,7 @@ final class MediaInfoLoader {
 
     func canRead(_ entry: FileEntry) -> Bool { Self.canRead(entry, copies: copies) }
 
-    static func canRead(_ entry: FileEntry, copies: CopyProviders = .live) -> Bool {
+    nonisolated static func canRead(_ entry: FileEntry, copies: CopyProviders = .live) -> Bool {
         !entry.isDirectory && !entry.isSymlink && !copies.isPlaceholder(entry.url)
             && (entry.contentType?.conforms(to: .image) == true || entry.contentType?.conforms(to: .audiovisualContent) == true)
     }

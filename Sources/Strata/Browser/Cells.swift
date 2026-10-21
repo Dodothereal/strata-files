@@ -14,10 +14,13 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
     private var name = ""
     private var matches: [Int] = []
     private var dimmed = false
+    private var thumbnails: FileThumbnails = .shared
     private var thumbnailTicket: FileThumbnails.Ticket?
     /// The file whose thumbnail the cell wants, and the one whose thumbnail it shows.
     private var thumbnailEntry: FileEntry?
     private var thumbnailURL: URL?
+
+    isolated deinit { thumbnails.cancel(thumbnailTicket) }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -60,7 +63,9 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
 
     /// `thumbnail` is the file to show a Quick Look thumbnail of in place of `image`, when Quick Look has one.
     func configure(name: String, icon image: NSImage, matches: [Int], dimmed: Bool, git: GitBadge? = nil,
-                   tags: [FinderTag] = [], cloud: CloudStatus? = nil, thumbnail entry: FileEntry? = nil, scale: CGFloat = 2, typography: FileViewTypography = FileViewTypography()) {
+                   tags: [FinderTag] = [], cloud: CloudStatus? = nil, thumbnail entry: FileEntry? = nil,
+                   thumbnails: FileThumbnails = .shared, scale: CGFloat = 2,
+                   typography: FileViewTypography = FileViewTypography()) {
         self.typography = typography
         self.name = name
         self.matches = matches
@@ -69,7 +74,7 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
         cloudBadge.status = cloud
         tagDots.tags = tags
         tagDots.alphaValue = dimmed ? 0.45 : 1
-        show(image, thumbnailOf: entry, scale: scale)
+        show(image, thumbnailOf: entry, scale: scale, thumbnails: thumbnails)
         icon.alphaValue = dimmed ? 0.45 : 1
         render()
     }
@@ -77,18 +82,19 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
     /// Shows the icon, or the file's thumbnail like Finder's icon previews: right away when it's cached, otherwise once
     /// Quick Look makes it. A file that changed keeps its old thumbnail until the new one is ready, so rows refreshed
     /// while a file is written don't flash back to the icon.
-    private func show(_ image: NSImage, thumbnailOf entry: FileEntry?, scale: CGFloat) {
-        FileThumbnails.shared.cancel(thumbnailTicket)
+    private func show(_ image: NSImage, thumbnailOf entry: FileEntry?, scale: CGFloat, thumbnails: FileThumbnails) {
+        self.thumbnails.cancel(thumbnailTicket)
+        self.thumbnails = thumbnails
         thumbnailTicket = nil
         thumbnailEntry = entry
-        guard let entry, FileThumbnails.canThumbnail(entry) else {
+        guard let entry, thumbnails.canThumbnail(entry) else {
             icon.image = image
             thumbnailURL = nil
             return
         }
         let side = Self.iconSide
-        let failed = FileThumbnails.shared.hasFailed(entry, size: side, scale: scale)
-        if let cached = FileThumbnails.shared.cached(entry, size: side, scale: scale) {
+        let failed = thumbnails.hasFailed(entry, size: side, scale: scale)
+        if let cached = thumbnails.cached(entry, size: side, scale: scale) {
             icon.image = cached.image
             thumbnailURL = entry.url
             if cached.exact { return }
@@ -97,7 +103,7 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
             thumbnailURL = nil
         }
         guard !failed else { return }
-        thumbnailTicket = FileThumbnails.shared.request(entry, size: side, scale: scale) { [weak self] thumbnail in
+        thumbnailTicket = thumbnails.request(entry, size: side, scale: scale) { [weak self] thumbnail in
             guard let self, self.thumbnailEntry == entry else { return }
             self.thumbnailTicket = nil
             self.icon.image = thumbnail

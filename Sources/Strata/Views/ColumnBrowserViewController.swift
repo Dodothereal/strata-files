@@ -7,6 +7,8 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     var applicationFolders = ApplicationsFolders.standard
     let directoryReader: DirectoryReader
     let preferences: Prefs
+    let thumbnails: FileThumbnails
+    let itemInfo: ItemInfoLoader
     /// The folder the user is "in": the selected folder, or the folder of the focused column. Drive the path bar
     /// and window title from it (without reloading the browser).
     var onLocationChange: ((URL) -> Void)?
@@ -19,7 +21,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     private(set) var root: URL?
     private(set) var location: URL?
     private var panes: [ColumnPane] = []
-    private var preview: ColumnPreviewPane?
+    private(set) var preview: ColumnPreviewPane?
     private var activeIndex = 0
     private var widths: [Int: CGFloat] = [:]
     private let scrollView: NSScrollView
@@ -32,9 +34,12 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     private var pendingRename: URL?
     private weak var renameWhenLoaded: ColumnPane?
 
-    init(scrollView: NSScrollView = NSScrollView(), directoryReader: DirectoryReader = .live, preferences: Prefs = .shared) {
+    init(scrollView: NSScrollView = NSScrollView(), directoryReader: DirectoryReader = .live, preferences: Prefs = .shared,
+         thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared) {
         self.directoryReader = directoryReader
         self.preferences = preferences
+        self.thumbnails = thumbnails
+        self.itemInfo = itemInfo
         showHidden = { preferences.showHidden }
         sortComparator = { a, b in
             if preferences.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
@@ -114,6 +119,9 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
             return
         }
         panes[0].setEntries(entries, matches: keyed)
+        if let preview, let selected = activePane?.selectedEntries, selected.count == 1 {
+            preview.show(selected[0])
+        }
     }
 
     var selectedEntries: [FileEntry] { activePane?.selectedEntries ?? [] }
@@ -250,7 +258,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         } else {
             removeColumns(after: index)
             if selected.count == 1, let entry = selected.first {
-                let preview = ColumnPreviewPane()
+                let preview = ColumnPreviewPane(thumbnails: thumbnails, itemInfo: itemInfo)
                 strip.addSubview(preview)
                 self.preview = preview
                 preview.show(entry)
@@ -389,9 +397,10 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         refreshVisibleRows()
     }
 
-    /// Re-reads what visible rows show (clipboard dimming, git badges).
+    /// Re-reads what visible rows show (clipboard dimming, git badges, fetched thumbnails and previews).
     func refreshVisibleRows() {
         for pane in panes { pane.refreshVisibleRows() }
+        if let preview, let entry = preview.entry { preview.show(entry) }
     }
 
     /// Row height and text size changed (Settings ▸ Appearance).
@@ -746,7 +755,8 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         cell.configure(entry, matches: matches[entry.url.fileViewKey] ?? [],
                        dimmed: entry.isHidden || Clipboard.isCut(entry.url) || git.isIgnored(entry.url),
                        git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
-                       cloud: CloudStore.shared.status(for: entry.url), scale: tableView.window?.backingScaleFactor ?? 2, preferences: preferences)
+                       cloud: CloudStore.shared.status(for: entry.url), scale: tableView.window?.backingScaleFactor ?? 2,
+                       preferences: preferences, thumbnails: controller?.thumbnails ?? .shared)
         return cell
     }
 
@@ -929,10 +939,12 @@ final class ColumnCellView: NSTableCellView, ColorThemeUpdating {
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ entry: FileEntry, matches: [Int], dimmed: Bool, git: GitBadge? = nil, tags: [FinderTag] = [],
-                   cloud: CloudStatus? = nil, scale: CGFloat = 2, preferences: Prefs = .shared) {
+                   cloud: CloudStatus? = nil, scale: CGFloat = 2, preferences: Prefs = .shared,
+                   thumbnails: FileThumbnails = .shared) {
         isFolder = entry.isFolder
         nameCell.configure(name: entry.displayName, icon: IconCache.shared.icon(for: entry), matches: matches, dimmed: dimmed, git: git,
-                           tags: tags, cloud: cloud, thumbnail: preferences.showIconPreviews ? entry : nil, scale: scale, typography: FileViewTypography(preferences: preferences))
+                           tags: tags, cloud: cloud, thumbnail: preferences.showIconPreviews ? entry : nil,
+                           thumbnails: thumbnails, scale: scale, typography: FileViewTypography(preferences: preferences))
         applyTruncation()
         chevron.isHidden = !entry.isFolder
         setAccessibilityLabel(entry.isFolder

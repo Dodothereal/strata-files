@@ -5,9 +5,17 @@ import Quartz
 /// folder, Space opens Quick Look, Return renames (or opens, per Settings); typing filters, as everywhere else. Like
 /// Finder's, something is always selected, so the preview always has something to show.
 final class GalleryViewController: NSViewController, FileCollectionController {
+    let thumbnails: FileThumbnails
     weak var fileDelegate: FileCollectionViewDelegate?
     /// The folder shown; background drops go into it.
     var directory: URL?
+
+    init(thumbnails: FileThumbnails = .shared) {
+        self.thumbnails = thumbnails
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
 
     private(set) var entries: [FileEntry] = []
     private var indexByKey: [String: Int] = [:]
@@ -16,7 +24,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
     private let layout = NSCollectionViewFlowLayout()
     private let previewBox = NSView()
     private let preview = QuickLookPreviewView(frame: .zero, style: .normal)
-    private let iconView = NSImageView()
+    let iconView = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "")
     private let detailLabel = NSTextField(labelWithString: "")
     private let dropHighlight = DropHighlightView()
@@ -24,8 +32,11 @@ final class GalleryViewController: NSViewController, FileCollectionController {
     private var lead: Int?
     private var anchor: Int?
     private var previewWork: DispatchWorkItem?
+    private var previewTicket: FileThumbnails.Ticket?
     /// What the big preview shows (its entry, so a change to the file shows too).
     private var previewed: FileEntry?
+
+    isolated deinit { thumbnails.cancel(previewTicket) }
     private var selectionReportPending = false
     private var lastReportedSelection: [URL] = []
     private var renameField: InlineRenameField?
@@ -176,6 +187,8 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         super.viewDidDisappear()
         // A movie mustn't play on (or hold its file) once the gallery isn't shown.
         previewWork?.cancel()
+        thumbnails.cancel(previewTicket)
+        previewTicket = nil
         preview.clear()
         previewed = nil
     }
@@ -279,12 +292,31 @@ final class GalleryViewController: NSViewController, FileCollectionController {
 
     @objc private func clipboardChanged() { refreshVisibleItems() }
 
-    /// Redraws the thumbnails' dimming, plates and badges (clipboard, git, focus, appearance).
-    func refreshVisibleItems() {
+    /// Redraws the thumbnails' dimming, plates and badges (clipboard, git, focus, appearance), optionally re-reading thumbnails.
+    func refreshVisibleItems(reconfigure: Bool = false) {
         for case let item as GalleryThumbnailItem in strip.visibleItems() {
-            if let entry = item.entry { item.dimmed = Self.isDimmed(entry) }
+            if let entry = item.entry {
+                if reconfigure {
+                    configure(item, with: entry)
+                } else {
+                    item.dimmed = Self.isDimmed(entry)
+                }
+            }
             item.emphasized = strip.isEmphasized
         }
+        if reconfigure {
+            schedulePreview(now: true, force: true)
+        }
+    }
+
+    private func configure(_ item: GalleryThumbnailItem, with entry: FileEntry) {
+        item.onThumbnail = { [weak self] entry, image in
+            guard let self, self.previewed == entry, self.preview.isHidden else { return }
+            self.iconView.image = image
+        }
+        item.configure(entry, size: Self.thumbnailSize, scale: view.window?.backingScaleFactor ?? 2, thumbnails: thumbnails)
+        item.dimmed = Self.isDimmed(entry)
+        item.emphasized = strip.isEmphasized
     }
 
     private static func isDimmed(_ entry: FileEntry) -> Bool {
@@ -295,10 +327,16 @@ final class GalleryViewController: NSViewController, FileCollectionController {
 
     /// Shows the item in front large, once the selection settles (arrowing through a folder shouldn't render every
     /// file); its thumbnail stands in meanwhile.
-    private func schedulePreview(now: Bool = false) {
+    private func schedulePreview(now: Bool = false, force: Bool = false) {
         let entry = lead.flatMap { $0 < entries.count ? entries[$0] : nil } ?? selectedEntries.first
-        guard entry != previewed else { return }
+        let canThumbnail = entry.map { thumbnails.canThumbnail($0) } ?? false
+        let fallback = entry.map { IconCache.shared.icon(for: $0) }
+        let stalePlaceholder = !canThumbnail && (!preview.isHidden || iconView.image !== fallback)
+        let staleThumbnail = canThumbnail && preview.isHidden && iconView.image === fallback
+        guard force || entry != previewed || stalePlaceholder || staleThumbnail else { return }
         previewWork?.cancel()
+        thumbnails.cancel(previewTicket)
+        previewTicket = nil
         let sameItem = entry?.url == previewed?.url
         previewed = entry
         guard let entry else {
@@ -316,22 +354,29 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         if let modified = entry.modified { detail.append(Format.longDate(modified)) }
         detailLabel.stringValue = detail.joined(separator: " · ")
         // The same file, changed: Quick Look reads it again.
-        if sameItem, !preview.isHidden {
+        if sameItem, !preview.isHidden, canThumbnail {
             preview.refreshPreviewItem()
             return
         }
         let scale = view.window?.backingScaleFactor ?? 2
-        iconView.image = FileThumbnails.canThumbnail(entry) ? FileThumbnails.shared.cached(entry, size: 256, scale: scale)?.image
-            ?? FileThumbnails.shared.cached(entry, size: Self.thumbnailSize, scale: scale)?.image ?? IconCache.shared.icon(for: entry)
-            : IconCache.shared.icon(for: entry)
+        let cached = canThumbnail ? thumbnails.cached(entry, size: 256, scale: scale)
+            ?? thumbnails.cached(entry, size: Self.thumbnailSize, scale: scale) : nil
+        iconView.image = cached?.image ?? fallback
         iconView.isHidden = false
         preview.clear()
         preview.isHidden = true
+        if canThumbnail, cached?.exact != true, !thumbnails.hasFailed(entry, size: 256, scale: scale) {
+            previewTicket = thumbnails.request(entry, size: 256, scale: scale) { [weak self] image in
+                guard let self, self.previewed == entry, self.preview.isHidden else { return }
+                self.previewTicket = nil
+                self.iconView.image = image
+            }
+        }
         // Folders and apps show their icon; an item only in the cloud isn't downloaded just to be looked at.
-        guard !entry.isFolder, FileThumbnails.canThumbnail(entry), CloudStore.shared.status(for: entry.url) != .cloudOnly else { return }
+        guard !entry.isFolder, canThumbnail, CloudStore.shared.status(for: entry.url) != .cloudOnly else { return }
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
-                guard let self, self.previewed == entry else { return }
+                guard let self, self.previewed == entry, self.thumbnails.canThumbnail(entry) else { return }
                 guard self.preview.show(entry.url) else { return }
                 self.preview.isHidden = false
                 self.iconView.isHidden = true
@@ -466,10 +511,7 @@ extension GalleryViewController: NSCollectionViewDataSource, NSCollectionViewDel
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
         let item = collectionView.makeItem(withIdentifier: GalleryThumbnailItem.identifier, for: indexPath)
         if let item = item as? GalleryThumbnailItem, indexPath.item < entries.count {
-            let entry = entries[indexPath.item]
-            item.configure(entry, size: Self.thumbnailSize, scale: view.window?.backingScaleFactor ?? 2)
-            item.dimmed = Self.isDimmed(entry)
-            item.emphasized = strip.isEmphasized
+            configure(item, with: entries[indexPath.item])
         }
         return item
     }
@@ -694,7 +736,11 @@ final class GalleryThumbnailItem: NSCollectionViewItem {
 
     private(set) var entry: FileEntry?
     private let thumbnail = NSImageView()
+    private var thumbnails: FileThumbnails = .shared
     private var ticket: FileThumbnails.Ticket?
+    var onThumbnail: ((FileEntry, NSImage) -> Void)?
+
+    isolated deinit { thumbnails.cancel(ticket) }
 
     var dimmed = false {
         didSet { thumbnail.alphaValue = dimmed ? 0.45 : 1 }
@@ -735,28 +781,31 @@ final class GalleryThumbnailItem: NSCollectionViewItem {
         imageView = thumbnail
     }
 
-    func configure(_ entry: FileEntry, size: CGFloat, scale: CGFloat) {
-        FileThumbnails.shared.cancel(ticket)
+    func configure(_ entry: FileEntry, size: CGFloat, scale: CGFloat, thumbnails: FileThumbnails = .shared) {
+        self.thumbnails.cancel(ticket)
+        self.thumbnails = thumbnails
         ticket = nil
         self.entry = entry
         view.setAccessibilityLabel(entry.displayName)
         view.toolTip = entry.displayName
-        let canThumbnail = FileThumbnails.canThumbnail(entry)
-        let cached = canThumbnail ? FileThumbnails.shared.cached(entry, size: size, scale: scale) : nil
+        let canThumbnail = thumbnails.canThumbnail(entry)
+        let cached = canThumbnail ? thumbnails.cached(entry, size: size, scale: scale) : nil
         thumbnail.image = cached?.image ?? IconCache.shared.icon(for: entry)
-        guard canThumbnail, cached?.exact != true, !FileThumbnails.shared.hasFailed(entry, size: size, scale: scale) else { return }
-        ticket = FileThumbnails.shared.request(entry, size: size, scale: scale) { [weak self] image in
+        guard canThumbnail, cached?.exact != true, !thumbnails.hasFailed(entry, size: size, scale: scale) else { return }
+        ticket = thumbnails.request(entry, size: size, scale: scale) { [weak self] image in
             guard let self, self.entry == entry else { return }
             self.ticket = nil
             self.thumbnail.image = image
+            self.onThumbnail?(entry, image)
         }
     }
 
     override func prepareForReuse() {
         super.prepareForReuse()
-        FileThumbnails.shared.cancel(ticket)
+        thumbnails.cancel(ticket)
         ticket = nil
         entry = nil
+        onThumbnail = nil
     }
 
     fileprivate func updatePlate() {

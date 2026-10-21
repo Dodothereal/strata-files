@@ -65,8 +65,8 @@ extension BrowserViewController {
     @objc func containerFilesFetched(_ notification: Notification) {
         guard let urls = notification.object as? [URL], let directory, services.copies.contains(directory) else { return }
         // This folder or one below it (columns, folders expanded in the list).
-        let shown = [directory.standardizedFileURL.path, directory.resolvingSymlinksInPath().standardizedFileURL.path]
-        guard urls.contains(where: { url in shown.contains { url.standardizedFileURL.path.hasPrefix($0 + "/") } }) else { return }
+        let prefix = directory.standardizedFileURL.path + "/"
+        guard urls.contains(where: { $0.standardizedFileURL.path.hasPrefix(prefix) }) else { return }
         if ordering.choice?.key.isMedia == true {
             for url in urls {
                 if let entry = node(for: url)?.entry { mediaInfo.request(entry) }

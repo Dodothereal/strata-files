@@ -365,11 +365,18 @@ final class GridItem: NSCollectionViewItem {
 
     let itemView = GridItemView()
     private(set) var entry: FileEntry?
+    private var thumbnails: FileThumbnails = .shared
+    private var itemInfo: ItemInfoLoader = .shared
     private var thumbnailTicket: FileThumbnails.Ticket?
     private var infoTicket: ItemInfoLoader.Ticket?
     /// Set by the grid; returns whether selections should be drawn emphasized.
     var emphasis: () -> Bool = { false }
     var dimmed = false
+
+    isolated deinit {
+        thumbnails.cancel(thumbnailTicket)
+        itemInfo.cancel(infoTicket)
+    }
 
     override func loadView() {
         view = itemView
@@ -386,8 +393,8 @@ final class GridItem: NSCollectionViewItem {
 
     override func prepareForReuse() {
         super.prepareForReuse()
-        FileThumbnails.shared.cancel(thumbnailTicket)
-        ItemInfoLoader.shared.cancel(infoTicket)
+        thumbnails.cancel(thumbnailTicket)
+        itemInfo.cancel(infoTicket)
         thumbnailTicket = nil
         infoTicket = nil
         entry = nil
@@ -409,8 +416,10 @@ final class GridItem: NSCollectionViewItem {
     }
 
     func configure(_ entry: FileEntry, matches: [Int], metrics: GridMetrics, showsInfo: Bool, dimmed: Bool, scale: CGFloat,
-                   git: GitBadge? = nil, tags: [FinderTag] = [], cloud: CloudStatus? = nil, folderSizeText: String? = nil, preferences: Prefs = .shared) {
-        ItemInfoLoader.shared.cancel(infoTicket)
+                   git: GitBadge? = nil, tags: [FinderTag] = [], cloud: CloudStatus? = nil, folderSizeText: String? = nil,
+                   preferences: Prefs = .shared, thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared) {
+        self.itemInfo.cancel(infoTicket)
+        self.itemInfo = itemInfo
         infoTicket = nil
         itemView.gitBadge.badge = git
         itemView.cloudBadge.status = cloud
@@ -419,36 +428,39 @@ final class GridItem: NSCollectionViewItem {
         self.entry = entry
         self.dimmed = dimmed
         let showHidden = preferences.showHidden
-        let detail = showsInfo ? folderSizeText ?? ItemInfoLoader.shared.immediate(entry, showHidden: showHidden) : nil
+        let detail = showsInfo ? folderSizeText ?? itemInfo.immediate(entry, showHidden: showHidden) : nil
         itemView.configure(name: entry.displayName, matches: matches, detail: detail, metrics: metrics)
         itemView.setAccessibilityHelp(entry.kind)
         updateState()
 
         if showsInfo, detail == nil {
-            ItemInfoLoader.shared.cancel(infoTicket)
-            infoTicket = ItemInfoLoader.shared.request(entry, showHidden: showHidden) { [weak self] text in
+            itemInfo.cancel(infoTicket)
+            infoTicket = itemInfo.request(entry, showHidden: showHidden) { [weak self] text in
                 guard let self, self.entry == entry else { return }
                 self.infoTicket = nil
                 self.itemView.setDetail(text)
             }
         }
-        loadImage(entry, size: metrics.iconSize, scale: scale, keepCurrent: sameFile, preferences: preferences)
+        loadImage(entry, size: metrics.iconSize, scale: scale, keepCurrent: sameFile, preferences: preferences,
+                  thumbnails: thumbnails)
     }
 
     /// Shows the icon (or the best cached thumbnail) now and asks Quick Look for a sharper one if needed.
-    func loadImage(_ entry: FileEntry, size: CGFloat, scale: CGFloat, keepCurrent: Bool, preferences: Prefs = .shared) {
-        FileThumbnails.shared.cancel(thumbnailTicket)
+    func loadImage(_ entry: FileEntry, size: CGFloat, scale: CGFloat, keepCurrent: Bool, preferences: Prefs = .shared,
+                   thumbnails: FileThumbnails = .shared) {
+        self.thumbnails.cancel(thumbnailTicket)
+        self.thumbnails = thumbnails
         thumbnailTicket = nil
-        let canThumbnail = preferences.showIconPreviews && FileThumbnails.canThumbnail(entry)
-        let cached = canThumbnail ? FileThumbnails.shared.cached(entry, size: size, scale: scale) : nil
+        let canThumbnail = preferences.showIconPreviews && thumbnails.canThumbnail(entry)
+        let cached = canThumbnail ? thumbnails.cached(entry, size: size, scale: scale) : nil
         if let cached {
             itemView.setImage(cached.image, animated: false, upscale: !cached.exact)
             if cached.exact { return }
         } else if !canThumbnail || !(keepCurrent && itemView.imageView.image != nil) {
             itemView.setImage(IconCache.shared.icon(for: entry), animated: false)
         }
-        guard canThumbnail, !FileThumbnails.shared.hasFailed(entry, size: size, scale: scale) else { return }
-        thumbnailTicket = FileThumbnails.shared.request(entry, size: size, scale: scale) { [weak self] image in
+        guard canThumbnail, !thumbnails.hasFailed(entry, size: size, scale: scale) else { return }
+        thumbnailTicket = thumbnails.request(entry, size: size, scale: scale) { [weak self] image in
             guard let self, self.entry == entry else { return }
             self.thumbnailTicket = nil
             self.itemView.setImage(image, animated: true, upscale: false)

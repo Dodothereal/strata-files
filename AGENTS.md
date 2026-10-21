@@ -278,6 +278,12 @@ sheet's text before clicking a destructive button. Both builds share preferences
   and cancel an in-flight read when its copy becomes a placeholder. Fetched placeholders start media reads for
   active media sorts. Preserve the four-reader bound, deduplication and empty-result caching. Cancel owned work
   when its loader, pane or listing closes, and test replacement reads and reentrant callbacks with held completions.
+  `BrowserServices.thumbnails` and `BrowserServices.itemInfo` share that provider owner and media reader across List,
+  Icons, Columns (including deeper columns and the preview pane), Gallery and Quick Look transition images. Browser
+  folder-size checks (`folderSize`, `sizeText`, `canMeasure`) also consult the owning providers. Evict cached
+  thumbnails and item info, cancel in-flight requests, and avoid recording Quick Look failures or fallback byte sizes
+  when a copy becomes a placeholder; refresh visible cells, column previews and gallery previews when placeholders
+  are fetched.
 - `RemoteFiles` and its `CopyProvider` adapter use the same `RemoteCopyStore` for server lookup, paths, placeholders,
   download staging and removal. An injected backend must not fall back to the application's copy root. Test identical
   server IDs in independent roots, including refused cross-environment writes and scoped cleanup. Prepare and remove

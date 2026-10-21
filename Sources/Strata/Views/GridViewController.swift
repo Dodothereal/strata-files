@@ -3,9 +3,13 @@ import AppKit
 /// The icon view: a justified grid of large icons and Quick Look thumbnails, fed by the browser.
 final class GridViewController: NSViewController, FileCollectionController {
     let preferences: Prefs
+    let thumbnails: FileThumbnails
+    let itemInfo: ItemInfoLoader
 
-    init(preferences: Prefs = .shared) {
+    init(preferences: Prefs = .shared, thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared) {
         self.preferences = preferences
+        self.thumbnails = thumbnails
+        self.itemInfo = itemInfo
         super.init(nibName: nil, bundle: nil)
         layout.metrics = GridMetrics(iconSize: 64, typography: FileViewTypography(preferences: preferences))
     }
@@ -231,7 +235,8 @@ final class GridViewController: NSViewController, FileCollectionController {
         let scale = view.window?.backingScaleFactor ?? 2
         for case let item as GridItem in collectionView.visibleItems() {
             guard let entry = item.entry else { continue }
-            item.loadImage(entry, size: layout.metrics.iconSize, scale: scale, keepCurrent: true, preferences: preferences)
+            item.loadImage(entry, size: layout.metrics.iconSize, scale: scale, keepCurrent: true, preferences: preferences,
+                           thumbnails: thumbnails)
         }
     }
 
@@ -248,14 +253,15 @@ final class GridViewController: NSViewController, FileCollectionController {
         if refreshImage {
             item.configure(entry, matches: matches[entry.url.fileViewKey] ?? [], metrics: layout.metrics, showsInfo: showsItemInfo,
                            dimmed: dimmed, scale: view.window?.backingScaleFactor ?? 2, git: badge, tags: tags, cloud: cloud,
-                           folderSizeText: showsItemInfo ? folderSizeText?(entry) : nil, preferences: preferences)
+                           folderSizeText: showsItemInfo ? folderSizeText?(entry) : nil, preferences: preferences,
+                           thumbnails: thumbnails, itemInfo: itemInfo)
         } else {
             item.dimmed = dimmed
             item.itemView.gitBadge.badge = badge
             item.itemView.cloudBadge.status = cloud
             item.itemView.setTags(tags)
             item.itemView.configure(name: entry.displayName, matches: matches[entry.url.fileViewKey] ?? [],
-                                    detail: showsItemInfo ? folderSizeText?(entry) ?? ItemInfoLoader.shared.immediate(entry, showHidden: preferences.showHidden) : nil,
+                                    detail: showsItemInfo ? folderSizeText?(entry) ?? itemInfo.immediate(entry, showHidden: preferences.showHidden) : nil,
                                     metrics: layout.metrics)
             item.updateState()
         }

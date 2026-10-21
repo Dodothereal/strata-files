@@ -19,6 +19,8 @@ final class BrowserServices {
     let openContainer: @MainActor @Sendable (String) async throws -> URL
     let directories: DirectoryReader
     let mediaReader: MediaInfoLoader.Reader
+    let thumbnails: FileThumbnails
+    let itemInfo: ItemInfoLoader
     let availableCapacity: @Sendable (URL) async -> Int64?
     let windows: BrowserWindows
 
@@ -26,6 +28,7 @@ final class BrowserServices {
          availableCapacity: @escaping @Sendable (URL) async -> Int64? = BrowserLoading.freeSpace,
          remote: RemoteServices = .shared, remoteBrowsing: RemoteBrowsing? = nil, copies: CopyProviders? = nil,
          mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
+         thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
          openContainer: @escaping @MainActor @Sendable (String) async throws -> URL = { id in
              let store = ContainerStore.shared
              guard let engine = store.engine, let container = store.container(id: id) else { throw ContainerAPIError.notFound }
@@ -40,6 +43,8 @@ final class BrowserServices {
         self.openContainer = openContainer
         self.directories = directories ?? DirectoryReader(copies: self.copies)
         self.mediaReader = mediaReader
+        self.thumbnails = thumbnails ?? FileThumbnails(copies: self.copies)
+        self.itemInfo = itemInfo ?? ItemInfoLoader(copies: self.copies, mediaReader: mediaReader)
         self.availableCapacity = availableCapacity
         self.windows = windows
     }

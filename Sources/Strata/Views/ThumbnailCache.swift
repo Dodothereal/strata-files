@@ -63,6 +63,10 @@ final class ThumbnailCache {
         while let entry = first { discard(entry) }
     }
 
+    func remove(forKey key: String) {
+        if let entry = entries[key] { discard(entry) }
+    }
+
     private func append(_ entry: Entry) {
         entry.previous = last
         last?.next = entry

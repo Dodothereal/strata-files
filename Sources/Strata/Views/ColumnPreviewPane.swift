@@ -2,21 +2,30 @@ import AppKit
 
 /// The last column when a file is selected: a large thumbnail, the name, and compact metadata.
 final class ColumnPreviewPane: NSView {
-    private let imageView = NSImageView()
+    let thumbnails: FileThumbnails
+    let itemInfo: ItemInfoLoader
+    let imageView = NSImageView()
     private let nameLabel = NSTextField(wrappingLabelWithString: "")
     private let subtitle = NSTextField(labelWithString: "")
     private let grid = NSGridView()
     private var imageSide: NSLayoutConstraint!
     private var imageHeight: NSLayoutConstraint!
     private var labelColumnWidth: CGFloat = 0
-    private var entry: FileEntry?
+    private(set) var entry: FileEntry?
     private var thumbnailTicket: FileThumbnails.Ticket?
     private var infoTicket: ItemInfoLoader.Ticket?
-    private var dimensionsField: NSTextField?
+    private(set) var dimensionsField: NSTextField?
 
     override var isFlipped: Bool { true }
 
-    override init(frame: NSRect) {
+    isolated deinit {
+        thumbnails.cancel(thumbnailTicket)
+        itemInfo.cancel(infoTicket)
+    }
+
+    init(frame: NSRect = .zero, thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared) {
+        self.thumbnails = thumbnails
+        self.itemInfo = itemInfo
         super.init(frame: frame)
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.imageAlignment = .alignCenter
@@ -74,6 +83,10 @@ final class ColumnPreviewPane: NSView {
         setAccessibilityRole(.group)
     }
 
+    convenience override init(frame: NSRect) {
+        self.init(frame: frame, thumbnails: .shared, itemInfo: .shared)
+    }
+
     required init?(coder: NSCoder) { fatalError() }
 
     override func layout() {
@@ -96,8 +109,8 @@ final class ColumnPreviewPane: NSView {
     override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
         guard superview == nil else { return }
-        FileThumbnails.shared.cancel(thumbnailTicket)
-        ItemInfoLoader.shared.cancel(infoTicket)
+        thumbnails.cancel(thumbnailTicket)
+        itemInfo.cancel(infoTicket)
         thumbnailTicket = nil
         infoTicket = nil
     }
@@ -117,15 +130,20 @@ final class ColumnPreviewPane: NSView {
         if let added = entry.added {
             rows.append((String(localized: "Added", comment: "Info row label: the date the item was added to its folder"), Format.date(added)))
         }
-        let wantsDimensions = entry.contentType?.conforms(to: .image) == true
-        if wantsDimensions { rows.append((String(localized: "Dimensions", comment: "Info row label: an image's size in pixels"), "…")) }
+        itemInfo.cancel(infoTicket)
+        infoTicket = nil
+        let wantsDimensions = entry.contentType?.conforms(to: .image) == true && itemInfo.needsLoading(entry)
+        let cachedDimensions = wantsDimensions ? itemInfo.immediate(entry, showHidden: true) : nil
+        if wantsDimensions {
+            rows.append((String(localized: "Dimensions", comment: "Info row label: an image's size in pixels"), cachedDimensions ?? "…"))
+        }
         let fields = setRows(rows)
         // The dimensions row is the last one; its value arrives later.
         if wantsDimensions { dimensionsField = fields.last }
-        if wantsDimensions {
-            ItemInfoLoader.shared.cancel(infoTicket)
-            infoTicket = ItemInfoLoader.shared.request(entry, showHidden: true) { [weak self] text in
+        if wantsDimensions, cachedDimensions == nil {
+            infoTicket = itemInfo.request(entry, showHidden: true) { [weak self] text in
                 guard let self, self.entry == entry else { return }
+                self.infoTicket = nil
                 self.dimensionsField?.stringValue = text
             }
         }
@@ -159,14 +177,16 @@ final class ColumnPreviewPane: NSView {
     }
 
     private func requestThumbnail(_ entry: FileEntry, side: CGFloat) {
-        FileThumbnails.shared.cancel(thumbnailTicket)
+        thumbnails.cancel(thumbnailTicket)
+        thumbnailTicket = nil
         let scale = window?.backingScaleFactor ?? 2
-        if let cached = FileThumbnails.shared.cached(entry, size: side, scale: scale) {
+        if let cached = thumbnails.cached(entry, size: side, scale: scale) {
             setImage(cached.image, animated: false, upscale: !cached.exact)
             if cached.exact { return }
         }
-        thumbnailTicket = FileThumbnails.shared.request(entry, size: side, scale: scale) { [weak self] image in
+        thumbnailTicket = thumbnails.request(entry, size: side, scale: scale) { [weak self] image in
             guard let self, self.entry == entry else { return }
+            self.thumbnailTicket = nil
             self.setImage(image, animated: true, upscale: false)
         }
     }

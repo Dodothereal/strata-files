@@ -169,12 +169,12 @@ struct BrowserPreferencesTests {
         for browser in [a, b] {
             let hidden = browser.preferences.showHidden
             let text = await withCheckedContinuation { continuation in
-                _ = ItemInfoLoader.shared.request(entry, showHidden: hidden) { continuation.resume(returning: $0) }
+                _ = browser.services.itemInfo.request(entry, showHidden: hidden) { continuation.resume(returning: $0) }
             }
             browser.setMode(.grid, remember: false)
             #expect(try icon(browser).itemView.accessibilityLabel() == "folder, \(text)")
         }
-        #expect(ItemInfoLoader.shared.immediate(entry, showHidden: true) != ItemInfoLoader.shared.immediate(entry, showHidden: false))
+        #expect(a.services.itemInfo.immediate(entry, showHidden: true) != b.services.itemInfo.immediate(entry, showHidden: false))
         #expect(tree.snapshot() == ["folder/", "folder/.hidden.txt", "folder/visible.txt"])
     }
 

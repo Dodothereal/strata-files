@@ -757,7 +757,7 @@ final class BrowserViewController: NSViewController {
 
     /// Cached size of a folder; with `request`, starts measuring it when unknown and allowed.
     func folderSize(_ url: URL, request: Bool = false) -> FolderSize? {
-        if LazyCopies.contains(url) { return nil }
+        if services.copies.contains(url) { return nil }
         if let size = FileIndex.shared.folderSize(url) { return size }
         if let size = sizer.cached(url) { return size }
         if request, !Privacy.measuringWouldPrompt(url, browsing: directory ?? url) { sizer.request(url) }
@@ -1234,7 +1234,7 @@ final class BrowserViewController: NSViewController {
         clipboardChanged()
         gridController?.refreshVisibleItems(reconfigure: true)
         columnController?.refreshVisibleRows()
-        galleryController?.refreshVisibleItems()
+        galleryController?.refreshVisibleItems(reconfigure: true)
     }
 
     @objc private func clipboardChanged() {
@@ -1677,7 +1677,8 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             cell.configure(name: entry.displayName, icon: IconCache.shared.icon(for: entry), matches: node.matchIndices, dimmed: dimmed,
                            git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
                            cloud: CloudStore.shared.status(for: entry.url), thumbnail: preferences.showIconPreviews ? entry : nil,
-                           scale: outlineView.window?.backingScaleFactor ?? 2, typography: FileViewTypography(preferences: preferences))
+                           thumbnails: services.thumbnails, scale: outlineView.window?.backingScaleFactor ?? 2,
+                           typography: FileViewTypography(preferences: preferences))
             return cell
         }
         let cell = outlineView.makeView(withIdentifier: .textCell, owner: nil) as? TextCellView ?? {
@@ -1712,7 +1713,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     private func sizeText(_ node: FileNode) -> String {
         guard node.entry.isDirectory else { return Format.bytes(node.entry.size ?? 0) }
         // A container's folder holds only what's been browsed: its size isn't known.
-        if LazyCopies.contains(node.url) { return "—" }
+        if services.copies.contains(node.url) { return "—" }
         if let size = FileIndex.shared.folderSize(node.url) ?? sizer.cached(node.url) { return Format.bytes(size.bytes) }
         guard canMeasure(node.entry) else { return "—" }
         sizer.request(node.url)
@@ -1721,7 +1722,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     /// Symlinks and volumes aren't walked, and neither are guarded folders that would trigger a consent prompt.
     func canMeasure(_ entry: FileEntry) -> Bool {
-        guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, !LazyCopies.contains(entry.url), let directory else { return false }
+        guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, !services.copies.contains(entry.url), let directory else { return false }
         if FileIndex.shared.folderSize(entry.url) != nil { return true }
         return !Privacy.measuringWouldPrompt(entry.url, browsing: directory)
     }
@@ -2011,8 +2012,8 @@ extension BrowserViewController: QLPreviewPanelDataSource, QLPreviewPanelDelegat
         guard let entry = selectedEntries.first(where: { Self.key($0.url) == Self.key(url) }) ?? node(for: url)?.entry else { return nil }
         // The thumbnail the row shows, so the zoom starts from what's on screen.
         let scale = view.window?.backingScaleFactor ?? 2
-        if preferences.showIconPreviews, FileThumbnails.canThumbnail(entry),
-           let thumbnail = FileThumbnails.shared.cached(entry, size: NameCellView.iconSide, scale: scale) { return thumbnail.image }
+        if preferences.showIconPreviews, services.thumbnails.canThumbnail(entry),
+           let thumbnail = services.thumbnails.cached(entry, size: NameCellView.iconSide, scale: scale) { return thumbnail.image }
         return IconCache.shared.icon(for: entry)
     }
 }
