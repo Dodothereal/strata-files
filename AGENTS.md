@@ -215,6 +215,9 @@ sheet's text before clicking a destructive button. Both builds share preferences
   must not read or change another environment's settings. Production windows share the application services.
   App-wide theme/material integration retains its application scope. Test independent settings with native headless
   views, including updates to cached views and deeper columns, rather than temporarily changing shared preferences.
+- Saved searches belong to `BrowserServices.savedSearches`, including saving from the active pane, sidebar removal
+  and change notifications. Keep their existing preference format and distinguish searches by query and scope as
+  well as name. Compare reads the owning window’s current hidden-files setting each time it scans.
 - Folder read scheduling belongs in `DirectoryReadSession`: each presentation owns its generation, rejects late
   success and error responses, and invalidates reads when removed or replaced by results. Inject `DirectoryReader`
   for controlled completion tests; keep callbacks weak so pending I/O cannot retain closed browsers.

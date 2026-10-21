@@ -166,7 +166,7 @@ final class SidebarViewController: NSViewController {
         let center = NSWorkspace.shared.notificationCenter
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .savedSearchesChanged, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(volumesChanged), name: .savedSearchesChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .workspacesChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .remoteServersChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .remoteSessionsChanged, object: nil)
@@ -199,7 +199,7 @@ final class SidebarViewController: NSViewController {
             sections.append(SidebarSection(id: "workspaces", title: String(localized: "Workspaces", comment: "Sidebar section title: saved sets of tabs and panes"),
                                            items: workspaces))
         }
-        let searches = SavedSearches.all.map { SidebarItem(title: $0.name, target: .search($0), symbol: "magnifyingglass") }
+        let searches = services.savedSearches.all.map { SidebarItem(title: $0.name, target: .search($0), symbol: "magnifyingglass") }
         if !searches.isEmpty {
             sections.append(SidebarSection(id: "searches", title: String(localized: "Searches", comment: "Sidebar section title: saved searches"), items: searches))
         }
@@ -332,7 +332,7 @@ final class SidebarViewController: NSViewController {
 
     @objc private func removeSearch(_ sender: NSMenuItem) {
         guard let search = sender.representedObject as? SavedSearchBox else { return }
-        SavedSearches.all.removeAll { $0 == search.search }
+        services.savedSearches.remove(search.search)
     }
 }
 

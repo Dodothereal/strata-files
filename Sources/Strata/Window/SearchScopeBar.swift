@@ -99,29 +99,3 @@ final class SearchScopeBar: NSSplitViewItemAccessoryViewController {
         onSave?()
     }
 }
-
-/// Searches saved from the scope bar, shown in the sidebar.
-nonisolated struct SavedSearch: Codable, Equatable, Sendable {
-    var name: String
-    var query: String
-    var scopePath: String?
-}
-
-enum SavedSearches {
-    private static let key = "savedSearches"
-
-    static var all: [SavedSearch] {
-        get {
-            guard let data = Prefs.shared.defaults.data(forKey: key) else { return [] }
-            return (try? JSONDecoder().decode([SavedSearch].self, from: data)) ?? []
-        }
-        set {
-            Prefs.shared.defaults.set(try? JSONEncoder().encode(newValue), forKey: key)
-            NotificationCenter.default.post(name: .savedSearchesChanged, object: nil)
-        }
-    }
-}
-
-extension Notification.Name {
-    static let savedSearchesChanged = Notification.Name("StrataSavedSearchesChanged")
-}

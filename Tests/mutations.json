@@ -1714,5 +1714,68 @@
     "replace": "let back = (entry.pairs.reversed() + entry.replaced.reversed().filter { holdsOriginal(entry, $0[1]) }).map {",
     "rule": "Mixed History Undo checks ownership of moved items even when an owned copy remains",
     "tests": "HistoryOwnershipTests/mixedHistoryUndoSkipsReplacedMovesWhileUndoingItsOwnCopy"
+  },
+  {
+    "file": "Strata/Model/SavedSearches.swift",
+    "find": "guard let data = preferences.defaults.data(forKey: key) else { return [] }",
+    "replace": "guard let data = Prefs.shared.defaults.data(forKey: key) else { return [] }",
+    "rule": "Saved search ownership reads the owning preferences",
+    "tests": "BrowserSavedStateTests/sidebarsReadOnlyTheirSavedSearches"
+  },
+  {
+    "file": "Strata/Model/SavedSearches.swift",
+    "find": "preferences.defaults.set(try? JSONEncoder().encode(newValue), forKey: key)",
+    "replace": "Prefs.shared.defaults.set(try? JSONEncoder().encode(newValue), forKey: key)",
+    "rule": "Saved search ownership writes only the owning preferences",
+    "tests": "BrowserSavedStateTests/scopeBarSavesTheActivePanesSearchInItsOwnPreferences"
+  },
+  {
+    "file": "Strata/Model/SavedSearches.swift",
+    "find": "preferences.notifications.post(name: .savedSearchesChanged, object: nil)",
+    "replace": "NotificationCenter.default.post(name: .savedSearchesChanged, object: nil)",
+    "rule": "Saved search ownership refreshes only peers in its environment",
+    "tests": "BrowserSavedStateTests/searchChangesRefreshPeersAndRemoveOnlyTheExactSavedSearch"
+  },
+  {
+    "file": "Strata/Model/SavedSearches.swift",
+    "find": "guard !searches.contains(search) else { return false }",
+    "replace": "guard !searches.contains(where: { $0.name == search.name }) else { return false }",
+    "rule": "Saved search ownership preserves distinct scopes and queries with the same name",
+    "tests": "BrowserSavedStateTests/searchChangesRefreshPeersAndRemoveOnlyTheExactSavedSearch"
+  },
+  {
+    "file": "Strata/Model/SavedSearches.swift",
+    "find": "all.removeAll { $0 == search }",
+    "replace": "all.removeAll { $0.name == search.name }",
+    "rule": "Saved search ownership removes only the exact saved search",
+    "tests": "BrowserSavedStateTests/searchChangesRefreshPeersAndRemoveOnlyTheExactSavedSearch"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "services.savedSearches.remove(search.search)",
+    "replace": "BrowserServices.shared.savedSearches.remove(search.search)",
+    "rule": "Saved search ownership follows the sidebar native remove action",
+    "tests": "BrowserSavedStateTests/searchChangesRefreshPeersAndRemoveOnlyTheExactSavedSearch"
+  },
+  {
+    "file": "Strata/Model/SavedSearches.swift",
+    "find": "return (try? JSONDecoder().decode([SavedSearch].self, from: data)) ?? []",
+    "replace": "let decoded = try? JSONDecoder().decode([SavedSearch].self, from: data); if decoded == nil { preferences.defaults.removeObject(forKey: key) }; return decoded ?? []",
+    "rule": "Saved search ownership reads never erase unreadable preferences",
+    "tests": "BrowserSavedStateTests/unreadableSavedSearchesAreNotRewrittenByReading"
+  },
+  {
+    "file": "Strata/Window/CompareController.swift",
+    "find": "hidden = preferences.showHidden",
+    "replace": "hidden = Prefs.shared.showHidden",
+    "rule": "Comparison preferences use the owning hidden files setting",
+    "tests": "BrowserSavedStateTests/comparisonsUseTheOwningShowHiddenSetting"
+  },
+  {
+    "file": "Strata/Window/CompareController.swift",
+    "find": "self.preferences = preferences ?? transfers.preferences",
+    "replace": "self.preferences = transfers.preferences",
+    "rule": "Comparison preferences honor an explicit window owner",
+    "tests": "BrowserSavedStateTests/comparisonsUseTheOwningShowHiddenSetting"
   }
 ]

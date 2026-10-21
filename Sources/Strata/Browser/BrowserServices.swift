@@ -6,6 +6,7 @@ final class BrowserServices {
     static let shared = BrowserServices(transfers: .shared, visits: .shared)
 
     let preferences: Prefs
+    lazy var savedSearches = SavedSearches(preferences: preferences)
     lazy var viewOptions = ViewOptionsWindowController(preferences: preferences)
 
     let transfers: TransferQueue

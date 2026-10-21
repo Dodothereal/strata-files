@@ -202,7 +202,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// View ▸ Compare with Other Pane: what differs between the two folders, and a sync.
     @objc func compareWithOtherPane(_ sender: Any?) {
         guard let (left, right) = paneFolders, let window, window.attachedSheet == nil else { return }
-        let controller = CompareController(left: left, right: right, undo: window.undoManager, transfers: services.transfers)
+        let controller = CompareController(left: left, right: right, undo: window.undoManager, transfers: services.transfers, preferences: services.preferences)
         contentViewController?.presentAsSheet(controller)
     }
 
@@ -371,7 +371,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             if text == Self.largeFilesQuery && scope == nil {
                 split.sidebar.highlight(.largeFiles)
             } else {
-                split.sidebar.highlight(SavedSearches.all.first { $0.query == text && $0.scopePath == scope?.path }.map { .search($0) })
+                split.sidebar.highlight(services.savedSearches.all.first { $0.query == text && $0.scopePath == scope?.path }.map { .search($0) })
             }
             window?.title = Self.searchTitle(text)
             window?.representedURL = nil
@@ -596,11 +596,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     private func saveSearch() {
         guard case .search(let text, let scope) = destination else { return }
-        var searches = SavedSearches.all
         let saved = SavedSearch(name: text, query: text, scopePath: scope?.path)
-        guard !searches.contains(saved) else { return }
-        searches.append(saved)
-        SavedSearches.all = searches
+        guard services.savedSearches.save(saved) else { return }
         split.sidebar.highlight(.search(saved))
     }
 

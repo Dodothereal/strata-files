@@ -5,6 +5,7 @@ import AppKit
 /// the Trash.
 final class CompareController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     private let transfers: TransferQueue
+    private let preferences: Prefs
     private let left: URL
     private let right: URL
     private weak var undo: UndoManager?
@@ -49,8 +50,9 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         }
     }
 
-    init(left: URL, right: URL, undo: UndoManager?, transfers: TransferQueue = .shared) {
+    init(left: URL, right: URL, undo: UndoManager?, transfers: TransferQueue = .shared, preferences: Prefs? = nil) {
         self.transfers = transfers
+        self.preferences = preferences ?? transfers.preferences
         self.left = left
         self.right = right
         self.undo = undo
@@ -188,7 +190,7 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         syncButton.isEnabled = false
         spinner.startAnimation(nil)
         summary.stringValue = String(localized: "Comparing…")
-        let left = left, right = right, contents = contents.state == .on, hidden = Prefs.shared.showHidden
+        let left = left, right = right, contents = contents.state == .on, hidden = preferences.showHidden
         let progress: @Sendable (Int) -> Void = { [weak self] count in
             Task { @MainActor in
                 guard let self, self.control === control else { return }
