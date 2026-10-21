@@ -1042,8 +1042,8 @@
   },
   {
     "file": "Strata/Sidebar/SidebarViewController.swift",
-    "find": "tree = FolderTreeController(transfers: services.transfers, preferences: services.preferences)",
-    "replace": "tree = FolderTreeController(preferences: services.preferences)",
+    "find": "tree = FolderTreeController(transfers: services.transfers, preferences: services.preferences, remote: services.remote)",
+    "replace": "tree = FolderTreeController(preferences: services.preferences, remote: services.remote)",
     "rule": "Browser service ownership folder tree drops use the global queue",
     "tests": "TransferContextTests/bothSidebarDropModesUseTheWindowQueue"
   },
@@ -2750,5 +2750,89 @@
     "replace": "let found = await reveal(folder)",
     "rule": "Server reader cancellation refuses a folder resolved after Cancel",
     "tests": "RemoteSessionOwnershipTests/cancellingServerResolutionDoesNotReturnALateFolder"
+  },
+  {
+    "file": "Strata/Remote/RemoteServices.swift",
+    "find": "        servers.load()",
+    "replace": "        // Leave the registry empty.",
+    "rule": "Remote environment loaded definitions reach their own session registry",
+    "tests": "RemoteEnvironmentTests/browsingAndRemovalKeepMatchingIDsInSeparateEnvironments"
+  },
+  {
+    "file": "Strata/Remote/RemoteServices.swift",
+    "find": "try await connector.connect(server, server.kind == .s3 ? credentials.secret(for: server) : nil)",
+    "replace": "try await connector.connect(server, nil)",
+    "rule": "Remote environment automatic connections use their own credentials",
+    "tests": "RemoteEnvironmentTests/browsingAndRemovalKeepMatchingIDsInSeparateEnvironments"
+  },
+  {
+    "file": "Strata/Remote/RemoteServices.swift",
+    "find": "discard: { await files.discard($0) }",
+    "replace": "discard: { _ in }",
+    "rule": "Remote environment disconnect retires its owned cached files",
+    "tests": "RemoteEnvironmentTests/browsingAndRemovalKeepMatchingIDsInSeparateEnvironments"
+  },
+  {
+    "file": "Strata/Remote/RemoteServices.swift",
+    "find": "connections.remove(server) { servers.forget(server) }",
+    "replace": "connections.remove(server) {}",
+    "rule": "Remote environment removal forgets only its confirmed owned server",
+    "tests": "RemoteEnvironmentTests/browsingAndRemovalKeepMatchingIDsInSeparateEnvironments"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "notifications.post(name: .remoteSessionsChanged, object: self, userInfo: [\"serverID\": id])",
+    "replace": "notifications.post(name: .remoteSessionsChanged, object: nil, userInfo: [\"serverID\": id])",
+    "rule": "Remote environment status publication updates its owning sidebar",
+    "tests": "RemoteEnvironmentTests/sidebarsAndFolderTreesKeepTheirServerStoreStatusAndNotifications"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "name: .remoteServersChanged, object: services.remote.servers",
+    "replace": "name: .remoteServersChanged, object: nil",
+    "rule": "Remote environment saved changes cannot rebuild an unrelated sidebar",
+    "tests": "RemoteEnvironmentTests/sidebarsAndFolderTreesKeepTheirServerStoreStatusAndNotifications"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "name: .remoteSessionsChanged, object: services.remote.status",
+    "replace": "name: .remoteSessionsChanged, object: nil",
+    "rule": "Remote environment status changes cannot rebuild an unrelated sidebar",
+    "tests": "RemoteEnvironmentTests/sidebarsAndFolderTreesKeepTheirServerStoreStatusAndNotifications"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "name: .remoteServerDisconnected, object: services.remote.servers",
+    "replace": "name: .remoteServerDisconnected, object: nil",
+    "rule": "Remote environment disconnect cannot move another environments panes",
+    "tests": "RemoteEnvironmentTests/disconnectNotificationsMoveOnlyTheirOwnersPanes"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "copies.server(containing: URL(fileURLWithPath: path))?.server.id",
+    "replace": "nil",
+    "rule": "Remote environment workspace restoration recognizes its own uncreated server copies",
+    "tests": "RemoteEnvironmentTests/workspacePlansAndTooltipsUseTheirOwnServerPaths"
+  },
+  {
+    "file": "Strata/Remote/RemoteCopyStore.swift",
+    "find": "self.root = Self.rootURL(root)",
+    "replace": "self.root = root.standardizedFileURL",
+    "rule": "Remote environment uncreated cache roots survive native path normalization",
+    "tests": "RemoteCopyOwnershipTests/aMissingCopyRootKeepsItsIdentityWhenNativeNavigationNormalizesItsPath"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "top.standardizedFileURL.path == url.standardizedFileURL.path { return server.name }",
+    "replace": "top.standardizedFileURL == url.standardizedFileURL { return server.name }",
+    "rule": "Remote environment workspace tooltips recognize uncreated server roots",
+    "tests": "RemoteEnvironmentTests/workspacePlansAndTooltipsUseTheirOwnServerPaths"
+  },
+  {
+    "file": "Strata/Sidebar/FolderTreeController.swift",
+    "find": "node.title == server.name && node.symbol == symbol ? node",
+    "replace": "node.title == server.name ? node",
+    "rule": "Remote environment folder tree icons follow a changed server protocol",
+    "tests": "RemoteEnvironmentTests/sidebarsAndFolderTreesKeepTheirServerStoreStatusAndNotifications"
   }
 ]

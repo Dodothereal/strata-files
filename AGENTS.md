@@ -268,6 +268,11 @@ sheet's text before clicking a destructive button. Both builds share preferences
   publish or close its result; disconnect removes pending work before cancelling it, and late completion must not
   erase a replacement attempt. Recheck ownership after status callbacks. Tests use independent pools and controlled
   backends, including cancelled attempts, late failures and dropped connections; never fall back to live credentials.
+- Window-level server access belongs to `BrowserServices.remote`: saved definitions, status, connection sheets,
+  session pools and copies must come from the same environment. Scope saved-server, status and disconnect
+  notifications by owner even when environments share a notification center. Keep workspace planning and tooltips
+  with that owner; a missing local server copy is a waiting server folder, not a missing local folder. Test identical
+  IDs with independent credentials and roots, both sidebar modes, native sheets and both panes without live services.
 - Cancelling a server reader cancels only its waiting ticket. Keep a shared login alive for other panes; retire and
   cancel it when its last reader leaves. A retry must not join an abandoned attempt, and a late result must not
   publish over its replacement. Once published, the backend belongs to the pool, even if its original reader cancels.

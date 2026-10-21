@@ -94,7 +94,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
         services.preferences.notifications.addObserver(self, selector: #selector(sidebarModePrefChanged), name: .prefsChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(serverDisconnected(_:)), name: .remoteServerDisconnected, object: nil)
+        services.remote.notifications.addObserver(self, selector: #selector(serverDisconnected(_:)), name: .remoteServerDisconnected, object: services.remote.servers)
         // The Inspector's Cloud row follows downloads and uploads.
         NotificationCenter.default.addObserver(self, selector: #selector(cloudStatusChanged), name: .cloudStatusChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(containerCopyProblem(_:)), name: .containerCopyProblem, object: nil)
@@ -268,7 +268,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         case .largeFiles: go(.search(Self.largeFilesQuery, scope: nil))
         case .containers: openContainers()
         case .workspace(let name): if let workspace = services.workspaces.named(name) { services.workspaces.open(workspace) }
-        case .server(let id): if let server = RemoteServers.server(id: id) { openServer(server) }
+        case .server(let id): if let server = services.remote.servers.server(id: id) { openServer(server) }
         }
     }
 
@@ -445,7 +445,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             }
             // The Containers folder has nothing above it (a container's `/` goes up to it); nor has a server's `/`.
             if ContainerCopies.engineFolder(current) != nil { return NSSound.beep() }
-            if let (_, top) = RemoteCopies.server(containing: current), top.standardizedFileURL == current.standardizedFileURL { return NSSound.beep() }
+            if let (_, top) = services.remote.copies.server(containing: current), top.standardizedFileURL == current.standardizedFileURL { return NSSound.beep() }
             navigate(to: current.deletingLastPathComponent(), select: current)
         } else {
             navigate(to: location)
@@ -504,8 +504,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// A server's files were let go: panes showing them go home.
     @objc private func serverDisconnected(_ notification: Notification) {
-        guard let id = notification.object as? String else { return }
-        for p in panes where RemoteCopies.server(containing: p.location)?.server.id == id || p.location.standardizedFileURL == RemoteCopies.top(of: id).standardizedFileURL {
+        guard let id = notification.userInfo?["serverID"] as? String else { return }
+        for p in panes where services.remote.copies.server(containing: p.location)?.server.id == id || p.location.standardizedFileURL == services.remote.copies.top(of: id).standardizedFileURL {
             let folder = WaitingFolder(path: p.location.path, mode: p.browser.mode.rawValue, server: id)
             go(.folder(Places.home), in: p)
             // Kept for its server folder, so updating a workspace (or the session) doesn't lose it.

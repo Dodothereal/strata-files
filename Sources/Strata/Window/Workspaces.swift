@@ -10,11 +10,13 @@ final class Workspaces {
 
     private weak var services: BrowserServices?
     private let preferences: Prefs
+    private let remote: RemoteServices
     private let key = "workspaces"
 
     init(services: BrowserServices) {
         self.services = services
         preferences = services.preferences
+        remote = services.remote
     }
 
     /// Only this environment’s live tabs contribute to a saved workspace.
@@ -198,7 +200,7 @@ final class Workspaces {
                 return bringForward(front, of: workspace)
             }
         }
-        let plan = WorkspacePlan(workspace, exists: Self.isThere, server: Self.server(of:))
+        let plan = plan(workspace)
         guard !plan.tabs.isEmpty else {
             let alert = NSAlert()
             alert.messageText = String(localized: "None of the folders in “\(workspace.name)” are there anymore")
@@ -260,6 +262,13 @@ final class Workspaces {
         return controllers
     }
 
+    /// Resolve saved server paths against this workspace's owner, including copies not created yet.
+    func plan(_ workspace: Workspace) -> WorkspacePlan {
+        WorkspacePlan(workspace, exists: Self.isThere, server: { [copies = remote.copies] path in
+            copies.server(containing: URL(fileURLWithPath: path))?.server.id
+        })
+    }
+
     /// The saved server whose files `path` is in (a folder in Strata's copy of them), if any.
     nonisolated static func server(of path: String) -> String? {
         RemoteCopies.server(containing: URL(fileURLWithPath: path))?.server.id
@@ -313,7 +322,7 @@ final class Workspaces {
             // SFTP servers and buckets: connected (ssh may ask for a password), then their folders listed down to each.
             var connected: Set<String> = []
             for id in servers {
-                guard !sheet.isCancelled, let server = RemoteServers.server(id: id) else { continue }
+                guard !sheet.isCancelled, let server = remote.servers.server(id: id) else { continue }
                 sheet.show(server.name)
                 do {
                     try await sheet.connect(server, using: browsing)
@@ -330,14 +339,14 @@ final class Workspaces {
                 for (index, folder) in controller.waitingPanes {
                     guard let id = folder.server, connected.contains(id) else { continue }
                     let url = URL(fileURLWithPath: folder.path)
-                    let found = await RemoteFiles.shared.reveal(url)
+                    let found = await browsing.reveal(url)
                     // Moved elsewhere (or closed) while that was read: left where it is now.
                     guard !controller.isClosed, controller.waitingPanes.contains(where: { $0.index == index && $0.folder == folder }) else { continue }
                     if found {
                         controller.navigatePane(index, to: url, mode: folder.mode)
                     } else {
                         // Not on the server anymore: the pane keeps waiting (so the workspace keeps it) and it's said.
-                        problems.append(String(localized: "\(RemoteServers.server(id: id)?.name ?? ""): “\(url.lastPathComponent)” isn’t there.",
+                        problems.append(String(localized: "\(remote.servers.server(id: id)?.name ?? ""): “\(url.lastPathComponent)” isn’t there.",
                                                comment: "A server's name, then a folder that wasn't found on it"))
                     }
                 }
@@ -422,11 +431,11 @@ final class Workspaces {
 
     /// Its tabs' folders and when it was saved, for a tooltip. Names only: nothing is read from disk (a folder may be on
     /// a share that isn't there).
-    static func help(_ workspace: Workspace) -> String {
+    func help(_ workspace: Workspace) -> String {
         var lines = workspace.tabs.map { tab in
             tab.map { path in
                 let url = URL(fileURLWithPath: path)
-                if let (server, top) = RemoteCopies.server(containing: url), top.standardizedFileURL == url.standardizedFileURL { return server.name }
+                if let (server, top) = remote.copies.server(containing: url), top.standardizedFileURL.path == url.standardizedFileURL.path { return server.name }
                 return url.lastPathComponent.isEmpty ? path : url.lastPathComponent
             }.joined(separator: "  |  ")
         }

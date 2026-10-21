@@ -31,6 +31,22 @@ struct RemoteCopyOwnershipTests {
         func close() {}
     }
 
+    @Test func aMissingCopyRootKeepsItsIdentityWhenNativeNavigationNormalizesItsPath() throws {
+        let tree = try TestTree("keep.txt")
+        let server = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        let copies = RemoteCopyStore(root: tree.url("not-yet-created/nested/cache"), server: { $0 == server.id ? server : nil })
+        let top = copies.top(of: server.id)
+        #expect(copies.server(containing: top)?.server == server)
+        _ = try copies.prepare(server)
+        let opened = FileEntry.openedFolder(top).standardizedFileURL
+        #expect(copies.contains(opened))
+        #expect(copies.server(containing: opened)?.server == server)
+        #expect(top == copies.top(of: server.id))
+        copies.remove(server.id)
+        #expect(copies.server(containing: opened)?.server == server)
+        #expect(tree.snapshot() == ["keep.txt", "not-yet-created/", "not-yet-created/nested/", "not-yet-created/nested/cache/"])
+    }
+
     @Test func matchingServerIDsKeepListingsDownloadsAndCleanupInTheirOwnEnvironment() async throws {
         let tree = try TestTree("first/keep.txt", "second/keep.txt", "outside.txt")
         let id = UUID().uuidString

@@ -70,7 +70,7 @@ final class SidebarViewController: NSViewController {
 
     init(services: BrowserServices = .shared) {
         self.services = services
-        tree = FolderTreeController(transfers: services.transfers, preferences: services.preferences)
+        tree = FolderTreeController(transfers: services.transfers, preferences: services.preferences, remote: services.remote)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -168,8 +168,8 @@ final class SidebarViewController: NSViewController {
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
         preferences.notifications.addObserver(self, selector: #selector(volumesChanged), name: .savedSearchesChanged, object: nil)
         preferences.notifications.addObserver(self, selector: #selector(volumesChanged), name: .workspacesChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .remoteServersChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .remoteSessionsChanged, object: nil)
+        services.remote.notifications.addObserver(self, selector: #selector(volumesChanged), name: .remoteServersChanged, object: services.remote.servers)
+        services.remote.notifications.addObserver(self, selector: #selector(volumesChanged), name: .remoteSessionsChanged, object: services.remote.status)
         // A tag used for the first time joins the Tags section.
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .tagsChanged, object: nil)
         preferences.notifications.addObserver(self, selector: #selector(volumesChanged), name: .favoritesChanged, object: nil)
@@ -192,7 +192,7 @@ final class SidebarViewController: NSViewController {
         sections = [SidebarSection(id: "favorites", title: String(localized: "Favorites", comment: "Sidebar section title"), items: favorites)]
         let workspaces = services.workspaces.all.map { workspace in
             let item = SidebarItem(title: workspace.name, target: .workspace(workspace.name), symbol: Workspaces.symbol(workspace))
-            item.help = Workspaces.help(workspace)
+            item.help = services.workspaces.help(workspace)
             return item
         }
         if !workspaces.isEmpty {
@@ -222,11 +222,11 @@ final class SidebarViewController: NSViewController {
                                        items: Places.volumes().map(SidebarItem.init) + [containers].compactMap { $0 }
             + [SidebarItem(title: String(localized: "Trash", comment: "Sidebar item: the Trash"), target: .folder(Trash.home), symbol: Self.trashSymbol)]))
         // Servers you've connected to: an SFTP server or a bucket each, green while connected.
-        let servers = RemoteServers.all.map { server -> SidebarItem in
+        let servers = services.remote.servers.all.map { server -> SidebarItem in
             let item = SidebarItem(title: server.name, target: .server(server.id),
                                    symbol: server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack")
             item.help = server.address
-            if RemoteStatus.connected.contains(server.id) { item.tint = .systemGreen }
+            if services.remote.status.connected.contains(server.id) { item.tint = .systemGreen }
             return item
         }
         if !servers.isEmpty {
@@ -287,7 +287,7 @@ final class SidebarViewController: NSViewController {
         if case .folder(let url)? = target { tree.reveal(url) } else { tree.reveal(nil) }
         var row = -1
         for section in sections {
-            if let item = section.items.first(where: { Self.matches($0.target, target) }) {
+            if let item = section.items.first(where: { matches($0.target, target) }) {
                 row = outline.row(forItem: item)
                 break
             }
@@ -314,7 +314,7 @@ final class SidebarViewController: NSViewController {
     }
 
 
-    private static func matches(_ a: SidebarTarget, _ b: SidebarTarget?) -> Bool {
+    private func matches(_ a: SidebarTarget, _ b: SidebarTarget?) -> Bool {
         switch (a, b) {
         case (.folder(let x), .folder(let y)?): x.standardizedFileURL.path == y.standardizedFileURL.path
         case (.recents, .recents?), (.duplicates, .duplicates?), (.largeFiles, .largeFiles?): true
@@ -323,7 +323,7 @@ final class SidebarViewController: NSViewController {
         case (.workspace(let x), .workspace(let y)?): x == y
         case (.server(let x), .server(let y)?): x == y
         // Anywhere in that server's files.
-        case (.server(let id), .folder(let url)?): RemoteCopies.server(containing: url)?.server.id == id
+        case (.server(let id), .folder(let url)?): services.remote.copies.server(containing: url)?.server.id == id
         // Anywhere in the containers or their files.
         case (.containers, .folder(let url)?): ContainerCopies.contains(url)
         default: false
@@ -584,7 +584,7 @@ extension SidebarViewController: NSMenuDelegate {
             addWorkspaceItems(name, to: menu)
             return
         }
-        if case .server(let id) = item.target, let server = RemoteServers.server(id: id) {
+        if case .server(let id) = item.target, let server = services.remote.servers.server(id: id) {
             addServerItems(server, to: menu)
             return
         }
@@ -651,7 +651,7 @@ extension SidebarViewController: NSMenuDelegate {
             item.representedObject = server.id
             menu.addItem(item)
         }
-        if RemoteStatus.connected.contains(server.id) {
+        if services.remote.status.connected.contains(server.id) {
             entry(String(localized: "Disconnect", comment: "Button: end the connection to the server"), #selector(disconnectServer(_:)))
             menu.addItem(.separator())
         }
@@ -664,23 +664,23 @@ extension SidebarViewController: NSMenuDelegate {
     private var windowController: BrowserWindowController? { view.window?.windowController as? BrowserWindowController }
 
     @objc private func disconnectServer(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String, let server = RemoteServers.server(id: id) else { return }
+        guard let id = sender.representedObject as? String, let server = services.remote.servers.server(id: id) else { return }
         windowController?.disconnectServer(server)
     }
 
     @objc private func editServer(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String, let server = RemoteServers.server(id: id) else { return }
+        guard let id = sender.representedObject as? String, let server = services.remote.servers.server(id: id) else { return }
         windowController?.editServer(server)
     }
 
     @objc private func copyServerAddress(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String, let server = RemoteServers.server(id: id) else { return }
+        guard let id = sender.representedObject as? String, let server = services.remote.servers.server(id: id) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(server.address, forType: .string)
     }
 
     @objc private func removeServer(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String, let server = RemoteServers.server(id: id), let window = view.window else { return }
+        guard let id = sender.representedObject as? String, let server = services.remote.servers.server(id: id), let window = view.window else { return }
         let alert = NSAlert()
         alert.messageText = String(localized: "Remove “\(server.name)” from Strata?", comment: "A saved server's name")
         alert.informativeText = server.kind == .s3
@@ -688,9 +688,9 @@ extension SidebarViewController: NSMenuDelegate {
             : String(localized: "Nothing on the server changes.")
         alert.addButton(withTitle: String(localized: "Remove", comment: "Alert button: forget the saved server"))
         alert.addButton(withTitle: String(localized: "Cancel"))
-        alert.beginSheetModal(for: window) { response in
+        alert.beginSheetModal(for: window) { [remote = services.remote] response in
             guard response == .alertFirstButtonReturn else { return }
-            MainActor.assumeIsolated { RemoteServers.remove(server) }
+            MainActor.assumeIsolated { remote.remove(server) }
         }
     }
 

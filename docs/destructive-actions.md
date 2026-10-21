@@ -76,6 +76,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 
 | Action | Code | Tests |
 |---|---|---|
+| Window server removal keeps credentials, cached copies and notifications with their owning environment | `RemoteServices.remove`, `RemoteConnections.disconnect` | `RemoteEnvironmentTests/browsingAndRemovalKeepMatchingIDsInSeparateEnvironments`, `disconnectNotificationsMoveOnlyTheirOwnersPanes`; mutations: “Remote environment” |
 | Remote connections retain their own attempt and backend through cancellation, reconnection and status delivery | `RemoteSessions.backend`, `establish`, `disconnect` | `RemoteSessionOwnershipTests/*`; mutations: “Remote session ownership” |
 | Sorting preserves file identity and native selection, including loaded descendants; metadata cannot impose folder order on unsorted results | `BrowserOrdering`, `BrowserViewController.resortAfterMetadata`, `applySort` | `BrowserOrderingTests/*`, `BrowserListingTests/*`, `MediaColumnsTests/*`; mutations: “Browser ordering” |
 | Remote listing timeouts retire only the acquired backend in its owning pool; late failures leave replacements and reservations intact | `RemoteFiles.list`, `RemoteSessions.retire` | `RemoteFilesTests/unresponsiveListingsRetireOnlyTheirOwningPoolAndLeaveOtherErrorsConnected`, `lateListingTimeoutCannotRetireAReplacementOrRevokeItsReservation`, `failedBackendAcquisitionHasNoConnectionToRetire`; mutations: “Remote read ownership” |

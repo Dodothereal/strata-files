@@ -13,6 +13,7 @@ final class BrowserServices {
 
     let transfers: TransferQueue
     let visits: Frecency
+    let remote: RemoteServices
     let remoteBrowsing: RemoteBrowsing
     let directories: DirectoryReader
     let availableCapacity: @Sendable (URL) async -> Int64?
@@ -20,11 +21,12 @@ final class BrowserServices {
 
     init(transfers: TransferQueue, visits: Frecency, directories: DirectoryReader = .live, preferences: Prefs = .shared, windows: BrowserWindows = .native,
          availableCapacity: @escaping @Sendable (URL) async -> Int64? = BrowserLoading.freeSpace,
-         remoteBrowsing: RemoteBrowsing = .live) {
+         remote: RemoteServices = .shared, remoteBrowsing: RemoteBrowsing? = nil) {
         self.preferences = preferences
         self.transfers = transfers
         self.visits = visits
-        self.remoteBrowsing = remoteBrowsing
+        self.remote = remote
+        self.remoteBrowsing = remoteBrowsing ?? remote.browsing
         self.directories = directories
         self.availableCapacity = availableCapacity
         self.windows = windows

@@ -266,7 +266,7 @@ final class WorkspaceMenu: NSObject, NSMenuDelegate {
             item.target = self
             item.representedObject = Choice(workspaces, name: workspace.name, window: window)
             item.image = NSImage(systemSymbolName: Workspaces.symbol(workspace), accessibilityDescription: nil)
-            item.toolTip = Workspaces.help(workspace)
+            item.toolTip = workspaces.help(workspace)
             item.state = keyWorkspaceName == workspace.name ? .on : .off
             menu.addItem(item)
         }

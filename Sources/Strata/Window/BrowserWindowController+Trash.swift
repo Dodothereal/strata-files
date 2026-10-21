@@ -9,18 +9,22 @@ extension BrowserWindowController {
     /// Go ▸ Connect to Server…: mounts a share (macOS asks for the login), then shows it.
     @objc func connectToServer(_ sender: Any?) {
         guard let window, window.attachedSheet == nil else { return }
-        let controller = ConnectToServerController(settings: services.connectionSettings)
-        controller.onConnected = { [weak self] mounted in self?.navigate(to: mounted) }
-        controller.onServer = { [weak self] server in self?.openServer(server) }
-        contentViewController?.presentAsSheet(controller)
+        contentViewController?.presentAsSheet(serverController())
     }
 
     /// Edit… for a saved SFTP server or bucket: the same sheet, filled in.
     func editServer(_ server: RemoteServer) {
         guard let window, window.attachedSheet == nil else { return }
-        let controller = ConnectToServerController(editing: server, settings: services.connectionSettings)
+        contentViewController?.presentAsSheet(serverController(editing: server))
+    }
+
+    /// Build the native sheet with the same server owner as the window, including when editing saved settings.
+    func serverController(editing server: RemoteServer? = nil) -> ConnectToServerController {
+        let controller = ConnectToServerController(editing: server, settings: services.connectionSettings,
+                                                   connections: services.remote.connections)
+        controller.onConnected = { [weak self] mounted in self?.navigate(to: mounted) }
         controller.onServer = { [weak self] server in self?.openServer(server) }
-        contentViewController?.presentAsSheet(controller)
+        return controller
     }
 
     /// Connects to `server` (saying so over the folder, with Cancel) and shows where browsing starts: its saved
@@ -72,7 +76,7 @@ extension BrowserWindowController {
                 self?.browser.reloadFolder(nil)
             }
         }
-        if let (server, _) = RemoteCopies.server(containing: url) {
+        if let (server, _) = services.remote.copies.server(containing: url) {
             let kind = server.kind == .s3 ? String(localized: "bucket", comment: "Notice: the kind of server (an S3 bucket)") : "SFTP"
             return split.noticeBar.show(symbol: server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack",
                                         text: String(localized: "On “\(server.name)” (\(kind)), read from the server as you browse. Changes are made on the server.",
@@ -128,11 +132,11 @@ extension BrowserWindowController {
 extension BrowserWindowController {
     /// Ends the connection to `server` and forgets its files here; panes showing them go home.
     func disconnectServer(_ server: RemoteServer) {
-        RemoteConnections.shared.disconnect(server)
+        services.remote.connections.disconnect(server)
     }
 }
 
 extension Notification.Name {
-    /// A server's files were let go (`object`: its ID): panes showing them move away.
+    /// A server's files were let go (`object`: its saved-server store, `serverID`: its ID).
     static let remoteServerDisconnected = Notification.Name("StrataRemoteServerDisconnected")
 }

@@ -1,7 +1,7 @@
 import Foundation
 
 extension Notification.Name {
-    /// A server connected or disconnected (`object`: its ID).
+    /// A server connected or disconnected (`object`: its owning status, `serverID`: its ID).
     static let remoteSessionsChanged = Notification.Name("StrataRemoteSessionsChanged")
 }
 
@@ -340,8 +340,17 @@ nonisolated final class S3Backend: RemoteBackend {
 // MARK: - Sessions
 
 /// Which servers are connected, for the sidebar (kept by `RemoteSessions` as connections come and go).
-@MainActor enum RemoteStatus {
-    static var connected: Set<String> = []
+@MainActor final class RemoteStatus {
+    static let shared = RemoteStatus(notifications: .default)
+    private(set) var connected: Set<String> = []
+    private let notifications: NotificationCenter
+
+    init(notifications: NotificationCenter) { self.notifications = notifications }
+
+    func changed(_ id: String, connected: Bool) {
+        if connected { self.connected.insert(id) } else { self.connected.remove(id) }
+        notifications.post(name: .remoteSessionsChanged, object: self, userInfo: ["serverID": id])
+    }
 }
 
 /// One connection per server, made when it's first needed and made again if it dropped.
@@ -540,8 +549,7 @@ actor RemoteSessions {
     }
 
     @MainActor private static func announce(_ id: String, connected: Bool) {
-        if connected { RemoteStatus.connected.insert(id) } else { RemoteStatus.connected.remove(id) }
-        NotificationCenter.default.post(name: .remoteSessionsChanged, object: id)
+        RemoteStatus.shared.changed(id, connected: connected)
     }
 }
 

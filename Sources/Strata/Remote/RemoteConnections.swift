@@ -45,7 +45,7 @@ final class RemoteConnections {
 
     private static func discardCopies(_ id: String) async { await RemoteFiles.shared.discard(id) }
     private static func announceDisconnection(_ id: String) {
-        NotificationCenter.default.post(name: .remoteServerDisconnected, object: id)
+        NotificationCenter.default.post(name: .remoteServerDisconnected, object: RemoteServers.store, userInfo: ["serverID": id])
     }
 
     private let catalog: RemoteConnectionCatalog

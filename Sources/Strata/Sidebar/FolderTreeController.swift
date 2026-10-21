@@ -42,8 +42,10 @@ final class FolderNode {
 final class FolderTreeController: NSViewController {
     let preferences: Prefs
     private let transfers: TransferQueue
+    private let remote: RemoteServices
 
-    init(transfers: TransferQueue = .shared, preferences: Prefs = .shared) {
+    init(transfers: TransferQueue = .shared, preferences: Prefs = .shared, remote: RemoteServices = .shared) {
+        self.remote = remote
         self.transfers = transfers
         self.preferences = preferences
         showedHidden = preferences.showHidden
@@ -136,7 +138,7 @@ final class FolderTreeController: NSViewController {
         // Show Hidden Files shows hidden folders here too.
         preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .containersChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .remoteServersChanged, object: nil)
+        remote.notifications.addObserver(self, selector: #selector(volumesChanged), name: .remoteServersChanged, object: remote.servers)
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(trashMayHaveChanged), name: name, object: nil)
         }
@@ -159,13 +161,14 @@ final class FolderTreeController: NSViewController {
             fresh.append(reuse(url, .folder) { FolderNode(url: url, title: volume.title, symbol: volume.symbol) })
         }
         // Saved servers: each opens its files (its row's URL is its copy's top, named by its ID).
-        for server in RemoteServers.all {
-            let top = RemoteCopies.top(of: server.id)
+        for server in remote.servers.all {
+            let top = remote.copies.top(of: server.id)
+            let symbol = server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack"
             let node = reuse(top, .server) {
-                FolderNode(url: top, title: server.name, symbol: server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack", kind: .server)
+                FolderNode(url: top, title: server.name, symbol: symbol, kind: .server)
             }
-            fresh.append(node.title == server.name ? node
-                : FolderNode(url: top, title: server.name, symbol: node.symbol, kind: .server))
+            fresh.append(node.title == server.name && node.symbol == symbol ? node
+                : FolderNode(url: top, title: server.name, symbol: symbol, kind: .server))
         }
         if hasContainers {
             fresh.append(reuse(ContainerCopies.root, .containers) {
@@ -438,7 +441,7 @@ final class FolderTreeController: NSViewController {
             guard let containers = roots.first(where: { $0.kind == .containers }) else { return deselect() }
             return select(containers)
         }
-        if let (server, _) = RemoteCopies.server(containing: target) {
+        if let (server, _) = remote.copies.server(containing: target) {
             guard let row = roots.first(where: { $0.kind == .server && $0.url.lastPathComponent == server.id }) else { return deselect() }
             return select(row)
         }
