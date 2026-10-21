@@ -129,6 +129,8 @@ nonisolated enum TransferEngine {
     struct Hooks: Sendable {
         var throttleBytesPerSecond: Int64?
         var beforeVerify: (@Sendable (URL) -> Void)?
+        /// Report a controlled failure after copyfile finishes an entry, while its descriptor is still available.
+        var copyFailure: (@Sendable (URL) -> Int32?)?
         /// Called with an item's place the moment it has landed there and been recorded (for undo), before anything
         /// else happens to it: a test swaps the file right then.
         var afterLanding: (@Sendable (URL) -> Void)?
@@ -219,7 +221,8 @@ nonisolated enum TransferEngine {
         hooks.afterLanding?(target)
         var failures = copy.errors.map { error in
             TransferFailure(item: index, stage: .copy, source: URL(fileURLWithPath: error.source),
-                            destination: replacing ? nil : URL(fileURLWithPath: error.destination), message: error.message)
+                            destination: replacing ? nil : URL(fileURLWithPath: error.destination), message: error.message,
+                            retryTarget: TransferRetryTarget(URL(fileURLWithPath: error.destination), identity: error.identity))
         }
 
         if options.verify {
@@ -236,7 +239,8 @@ nonisolated enum TransferEngine {
                 removeIfPresent(URL(fileURLWithPath: mismatch.destination))
                 failures.append(TransferFailure(item: index, stage: .verify, source: URL(fileURLWithPath: mismatch.source),
                                                 destination: replacing ? nil : URL(fileURLWithPath: mismatch.destination),
-                                                message: mismatch.message))
+                                                message: mismatch.message,
+                                                retryTarget: TransferRetryTarget(URL(fileURLWithPath: mismatch.destination), identity: mismatch.identity)))
             }
         }
 
@@ -296,10 +300,17 @@ nonisolated enum TransferEngine {
                       control: TransferControl, progress: TransferProgress) -> TransferItemResult {
         var result = TransferItemResult(outcome: .done, destination: item.destination, landed: landed)
         defer { hooks.afterResult?(result) }
-        for failure in failures where failure.stage == .copy || failure.stage == .verify {
+        for failure in retryFailures(failures) {
             guard control.checkpoint() else { result.outcome = .cancelled; return result }
             guard let destination = failure.destination else { continue }
             progress.update { $0.currentName = failure.source.lastPathComponent }
+            let sameRoot = destination == item.destination || (landed != nil && FileIdentity.read(item.destination.path) == landed)
+            guard sameRoot, let retryTarget = failure.retryTarget, retryTarget.matches(destination) else {
+                result.failures.append(TransferFailure(item: index, stage: failure.stage, source: failure.source,
+                    destination: destination, message: String(localized: "The items have moved or been changed since."),
+                    retryTarget: failure.retryTarget))
+                continue
+            }
             removeIfPresent(destination)
             let copy = copy(failure.source, to: destination, clone: options.clone, control: control, progress: progress)
             if copy.cancelled {
@@ -309,7 +320,7 @@ nonisolated enum TransferEngine {
             }
             if let fatal = copy.fatal {
                 result.failures.append(TransferFailure(item: index, stage: .copy, source: failure.source,
-                                                       destination: destination, message: fatal))
+                                                       destination: destination, message: fatal, retryTarget: failure.retryTarget))
                 continue
             }
             // Recreating a top-level file gives it a new identity. Repairing a child keeps the original folder's
@@ -318,7 +329,8 @@ nonisolated enum TransferEngine {
             hooks.afterLanding?(destination)
             result.failures += copy.errors.map {
                 TransferFailure(item: index, stage: .copy, source: URL(fileURLWithPath: $0.source),
-                                destination: URL(fileURLWithPath: $0.destination), message: $0.message)
+                                destination: URL(fileURLWithPath: $0.destination), message: $0.message,
+                                retryTarget: TransferRetryTarget(URL(fileURLWithPath: $0.destination), identity: $0.identity))
             }
             if options.verify {
                 hooks.beforeVerify?(destination)
@@ -330,7 +342,8 @@ nonisolated enum TransferEngine {
                     result.failures.append(TransferFailure(item: index, stage: .verify,
                                                            source: URL(fileURLWithPath: mismatch.source),
                                                            destination: URL(fileURLWithPath: mismatch.destination),
-                                                           message: mismatch.message))
+                                                           message: mismatch.message,
+                                                           retryTarget: TransferRetryTarget(URL(fileURLWithPath: mismatch.destination), identity: mismatch.identity)))
                 }
             }
         }
@@ -353,6 +366,31 @@ nonisolated enum TransferEngine {
             result.sourceRemoved = true
         }
         return result
+    }
+
+    /// A failed folder's retry includes its descendants. Retrying them separately could remove files the parent
+    /// has just repaired, and descendants may not have had a destination parent to record on the first attempt.
+    static func retryFailures(_ failures: [TransferFailure]) -> [TransferFailure] {
+        let candidates = failures.filter { ($0.stage == .copy || $0.stage == .verify) && $0.destination != nil }
+        let destinations = Dictionary(candidates.compactMap { failure in
+            failure.destination.map { (failure.source.path, $0.path) }
+        }, uniquingKeysWith: { first, _ in first })
+        var seen: Set<String> = []
+        return candidates.filter { failure in
+            guard let destination = failure.destination,
+                  seen.insert(failure.source.path + "\0" + destination.path).inserted else { return false }
+            var parent = failure.source.deletingLastPathComponent()
+            while parent.path != failure.source.path {
+                if let target = destinations[parent.path] {
+                    let relative = String(failure.source.path.dropFirst(parent.path.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                    if (target as NSString).appendingPathComponent(relative) == destination.path { return false }
+                }
+                let next = parent.deletingLastPathComponent()
+                if next.path == parent.path { break }
+                parent = next
+            }
+            return true
+        }
     }
 
     // MARK: - Scanning
@@ -378,6 +416,7 @@ nonisolated enum TransferEngine {
         let source: String
         let destination: String
         let message: String
+        var identity: FileIdentity?
     }
 
     struct CopyOutcome: Sendable {
@@ -421,7 +460,9 @@ nonisolated enum TransferEngine {
     /// One recursive `copyfile` pass (see `copy`).
     private static func copyfile(_ source: URL, to destination: URL, clone: Bool, control: TransferControl,
                                  progress: TransferProgress) -> CopyOutcome {
-        let session = CopySession(control: control, progress: progress, throttle: hooks.throttleBytesPerSecond)
+        let hooks = hooks
+        let session = CopySession(control: control, progress: progress, throttle: hooks.throttleBytesPerSecond,
+                                  copyFailure: hooks.copyFailure)
         guard let state = copyfile_state_alloc() else { return CopyOutcome(fatal: describe(ENOMEM)) }
         defer { copyfile_state_free(state) }
         let callback: copyfile_callback_t = copyCallback
@@ -489,6 +530,7 @@ nonisolated enum TransferEngine {
             }
             let relative = path.count > root.count ? String(path.dropFirst(root.count)) : ""
             let target = destination.path + relative
+            let identity = FileIdentity.read(target)
             switch Int32(entry.pointee.fts_info) {
             case FTS_F:
                 progress.update { $0.currentName = (path as NSString).lastPathComponent }
@@ -502,12 +544,13 @@ nonisolated enum TransferEngine {
                     let reason = copy == nil ? String(localized: "The copy can’t be read back")
                         : String(localized: "The copy doesn’t match the original")
                     outcome.mismatches.append(EntryError(source: path, destination: target,
-                                                         message: original == nil ? String(localized: "The original can’t be read") : reason))
+                                                         message: original == nil ? String(localized: "The original can’t be read") : reason,
+                                                         identity: identity))
                 }
             case FTS_SL, FTS_SLNONE:
                 if readLink(path) != readLink(target) {
                     outcome.mismatches.append(EntryError(source: path, destination: target,
-                                                         message: String(localized: "The copied alias points somewhere else")))
+                                                         message: String(localized: "The copied alias points somewhere else"), identity: identity))
                 }
             default:
                 break
@@ -696,11 +739,14 @@ nonisolated private final class CopySession: @unchecked Sendable {
     private var fileSize: Int64 = 0
     private var fileReported: Int64 = 0
     private var failedPaths: Set<String> = []
+    private var directories: [String: DirectoryDescriptor] = [:]
+    private let copyFailure: (@Sendable (URL) -> Int32?)?
 
-    init(control: TransferControl, progress: TransferProgress, throttle: Int64?) {
+    init(control: TransferControl, progress: TransferProgress, throttle: Int64?, copyFailure: (@Sendable (URL) -> Int32?)?) {
         self.control = control
         self.progress = progress
         self.throttle = throttle
+        self.copyFailure = copyFailure
     }
 
     func handle(what: Int32, stage: Int32, state: copyfile_state_t?, source: UnsafePointer<CChar>?,
@@ -715,15 +761,22 @@ nonisolated private final class CopySession: @unchecked Sendable {
             }
             // Extended attributes the destination won't take (protected or unsupported) don't fail the file.
             if what == COPYFILE_COPY_XATTR { return Int32(COPYFILE_CONTINUE) }
-            let src = source.map { String(cString: $0) } ?? ""
-            let dst = destination.map { String(cString: $0) } ?? ""
-            if failedPaths.insert(src).inserted {
-                errors.append(.init(source: src, destination: dst, message: TransferEngine.describe(code)))
-            }
+            recordError(what: what, state: state, source: source, destination: destination, code: code)
             if what == COPYFILE_RECURSE_FILE || what == COPYFILE_COPY_DATA {
                 finishFile()
             }
             return Int32(COPYFILE_SKIP)
+        }
+
+        if what == COPYFILE_RECURSE_DIR && stage == COPYFILE_FINISH, let destination {
+            directories[String(cString: destination)] = DirectoryDescriptor(state)
+        }
+        if stage == COPYFILE_FINISH && (what == COPYFILE_RECURSE_FILE || what == COPYFILE_RECURSE_DIR_CLEANUP),
+           let destination, let code = copyFailure?(URL(fileURLWithPath: String(cString: destination))) {
+            recordError(what: what, state: state, source: source, destination: destination, code: code)
+        }
+        if what == COPYFILE_RECURSE_DIR_CLEANUP && stage == COPYFILE_FINISH, let destination {
+            directories.removeValue(forKey: String(cString: destination))
         }
 
         switch (what, stage) {
@@ -755,6 +808,48 @@ nonisolated private final class CopySession: @unchecked Sendable {
             return quitCode
         }
         return Int32(COPYFILE_CONTINUE)
+    }
+
+    private func recordError(what: Int32, state: copyfile_state_t?, source: UnsafePointer<CChar>?,
+                             destination: UnsafePointer<CChar>?, code: Int32) {
+        let src = source.map { String(cString: $0) } ?? ""
+        let dst = destination.map { String(cString: $0) } ?? ""
+        // Directory metadata cleanup reopens a pathname, so retain the identity from its exclusive creation instead.
+        // The dictionary contains only directories still on copyfile's depth-first traversal stack.
+        let identity = what == COPYFILE_RECURSE_DIR_CLEANUP ? directories.removeValue(forKey: dst)?.identity : Self.destinationIdentity(state)
+        if failedPaths.insert(src).inserted {
+            errors.append(.init(source: src, destination: dst, message: TransferEngine.describe(code), identity: identity))
+        }
+    }
+
+    /// Keep the originally opened directory alive through metadata cleanup. copyfile changes its birth time there,
+    /// so read the final identity from that descriptor, never from the cleanup pass's reopened pathname.
+    private final class DirectoryDescriptor {
+        private let fd: Int32
+
+        init?(_ state: copyfile_state_t?) {
+            var original: Int32 = -1
+            guard let state, copyfile_state_get(state, UInt32(COPYFILE_STATE_DST_FD), &original) == 0,
+                  original >= 0 else { return nil }
+            let duplicate = fcntl(original, F_DUPFD_CLOEXEC, 0)
+            guard duplicate >= 0 else { return nil }
+            fd = duplicate
+        }
+
+        deinit { close(fd) }
+
+        var identity: FileIdentity? {
+            var info = stat()
+            guard fstat(fd, &info) == 0 else { return nil }
+            return FileIdentity.from(info)
+        }
+    }
+
+    private static func destinationIdentity(_ state: copyfile_state_t?) -> FileIdentity? {
+        var fd: Int32 = -1, info = stat()
+        guard let state, copyfile_state_get(state, UInt32(COPYFILE_STATE_DST_FD), &fd) == 0,
+              fd >= 0, fstat(fd, &info) == 0 else { return nil }
+        return FileIdentity.from(info)
     }
 
     private func finishFile() {

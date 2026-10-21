@@ -1959,5 +1959,54 @@
     "replace": "entries.contains { $0.id == id && !$0.undone }",
     "rule": "Retry journal retires a History record before asynchronous Undo finishes",
     "tests": "TransferTests/retryFinishingDuringHistoryUndoStartsItsOwnRecord"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "guard sameRoot, let retryTarget = failure.retryTarget, retryTarget.matches(destination) else {",
+    "replace": "guard sameRoot, let retryTarget = failure.retryTarget else {",
+    "rule": "Retry cleanup checks failed destination ownership before removal",
+    "tests": "TransferTests/retriesLeaveReplacementsAndChangedParentsAlone"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "guard sameRoot, let retryTarget = failure.retryTarget, retryTarget.matches(destination) else {",
+    "replace": "guard let retryTarget = failure.retryTarget, retryTarget.matches(destination) else {",
+    "rule": "Retry cleanup keeps the original top-level destination",
+    "tests": "TransferTests/retriesRequireTheOriginalRootEvenWhenTheImmediateParentSurvives"
+  },
+  {
+    "file": "Strata/Transfers/TransferRetryTarget.swift",
+    "find": "return current == identity",
+    "replace": "return true",
+    "rule": "Retry cleanup never adopts a replacement partial copy",
+    "tests": "TransferTests/retriesRepairOnlyTheirRetainedPartialCopies"
+  },
+  {
+    "file": "Strata/Transfers/TransferRetryTarget.swift",
+    "find": "guard let current = FileIdentity.read(destination.path) else { return !TransferEngine.exists(destination) }",
+    "replace": "guard let current = FileIdentity.read(destination.path) else { return false }",
+    "rule": "Retry cleanup can repair a missing destination",
+    "tests": "TransferTests/retriesLeaveReplacementsAndChangedParentsAlone"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "for failure in retryFailures(failures) {",
+    "replace": "for failure in failures {",
+    "rule": "Retry cleanup repairs nested failures once",
+    "tests": "TransferTests/retryingAFailedFolderRepairsItsNestedFailuresOnlyOnce"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "directories.removeValue(forKey: dst)?.identity : Self.destinationIdentity(state)",
+    "replace": "nil : Self.destinationIdentity(state)",
+    "rule": "Retry cleanup retains failed directory ownership through metadata cleanup",
+    "tests": "TransferTests/retriesRepairOnlyTheirRetainedPartialCopies"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "directories.removeValue(forKey: dst)?.identity : Self.destinationIdentity(state)",
+    "replace": "FileIdentity.read(dst) : Self.destinationIdentity(state)",
+    "rule": "Retry cleanup never adopts a pathname replacement during directory cleanup",
+    "tests": "TransferTests/failedDirectoryCleanupKeepsItsOriginalDescriptorOwnership"
   }
 ]

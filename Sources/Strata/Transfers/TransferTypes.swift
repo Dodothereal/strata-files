@@ -84,6 +84,7 @@ nonisolated struct TransferFailure: Sendable {
     let source: URL
     let destination: URL?
     let message: String
+    var retryTarget: TransferRetryTarget?
 
     var displayName: String { source.lastPathComponent }
 }

@@ -264,6 +264,10 @@ sheet's text before clicking a destructive button. Both builds share preferences
   shared by live Undo, History and cancellation cleanup. Redo records the folders it recreates and updates their
   saved History identities. Old records without container identities may restore files but must not remove those
   folders. Read and remove Finder records relative to an owned, opened directory; never follow a cleanup symlink.
+- Retrying a failed transfer must retain its destination and parent identities from the failed attempt. A replacement
+  file, directory or redirected parent is not the incomplete copy. Cover both safe refusals and successful repair of
+  retained fragments, missing destinations and nested failures. Directory metadata copying can change birth time:
+  retain the original descriptor through cleanup instead of adopting the cleanup pass's reopened pathname.
 - Transfer results are journaled by `TransferJournal` after each completed pass. Native Undo and History share the
   same receipt: a repaired copy updates its captured identity, and a finished move replaces its copy classification.
   Never extend a record whose Undo has started, whose action has been replayed, or which History has cleared.
