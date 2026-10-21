@@ -8,7 +8,7 @@ import Foundation
 /// copied. Changes (a new folder, a rename, a deletion, files dropped in) happen on the server first, then the folder
 /// is listed again, so the copy only ever shows what the server has.
 actor RemoteFiles {
-    static let shared = RemoteFiles()
+    static let shared = RemoteFiles(sessions: .shared)
 
     /// A folder listed this recently isn't listed again (several views load the same folder).
     static let freshFor: TimeInterval = 10
@@ -24,6 +24,7 @@ actor RemoteFiles {
     private var removals: [String: Task<Void, Never>] = [:]
     /// Where connections come from (tests give a local one).
     private let backends: @Sendable (String) async throws -> any RemoteBackend
+    private let retire: @Sendable (String, any RemoteBackend) async -> Void
     private var listings = CopyListings()
     private(set) var fetches = CopyFetches()
     private var eager: [String: [UUID: Task<Void, Never>]] = [:]
@@ -32,10 +33,19 @@ actor RemoteFiles {
     /// Servers whose copies are being removed: nothing new starts in them.
     private(set) var closing: Set<String> = []
 
+    init(sessions: RemoteSessions, now: @escaping @Sendable () -> Date = { Date() },
+         removeCopy: @escaping @Sendable (String) -> Void = { RemoteCopies.remove($0) }) {
+        self.init(now: now, backends: { try await sessions.backend(for: $0) },
+                  retire: { await sessions.retire($1, for: $0) }, removeCopy: removeCopy)
+    }
+
+    /// Standalone backends can omit pool retirement. A managed source must supply its matching retirement callback.
     init(now: @escaping @Sendable () -> Date = { Date() },
-         backends: @escaping @Sendable (String) async throws -> any RemoteBackend = { try await RemoteSessions.shared.backend(for: $0) },
+         backends: @escaping @Sendable (String) async throws -> any RemoteBackend,
+         retire: @escaping @Sendable (String, any RemoteBackend) async -> Void = { _, _ in },
          removeCopy: @escaping @Sendable (String) -> Void = { RemoteCopies.remove($0) }) {
         self.backends = backends
+        self.retire = retire
         self.now = now
         self.removeCopy = removeCopy
     }
@@ -79,8 +89,10 @@ actor RemoteFiles {
 
     /// Lists and applies one folder; how long the result stays current, or nil when it failed.
     private func list(_ folder: URL, path: String, server: RemoteServer, top: URL) async -> TimeInterval? {
+        var acquired: (any RemoteBackend)?
         do {
             let backend = try await backends(server.id)
+            acquired = backend
             let entries = try await backend.list(path)
             guard !closing.contains(server.id) else { return nil }
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -109,8 +121,8 @@ actor RemoteFiles {
             }
             return Self.freshFor
         } catch {
-            // A server that stopped answering was disconnected; the sidebar says so too (the next look connects again).
-            if case SFTPError.stoppedAnswering = error { await RemoteSessions.shared.disconnect(server.id) }
+            // A late timeout belongs to the connection that made this read, never its replacement or another pool.
+            if case SFTPError.stoppedAnswering = error, let acquired { await retire(server.id, acquired) }
             await Self.report(error, folder: folder)
             return nil
         }

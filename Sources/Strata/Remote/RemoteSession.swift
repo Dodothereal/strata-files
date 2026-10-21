@@ -421,6 +421,15 @@ actor RemoteSessions {
         backends[id]?.isAlive == true
     }
 
+    /// A failed read retires only the connection it used. Explicit disconnect also cancels pending work; an old
+    /// read must never cancel a new login or revoke a replacement's reservation.
+    func retire(_ backend: any RemoteBackend, for id: String) async {
+        guard backends[id] === backend else { return }
+        backends[id] = nil
+        backend.close()
+        await changed(id, false)
+    }
+
     func disconnect(_ id: String) async {
         replacements.removeValue(forKey: id)?.invalidate()
         connecting.removeValue(forKey: id)?.task.cancel()

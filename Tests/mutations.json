@@ -2302,5 +2302,47 @@
     "replace": "isolated deinit { mounts.cancel() }",
     "rule": "Staged connections releasing the sheet cancels private authentication",
     "tests": "RemoteConnectionTests/releasingTheNativeSheetCancelsItsPrivateConnection"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "retire: { await sessions.retire($1, for: $0) }",
+    "replace": "retire: { id, _ in await RemoteSessions.shared.disconnect(id) }",
+    "rule": "Remote read ownership uses the injected session pool for timeout cleanup",
+    "tests": "RemoteFilesTests/unresponsiveListingsRetireOnlyTheirOwningPoolAndLeaveOtherErrorsConnected"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "if case SFTPError.stoppedAnswering = error, let acquired { await retire(server.id, acquired) }",
+    "replace": "if let acquired { await retire(server.id, acquired) }",
+    "rule": "Remote read ownership ordinary read errors keep their connection",
+    "tests": "RemoteFilesTests/unresponsiveListingsRetireOnlyTheirOwningPoolAndLeaveOtherErrorsConnected"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "guard backends[id] === backend else { return }",
+    "replace": "// Retire without checking which backend failed.",
+    "rule": "Remote read ownership old reads cannot erase the replacement backend",
+    "tests": "RemoteFilesTests/lateListingTimeoutCannotRetireAReplacementOrRevokeItsReservation"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "backend.close()\n        await changed(id, false)\n    }\n\n    func disconnect",
+    "replace": "backend.close()\n    }\n\n    func disconnect",
+    "rule": "Remote read ownership retirement reports the current disconnected state",
+    "tests": "RemoteFilesTests/unresponsiveListingsRetireOnlyTheirOwningPoolAndLeaveOtherErrorsConnected"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "guard backends[id] === backend else { return }\n        backends[id] = nil\n        backend.close()\n        await changed(id, false)",
+    "replace": "await disconnect(id)",
+    "rule": "Remote read ownership old reads cannot revoke a newer publication reservation",
+    "tests": "RemoteFilesTests/lateListingTimeoutCannotRetireAReplacementOrRevokeItsReservation"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "guard backends[id] === backend else { return }\n        backends[id] = nil",
+    "replace": "guard false else { return }\n        backends[id] = nil",
+    "rule": "Remote read ownership retires and closes an unresponsive current backend",
+    "tests": "RemoteFilesTests/unresponsiveListingsRetireOnlyTheirOwningPoolAndLeaveOtherErrorsConnected"
   }
 ]

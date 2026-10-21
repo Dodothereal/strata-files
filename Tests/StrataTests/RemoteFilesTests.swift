@@ -71,6 +71,76 @@ struct RemoteFilesTests {
         #expect(sandbox.snapshot() == original)
     }
 
+    @Test func unresponsiveListingsRetireOnlyTheirOwningPoolAndLeaveOtherErrorsConnected() async throws {
+        defer { cleanUp() }
+        let original = sandbox.snapshot()
+        let errors: [any Error] = [SFTPError.stoppedAnswering, SFTPError.status(SFTPError.permissionDenied, "Fixture"),
+                                  SFTPError.stopped, CancellationError()]
+        for (index, error) in errors.enumerated() {
+            let backend = HeldListingBackend(next: []), other = HeldListingBackend(next: []), retired = Counter()
+            let definition = remote
+            let sessions = RemoteSessions(server: { $0 == definition.id ? definition : nil },
+                connect: { _ in backend }, changed: { _, connected in if !connected { retired.add(1) } })
+            let unrelated = RemoteSessions(server: { $0 == definition.id ? definition : nil },
+                connect: { _ in other }, changed: { _, _ in })
+            _ = try await unrelated.backend(for: definition.id)
+            let files = RemoteFiles(sessions: sessions)
+            let before = TestTree.listing(of: folder)
+            let reading = Task { await files.refresh(folder) }
+            await backend.waitUntilStarted()
+            await backend.failFirst(error)
+            await reading.value
+            #expect(backend.closes.value == (index == 0 ? 1 : 0))
+            #expect(retired.value == (index == 0 ? 1 : 0))
+            #expect(await sessions.isConnected(definition.id) == (index != 0))
+            #expect(other.closes.value == 0)
+            #expect(try await unrelated.backend(for: definition.id) === other)
+            #expect(TestTree.listing(of: folder) == before)
+            await sessions.disconnect(definition.id)
+            await unrelated.disconnect(definition.id)
+        }
+        #expect(sandbox.snapshot() == original)
+    }
+
+    @Test func failedBackendAcquisitionHasNoConnectionToRetire() async throws {
+        defer { cleanUp() }
+        let original = sandbox.snapshot(), before = TestTree.listing(of: folder), retired = Counter()
+        let files = RemoteFiles(backends: { _ in throw SFTPError.stoppedAnswering }, retire: { _, _ in retired.add(1) })
+        await files.refresh(folder)
+        #expect(retired.value == 0)
+        #expect(TestTree.listing(of: folder) == before)
+        #expect(sandbox.snapshot() == original)
+    }
+
+    @Test func lateListingTimeoutCannotRetireAReplacementOrRevokeItsReservation() async throws {
+        defer { cleanUp() }
+        let original = sandbox.snapshot()
+        for installBeforeFailure in [false, true] {
+            let previous = HeldListingBackend(next: []), replacement = HeldListingBackend(next: [])
+            let definition = remote
+            let sessions = RemoteSessions(server: { $0 == definition.id ? definition : nil },
+                connect: { _ in previous }, changed: { _, _ in })
+            let files = RemoteFiles(sessions: sessions)
+            let before = TestTree.listing(of: folder)
+            let reading = Task { await files.refresh(folder) }
+            await previous.waitUntilStarted()
+            let reservation = try await sessions.reserveReplacement(for: definition.id)
+            if installBeforeFailure { #expect(try await sessions.install(replacement, replacing: reservation, save: {})) }
+            await previous.failFirst(SFTPError.stoppedAnswering)
+            await reading.value
+            #expect(previous.closes.value == 1 && replacement.closes.value == 0)
+            if !installBeforeFailure {
+                #expect(reservation.isValid)
+                #expect(try await sessions.install(replacement, replacing: reservation, save: {}))
+            }
+            #expect(try await sessions.backend(for: definition.id) === replacement)
+            #expect(TestTree.listing(of: folder) == before)
+            await sessions.disconnect(definition.id)
+            #expect(replacement.closes.value == 1)
+        }
+        #expect(sandbox.snapshot() == original)
+    }
+
     @Test func invalidatingAnInFlightListingReadsAgainBeforeReportingItFresh() async throws {
         defer { cleanUp() }
         let original = sandbox.snapshot()
@@ -479,7 +549,8 @@ struct RemoteFilesTests {
 private actor HeldListingBackend: RemoteBackend {
     let next: [ListedEntry]
     private(set) var calls = 0
-    private var first: CheckedContinuation<[ListedEntry], Never>?
+    private var first: CheckedContinuation<[ListedEntry], Error>?
+    nonisolated let closes = Counter()
     private var started: CheckedContinuation<Void, Never>?
 
     init(next: [ListedEntry]) { self.next = next }
@@ -491,10 +562,11 @@ private actor HeldListingBackend: RemoteBackend {
         first?.resume(returning: entries)
         first = nil
     }
+    func failFirst(_ error: any Error) { first?.resume(throwing: error); first = nil }
     func list(_ path: String) async throws -> [ListedEntry] {
         calls += 1
         if calls > 1 { return next }
-        return await withCheckedContinuation { continuation in
+        return try await withCheckedThrowingContinuation { continuation in
             first = continuation
             started?.resume()
             started = nil
@@ -507,8 +579,8 @@ private actor HeldListingBackend: RemoteBackend {
     func rename(_ path: String, to newPath: String) async throws { throw CocoaError(.featureUnsupported) }
     func remove(_ path: String) async throws { throw CocoaError(.featureUnsupported) }
     func kind(of path: String) async throws -> RemoteItemKind? { nil }
-    nonisolated var isAlive: Bool { true }
-    nonisolated func close() {}
+    nonisolated var isAlive: Bool { closes.value == 0 }
+    nonisolated func close() { closes.add(1) }
 }
 
 /// Only writes the supplied download scratch file; the first download remains held even after cancellation.

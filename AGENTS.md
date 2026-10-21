@@ -247,6 +247,10 @@ sheet's text before clicking a destructive button. Both builds share preferences
   publish or close its result; disconnect removes pending work before cancelling it, and late completion must not
   erase a replacement attempt. Recheck ownership after status callbacks. Tests use independent pools and controlled
   backends, including cancelled attempts, late failures and dropped connections; never fall back to live credentials.
+- Providers backed by a session pool receive that pool through `RemoteFiles(sessions:)`. A failed read may retire
+  only the exact backend it acquired, through that owner. It cannot disconnect a replacement, cancel a newer login
+  or revoke a publication reservation. Ordinary operation errors keep the connection; test late timeouts and
+  identical server IDs in independent pools without a live server.
 - Connect to Server authenticates proposed settings through `RemoteConnections` before saving credentials or
   changing the registry. Cancel by request identity; never roll back another attempt's settings by server ID.
   Serialize cache retirement and publication per server, with a revocable pool reservation. Readers must fail
