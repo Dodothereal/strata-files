@@ -2008,5 +2008,26 @@
     "replace": "FileIdentity.read(dst) : Self.destinationIdentity(state)",
     "rule": "Retry cleanup never adopts a pathname replacement during directory cleanup",
     "tests": "TransferTests/failedDirectoryCleanupKeepsItsOriginalDescriptorOwnership"
+  },
+  {
+    "file": "Strata/Window/HistoryWindowController.swift",
+    "find": "guard response == .alertFirstButtonReturn else { return }",
+    "replace": "guard response != .abort else { return }",
+    "rule": "History window clears its store only after confirmation",
+    "tests": "HistoryWindowOwnershipTests/panelsShowAndClearOnlyTheirOwnHistory"
+  },
+  {
+    "file": "Strata/Window/HistoryWindowController.swift",
+    "find": "try await history.undo(entry, undoManager: historyUndoManager)",
+    "replace": "try await history.undo(entry, undoManager: nil)",
+    "rule": "History window retains its native Undo manager after closing",
+    "tests": "HistoryWindowOwnershipTests/requestedUndoKeepsItsHistoryAndNativeUndoManagerAfterThePanelCloses"
+  },
+  {
+    "file": "Strata/Model/OperationLog.swift",
+    "find": "guard let current = entries.first(where: { $0.id == entry.id }), canUndo(current) else {",
+    "replace": "guard let current = Optional(entry), canUndo(current) else {",
+    "rule": "History window stale actions still resolve saved entries",
+    "tests": "HistoryWindowOwnershipTests/aCapturedHistoryActionCannotReviveAClearedEntry"
   }
 ]

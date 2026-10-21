@@ -268,6 +268,9 @@ sheet's text before clicking a destructive button. Both builds share preferences
   file, directory or redirected parent is not the incomplete copy. Cover both safe refusals and successful repair of
   retained fragments, missing destinations and nested failures. Directory metadata copying can change birth time:
   retain the original descriptor through cleanup instead of adopting the cleanup pass's reopened pathname.
+- History panels receive their store and native Undo manager from the application owner. Observe only that store,
+  and keep both dependencies through a requested Undo even if the panel closes. A delayed alert must not clear a
+  different History. Headless panels disable native frame autosaving and never show error sheets.
 - Transfer results are journaled by `TransferJournal` after each completed pass. Native Undo and History share the
   same receipt: a repaired copy updates its captured identity, and a finished move replaces its copy classification.
   Never extend a record whose Undo has started, whose action has been replayed, or which History has cleared.

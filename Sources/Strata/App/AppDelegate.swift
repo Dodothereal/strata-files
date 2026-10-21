@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     let undoManager = UndoManager()
+    private lazy var historyWindow = HistoryWindowController(history: browserServices.transfers.history,
+                                                            undoManager: undoManager, frameAutosaveName: "StrataHistory")
     private var windowControllers: [BrowserWindowController] = []
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -320,7 +322,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showHistory(_ sender: Any?) {
-        HistoryWindowController.shared.showWindow(nil)
+        historyWindow.showWindow(nil)
     }
 
     @objc func newWindow(_ sender: Any?) {

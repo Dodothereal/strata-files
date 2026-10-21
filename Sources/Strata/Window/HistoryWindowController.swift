@@ -2,7 +2,8 @@ import AppKit
 
 /// Every file operation Strata performed, newest first, each undoable on its own — even after a restart.
 final class HistoryWindowController: NSWindowController {
-    static let shared = HistoryWindowController()
+    let history: OperationLog
+    private let historyUndoManager: UndoManager?
 
     private let table = NSTableView()
     private let empty = NSTextField(wrappingLabelWithString: String(localized: "Moves, copies, renames and deletions show up here, so you can undo them later, even after quitting."))
@@ -13,14 +14,16 @@ final class HistoryWindowController: NSWindowController {
         return formatter
     }()
 
-    private init() {
+    init(history: OperationLog, undoManager: UndoManager?, frameAutosaveName: String? = nil) {
+        self.history = history
+        historyUndoManager = undoManager
         let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 620, height: 460),
                              styleMask: [.titled, .closable, .resizable, .utilityWindow, .fullSizeContentView],
                              backing: .buffered, defer: true)
         window.title = String(localized: "History", comment: "Window title: past file operations")
         window.titlebarAppearsTransparent = true
         window.isFloatingPanel = false
-        window.setFrameAutosaveName("StrataHistory")
+        if let frameAutosaveName { window.setFrameAutosaveName(frameAutosaveName) }
         super.init(window: window)
 
         let column = NSTableColumn(identifier: .init("entry"))
@@ -37,7 +40,7 @@ final class HistoryWindowController: NSWindowController {
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
 
-        let clear = NSButton(title: String(localized: "Clear History"), target: self, action: #selector(clearHistory))
+        let clear = NSButton(title: String(localized: "Clear History"), target: self, action: #selector(confirmClearHistory))
         clear.bezelStyle = .push
         clear.controlSize = .small
         let note = NSTextField(labelWithString: String(localized: "Undo any past operation, even after quitting. Undone items go back where they were."))
@@ -61,19 +64,19 @@ final class HistoryWindowController: NSWindowController {
             empty.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
             empty.widthAnchor.constraint(lessThanOrEqualTo: scroll.widthAnchor, constant: -60),
         ])
-        NotificationCenter.default.addObserver(self, selector: #selector(reload), name: .operationLogChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(reload), name: .operationLogChanged, object: history)
         reload()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     @objc private func reload() {
-        entries = OperationLog.shared.entries.reversed()
+        entries = history.entries.reversed()
         table.reloadData()
         empty.isHidden = !entries.isEmpty
     }
 
-    @objc private func clearHistory() {
+    @objc private func confirmClearHistory() {
         guard let window, !entries.isEmpty else { return }
         let alert = NSAlert()
         alert.messageText = String(localized: "Clear the history of file operations?")
@@ -81,17 +84,25 @@ final class HistoryWindowController: NSWindowController {
         alert.addButton(withTitle: String(localized: "Clear History"))
         alert.addButton(withTitle: String(localized: "Cancel"))
         alert.buttons[0].hasDestructiveAction = true
-        alert.beginSheetModal(for: window) { response in
-            if response == .alertFirstButtonReturn { OperationLog.shared.clear() }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            self?.clearHistory(after: response)
         }
     }
 
-    fileprivate func undo(_ entry: OperationLog.Entry) {
-        Task {
+    func clearHistory(after response: NSApplication.ModalResponse) {
+        guard response == .alertFirstButtonReturn else { return }
+        history.clear()
+    }
+
+    /// Once requested, Undo keeps its original store and native undo manager even if this panel closes.
+    @discardableResult
+    func undo(_ entry: OperationLog.Entry) -> Task<Void, Never> {
+        Task { [weak self, history, historyUndoManager] in
             do {
-                try await OperationLog.shared.undo(entry, undoManager: (NSApp.delegate as? AppDelegate)?.undoManager)
+                try await history.undo(entry, undoManager: historyUndoManager)
             } catch {
-                if let window { NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil) }
+                guard let window = self?.window, window.isVisible else { return }
+                NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil)
             }
         }
     }
@@ -136,7 +147,7 @@ extension HistoryWindowController: NSTableViewDataSource, NSTableViewDelegate {
             return cell
         }()
         let entry = entries[row]
-        cell.configure(entry, summary: summary(entry), when: when(entry.date), canUndo: OperationLog.shared.canUndo(entry)) { [weak self] in
+        cell.configure(entry, summary: summary(entry), when: when(entry.date), canUndo: history.canUndo(entry)) { [weak self] in
             self?.undo(entry)
         }
         return cell
