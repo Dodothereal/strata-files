@@ -5,24 +5,39 @@ extension Notification.Name {
     static let workspacesChanged = Notification.Name("StrataWorkspacesChanged")
 }
 
-enum Workspaces {
-    private static let key = "workspaces"
+final class Workspaces {
+    static var shared: Workspaces { BrowserServices.shared.workspaces }
+
+    private weak var services: BrowserServices?
+    private let preferences: Prefs
+    private let key = "workspaces"
+
+    init(services: BrowserServices) {
+        self.services = services
+        preferences = services.preferences
+    }
+
+    /// Only this environment’s live tabs contribute to a saved workspace.
+    func ownedControllers(of window: NSWindow) -> [BrowserWindowController] {
+        guard let services else { return [] }
+        return Self.controllers(of: window).filter { $0.services === services && !$0.isClosed }
+    }
 
     /// Sorted by name.
-    static var all: [Workspace] {
+    var all: [Workspace] {
         get {
-            guard let data = Prefs.shared.defaults.data(forKey: key) else { return [] }
+            guard let data = preferences.defaults.data(forKey: key) else { return [] }
             return (try? JSONDecoder().decode([Workspace].self, from: data)) ?? []
         }
         set {
             let sorted = newValue.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-            Prefs.shared.defaults.set(try? JSONEncoder().encode(sorted), forKey: key)
-            NotificationCenter.default.post(name: .workspacesChanged, object: nil)
+            preferences.defaults.set(try? JSONEncoder().encode(sorted), forKey: key)
+            preferences.notifications.post(name: .workspacesChanged, object: nil)
         }
     }
 
     /// By name: spelled exactly, else ignoring case.
-    static func named(_ name: String) -> Workspace? {
+    func named(_ name: String) -> Workspace? {
         let saved = all
         return saved.first { $0.name == name } ?? saved.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
     }
@@ -58,32 +73,32 @@ enum Workspaces {
     }
 
     /// Saves (or replaces, by name) `workspace`, and marks the windows it was made of as that workspace.
-    static func save(_ workspace: Workspace, from controllers: [BrowserWindowController]) {
+    func save(_ workspace: Workspace, from controllers: [BrowserWindowController]) {
         // Exactly that one: names saved before differing only by case are separate workspaces.
         var saved = all.filter { $0.name != workspace.name }
         saved.append(workspace)
         all = saved
-        controllers.forEach { $0.workspaceName = workspace.name }
+        controllers.filter { $0.services === services && !$0.isClosed }.forEach { $0.workspaceName = workspace.name }
     }
 
     /// Asks for a name (showing what's saved) and saves every tab of `window` and its panes.
-    static func saveCurrent(from window: NSWindow) {
-        let controllers = Self.controllers(of: window)
+    func saveCurrent(from window: NSWindow) {
+        let controllers = ownedControllers(of: window)
         guard !controllers.isEmpty, let content = window.contentViewController else { return }
-        let sheet = SaveWorkspaceController(window: window)
+        let sheet = SaveWorkspaceController(window: window, workspaces: self)
         content.presentAsSheet(sheet)
     }
 
     /// Saves `window`'s tabs and panes as they are now into the workspace it was opened from (or saved as).
-    static func update(_ name: String, from window: NSWindow) {
-        let controllers = Self.controllers(of: window)
+    func update(_ name: String, from window: NSWindow) {
+        let controllers = ownedControllers(of: window)
         guard !controllers.isEmpty, let existing = named(name) else { return }
-        save(workspace(named: existing.name, of: controllers), from: controllers)
+        save(Self.workspace(named: existing.name, of: controllers), from: controllers)
     }
 
     enum RenameResult { case renamed, taken, gone }
 
-    static func rename(_ name: String, to newName: String) -> RenameResult {
+    func rename(_ name: String, to newName: String) -> RenameResult {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         var saved = all
         guard !trimmed.isEmpty, let index = saved.firstIndex(where: { $0.name == name }) else { return .gone }
@@ -94,13 +109,13 @@ enum Workspaces {
         return .renamed
     }
 
-    static func delete(_ name: String) {
+    func delete(_ name: String) {
         all.removeAll { $0.name == name }
         for controller in openControllers(named: name) { controller.workspaceName = nil }
     }
 
     /// Asks first (there's no undo), then deletes.
-    static func confirmDelete(_ name: String, in window: NSWindow?) {
+    func confirmDelete(_ name: String, in window: NSWindow?) {
         let alert = NSAlert()
         alert.messageText = String(localized: "Delete the workspace “\(name)”?")
         alert.informativeText = String(localized: "Its folders stay where they are; only the saved setup goes.")
@@ -108,7 +123,7 @@ enum Workspaces {
         alert.addButton(withTitle: String(localized: "Cancel"))
         alert.buttons[0].hasDestructiveAction = true
         if let window {
-            alert.beginSheetModal(for: window) { response in
+            alert.beginSheetModal(for: window) { [self] response in
                 MainActor.assumeIsolated { if response == .alertFirstButtonReturn { delete(name) } }
             }
         } else if alert.runModal() == .alertFirstButtonReturn {
@@ -117,7 +132,7 @@ enum Workspaces {
     }
 
     /// Asks for a new name for `name`, as a sheet on `window` (or on its own).
-    static func askToRename(_ name: String, in window: NSWindow?) {
+    func askToRename(_ name: String, in window: NSWindow?) {
         let alert = NSAlert()
         alert.messageText = String(localized: "Rename Workspace")
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
@@ -128,7 +143,7 @@ enum Workspaces {
         alert.addButton(withTitle: String(localized: "Rename", comment: "Button: rename the workspace"))
         alert.addButton(withTitle: String(localized: "Cancel"))
         alert.window.initialFirstResponder = field
-        let done: (NSApplication.ModalResponse) -> Void = { response in
+        let done: (NSApplication.ModalResponse) -> Void = { [self] response in
             guard response == .alertFirstButtonReturn else { return }
             let newName = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !newName.isEmpty, newName != name else { return }
@@ -149,14 +164,15 @@ enum Workspaces {
     // MARK: - Opening
 
     /// The windows (tabs) opened from, or saved as, the workspace `name`.
-    static func openControllers(named name: String) -> [BrowserWindowController] {
-        NSApp.windows.compactMap { $0.windowController as? BrowserWindowController }.filter { $0.workspaceName == name }
+    func openControllers(named name: String) -> [BrowserWindowController] {
+        guard let services else { return [] }
+        return services.windows.controllers().filter { $0.services === services && $0.workspaceName == name && !$0.isClosed }
     }
 
     /// Opens `workspace` as one window with a tab per saved tab, or brings its window to the front when it's open.
     /// Folders on a network share connect to it again; folders that are gone are left out, and said so.
     /// Workspaces connecting to their shares or servers right now: opening one again meanwhile only brings it forward.
-    private static var connecting: Set<String> = []
+    private var connecting: Set<String> = []
 
     /// Whether a folder is there for opening a workspace. Only one that doesn't exist is gone: one Strata may not read
     /// (access not granted yet, a folder above it locked) is still opened, and says why.
@@ -169,7 +185,7 @@ enum Workspaces {
     ///
     /// Opened from its own window (`from`: the sidebar, the menus), the window goes back to the workspace as it was
     /// saved, in the same place on screen; bringing it forward would do nothing you could see.
-    static func open(_ workspace: Workspace, from current: NSWindow? = nil) {
+    func open(_ workspace: Workspace, from current: NSWindow? = nil) {
         var replacing: NSWindow?
         if !workspace.name.isEmpty, let open = openControllers(named: workspace.name).first(where: { !$0.isClosed }),
            let window = open.window {
@@ -186,16 +202,17 @@ enum Workspaces {
         guard !plan.tabs.isEmpty else {
             let alert = NSAlert()
             alert.messageText = String(localized: "None of the folders in “\(workspace.name)” are there anymore")
-            alert.informativeText = list(plan.missing)
+            alert.informativeText = Self.list(plan.missing)
             alert.addButton(withTitle: String(localized: "OK"))
             alert.addButton(withTitle: String(localized: "Delete Workspace"))
             if alert.runModal() == .alertSecondButtonReturn { confirmDelete(workspace.name, in: nil) }
             return
         }
-        let old = replacing.map { Self.controllers(of: $0) } ?? []
+        let old = replacing.map { ownedControllers(of: $0) } ?? []
         let frame = replacing.map { ($0.tabGroup?.selectedWindow ?? $0).frame }
-        old.forEach { $0.workspaceName = nil }
         let controllers = openWindows(plan, name: workspace.name)
+        guard !controllers.isEmpty else { return }
+        old.forEach { $0.workspaceName = nil }
         if let frame { controllers.first?.window?.setFrame(frame, display: false) }
         controllers.first?.window?.makeKeyAndOrderFront(nil)
         // After this click (or menu choice) is done with the window it came from.
@@ -204,10 +221,10 @@ enum Workspaces {
     }
 
     /// Its window, open elsewhere, to the front; panes still waiting get another go.
-    private static func bringForward(_ window: NSWindow, of workspace: Workspace) {
+    private func bringForward(_ window: NSWindow, of workspace: Workspace) {
         window.makeKeyAndOrderFront(nil)
         // Panes still waiting: a disk plugged in since shows its folder; a share is connected again.
-        let controllers = Self.controllers(of: window)
+        let controllers = ownedControllers(of: window)
         for controller in controllers {
             for (index, folder) in controller.waitingPanes where folder.mountPoint == nil && FileManager.default.fileExists(atPath: folder.path) {
                 controller.navigatePane(index, to: URL(fileURLWithPath: folder.path), mode: folder.mode)
@@ -221,14 +238,17 @@ enum Workspaces {
     /// One window with a tab per planned tab, in order. Panes whose folder can't be shown yet start at Home and wait
     /// for it (see `WaitingFolder`).
     @discardableResult
-    static func openWindows(_ plan: WorkspacePlan, name: String) -> [BrowserWindowController] {
-        guard let app = NSApp.delegate as? AppDelegate else { return [] }
+    func openWindows(_ plan: WorkspacePlan, name: String) -> [BrowserWindowController] {
+        guard let services else { return [] }
         var controllers: [BrowserWindowController] = []
         for tab in plan.tabs {
             let location = tab[0].waiting == nil ? URL(fileURLWithPath: tab[0].path) : Places.home
             let second = tab.count > 1 ? (tab[1].waiting == nil ? URL(fileURLWithPath: tab[1].path) : Places.home) : nil
             // Each tab goes after the one before, so they keep their order.
-            let controller = app.openWindow(at: location, secondPane: second, tabbedWith: controllers.last?.window)
+            guard let controller = services.windows.open(location, second, controllers.last?.window, services) else {
+                controllers.forEach { $0.window?.close() }
+                return []
+            }
             controller.applyModes(tab.map { $0.waiting == nil ? $0.mode : nil })
             for (index, pane) in tab.enumerated() {
                 if let waiting = pane.waiting { controller.wait(pane: index, for: waiting) }
@@ -248,7 +268,7 @@ enum Workspaces {
     /// Connects to the shares and servers that `controllers`' panes wait for, one at a time (macOS or ssh may ask for a
     /// name and password), with a sheet that can stop it; then shows each waiting pane's folder and says what didn't
     /// work out.
-    private static func connect(_ controllers: [BrowserWindowController], of workspace: Workspace, missing: [String], offline: [String]) {
+    private func connect(_ controllers: [BrowserWindowController], of workspace: Workspace, missing: [String], offline: [String]) {
         var shares: [String: String] = [:]
         var servers: [String] = []
         for controller in controllers {
@@ -263,7 +283,7 @@ enum Workspaces {
         let sheet = WorkspaceConnectController()
         content.presentAsSheet(sheet)
         if !workspace.name.isEmpty { connecting.insert(workspace.name) }
-        Task {
+        Task { [self] in
             defer { connecting.remove(workspace.name) }
             var mounted: [String: String] = [:]
             var problems: [String] = []
@@ -342,7 +362,7 @@ enum Workspaces {
 
     /// Says which folders weren't there (offering to take them out of the workspace), which are on disks that aren't
     /// connected (kept), and which shares didn't connect.
-    private static func report(missing: [String], offline: [String], problems: [String], of workspace: Workspace,
+    private func report(missing: [String], offline: [String], problems: [String], of workspace: Workspace,
                                controllers: [BrowserWindowController]) {
         guard !missing.isEmpty || !offline.isEmpty || !problems.isEmpty,
               let first = controllers.first(where: { !$0.isClosed })?.window else { return }
@@ -352,21 +372,21 @@ enum Workspaces {
         var sections: [String] = []
         if !missing.isEmpty {
             alert.messageText = String(localized: "Some folders in “\(workspace.name)” aren’t there anymore")
-            sections.append(list(missing))
+            sections.append(Self.list(missing))
         } else if !offline.isEmpty {
             alert.messageText = String(localized: "Some folders in “\(workspace.name)” are on a disk that isn’t connected")
         } else {
             alert.messageText = String(localized: "Some servers in “\(workspace.name)” didn’t connect")
         }
         if !offline.isEmpty {
-            sections.append(list(offline) + "\n" + String(localized: "Those panes show your home folder for now. Connect the disk, then open the workspace again."))
+            sections.append(Self.list(offline) + "\n" + String(localized: "Those panes show your home folder for now. Connect the disk, then open the workspace again."))
         }
         if !problems.isEmpty { sections.append(problems.joined(separator: "\n")) }
         alert.informativeText = sections.joined(separator: "\n\n")
         alert.addButton(withTitle: String(localized: "OK"))
         let canPrune = !missing.isEmpty && !workspace.name.isEmpty && named(workspace.name) != nil
         if canPrune { alert.addButton(withTitle: String(localized: "Remove from Workspace", comment: "Button: take the missing folders out of the saved workspace")) }
-        alert.beginSheetModal(for: window) { response in
+        alert.beginSheetModal(for: window) { [self] response in
             MainActor.assumeIsolated {
                 guard canPrune, response == .alertSecondButtonReturn, let saved = named(workspace.name) else { return }
                 let gone = Set(missing)

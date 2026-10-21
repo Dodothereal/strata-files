@@ -432,13 +432,13 @@ enum DockSearchItems {
     }
 
     private static func workspaces() -> [PaletteItem] {
-        Workspaces.all.map { workspace in
+        Workspaces.shared.all.map { workspace in
             let image = NSImage(systemSymbolName: Workspaces.symbol(workspace), accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
             return PaletteItem(title: workspace.name, subtitle: Workspaces.summary(workspace), icon: image, kind: .workspace,
                                keywords: workspace.tabs.joined().map { FileManager.default.displayName(atPath: $0) }, boost: 10) {
                 NSApp.activate()
-                Workspaces.open(workspace)
+                Workspaces.shared.open(workspace)
             }
         }
     }

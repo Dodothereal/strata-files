@@ -83,8 +83,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         configure(first)
         split.sidebar.onSelect = { [weak self] target in self?.open(target) }
         split.sidebar.onOpenInNewTab = { [weak self] url in
-            guard let self, let app = NSApp.delegate as? AppDelegate else { return }
-            app.openWindow(at: url, tabbedWith: self.window)
+            self?.openTab(at: url)
         }
         pathBar.onNavigate = { [weak self] url, select in self?.navigate(to: url, select: select) }
         pathBar.onFinishEditing = { [weak self] in self?.focusList() }
@@ -268,7 +267,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         case .duplicates: go(.duplicates)
         case .largeFiles: go(.search(Self.largeFilesQuery, scope: nil))
         case .containers: openContainers()
-        case .workspace(let name): if let workspace = Workspaces.named(name) { Workspaces.open(workspace) }
+        case .workspace(let name): if let workspace = services.workspaces.named(name) { services.workspaces.open(workspace) }
         case .server(let id): if let server = RemoteServers.server(id: id) { openServer(server) }
         }
     }
@@ -488,9 +487,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    override func newWindowForTab(_ sender: Any?) {
-        // A new tab joins the window's workspace: updating it saves this tab too.
-        (NSApp.delegate as? AppDelegate)?.openWindow(at: location, tabbedWith: window).workspaceName = groupWorkspaceName
+    override func newWindowForTab(_ sender: Any?) { openTab(at: location) }
+
+    private func openTab(at location: URL) {
+        guard !isClosed, let window else { return }
+        // A new tab joins the window's workspace and services: updating it saves this tab too.
+        let name = groupWorkspaceName
+        services.windows.open(location, nil, window, services)?.workspaceName = name
     }
 
     @objc private func sidebarModeChanged(_ sender: NSToolbarItemGroup) {
@@ -938,7 +941,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// The workspace of this window's tabs (a tab added later with ⌘T belongs to it too).
     var groupWorkspaceName: String? {
         guard let window else { return workspaceName }
-        return Workspaces.controllers(of: window).lazy.compactMap(\.workspaceName).first
+        return services.workspaces.ownedControllers(of: window).lazy.compactMap(\.workspaceName).first
     }
 
     /// Closed: a workspace still connecting leaves it alone.

@@ -211,35 +211,60 @@ enum MenuImages {
 final class WorkspaceMenu: NSObject, NSMenuDelegate {
     static let shared = WorkspaceMenu()
 
-    private var keyController: BrowserWindowController? {
-        (NSApp.keyWindow ?? NSApp.mainWindow)?.windowController as? BrowserWindowController
+    private let currentWindow: () -> NSWindow?
+
+    init(currentWindow: @escaping () -> NSWindow? = { NSApp.keyWindow ?? NSApp.mainWindow }) {
+        self.currentWindow = currentWindow
+        super.init()
     }
 
-    private var keyWorkspaceName: String? { keyController?.groupWorkspaceName }
+    /// Keep a menu choice with the window that offered it; a focus change must not update another workspace.
+    private final class Choice {
+        let workspaces: Workspaces
+        let name: String?
+        weak var window: NSWindow?
+        private let hadWindow: Bool
+
+        init(_ workspaces: Workspaces, name: String? = nil, window: NSWindow?) {
+            self.workspaces = workspaces
+            self.name = name
+            self.window = window
+            hadWindow = window != nil
+        }
+
+        var isCurrent: Bool {
+            (!hadWindow || window != nil) && (window?.windowController as? BrowserWindowController)?.isClosed != true
+        }
+    }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         defer { MenuImages.show(in: menu) }
         menu.removeAllItems()
+        let window = currentWindow()
+        let controller = window?.windowController as? BrowserWindowController
+        let workspaces = controller?.services.workspaces ?? Workspaces.shared
+        let keyWorkspaceName = controller?.groupWorkspaceName
         let save = NSMenuItem(title: String(localized: "Save Workspace…"), action: #selector(save(_:)), keyEquivalent: "")
         save.target = self
+        save.representedObject = Choice(workspaces, window: window)
         save.image = NSImage(systemSymbolName: "rectangle.stack.badge.plus", accessibilityDescription: nil)
         menu.addItem(save)
         // The window came from a workspace (or was saved as one): it can be saved into it again.
-        if let name = keyWorkspaceName, let workspace = Workspaces.named(name) {
+        if let name = keyWorkspaceName, let workspace = workspaces.named(name) {
             let update = NSMenuItem(title: String(localized: "Update “\(workspace.name)”", comment: "Window ▸ Workspaces: save this window into the workspace it was opened from"),
                                     action: #selector(update(_:)), keyEquivalent: "")
             update.target = self
-            update.representedObject = workspace.name
+            update.representedObject = Choice(workspaces, name: workspace.name, window: window)
             update.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: nil)
             menu.addItem(update)
         }
-        let saved = Workspaces.all
+        let saved = workspaces.all
         guard !saved.isEmpty else { return }
         menu.addItem(.separator())
         for workspace in saved {
             let item = NSMenuItem(title: workspace.name, action: #selector(open(_:)), keyEquivalent: "")
             item.target = self
-            item.representedObject = workspace.name
+            item.representedObject = Choice(workspaces, name: workspace.name, window: window)
             item.image = NSImage(systemSymbolName: Workspaces.symbol(workspace), accessibilityDescription: nil)
             item.toolTip = Workspaces.help(workspace)
             item.state = keyWorkspaceName == workspace.name ? .on : .off
@@ -247,19 +272,19 @@ final class WorkspaceMenu: NSObject, NSMenuDelegate {
         }
         menu.addItem(.separator())
         menu.addItem(submenu(String(localized: "Rename Workspace", comment: "Window ▸ Workspaces: submenu listing saved workspaces to rename"),
-                             saved, #selector(rename(_:)), symbol: "pencil"))
+                             saved, #selector(rename(_:)), symbol: "pencil", workspaces: workspaces, window: window))
         menu.addItem(submenu(String(localized: "Delete Workspace", comment: "Window ▸ Workspaces: submenu listing saved workspaces to delete"),
-                             saved, #selector(remove(_:)), symbol: "trash"))
+                             saved, #selector(remove(_:)), symbol: "trash", workspaces: workspaces, window: window))
     }
 
-    private func submenu(_ title: String, _ saved: [Workspace], _ action: Selector, symbol: String) -> NSMenuItem {
+    private func submenu(_ title: String, _ saved: [Workspace], _ action: Selector, symbol: String, workspaces: Workspaces, window: NSWindow?) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         let menu = NSMenu()
         for workspace in saved {
             let entry = NSMenuItem(title: workspace.name, action: action, keyEquivalent: "")
             entry.target = self
-            entry.representedObject = workspace.name
+            entry.representedObject = Choice(workspaces, name: workspace.name, window: window)
             menu.addItem(entry)
         }
         item.submenu = menu
@@ -267,27 +292,29 @@ final class WorkspaceMenu: NSObject, NSMenuDelegate {
     }
 
     @objc private func save(_ sender: NSMenuItem) {
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
-        Workspaces.saveCurrent(from: window)
+        guard let choice = sender.representedObject as? Choice, choice.isCurrent, let window = choice.window else { return }
+        choice.workspaces.saveCurrent(from: window)
     }
 
     @objc private func update(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String, let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
-        Workspaces.update(name, from: window)
+        guard let choice = sender.representedObject as? Choice, choice.isCurrent,
+              let name = choice.name, let window = choice.window else { return }
+        choice.workspaces.update(name, from: window)
     }
 
     @objc private func open(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String, let workspace = Workspaces.named(name) else { return }
-        Workspaces.open(workspace, from: NSApp.keyWindow ?? NSApp.mainWindow)
+        guard let choice = sender.representedObject as? Choice, choice.isCurrent,
+              let name = choice.name, let workspace = choice.workspaces.named(name) else { return }
+        choice.workspaces.open(workspace, from: choice.window)
     }
 
     @objc private func rename(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String else { return }
-        Workspaces.askToRename(name, in: NSApp.keyWindow ?? NSApp.mainWindow)
+        guard let choice = sender.representedObject as? Choice, choice.isCurrent, let name = choice.name else { return }
+        choice.workspaces.askToRename(name, in: choice.window)
     }
 
     @objc private func remove(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String else { return }
-        Workspaces.confirmDelete(name, in: NSApp.keyWindow ?? NSApp.mainWindow)
+        guard let choice = sender.representedObject as? Choice, choice.isCurrent, let name = choice.name else { return }
+        choice.workspaces.confirmDelete(name, in: choice.window)
     }
 }

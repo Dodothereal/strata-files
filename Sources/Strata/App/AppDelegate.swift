@@ -153,7 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if url.host == "workspace" {
             guard let name = value("name") else { return }
             NSApp.activate()
-            if let workspace = Workspaces.named(name) { Workspaces.open(workspace) } else { noSuchWorkspace() }
+            if let workspace = browserServices.workspaces.named(name) { browserServices.workspaces.open(workspace) } else { noSuchWorkspace() }
             return
         }
         let controller = (NSApp.keyWindow?.windowController as? BrowserWindowController) ?? windowControllers.first ?? openWindow(at: Places.home)
@@ -274,8 +274,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // workspace connects them.
             let plan = WorkspacePlan(window, exists: Workspaces.isThere, server: Workspaces.server(of:))
             guard !plan.tabs.isEmpty else { continue }
-            Workspaces.openWindows(plan, name: window.name.isEmpty ? "" : Workspaces.named(window.name)?.name ?? "")
-            opened = true
+            let controllers = browserServices.workspaces.openWindows(plan, name: window.name.isEmpty ? "" : browserServices.workspaces.named(window.name)?.name ?? "")
+            opened = opened || !controllers.isEmpty
         }
         return opened
     }
@@ -293,8 +293,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @discardableResult
-    func openWindow(at url: URL, select: URL? = nil, secondPane: URL? = nil, tabbedWith parent: NSWindow? = nil) -> BrowserWindowController {
-        let controller = BrowserWindowController(location: url, select: select, secondPane: secondPane, services: browserServices)
+    func openWindow(at url: URL, select: URL? = nil, secondPane: URL? = nil, tabbedWith parent: NSWindow? = nil, services: BrowserServices? = nil) -> BrowserWindowController {
+        let controller = BrowserWindowController(location: url, select: select, secondPane: secondPane, services: services ?? browserServices)
         windowControllers.append(controller)
         controller.onClose = { [weak self, weak controller] in
             self?.windowControllers.removeAll { $0 === controller }

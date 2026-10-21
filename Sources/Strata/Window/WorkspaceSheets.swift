@@ -3,6 +3,7 @@ import AppKit
 /// Save Workspace: a name, and the tabs and panes that will be saved (each folder with its view), so it's clear what
 /// reopens. Saving under a name that's taken says it replaces that workspace.
 final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
+    private let workspaces: Workspaces
     private weak var window: NSWindow?
     /// The tabs as the sheet opened; saving reads them again (one may have closed meanwhile).
     private let controllers: [BrowserWindowController]
@@ -10,9 +11,10 @@ final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
     private let note = NSTextField(wrappingLabelWithString: "")
     private let saveButton = NSButton(title: "", target: nil, action: nil)
 
-    init(window: NSWindow) {
+    init(window: NSWindow, workspaces: Workspaces) {
+        self.workspaces = workspaces
         self.window = window
-        controllers = Workspaces.controllers(of: window)
+        controllers = workspaces.ownedControllers(of: window)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -167,7 +169,7 @@ final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
     private func nameChanged() {
         let typed = name.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         saveButton.isEnabled = !typed.isEmpty
-        if let existing = typed.isEmpty ? nil : Workspaces.named(typed) {
+        if let existing = typed.isEmpty ? nil : workspaces.named(typed) {
             saveButton.title = String(localized: "Replace", comment: "Button: save over the workspace with this name")
             note.stringValue = existing.saved.map {
                 String(localized: "Replaces the workspace “\(existing.name)” saved \(Format.date($0)).", comment: "The date reads like “Yesterday at 9:41”")
@@ -183,11 +185,11 @@ final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
         let typed = name.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !typed.isEmpty else { return NSSound.beep() }
         // Saving over one keeps its name as it was written.
-        let saved = Workspaces.named(typed)?.name ?? typed
-        let current = window.map(Workspaces.controllers(of:)) ?? []
+        let saved = workspaces.named(typed)?.name ?? typed
+        let current = window.map(workspaces.ownedControllers(of:)) ?? []
         dismiss(nil)
         guard !current.isEmpty else { return }
-        Workspaces.save(Workspaces.workspace(named: saved, of: current), from: current)
+        workspaces.save(Workspaces.workspace(named: saved, of: current), from: current)
     }
 
     @objc private func cancel(_ sender: Any?) {

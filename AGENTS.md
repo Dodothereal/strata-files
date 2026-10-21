@@ -241,6 +241,10 @@ sheet's text before clicking a destructive button. Both builds share preferences
   column is removed, explicit selection or mode changes, or its read fails. A reload dropping the old selection must
   still allow the newly created item's pending rename. Preserve each view's selection policy, including
   Gallery's preview item. A listing deferred during native inline editing must still match the current read generation.
+- Workspaces belong to `BrowserServices`, including saved preferences, change notifications and open-window lookup.
+  New tabs and restored workspace windows must keep that owner through `BrowserWindows`; production still uses
+  AppKit's native tab/window presentation. Native menu choices and sheets retain their originating store and keep
+  windows weak; a focus change or closed window must not redirect a pending save/update into another environment.
 - Shared commands belong in `StrataCommand`: preserve their action/tag identities and existing shortcut overrides.
   Menus keep native responder routing; the palette uses the same validator and revalidates before dispatch. Never
   use a translated title as identity. A captured file command must stay bound to its original pane, folder and

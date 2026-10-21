@@ -167,7 +167,7 @@ final class SidebarViewController: NSViewController {
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
         preferences.notifications.addObserver(self, selector: #selector(volumesChanged), name: .savedSearchesChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .workspacesChanged, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(volumesChanged), name: .workspacesChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .remoteServersChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .remoteSessionsChanged, object: nil)
         // A tag used for the first time joins the Tags section.
@@ -190,7 +190,7 @@ final class SidebarViewController: NSViewController {
             .prefix(5)
             .map { SidebarItem(Place(title: FileManager.default.displayName(atPath: $0.path), url: $0, symbol: "folder")) }
         sections = [SidebarSection(id: "favorites", title: String(localized: "Favorites", comment: "Sidebar section title"), items: favorites)]
-        let workspaces = Workspaces.all.map { workspace in
+        let workspaces = services.workspaces.all.map { workspace in
             let item = SidebarItem(title: workspace.name, target: .workspace(workspace.name), symbol: Workspaces.symbol(workspace))
             item.help = Workspaces.help(workspace)
             return item
@@ -638,9 +638,9 @@ extension SidebarViewController: NSMenuDelegate {
     /// Opens the workspace in `item` (click, Return, VoiceOver's press); the row for where this window is gets the
     /// selection back.
     private func openWorkspaceRow(_ item: SidebarItem) {
-        guard case .workspace(let name) = item.target, let workspace = Workspaces.named(name) else { return }
+        guard case .workspace(let name) = item.target, let workspace = services.workspaces.named(name) else { return }
         highlight(current)
-        Workspaces.open(workspace, from: view.window)
+        services.workspaces.open(workspace, from: view.window)
     }
 
     /// Disconnect (while connected), edit, copy its address, remove.
@@ -717,23 +717,23 @@ extension SidebarViewController: NSMenuDelegate {
     }
 
     @objc private func openWorkspace(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String, let workspace = Workspaces.named(name) else { return }
-        Workspaces.open(workspace, from: view.window)
+        guard let name = sender.representedObject as? String, let workspace = services.workspaces.named(name) else { return }
+        services.workspaces.open(workspace, from: view.window)
     }
 
     @objc private func updateWorkspace(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String, let window = view.window else { return }
-        Workspaces.update(name, from: window)
+        services.workspaces.update(name, from: window)
     }
 
     @objc private func renameWorkspace(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
-        Workspaces.askToRename(name, in: view.window)
+        services.workspaces.askToRename(name, in: view.window)
     }
 
     @objc private func deleteWorkspace(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
-        Workspaces.confirmDelete(name, in: view.window)
+        services.workspaces.confirmDelete(name, in: view.window)
     }
 
     private func add(_ title: String.LocalizationValue, _ action: Selector, _ url: URL) {

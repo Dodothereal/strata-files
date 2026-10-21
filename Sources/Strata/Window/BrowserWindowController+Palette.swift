@@ -81,14 +81,14 @@ extension BrowserWindowController {
     }
 
     /// Saved workspaces: the one this window came from isn't offered (it's here already).
-    private func workspaceItems() -> [PaletteItem] {
+    func workspaceItems() -> [PaletteItem] {
         let current = groupWorkspaceName
-        return Workspaces.all.filter { $0.name != current }.map { workspace in
+        return services.workspaces.all.filter { $0.name != current }.map { workspace in
             let image = NSImage(systemSymbolName: Workspaces.symbol(workspace), accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
             return PaletteItem(title: workspace.name, subtitle: Workspaces.summary(workspace), icon: image, kind: .workspace,
-                               keywords: workspace.tabs.joined().map { FileManager.default.displayName(atPath: $0) }, boost: 10) {
-                Workspaces.open(workspace)
+                               keywords: workspace.tabs.joined().map { FileManager.default.displayName(atPath: $0) }, boost: 10) { [weak self] in
+                self?.services.workspaces.open(workspace)
             }
         }
     }
@@ -183,7 +183,7 @@ extension BrowserWindowController {
         custom("workspace.save", String(localized: "Save Workspace…"), "rectangle.stack.badge.plus",
                keywords: ["New Workspace", "Create Workspace", "Add Workspace", "Layout", "Setup", "Session", "Tabs"]) { [weak self] in
             guard let window = self?.window else { return }
-            Workspaces.saveCurrent(from: window)
+            self?.services.workspaces.saveCurrent(from: window)
         }
         add(.connectToServer, keywords: ["SMB", "Network", "Share", "Mount", "NAS", "WebDAV"])
         if window?.undoManager?.canUndo == true {
@@ -200,11 +200,11 @@ extension BrowserWindowController {
         add(.reloadFolder)
         add(.showInFinder)
         custom("duplicates", String(localized: "Duplicates"), "square.on.square") { [weak self] in self?.showDuplicates() }
-        if let name = groupWorkspaceName, let workspace = Workspaces.named(name) {
+        if let name = groupWorkspaceName, let workspace = services.workspaces.named(name) {
             custom("workspace.update", String(localized: "Update “\(workspace.name)”", comment: "Window ▸ Workspaces: save this window into the workspace it was opened from"),
                    "arrow.triangle.2.circlepath", keywords: ["Workspace", "Save"]) { [weak self] in
                 guard let self, self.groupWorkspaceName == workspace.name, let window = self.window else { return }
-                Workspaces.update(workspace.name, from: window)
+                services.workspaces.update(workspace.name, from: window)
             }
         }
         add(.compareWithOtherPane, keywords: ["Sync", "Diff", "Mirror", "Synchronize", "Folders"])

@@ -6,17 +6,20 @@ final class BrowserServices {
     static let shared = BrowserServices(transfers: .shared, visits: .shared)
 
     let preferences: Prefs
+    lazy var workspaces = Workspaces(services: self)
     lazy var savedSearches = SavedSearches(preferences: preferences)
     lazy var viewOptions = ViewOptionsWindowController(preferences: preferences)
 
     let transfers: TransferQueue
     let visits: Frecency
     let directories: DirectoryReader
+    let windows: BrowserWindows
 
-    init(transfers: TransferQueue, visits: Frecency, directories: DirectoryReader = .live, preferences: Prefs = .shared) {
+    init(transfers: TransferQueue, visits: Frecency, directories: DirectoryReader = .live, preferences: Prefs = .shared, windows: BrowserWindows = .native) {
         self.preferences = preferences
         self.transfers = transfers
         self.visits = visits
         self.directories = directories
+        self.windows = windows
     }
 }

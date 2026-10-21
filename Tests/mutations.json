@@ -1777,5 +1777,75 @@
     "replace": "self.preferences = transfers.preferences",
     "rule": "Comparison preferences honor an explicit window owner",
     "tests": "BrowserSavedStateTests/comparisonsUseTheOwningShowHiddenSetting"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "guard let data = preferences.defaults.data(forKey: key) else { return [] }",
+    "replace": "guard let data = Prefs.shared.defaults.data(forKey: key) else { return [] }",
+    "rule": "Workspace ownership reads only its own saved preferences",
+    "tests": "WorkspaceOwnershipTests/sidebarsReadOnlyTheirWorkspaces"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "preferences.defaults.set(try? JSONEncoder().encode(sorted), forKey: key)",
+    "replace": "Prefs.shared.defaults.set(try? JSONEncoder().encode(sorted), forKey: key)",
+    "rule": "Workspace ownership writes only its own saved preferences",
+    "tests": "WorkspaceOwnershipTests/savedChangesRefreshOnlyTheirOwnSidebarsAndKeepTheStoredFormat"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "preferences.notifications.post(name: .workspacesChanged, object: nil)",
+    "replace": "NotificationCenter.default.post(name: .workspacesChanged, object: nil)",
+    "rule": "Workspace ownership notifies its own sidebars",
+    "tests": "WorkspaceOwnershipTests/savedChangesRefreshOnlyTheirOwnSidebarsAndKeepTheStoredFormat"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "controllers.filter { $0.services === services && !$0.isClosed }.forEach { $0.workspaceName = workspace.name }",
+    "replace": "controllers.forEach { $0.workspaceName = workspace.name }",
+    "rule": "Workspace ownership marks only its own windows when saving",
+    "tests": "WorkspaceOwnershipTests/savingRenamingAndDeletingOnlyMarkTheOwnersWindows"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "return services.windows.controllers().filter { $0.services === services && $0.workspaceName == name && !$0.isClosed }",
+    "replace": "return services.windows.controllers().filter { $0.workspaceName == name && !$0.isClosed }",
+    "rule": "Workspace ownership renames only its own open windows",
+    "tests": "WorkspaceOwnershipTests/savingRenamingAndDeletingOnlyMarkTheOwnersWindows"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "private weak var services: BrowserServices?",
+    "replace": "private var services: BrowserServices?",
+    "rule": "Workspace ownership does not keep its service environment alive",
+    "tests": "WorkspaceOwnershipTests/workspaceStoreDoesNotKeepItsEnvironmentAlive"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "controller.applyModes(tab.map { $0.waiting == nil ? $0.mode : nil })",
+    "replace": "controller.applyModes([])",
+    "rule": "Workspace ownership restores each pane view without changing defaults",
+    "tests": "WorkspaceOwnershipTests/openingTabsPreservesTheirOwnerModesAndWaitingFolders"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "guard !controllers.isEmpty else { return }\n        old.forEach",
+    "replace": "old.forEach",
+    "rule": "Workspace ownership keeps existing windows when replacement tabs cannot open",
+    "tests": "WorkspaceOwnershipTests/failedTabCreationKeepsTheExistingWorkspaceWindow"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "services.windows.open(location, nil, window, services)?.workspaceName = name",
+    "replace": "services.windows.open(location, nil, window, BrowserServices.shared)?.workspaceName = name",
+    "rule": "Workspace ownership keeps new tabs with their originating services",
+    "tests": "WorkspaceOwnershipTests/newTabsKeepTheirWindowServicesAndWorkspace"
+  },
+  {
+    "file": "Strata/App/MainMenu.swift",
+    "find": "choice.workspaces.update(name, from: window)",
+    "replace": "if let current = currentWindow(), let controller = current.windowController as? BrowserWindowController { controller.services.workspaces.update(name, from: current) }",
+    "rule": "Workspace ownership menu updates stay with their original window after focus changes",
+    "tests": "WorkspaceOwnershipTests/menuPaletteAndSaveSheetUseTheirWindowOwner"
   }
 ]
