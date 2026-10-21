@@ -5,7 +5,6 @@ final class FileNode {
     var entry: FileEntry
     weak var parent: FileNode?
     var children: [FileNode]?
-    var isLoadingChildren = false
     var matchIndices: [Int] = []
     /// Set on header rows that group other rows (duplicate sets); they aren't files themselves.
     var groupTitle: String?

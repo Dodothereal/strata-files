@@ -37,12 +37,13 @@ private extension NSUserInterfaceItemIdentifier {
 final class BrowserViewController: NSViewController {
     let services: BrowserServices
     var preferences: Prefs { services.preferences }
-    let directoryReads: DirectoryReadSession
+    let loading: BrowserLoading
+    var directoryReads: DirectoryReadSession { loading.reads }
 
     init(services: BrowserServices = .shared) {
         self.services = services
         mode = BrowserViewMode(rawValue: services.preferences.viewMode) ?? .list
-        directoryReads = DirectoryReadSession(reader: services.directories)
+        loading = BrowserLoading(reader: services.directories, capacity: services.availableCapacity)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -50,17 +51,13 @@ final class BrowserViewController: NSViewController {
 
     weak var delegate: BrowserViewControllerDelegate?
     var applicationFolders = ApplicationsFolders.standard
-    private(set) var directory: URL?
-    private(set) var loadError: Error?
-    private(set) var isLoaded = false
+    var directory: URL? { loading.directory }
+    var loadError: Error? { loading.error }
+    var isLoaded: Bool { loading.isLoaded }
     /// Tab in any view; the window switches panes in dual-pane mode (true) or lets focus move on (false).
     var onTab: (() -> Bool)?
     /// A different folder is being read; the rows still showing belong to the previous one, so file commands wait.
-    private(set) var isLoadingFolder = false
-    /// A folder just opened starts from its top (then scrolls to what it selects, going Back), even when a refresh
-    /// overtakes its first load (a container's listing writing into it, say): the scroll position is still the
-    /// previous folder's until its rows arrive.
-    private var opensAtTop = false
+    var isLoadingFolder: Bool { loading.isLoadingFolder }
     override func viewDidLayout() {
         super.viewDidLayout()
         fitColumnsToWidth()
@@ -94,7 +91,7 @@ final class BrowserViewController: NSViewController {
     /// Date and Kind widths from before showing results (they make room for "Where").
     private var columnWidthsBeforeResults: [(NSUserInterfaceItemIdentifier, CGFloat)] = []
     var filter: String { listing.filter }
-    private(set) var availableCapacity: Int64?
+    var availableCapacity: Int64? { loading.availableCapacity }
 
     let outlineView = FileOutlineView()
     private let scrollView = NSScrollView()
@@ -329,7 +326,7 @@ final class BrowserViewController: NSViewController {
         TagStore.shared.invalidate(url)
         let isNewDirectory = url != directory || isShowingResults
         if isShowingResults { leaveResults() }
-        directory = url
+        loading.navigate(to: url, newFolder: isNewDirectory)
         if isNewDirectory {
             cancelPendingActions()
             deferredApply = nil
@@ -342,19 +339,18 @@ final class BrowserViewController: NSViewController {
             }
             gitObservation = GitStatusStore.shared.observe(url)
             pendingSelection = select.map { [$0] } ?? []
-            opensAtTop = true
-            isLoadingFolder = true
-            // Most folders load within a frame; a slow one (a network share, a huge folder) clears the old rows and
-            // says so instead of leaving the previous folder's files on screen under the new location.
-            let loading = generation + 1
+        }
+        // Revealing an item in the folder already showing selects it too.
+        if !isNewDirectory, let select { pendingSelection = [select] }
+        reload(scrollToTop: isNewDirectory && select == nil)
+        // Keep the old rows briefly for fast reads; slow folders show a native loading state.
+        if isNewDirectory {
+            let loading = generation
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
                 guard let self, isLoadingFolder, generation == loading else { return }
                 showLoading()
             }
         }
-        // Revealing an item in the folder already showing selects it too.
-        if !isNewDirectory, let select { pendingSelection = [select] }
-        reload(scrollToTop: isNewDirectory && select == nil)
     }
 
     private func showLoading() {
@@ -380,34 +376,21 @@ final class BrowserViewController: NSViewController {
 
     private func reload(scrollToTop: Bool) {
         guard let url = directory else { return }
-        directoryReads.load(url, showHidden: preferences.showHidden, applications: applicationFolders) { [weak self] result, gen in
+        loading.reload(showHidden: preferences.showHidden, applications: applicationFolders, scrollToTop: scrollToTop) { [weak self] result in
             guard let self else { return }
             switch result {
-            case .success(let entries):
-                TagStore.shared.load(entries, in: url)
-                CloudStore.shared.load(entries.map(\.url), in: url)
-                loadError = nil
-                isLoadingFolder = false
+            case .success(let delivery):
+                TagStore.shared.load(delivery.entries, in: url)
+                CloudStore.shared.load(delivery.entries.map(\.url), in: url)
                 Privacy.markAccessible(url)
-                let isNewFolder = opensAtTop
-                opensAtTop = false
-                apply(entries, preservingState: !(scrollToTop || isNewFolder), fromTop: scrollToTop || isNewFolder)
-            case .failure(let error):
-                showError(error)
+                apply(delivery.entries, preservingState: !delivery.fromTop, fromTop: delivery.fromTop)
+            case .failure:
+                showLoadError()
             }
-            Task { [weak self] in
-                let capacity = await Self.availableCapacity(of: url)
-                guard let self, gen == generation else { return }
-                availableCapacity = capacity
-                delegate?.browserContentDidChange(self)
-            }
+        } capacityChanged: { [weak self] in
+            guard let self else { return }
+            delegate?.browserContentDidChange(self)
         }
-    }
-
-    @concurrent
-    private nonisolated static func availableCapacity(of url: URL) async -> Int64? {
-        let values = try? URL(fileURLWithPath: url.path).resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-        return values?.volumeAvailableCapacityForImportantUsage
     }
 
     /// Shows `entries`. `fromTop`: a folder just opened, shown from its top before anything it selects is scrolled to.
@@ -420,12 +403,11 @@ final class BrowserViewController: NSViewController {
         deferredApply = nil
         let expanded = preservingState ? nodes.filter { outlineView.isItemExpanded($0) } : []
         listing.replace(entries, preservingNodes: preservingState, sort: sort)
-        isLoaded = true
+        loading.applied()
         outlineView.reloadData()
         if fromTop { scrollToTop() }
         for node in expanded where self.node(for: node.url) === node {
             outlineView.expandItem(node)
-            node.isLoadingChildren = false
             loadChildren(of: node)
         }
         // Icons, columns and disk usage get the new rows first: selecting or renaming before that looked in the
@@ -443,19 +425,10 @@ final class BrowserViewController: NSViewController {
     }
 
     private func loadChildren(of node: FileNode) {
-        guard !node.isLoadingChildren else { return }
-        node.isLoadingChildren = true
-        let gen = generation
-        let url = node.url
-        let showHidden = preferences.showHidden
-        let reader = services.directories, applications = applicationFolders
-        Task { [weak self] in
-            let entries = (try? await reader.load(url, showHidden: showHidden, applications: applications)) ?? []
-            guard let self else { return }
-            TagStore.shared.load(entries, in: url)
-            CloudStore.shared.load(entries.map(\.url), in: url)
-            node.isLoadingChildren = false
-            guard gen == generation else { return }
+        loading.loadChildren(of: node, showHidden: preferences.showHidden, applications: applicationFolders) { [weak self, weak node] entries in
+            guard let self, let node, self.node(for: node.url) === node else { return }
+            TagStore.shared.load(entries, in: node.url)
+            CloudStore.shared.load(entries.map(\.url), in: node.url)
             listing.replaceChildren(of: node, with: entries, sort: sort)
             outlineView.reloadItem(node, reloadChildren: true)
         }
@@ -469,12 +442,9 @@ final class BrowserViewController: NSViewController {
     /// reached through a symlink doesn't spell them like the folder does ("/tmp/x" lists "/private/tmp/x/a").
     private func rowURL(_ url: URL) -> URL { node(for: url)?.url ?? url }
 
-    private func showError(_ error: Error) {
+    private func showLoadError() {
         cancelPendingActions()
         deferredApply = nil
-        loadError = error
-        isLoaded = true
-        isLoadingFolder = false
         listing.clear()
         outlineView.reloadData()
         // Icons, Columns, Gallery and Disk Usage keep their own copy of the items: clear it too.
@@ -544,11 +514,9 @@ final class BrowserViewController: NSViewController {
         // nobody picked.
         let selection = pendingSelection ?? selectedURLs
         enterResults()
-        directoryReads.invalidate()
+        loading.showResults()
         resultsTotal = total
         resultsSummary = nil
-        loadError = nil
-        isLoaded = true
         listing.replace(entries, preservingNodes: false, sort: sort)
         localizeResultNames()
         outlineView.reloadData()
@@ -580,11 +548,9 @@ final class BrowserViewController: NSViewController {
     /// Shows groups of files under header rows, all expanded (duplicate sets).
     func showGroups(_ groups: [(title: String, detail: String, entries: [FileEntry])], summary: String) {
         enterResults()
-        directoryReads.invalidate()
+        loading.showResults()
         resultsTotal = groups.count
         resultsSummary = summary
-        loadError = nil
-        isLoaded = true
         listing.replaceGroups(groups)
         localizeResultNames()
         outlineView.reloadData()
@@ -626,7 +592,7 @@ final class BrowserViewController: NSViewController {
     /// Replaces the list with a message while results are being computed.
     func showMessage(symbol: String, title: String, message: String = "") {
         enterResults()
-        directoryReads.invalidate()
+        loading.showResults(loaded: false)
         listing.clear()
         resultsSummary = ""
         outlineView.reloadData()
@@ -635,7 +601,6 @@ final class BrowserViewController: NSViewController {
     }
 
     private func enterResults() {
-        isLoadingFolder = false
         if !isShowingResults {
             cancelPendingActions()
             deferredApply = nil

@@ -1085,7 +1085,7 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "        let selection = pendingSelection ?? selectedURLs\n        enterResults()\n        directoryReads.invalidate()",
+    "find": "        let selection = pendingSelection ?? selectedURLs\n        enterResults()\n        loading.showResults()",
     "replace": "        let selection = pendingSelection ?? selectedURLs\n        enterResults()",
     "rule": "Directory read ownership a folder response replaces search results",
     "tests": "DirectoryReadSessionTests/resultsAndMessagesInvalidateOutstandingFolderReads"
@@ -1099,8 +1099,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "directoryReads.load(url, showHidden: preferences.showHidden, applications: applicationFolders) { [weak self] result, gen in\n            guard let self else { return }",
-    "replace": "directoryReads.load(url, showHidden: preferences.showHidden, applications: applicationFolders) { [self] result, gen in",
+    "find": "loading.reload(showHidden: preferences.showHidden, applications: applicationFolders, scrollToTop: scrollToTop) { [weak self] result in\n            guard let self else { return }",
+    "replace": "loading.reload(showHidden: preferences.showHidden, applications: applicationFolders, scrollToTop: scrollToTop) { [self] result in",
     "rule": "Directory read ownership outstanding reads retain closed browsers",
     "tests": "DirectoryReadSessionTests/pendingReadsDoNotKeepTheirBrowserAlive"
   },
@@ -1169,8 +1169,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "    private func showError(_ error: Error) {\n        cancelPendingActions()",
-    "replace": "    private func showError(_ error: Error) {",
+    "find": "    private func showLoadError() {\n        cancelPendingActions()",
+    "replace": "    private func showLoadError() {",
     "rule": "Applied browser actions failed root rename restarts on a later refresh",
     "tests": "DirectoryReadSessionTests/aFailedRootRenameRequestDoesNotRestartOnALaterRefresh"
   },
@@ -2442,5 +2442,75 @@
     "replace": "deferredMetadataOrder = false",
     "rule": "Browser ordering deferred metadata order resumes when editing ends",
     "tests": "BrowserOrderingTests/metadataResortWaitsForTheNativeInlineEditorToFinish"
+  },
+  {
+    "file": "Strata/Browser/BrowserLoading.swift",
+    "find": "let fromTop = scrollToTop || opensAtTop",
+    "replace": "let fromTop = scrollToTop",
+    "rule": "Browser loading a superseding refresh loses the new folders scroll policy",
+    "tests": "BrowserLoadingTests/refreshedFirstLoadsStillStartAtTopAndApplyingBelongsToThePresentation"
+  },
+  {
+    "file": "Strata/Browser/BrowserLoading.swift",
+    "find": "            case .success(let entries):\n                error = nil",
+    "replace": "            case .success(let entries):\n                isLoaded = true\n                error = nil",
+    "rule": "Browser loading a completed read claims deferred entries are already on screen",
+    "tests": "BrowserLoadingTests/refreshedFirstLoadsStillStartAtTopAndApplyingBelongsToThePresentation"
+  },
+  {
+    "file": "Strata/Browser/BrowserLoading.swift",
+    "find": "            availableCapacity = nil",
+    "replace": "            // Retain the previous capacity.",
+    "rule": "Browser loading new folders retain the previous volumes free space",
+    "tests": "BrowserLoadingTests/freeSpaceBelongsToTheCurrentFolderAndLateReadsCannotClearNewWork"
+  },
+  {
+    "file": "Strata/Browser/BrowserLoading.swift",
+    "find": "guard let self, !Task.isCancelled, reads.generation == generation else { return }",
+    "replace": "guard let self else { return }",
+    "rule": "Browser loading obsolete free space overwrites the current folder",
+    "tests": "BrowserLoadingTests/freeSpaceBelongsToTheCurrentFolderAndLateReadsCannotClearNewWork"
+  },
+  {
+    "file": "Strata/Browser/BrowserLoading.swift",
+    "find": "            guard reads.generation == generation else { return }",
+    "replace": "            // Ignore a presentation changed by the completion.",
+    "rule": "Browser loading reentrant navigation launches obsolete capacity work",
+    "tests": "BrowserLoadingTests/replacingTheFolderFromItsCompletionDoesNotLaunchObsoleteCapacityWork"
+  },
+  {
+    "file": "Strata/Browser/BrowserLoading.swift",
+    "find": "        if let work = children[key]?.session.task { return work }",
+    "replace": "        // Start another read of the same row.",
+    "rule": "Browser loading repeated child requests are not coalesced",
+    "tests": "BrowserLoadingTests/childReadsCoalesceByNodeAndRootRefreshCancelsTheirOwnership"
+  },
+  {
+    "file": "Strata/Browser/BrowserLoading.swift",
+    "find": "        cancelAuxiliaryReads()\n        reads.load",
+    "replace": "        reads.load",
+    "rule": "Browser loading root refresh leaves earlier expanded reads active",
+    "tests": "BrowserLoadingTests/childReadsCoalesceByNodeAndRootRefreshCancelsTheirOwnership"
+  },
+  {
+    "file": "Strata/Browser/BrowserLoading.swift",
+    "find": "    func applied() {\n        cancelChildren()",
+    "replace": "    func applied() {",
+    "rule": "Browser loading applying a root listing leaves old child reads active",
+    "tests": "BrowserLoadingTests/applyingResultsOrReleasingTheOwnerCancelsExpandedReads"
+  },
+  {
+    "file": "Strata/Browser/BrowserLoading.swift",
+    "find": "    func showResults(loaded: Bool = true) {\n        invalidate()",
+    "replace": "    func showResults(loaded: Bool = true) {\n        reads.invalidate()",
+    "rule": "Browser loading results leave expanded reads active",
+    "tests": "BrowserLoadingTests/applyingResultsOrReleasingTheOwnerCancelsExpandedReads"
+  },
+  {
+    "file": "Strata/Browser/BrowserLoading.swift",
+    "find": "capacityTask = Task { [weak self] in\n                let value = await capacity(directory)\n                guard let self, !Task.isCancelled, reads.generation == generation else { return }",
+    "replace": "capacityTask = Task { [self] in\n                let value = await capacity(directory)\n                guard !Task.isCancelled, reads.generation == generation else { return }",
+    "rule": "Browser loading capacity work retains a closed browser",
+    "tests": "BrowserLoadingTests/outstandingCapacityAndChildWorkDoNotRetainTheOwner"
   }
 ]

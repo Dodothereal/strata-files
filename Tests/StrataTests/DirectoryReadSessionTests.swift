@@ -3,56 +3,7 @@ import Testing
 @testable import Strata
 
 struct DirectoryReadSessionTests {
-    private final class Reads {
-        final class Request {
-            let folder: URL
-            let showHidden: Bool
-            let applications: ApplicationsFolders
-            var continuation: CheckedContinuation<[FileEntry], Error>?
-
-            init(_ folder: URL, _ showHidden: Bool, _ applications: ApplicationsFolders,
-                 _ continuation: CheckedContinuation<[FileEntry], Error>) {
-                self.folder = folder
-                self.showHidden = showHidden
-                self.applications = applications
-                self.continuation = continuation
-            }
-
-            func finish(_ result: Result<[FileEntry], Error>) {
-                let waiting = continuation
-                continuation = nil
-                waiting?.resume(with: result)
-            }
-        }
-
-        private(set) var requests: [Request] = []
-        private var stopped = false
-        var reader: DirectoryReader {
-            DirectoryReader { folder, hidden, applications in
-                try await self.read(folder, hidden, applications)
-            }
-        }
-
-        private func read(_ folder: URL, _ hidden: Bool, _ applications: ApplicationsFolders) async throws -> [FileEntry] {
-            if stopped { throw CancellationError() }
-            // Deliberately ignore cancellation, like synchronous filesystem I/O that is already in flight.
-            return try await withCheckedThrowingContinuation { requests.append(Request(folder, hidden, applications, $0)) }
-        }
-
-        func request(_ index: Int) async throws -> Request {
-            let deadline = ContinuousClock.now + .seconds(20)
-            while requests.count <= index {
-                try #require(ContinuousClock.now < deadline, "The controlled reader was not called.")
-                try await Task.sleep(for: .milliseconds(10))
-            }
-            return requests[index]
-        }
-
-        func stop() {
-            stopped = true
-            requests.forEach { $0.finish(.failure(CancellationError())) }
-        }
-    }
+    private typealias Reads = ControlledDirectoryReads
 
     private func browser(_ reads: Reads) -> BrowserViewController {
         let services = BrowserServices(transfers: .shared, visits: .shared, directories: reads.reader)
@@ -60,6 +11,65 @@ struct DirectoryReadSessionTests {
         browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
         browser.setMode(.list, remember: false)
         return browser
+    }
+
+    @Test func navigatingDoesNotShowThePreviousVolumesFreeSpace() async throws {
+        let tree = try TestTree("a/", "b/")
+        let reads = Reads()
+        defer { reads.stop() }
+        let services = BrowserServices(transfers: .shared, visits: .shared, directories: reads.reader, availableCapacity: { _ in 123 })
+        let browser = BrowserViewController(services: services)
+        _ = browser.view
+        browser.load(tree.url("a"))
+        let first = try #require(browser.directoryReads.task)
+        try await reads.request(0).finish(.success([]))
+        await first.value
+        await browser.loading.capacityTask?.value
+        #expect(browser.availableCapacity == 123)
+        browser.load(tree.url("b"))
+        #expect(browser.availableCapacity == nil)
+        let next = try #require(browser.directoryReads.task)
+        try await reads.request(1).finish(.success([]))
+        await next.value
+        #expect(tree.snapshot() == ["a/", "b/"])
+    }
+
+    @Test func nativeExpandedRowsKeepTheirCurrentReadAfterAnOlderResponse() async throws {
+        let tree = try TestTree("folder/old.txt", "folder/new.txt")
+        let reads = Reads()
+        defer { reads.stop() }
+        let browser = browser(reads)
+        let folder = try #require(FileEntry(url: tree.url("folder")))
+        let entry = try #require(FileEntry(url: tree.url("folder/new.txt")))
+        browser.load(tree.root)
+        let first = try #require(browser.directoryReads.task)
+        try await reads.request(0).finish(.success([folder]))
+        await first.value
+        let node = try #require(browser.allRows.first)
+        browser.outlineView.expandItem(node)
+        let oldRequest = try await reads.request(1)
+        let old = browser.loading.loadChildren(of: node, showHidden: false, applications: .standard) { _ in
+            Issue.record("Native expansion did not own its read")
+        }
+        browser.refresh()
+        let refreshed = try #require(browser.directoryReads.task)
+        try await reads.request(2).finish(.success([folder]))
+        await refreshed.value
+        let currentRequest = try await reads.request(3)
+        let current = browser.loading.loadChildren(of: node, showHidden: false, applications: .standard) { _ in
+            Issue.record("Native refresh did not own its child read")
+        }
+        oldRequest.finish(.success([]))
+        await old.value
+        #expect(old.isCancelled && node.children == nil)
+        #expect(browser.outlineView.isItemExpanded(node))
+        currentRequest.finish(.success([entry]))
+        await current.value
+        #expect(browser.outlineView.numberOfRows == 2)
+        #expect((browser.outlineView.item(atRow: 1) as? FileNode)?.entry == entry)
+        browser.select([entry.url])
+        #expect(browser.selectedURLs == [entry.url])
+        #expect(tree.snapshot() == ["folder/", "folder/new.txt", "folder/old.txt"])
     }
 
     @Test func aNewFolderRejectsOldSuccessesAndErrorsInEveryView() async throws {
