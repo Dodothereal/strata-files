@@ -53,6 +53,7 @@ final class Pane {
     /// Stops what the pane is doing in the background (duplicate hashing, a folder scan): its window or the pane is
     /// closing.
     func stopBackgroundWork() {
+        browser.cancelPendingActions()
         opening.cancel()
         duplicateSearch?.set()
         duplicateSearch = nil

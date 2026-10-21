@@ -90,8 +90,8 @@ final class TransferQueue {
         startTicking()
     }
 
-    /// Reading from a container: starts right away (it isn't a disk-heavy job to queue behind others).
-    func add(_ job: ContainerFetchJob) {
+    /// Reading from a provider starts right away, alongside other transfers.
+    func add(_ job: CopyFetchJob) {
         jobs.append(job)
         job.onChange = { [weak self] _ in self?.notify() }
         job.onFinish = { [weak self, previous = job.onFinish] job in

@@ -346,8 +346,8 @@ struct TransferContextTests {
         #expect(tree.snapshot() == ["state/"])
     }
 
-    private func fetchHolding(_ browser: BrowserViewController, then: @escaping () -> Void) -> ContainerFetchJob {
-        ContainerFetchJob([]) {
+    private func fetchHolding(_ browser: BrowserViewController, then: @escaping () -> Void) -> CopyFetchJob {
+        CopyFetchJob([]) {
             _ = browser.isLoaded
             then()
         }

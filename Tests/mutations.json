@@ -1063,7 +1063,7 @@
     "tests": "TransferContextTests/completedTransfersDoNotKeepClosedPanesAlive"
   },
   {
-    "file": "Strata/Containers/ContainerFetchJob.swift",
+    "file": "Strata/Transfers/CopyFetchJob.swift",
     "find": "        then = nil\n",
     "replace": "",
     "rule": "Browser service ownership terminal fetch jobs retain their continuation",
@@ -2914,8 +2914,8 @@
   },
   {
     "file": "Strata/Window/Pane.swift",
-    "find": "func stopBackgroundWork() {\n        opening.cancel()",
-    "replace": "func stopBackgroundWork() {",
+    "find": "func stopBackgroundWork() {\n        browser.cancelPendingActions()\n        opening.cancel()",
+    "replace": "func stopBackgroundWork() {\n        browser.cancelPendingActions()",
     "rule": "Pane opening ownership closing a pane leaves its opening alive",
     "tests": "RemoteSessionOwnershipTests/closingAnOpeningPaneCancelsItsRequestWithoutMovingTheRemainingPane|RemoteSessionOwnershipTests/closingAWindowCancelsItsOpeningBeforeTheBackendFinishes"
   },
@@ -3009,5 +3009,133 @@
     "replace": "        if pendingSelection == nil { pendingSelection = selectedURLs }\n        reload(scrollToTop: false, invalidateCopy: invalidateCopy)",
     "rule": "Provider directory ownership Reload restores the selection from before its wait",
     "tests": "InspectorFolderOpeningTests/selectionsChangedDuringReloadAreNotReplacedByItsStartingSelection"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "find": "func afterFetching(_ urls: [URL], _ action: @escaping () -> Void) -> Task<Void, Never>? {\n        let copies = services.copies",
+    "replace": "func afterFetching(_ urls: [URL], _ action: @escaping () -> Void) -> Task<Void, Never>? {\n        let copies = CopyProviders.live",
+    "rule": "Provider fetch ownership small reads ignore their provider",
+    "tests": "ProviderFetchTests/openingAPlaceholderUsesTheBrowsersProviderBeforeItsAction"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "find": "CopyFetchJob(pending, copies: copies, then: action)",
+    "replace": "CopyFetchJob(pending, then: action)",
+    "rule": "Provider fetch ownership large reads ignore their provider",
+    "tests": "ProviderFetchTests/largeBrowserReadsUseTheirOwnQueueAndTheExistingSizeBoundary"
+  },
+  {
+    "file": "Strata/Transfers/CopyFetchJob.swift",
+    "find": "self.copies = copies",
+    "replace": "self.copies = .live",
+    "rule": "Provider fetch ownership queued preparation ignores its provider",
+    "tests": "ProviderFetchTests/queuedReadsUseTheirProviderForPreparationNamesErrorsAndPlaceholderChecks"
+  },
+  {
+    "file": "Strata/Transfers/CopyFetchJob.swift",
+    "find": "guard !urls.contains(where: copies.isPlaceholder) else { throw ContainerAPIError.notFound }",
+    "replace": "guard true else { throw ContainerAPIError.notFound }",
+    "rule": "Provider fetch ownership queued reads open remaining placeholders",
+    "tests": "ProviderFetchTests/queuedReadsUseTheirProviderForPreparationNamesErrorsAndPlaceholderChecks"
+  },
+  {
+    "file": "Strata/Transfers/CopyFetchJob.swift",
+    "find": "try await copies.prepareForCopying(urls)\n                try Task.checkCancellation()",
+    "replace": "try await copies.prepareForCopying(urls)",
+    "rule": "Provider fetch ownership stopped jobs deliver late success",
+    "tests": "ProviderFetchTests/stoppingQueuedOrRunningReadsNeverDeliversALateAction"
+  },
+  {
+    "file": "Strata/Transfers/CopyFetchJob.swift",
+    "find": "if state == .failed, let first = urls.first",
+    "replace": "if let first = urls.first",
+    "rule": "Provider fetch ownership stopped jobs show a late failure",
+    "tests": "ProviderFetchTests/stoppingQueuedOrRunningReadsNeverDeliversALateAction"
+  },
+  {
+    "file": "Strata/Transfers/CopyFetchJob.swift",
+    "find": "copies.message(for: error, about: first)",
+    "replace": "error.localizedDescription",
+    "rule": "Provider fetch ownership queued failures lose the provider error",
+    "tests": "ProviderFetchTests/queuedReadsUseTheirProviderForPreparationNamesErrorsAndPlaceholderChecks"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "find": "guard !pending.contains(where: copies.isPlaceholder) else { throw ContainerAPIError.notFound }",
+    "replace": "guard true else { throw ContainerAPIError.notFound }",
+    "rule": "Provider fetch ownership small reads open remaining placeholders",
+    "tests": "ProviderFetchTests/smallReadFailureOrRemainingPlaceholderDoesNotRunItsActionOrOpenAModal"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "find": "try await copies.fetch(pending)\n                try Task.checkCancellation()",
+    "replace": "try await copies.fetch(pending)",
+    "rule": "Provider fetch ownership cancelled small reads deliver late success",
+    "tests": "ProviderFetchTests/cancelledSmallReadsSuppressLateSuccessAndFailure"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "find": "try Task.checkCancellation()\n                try await copies.fetch(pending)",
+    "replace": "try await copies.fetch(pending)",
+    "rule": "Provider fetch ownership cancelled small reads still contact the provider",
+    "tests": "ProviderFetchTests/cancellationBeforeASmallReadStartsDoesNotContactTheProvider"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "find": "let copies = services.copies\n        guard let directory",
+    "replace": "let copies = CopyProviders.live\n        guard let directory",
+    "rule": "Provider fetch ownership selection prefetch ignores its provider",
+    "tests": "ProviderFetchTests/selectionPrefetchUsesItsProviderAndPreservesTheItemAndByteLimits"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "find": "guard files.count <= 20 else { return }",
+    "replace": "guard files.count <= 21 else { return }",
+    "rule": "Provider fetch ownership selection prefetch exceeds its item budget",
+    "tests": "ProviderFetchTests/selectionPrefetchUsesItsProviderAndPreservesTheItemAndByteLimits"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "func cancelPendingActions() {\n        selectionFetch?.cancel()\n        selectionFetch = nil",
+    "replace": "func cancelPendingActions() {",
+    "rule": "Provider fetch ownership navigation leaves selection prefetch running",
+    "tests": "ProviderFetchTests/changingSelectionAndLeavingThePaneCancelItsPrefetch"
+  },
+  {
+    "file": "Strata/Window/Pane.swift",
+    "find": "func stopBackgroundWork() {\n        browser.cancelPendingActions()",
+    "replace": "func stopBackgroundWork() {",
+    "rule": "Provider fetch ownership closing a pane leaves selection prefetch running",
+    "tests": "ProviderFetchTests/changingSelectionAndLeavingThePaneCancelItsPrefetch"
+  },
+  {
+    "file": "Strata/Transfers/CopyFetchJob.swift",
+    "edits": [
+      {
+        "find": "        onChange?(self)\n    }\n\n    func cancel()",
+        "replace": "    }\n\n    func cancel()"
+      },
+      {
+        "find": "        state = .running\n        task = Task {",
+        "replace": "        state = .running\n        onChange?(self)\n        task = Task {"
+      }
+    ],
+    "rule": "Provider fetch ownership Stop from the start notification misses the task",
+    "tests": "ProviderFetchTests/cancellingFromTheStartNotificationPreventsTheCompletionAction"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "edits": [
+      {
+        "find": "return Task { [weak self] in",
+        "replace": "return Task { [self] in"
+      },
+      {
+        "find": "guard !Task.isCancelled, let self, let window",
+        "replace": "guard !Task.isCancelled, let window"
+      }
+    ],
+    "rule": "Provider fetch ownership a small read retains its closed browser",
+    "tests": "ProviderFetchTests/aSmallReadDoesNotRetainAClosedBrowser"
   }
 ]

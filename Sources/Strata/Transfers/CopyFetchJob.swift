@@ -1,44 +1,48 @@
 import Foundation
 
-/// Reading items from a container before they're handed on (copied to the clipboard, opened, previewed): shown in the
+/// Reading items from a provider before they're handed on (copied to the clipboard, opened, previewed): shown in the
 /// Transfers list with a Stop button, so a big file or folder isn't a silent wait.
-final class ContainerFetchJob {
+final class CopyFetchJob {
     let urls: [URL]
-    let containerName: String
+    let sourceName: String
+    private let copies: CopyProviders
     private(set) var state: TransferState = .queued
     private(set) var errorMessage: String?
     private var task: Task<Void, Never>?
     private var then: (() -> Void)?
-    var onChange: ((ContainerFetchJob) -> Void)?
-    var onFinish: ((ContainerFetchJob) -> Void)?
+    var onChange: ((CopyFetchJob) -> Void)?
+    var onFinish: ((CopyFetchJob) -> Void)?
     private var finishWaiters: [CheckedContinuation<Void, Never>] = []
 
     /// `then` runs once everything is read (not when it fails or is stopped).
-    init(_ urls: [URL], then: @escaping () -> Void) {
+    init(_ urls: [URL], copies: CopyProviders = .live, then: @escaping () -> Void) {
         self.urls = urls
+        self.copies = copies
         self.then = then
-        containerName = urls.first.flatMap(LazyCopies.sourceName) ?? ""
+        sourceName = urls.first.flatMap(copies.sourceName) ?? ""
     }
 
     func start() {
         guard state == .queued else { return }
         state = .running
-        onChange?(self)
         task = Task {
             do {
-                try await LazyCopies.prepareForCopying(urls)
                 try Task.checkCancellation()
-                guard !urls.contains(where: LazyCopies.isPlaceholder) else { throw ContainerAPIError.notFound }
+                try await copies.prepareForCopying(urls)
+                try Task.checkCancellation()
+                guard !urls.contains(where: copies.isPlaceholder) else { throw ContainerAPIError.notFound }
                 state = .finished
                 then?()
             } catch is CancellationError {
                 state = .cancelled
             } catch {
                 state = Task.isCancelled ? .cancelled : .failed
-                if let first = urls.first { errorMessage = LazyCopies.message(for: error, about: first) }
+                if state == .failed, let first = urls.first { errorMessage = copies.message(for: error, about: first) }
             }
             finish()
         }
+        // Observers may request Stop immediately; the task must already belong to this job.
+        onChange?(self)
     }
 
     func cancel() {
@@ -57,6 +61,7 @@ final class ContainerFetchJob {
     private func finish() {
         // The Transfers list keeps finished jobs; their one-shot actions must release the UI they captured.
         then = nil
+        task = nil
         onChange?(self)
         onFinish?(self)
         let waiters = finishWaiters
@@ -65,10 +70,10 @@ final class ContainerFetchJob {
     }
 }
 
-extension ContainerFetchJob: QueueJob {
+extension CopyFetchJob: QueueJob {
     var title: String {
-        state.isActive ? String(localized: "Reading from “\(containerName)”", comment: "Transfers list: items being read from a container")
-            : String(localized: "Read from “\(containerName)”", comment: "Transfers list: items read from a container")
+        state.isActive ? String(localized: "Reading from “\(sourceName)”", comment: "Transfers list: items being read from a container")
+            : String(localized: "Read from “\(sourceName)”", comment: "Transfers list: items read from a container")
     }
 
     var statusText: String {

@@ -104,8 +104,9 @@ final class BrowserViewController: NSViewController {
     private var nodes: [FileNode] { listing.nodes }
     private var rows: [FileNode] { listing.rows }
     private var generation: Int { directoryReads.generation }
-    /// Fetching the selection from a container (see `fetchSelectedContainerFiles`).
-    var containerFetch: Task<Void, Never>?
+    /// Optional provider reads for the current selection (see `prefetchSelection`).
+    var selectionFetch: Task<Void, Never>?
+
     private var watchers: [DirectoryWatcher] = []
     /// Keeps git status for the shown folder's repository fresh (FSEvents) while this folder is shown.
     private var gitObservation: GitObservation?
@@ -158,6 +159,8 @@ final class BrowserViewController: NSViewController {
     func openEntries(_ entries: [FileEntry]) { open(entries) }
     func contextMenu() -> NSMenu { makeContextMenu() }
     func moveOrCopy(_ urls: [URL], into target: URL, move: Bool) { transfer(urls, into: target, move: move) }
+
+    isolated deinit { selectionFetch?.cancel() }
 
     // MARK: - View
 
@@ -806,8 +809,9 @@ final class BrowserViewController: NSViewController {
         guard !entries.isEmpty else { return }
         // A container's files are fetched first.
         let files = entries.filter { !$0.isFolder }.map(\.url)
-        if files.contains(where: LazyCopies.isPlaceholder) {
-            return afterFetching(files) { [weak self] in self?.openFetched(entries) }
+        if files.contains(where: services.copies.isPlaceholder) {
+            afterFetching(files) { [weak self] in self?.openFetched(entries) }
+            return
         }
         openFetched(entries)
     }
@@ -914,6 +918,8 @@ final class BrowserViewController: NSViewController {
 
     /// Navigation and failed reads must not leave a selection or rename waiting for an unrelated later listing.
     func cancelPendingActions() {
+        selectionFetch?.cancel()
+        selectionFetch = nil
         pendingSelection = nil
         pendingRename = nil
         columnController?.cancelPendingRename()
@@ -972,7 +978,7 @@ final class BrowserViewController: NSViewController {
         // half-read copy or a link written by another machine.
         let fromContainers = urls.filter(LazyCopies.contains)
         guard fromContainers.isEmpty else {
-            return services.transfers.add(ContainerFetchJob(fromContainers) {
+            return services.transfers.add(CopyFetchJob(fromContainers) {
                 Task {
                     let staged = await Task.detached(priority: .userInitiated) { LazyCopies.stageForClipboard(urls) }.value
                     if !staged.isEmpty { Clipboard.write(staged, cut: false) }
@@ -1714,7 +1720,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
         delegate?.browserSelectionDidChange(self)
-        fetchSelectedContainerFiles()
+        prefetchSelection()
         if QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible {
             panel.reloadData()
         }

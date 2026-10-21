@@ -116,7 +116,7 @@ extension BrowserViewController: FileCollectionViewDelegate {
 
     func fileView(_ view: NSViewController, selectionDidChange urls: [URL]) {
         delegate?.browserSelectionDidChange(self)
-        fetchSelectedContainerFiles()
+        prefetchSelection()
         if QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible {
             panel.reloadData()
         }

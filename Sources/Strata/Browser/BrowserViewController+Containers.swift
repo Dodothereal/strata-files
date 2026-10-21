@@ -1,12 +1,7 @@
 import AppKit
-import Quartz
 
-/// A container's files (see `ContainerCopies`): what's selected is fetched as you select it, so Quick Look, dragging and
-/// copying have the real file; opening waits for it. Larger files are fetched when they're opened or copied.
+/// Container-specific controls and shells. Shared file fetching belongs to the window's copy providers.
 extension BrowserViewController {
-    /// Selected files up to this size are fetched right away.
-    static let containerAutoFetchLimit: Int64 = 256 << 20
-
     /// The containers selected in a Containers folder.
     var selectedContainers: [ContainerInfo] {
         selectedURLs.compactMap { url in
@@ -60,48 +55,6 @@ extension BrowserViewController {
         return ContainerStore.shared.container(id: source.id)?.isRunning == true
     }
 
-    /// Starts fetching the selected files that are still placeholders (a few, up to a size: Select All doesn't read a
-    /// whole folder). A new selection stops the last one's.
-    func fetchSelectedContainerFiles() {
-        containerFetch?.cancel()
-        containerFetch = nil
-        guard let directory, LazyCopies.contains(directory) else { return }
-        let files = selectedEntries.filter { !$0.isDirectory }
-        guard files.count <= 20 else { return }
-        let urls = files.map(\.url).filter(LazyCopies.isPlaceholder)
-        guard !urls.isEmpty else { return }
-        containerFetch = Task { await LazyCopies.fetchSelection(urls, limit: Self.containerAutoFetchLimit) }
-    }
-
-    /// Runs `action` once `urls` (the placeholders among them) are fetched; says what went wrong if they can't be. A big
-    /// fetch shows in Transfers, with a Stop button.
-    func afterFetching(_ urls: [URL], _ action: @escaping () -> Void) {
-        let pending = urls.filter(LazyCopies.isPlaceholder)
-        guard !pending.isEmpty else { return action() }
-        let bytes = pending.map { Int64((try? $0.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0) }.saturatingSum
-        if bytes > 8 << 20 { return services.transfers.add(ContainerFetchJob(pending, then: action)) }
-        Task {
-            do {
-                try await LazyCopies.fetch(pending)
-                // Still not here (it changed in the container or on the server meanwhile, say): say so rather than open
-                // nothing.
-                guard !pending.contains(where: LazyCopies.isPlaceholder) else { throw ContainerAPIError.notFound }
-                action()
-            } catch {
-                let alert = NSAlert()
-                if RemoteCopies.contains(pending[0]) {
-                    alert.messageText = String(localized: "“\(pending[0].lastPathComponent)” couldn’t be read from the server.",
-                                               comment: "A file on an SFTP server or in a bucket couldn't be fetched")
-                } else {
-                    alert.messageText = String(localized: "“\(pending[0].lastPathComponent)” couldn’t be read from its container.",
-                                               comment: "A file in a container couldn't be fetched")
-                }
-                alert.informativeText = LazyCopies.message(for: error, about: pending[0])
-                Self.present(alert, in: view.window) { _ in }
-            }
-        }
-    }
-
     /// Containers started, stopped, came or went: the Containers folder follows (and its icons, which show who runs).
     @objc func containersChanged() {
         guard let directory else { return }
@@ -119,15 +72,4 @@ extension BrowserViewController {
         }
     }
 
-    /// Files arrived from a container: rows show their thumbnails, Quick Look shows what it couldn't before.
-    @objc func containerFilesFetched(_ notification: Notification) {
-        guard let urls = notification.object as? [URL], let directory, LazyCopies.contains(directory) else { return }
-        // This folder or one below it (columns, folders expanded in the list).
-        let shown = [directory.standardizedFileURL.path, directory.resolvingSymlinksInPath().standardizedFileURL.path]
-        guard urls.contains(where: { url in shown.contains { url.standardizedFileURL.path.hasPrefix($0 + "/") } }) else { return }
-        reloadVisibleCells()
-        if QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible {
-            panel.refreshCurrentPreviewItem()
-        }
-    }
 }

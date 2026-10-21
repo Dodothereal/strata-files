@@ -268,6 +268,11 @@ sheet's text before clicking a destructive button. Both builds share preferences
   `BrowserServices.copies` and its default directory reader share the window's server environment. Inspector folder
   links prepare their path through that owner and navigate through the originating pane's `FolderOpenSession`.
   Provider cache paths must not become remembered local locations or draggable window-title URLs.
+  Shared browser fetching lives in `BrowserViewController+Fetching` and queued preparation in `CopyFetchJob`.
+  Both retain the supplied providers through completion, placeholder checks and error messages. Install a job's
+  task before notifying observers, since a callback can request Stop. Cancelled work never delivers a completion
+  action or a late failure message. Small reads keep browsers weak and do not present an error after closure.
+  Selection prefetch keeps its 20-item/256 MB limits and ends on replacement, navigation or pane closure.
 - `RemoteFiles` and its `CopyProvider` adapter use the same `RemoteCopyStore` for server lookup, paths, placeholders,
   download staging and removal. An injected backend must not fall back to the application's copy root. Test identical
   server IDs in independent roots, including refused cross-environment writes and scoped cleanup. Prepare and remove
