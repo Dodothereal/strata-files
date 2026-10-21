@@ -130,12 +130,7 @@ extension BrowserWindowController {
 extension BrowserWindowController {
     /// Ends the connection to `server` and forgets its files here; panes showing them go home.
     func disconnectServer(_ server: RemoteServer) {
-        RemoteConnections.shared.cancel(server.id)
-        Task {
-            await RemoteSessions.shared.disconnect(server.id)
-            await RemoteFiles.shared.discard(server.id)
-            NotificationCenter.default.post(name: .remoteServerDisconnected, object: server.id)
-        }
+        RemoteConnections.shared.disconnect(server)
     }
 }
 

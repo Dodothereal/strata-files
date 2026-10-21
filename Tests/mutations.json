@@ -2610,5 +2610,96 @@
     "replace": "fcntl(toServer.fileDescriptor, F_SETNOSIGPIPE, 0)",
     "rule": "SFTP pipe ownership a closed child input terminates the application",
     "tests": "ProcessPipeSafetyTests/aClosedSFTPInputThrowsWithoutTerminatingTheApp"
+  },
+  {
+    "file": "Strata/Remote/RemoteConnections.swift",
+    "find": "guard savedServers.first(where: { $0.id == server.id }) == server else { return nil }",
+    "replace": "// Accept the stale confirmed server.",
+    "rule": "Server retirement refuse a stale saved-server confirmation",
+    "tests": "RemoteConnectionTests/staleRemovalAndDisconnectConfirmationsLeaveEditedServersAndPendingLoginsAlone"
+  },
+  {
+    "file": "Strata/Remote/RemoteConnections.swift",
+    "find": "guard let retirement = disconnect(server) else { return nil }\n        forget()",
+    "replace": "forget()\n        guard let retirement = disconnect(server) else { return nil }",
+    "rule": "Server retirement register cleanup before removal observers reconnect",
+    "tests": "RemoteConnectionTests/removalObserversCanReconnectWithoutOldCleanupErasingTheirConnection"
+  },
+  {
+    "file": "Strata/Remote/RemoteConnections.swift",
+    "find": "guard savedServers.first(where: { $0.id == server.id }) == server else { return nil }\n        cancel(server.id)",
+    "replace": "guard savedServers.first(where: { $0.id == server.id }) == server else { return nil }",
+    "rule": "Server retirement cancel private authentication before removing a server",
+    "tests": "RemoteConnectionTests/removalBlocksReadersUntilCleanupFinishesAndPreservesItsNeighbor"
+  },
+  {
+    "file": "Strata/Remote/RemoteConnections.swift",
+    "find": "if let preceding { _ = try? await preceding.value }\n            progress.phase = .running\n            // Once accepted",
+    "replace": "progress.phase = .running\n            // Once accepted",
+    "rule": "Server retirement wait for older cache handoffs before disconnecting",
+    "tests": "RemoteConnectionTests/disconnectWaitsForAnOlderHandoffAndReleasesItsCoordinator"
+  },
+  {
+    "file": "Strata/Remote/RemoteConnections.swift",
+    "find": "await discard(server.id)\n            disconnected(server.id)\n            await sessions.release(replacement)",
+    "replace": "await sessions.release(replacement)\n            await discard(server.id)\n            disconnected(server.id)",
+    "rule": "Server retirement block automatic readers throughout removal cleanup",
+    "tests": "RemoteConnectionTests/removalBlocksReadersUntilCleanupFinishesAndPreservesItsNeighbor"
+  },
+  {
+    "file": "Strata/Remote/RemoteConnections.swift",
+    "find": "handoffs[server.id] = Handoff(id: handoffID, task: task, progress: progress)\n        return Task",
+    "replace": "// Do not register retirement in the publication queue.\n        return Task",
+    "rule": "Server retirement keep reconnect publication behind removal cleanup",
+    "tests": "RemoteConnectionTests/removalObserversCanReconnectWithoutOldCleanupErasingTheirConnection"
+  },
+  {
+    "file": "Strata/Remote/RemoteConnections.swift",
+    "find": "defer { if handoffs[server.id]?.id == handoffID { handoffs[server.id] = nil } }\n            progress.phase = .waiting",
+    "replace": "progress.phase = .waiting",
+    "rule": "Server retirement release the coordinator after retirement finishes",
+    "tests": "RemoteConnectionTests/disconnectWaitsForAnOlderHandoffAndReleasesItsCoordinator"
+  },
+  {
+    "file": "Strata/Remote/RemoteServers.swift",
+    "find": "credentials.delete(server)\n        persist(all.filter { $0.id != server.id })",
+    "replace": "persist(all.filter { $0.id != server.id })\n        credentials.delete(server)",
+    "rule": "Server store retire the old secret before notifying removal observers",
+    "tests": "RemoteServerStoreTests/removalNotifiesOnlyAfterRetiringTheOldSecretAndRegistryEntry"
+  },
+  {
+    "file": "Strata/Remote/RemoteServers.swift",
+    "find": "guard self.server(id: server.id) == server else { return false }",
+    "replace": "// Accept a stale confirmed definition.",
+    "rule": "Server store refuse stale removal without changing credentials",
+    "tests": "RemoteServerStoreTests/invalidOrRefusedSavesLeaveMetadataAndCredentialsUnchanged"
+  },
+  {
+    "file": "Strata/Remote/RemoteServers.swift",
+    "find": "registry.update(servers)\n        notifications.post(name: .remoteServersChanged, object: self)",
+    "replace": "notifications.post(name: .remoteServersChanged, object: self)\n        registry.update(servers)",
+    "rule": "Server store publish registry changes before notifying observers",
+    "tests": "RemoteServerStoreTests/removalNotifiesOnlyAfterRetiringTheOldSecretAndRegistryEntry"
+  },
+  {
+    "file": "Strata/Remote/RemoteServers.swift",
+    "find": "throw RemoteError.refused(String(localized: \"The secret key couldn’t be saved in your keychain.\"))",
+    "replace": "// Save the new settings despite failed credentials.",
+    "rule": "Server store preserve settings when credential updates fail",
+    "tests": "RemoteServerStoreTests/invalidOrRefusedSavesLeaveMetadataAndCredentialsUnchanged"
+  },
+  {
+    "file": "Strata/Remote/RemoteServers.swift",
+    "find": "guard UUID(uuidString: server.id) != nil else { throw RemoteError.unknownServer }",
+    "replace": "// Accept an invalid saved ID.",
+    "rule": "Server store validate saved IDs before changing credentials",
+    "tests": "RemoteServerStoreTests/invalidOrRefusedSavesLeaveMetadataAndCredentialsUnchanged"
+  },
+  {
+    "file": "Strata/Remote/RemoteServers.swift",
+    "find": "return saved.filter { $0.validate() == nil && UUID(uuidString: $0.id) != nil }",
+    "replace": "return saved",
+    "rule": "Server store exclude invalid stored definitions without rewriting the source",
+    "tests": "RemoteServerStoreTests/readingInvalidSavedDataNeverRewritesItOrTouchesCredentials"
   }
 ]

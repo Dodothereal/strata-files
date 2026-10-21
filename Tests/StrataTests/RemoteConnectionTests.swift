@@ -88,6 +88,7 @@ struct RemoteConnectionTests {
         var secrets: [String: String]
         var saves: [RemoteServer] = []
         var rejectSave = false
+        var onSave: (() -> Void)?
         init(_ servers: [RemoteServer] = [], secrets: [String: String] = [:]) {
             self.servers = servers; self.secrets = secrets
             lookup = Lookup(servers)
@@ -100,6 +101,7 @@ struct RemoteConnectionTests {
                 else { self.servers.append(server) }
                 self.lookup.servers.withLock { $0[server.id] = server }
                 self.saves.append(server)
+                self.onSave?()
             })
         }
         func remove(_ id: String) {
@@ -112,9 +114,11 @@ struct RemoteConnectionTests {
         var gate: Gate?
         var discards: [String] = []
         var disconnected: [String] = []
+        var completed: [String] = []
         func discard(_ id: String) async {
             discards.append(id)
             if let gate { await gate.enter() }
+            completed.append(id)
         }
     }
 
@@ -534,6 +538,120 @@ struct RemoteConnectionTests {
         #expect(environment.copies.discards.isEmpty && environment.copies.disconnected.isEmpty)
         #expect(environment.store.servers == expected && environment.store.secrets == [original.id: "Saved"])
         #expect(environment.store.saves.isEmpty && existing.closes == 1 && proposedBackend.closes == 1)
+    }
+
+    @Test func staleRemovalAndDisconnectConfirmationsLeaveEditedServersAndPendingLoginsAlone() async throws {
+        let original = s3(), neighbor = s3(), existing = Backend()
+        var edited = original; edited.host = "edited.invalid"
+        let environment = Environment([edited, neighbor], secrets: [original.id: "Edited", neighbor.id: "Neighbor"])
+        try await environment.seed(existing, for: edited)
+        let request = environment.connections.connect(edited)
+        await environment.factory.waitForCalls(1)
+        var forgotten = false
+        #expect(environment.connections.remove(original, forget: { forgotten = true }) == nil)
+        #expect(environment.connections.disconnect(original) == nil)
+        #expect(!forgotten && !request.isCancelled && existing.closes == 0)
+        #expect(environment.store.servers == [edited, neighbor])
+        #expect(environment.store.secrets == [original.id: "Edited", neighbor.id: "Neighbor"])
+        #expect(environment.copies.discards.isEmpty && environment.copies.disconnected.isEmpty)
+        let backend = Backend()
+        await environment.factory.finish(0, backend)
+        #expect(try await request.value == edited)
+        #expect(try await environment.sessions.backend(for: original.id) === backend)
+        await environment.sessions.disconnect(original.id)
+    }
+
+    @Test func removalBlocksReadersUntilCleanupFinishesAndPreservesItsNeighbor() async throws {
+        let server = s3(), neighbor = s3(), environment = Environment([server, neighbor],
+            secrets: [server.id: "Removed", neighbor.id: "Neighbor"])
+        let backend = Backend(), other = Backend(), gate = Gate()
+        try await environment.seed(backend, for: server)
+        try await environment.seed(other, for: neighbor)
+        environment.copies.gate = gate
+        let login = environment.connections.connect(server)
+        await environment.factory.waitForCalls(1)
+        let retirement = try #require(environment.connections.remove(server) { environment.store.remove(server.id) })
+        #expect(login.isCancelled)
+        #expect(environment.store.servers == [neighbor] && environment.store.secrets == [neighbor.id: "Neighbor"])
+        await gate.waitForEntry()
+        await #expect(throws: CancellationError.self) { try await environment.sessions.backend(for: server.id) }
+        #expect(try await environment.sessions.backend(for: neighbor.id) === other)
+        retirement.cancel()
+        let late = Backend()
+        await environment.factory.finish(0, late)
+        await gate.release()
+        await #expect(throws: CancellationError.self) { try await login.value }
+        #expect(await retirement.value)
+        #expect(environment.copies.completed == [server.id] && environment.copies.disconnected == [server.id])
+        #expect(backend.closes == 1 && late.closes == 1 && other.closes == 0)
+        #expect(environment.store.saves.isEmpty)
+        await environment.sessions.disconnect(neighbor.id)
+    }
+
+    private func expectWaitingHandoff(_ connections: RemoteConnections, serverID: String, after previous: UUID?) async {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while ContinuousClock.now < deadline {
+            if let state = connections.handoffState(for: serverID), state.id != previous, state.phase != .queued {
+                #expect(state.phase == .waiting)
+                return
+            }
+            await Task.yield()
+        }
+        Issue.record("The queued handoff never reached its prerequisite wait")
+    }
+
+    @Test func removalObserversCanReconnectWithoutOldCleanupErasingTheirConnection() async throws {
+        let server = s3(), environment = Environment([server], secrets: [server.id: "Saved"])
+        let existing = Backend(), backend = Backend(), gate = Gate()
+        try await environment.seed(existing, for: server)
+        environment.copies.gate = gate
+        var request: RemoteConnectionRequest?
+        environment.store.onSave = { #expect(environment.copies.completed == [server.id]) }
+        defer { environment.store.onSave = nil }
+        let retirement = try #require(environment.connections.remove(server) {
+            environment.store.remove(server.id)
+            request = environment.connections.connect(server, secret: "Reconnected")
+        })
+        await gate.waitForEntry()
+        let retiringID = environment.connections.handoffState(for: server.id)?.id
+        await environment.factory.waitForCalls(1)
+        await environment.factory.finish(0, backend)
+        await expectWaitingHandoff(environment.connections, serverID: server.id, after: retiringID)
+        await gate.release()
+        #expect(await retirement.value)
+        #expect(try await #require(request).value == server)
+        #expect(environment.store.servers == [server] && environment.store.secrets == [server.id: "Reconnected"])
+        #expect(environment.copies.discards == [server.id] && environment.copies.disconnected == [server.id])
+        #expect(existing.closes == 1 && backend.closes == 0)
+        #expect(try await environment.sessions.backend(for: server.id) === backend)
+        environment.store.onSave = nil
+        await environment.sessions.disconnect(server.id)
+    }
+
+    @Test func disconnectWaitsForAnOlderHandoffAndReleasesItsCoordinator() async throws {
+        let server = s3(), environment = Environment([server], secrets: [server.id: "Saved"]), gate = Gate()
+        environment.copies.gate = gate
+        var connections: RemoteConnections? = RemoteConnections(catalog: environment.store.catalog, sessions: environment.sessions,
+            connector: environment.factory.connector, discard: { await environment.copies.discard($0) },
+            disconnected: { environment.copies.disconnected.append($0) })
+        weak var weakConnections = connections
+        var proposed = server; proposed.host = "new.invalid"
+        let request = connections!.connect(proposed, secret: "Proposed"), backend = Backend()
+        await environment.factory.waitForCalls(1); await environment.factory.finish(0, backend)
+        await gate.waitForEntry()
+        let publishingID = connections!.handoffState(for: server.id)?.id
+        let retirement = try #require(connections!.disconnect(server))
+        await expectWaitingHandoff(connections!, serverID: server.id, after: publishingID)
+        await gate.release()
+        await #expect(throws: CancellationError.self) { try await request.value }
+        #expect(await retirement.value)
+        #expect(connections!.activeHandoffCount == 0)
+        connections = nil
+        #expect(weakConnections == nil)
+        #expect(environment.store.servers == [server] && environment.store.secrets == [server.id: "Saved"])
+        #expect(environment.copies.discards == [server.id, server.id])
+        #expect(environment.copies.disconnected == [server.id] && backend.closes == 1)
+        #expect(!(await environment.sessions.isConnected(server.id)))
     }
 
 }

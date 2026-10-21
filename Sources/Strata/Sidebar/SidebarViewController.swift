@@ -688,12 +688,9 @@ extension SidebarViewController: NSMenuDelegate {
             : String(localized: "Nothing on the server changes.")
         alert.addButton(withTitle: String(localized: "Remove", comment: "Alert button: forget the saved server"))
         alert.addButton(withTitle: String(localized: "Cancel"))
-        alert.beginSheetModal(for: window) { [weak self] response in
+        alert.beginSheetModal(for: window) { response in
             guard response == .alertFirstButtonReturn else { return }
-            MainActor.assumeIsolated {
-                self?.windowController?.disconnectServer(server)
-                RemoteServers.remove(server)
-            }
+            MainActor.assumeIsolated { RemoteServers.remove(server) }
         }
     }
 

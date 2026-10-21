@@ -7,13 +7,14 @@ struct RemoteConnectionCatalog {
     let secret: (RemoteServer) -> String?
     let save: (RemoteServer, String?) throws -> Void
 
-    static let live = RemoteConnectionCatalog(servers: { RemoteServers.all }, secret: { RemoteKeychain.shared.secret(for: $0) },
-        save: { server, secret in
-            if let secret, !RemoteKeychain.shared.setSecret(secret, for: server) {
-                throw RemoteError.refused(String(localized: "The secret key couldn’t be saved in your keychain."))
-            }
-            RemoteServers.save(server)
-        })
+    static let live = RemoteConnectionCatalog(store: RemoteServers.store)
+}
+
+extension RemoteConnectionCatalog {
+    init(store: RemoteServerStore) {
+        self.init(servers: { store.all }, secret: { store.credentials.secret(for: $0) },
+                  save: { try store.save($0, secret: $1) })
+    }
 }
 
 nonisolated struct RemoteConnectionRequest: Sendable {
@@ -53,8 +54,16 @@ final class RemoteConnections {
     private let discard: @MainActor (String) async -> Void
     private let disconnected: (String) -> Void
     private var current: [String: RemoteConnectionRequest] = [:]
-    private struct Handoff { let id: UUID; let task: Task<Bool, Error> }
+    enum HandoffPhase { case queued, waiting, running }
+    private final class HandoffProgress { var phase = HandoffPhase.queued }
+    private struct Handoff { let id: UUID; let task: Task<Bool, Error>; let progress: HandoffProgress }
     private var handoffs: [String: Handoff] = [:]
+
+    // Read-only lifecycle state lets headless checks await the real queue boundary, without timing a network task.
+    var activeHandoffCount: Int { handoffs.count }
+    func handoffState(for serverID: String) -> (id: UUID, phase: HandoffPhase)? {
+        handoffs[serverID].map { ($0.id, $0.progress.phase) }
+    }
 
     init(catalog: RemoteConnectionCatalog, sessions: RemoteSessions, connector: RemoteConnector,
          discard: @escaping @MainActor (String) async -> Void, disconnected: @escaping (String) -> Void) {
@@ -105,6 +114,37 @@ final class RemoteConnections {
     /// Removing or explicitly disconnecting a saved server also stops private attempts that have not published yet.
     func cancel(_ serverID: String) { current.removeValue(forKey: serverID)?.cancel() }
 
+    /// Confirmations retain a definition, not permission to affect whatever later reuses its ID. Register cleanup
+    /// before changing saved settings: their observers can immediately start a new connection.
+    @discardableResult
+    func remove(_ server: RemoteServer, forget: () -> Void) -> Task<Bool, Never>? {
+        guard let retirement = disconnect(server) else { return nil }
+        forget()
+        return retirement
+    }
+
+    @discardableResult
+    func disconnect(_ server: RemoteServer) -> Task<Bool, Never>? {
+        guard savedServers.first(where: { $0.id == server.id }) == server else { return nil }
+        cancel(server.id)
+        let preceding = handoffs[server.id]?.task
+        let handoffID = UUID(), progress = HandoffProgress()
+        let task = Task<Bool, Error> { [self] in
+            defer { if handoffs[server.id]?.id == handoffID { handoffs[server.id] = nil } }
+            progress.phase = .waiting
+            if let preceding { _ = try? await preceding.value }
+            progress.phase = .running
+            // Once accepted, retirement must finish even if its caller stops waiting. A reconnect queues behind it.
+            let replacement = try await sessions.reserveReplacement(for: server.id)
+            await discard(server.id)
+            disconnected(server.id)
+            await sessions.release(replacement)
+            return true
+        }
+        handoffs[server.id] = Handoff(id: handoffID, task: task, progress: progress)
+        return Task { (try? await task.value) ?? false }
+    }
+
     private func checkCurrent(_ serverID: String, id: UUID, stopped: StopFlag) throws {
         guard current[serverID]?.id == id, !stopped.isSet, !Task.isCancelled else { throw CancellationError() }
     }
@@ -112,9 +152,11 @@ final class RemoteConnections {
     private func publish(_ backend: any RemoteBackend, server: RemoteServer, secret: String?, previous: RemoteServer?,
                          previousSecret: String?, id: UUID, stopped: StopFlag) async throws -> Bool {
         let preceding = handoffs[server.id]?.task
-        let handoffID = UUID()
+        let handoffID = id, progress = HandoffProgress()
         let task = Task { [self] in
+            progress.phase = .waiting
             if let preceding { _ = try? await preceding.value }
+            progress.phase = .running
             try checkCurrent(server.id, id: id, stopped: stopped)
             guard savedServers.first(where: { $0.id == server.id }) == previous else { throw CancellationError() }
             let replacement = try await sessions.reserveReplacement(for: server.id)
@@ -144,7 +186,7 @@ final class RemoteConnections {
                 throw error
             }
         }
-        handoffs[server.id] = Handoff(id: handoffID, task: task)
+        handoffs[server.id] = Handoff(id: handoffID, task: task, progress: progress)
         defer { if handoffs[server.id]?.id == handoffID { handoffs[server.id] = nil } }
         return try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
     }

@@ -278,6 +278,12 @@ sheet's text before clicking a destructive button. Both builds share preferences
   promptly during that handoff because cleanup can await their completion. Keep the pool and copy cache in the
   same environment, recheck ownership after every suspension, and test both orders of late completion with fake
   backends and credentials. Sheet teardown cancels its request; published backends belong exclusively to the pool.
+- Explicit server disconnect and removal use the same per-server handoff queue as connection publication. Register
+  retirement before notifying saved-setting observers, keep automatic readers blocked through cache cleanup, and
+  refuse confirmations whose saved definition has changed. Cancelling a waiter must not abandon accepted cleanup.
+- Saved server stores own preferences, credentials, registry and notifications. Publish the complete new state before
+  notifying observers; removal must not delete credentials after an observer has saved a replacement. Invalid or
+  unreadable saved definitions must not rewrite preferences merely by being read.
 - Listing coalescing and freshness belong in `CopyListings`, owned by each provider actor. Invalidation during a
   read requires another read; an old waiter cannot clear its replacement or make it fresh. Drain listings before
   removing a copy. Inject container listing readers or server backends to test held responses without live services.
