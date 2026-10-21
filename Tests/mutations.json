@@ -3137,5 +3137,90 @@
     ],
     "rule": "Provider fetch ownership a small read retains its closed browser",
     "tests": "ProviderFetchTests/aSmallReadDoesNotRetainAClosedBrowser"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "MediaInfoLoader(copies: services.copies, reader: services.mediaReader)",
+    "replace": "MediaInfoLoader(reader: services.mediaReader)",
+    "rule": "Provider media ownership browser columns ignore their provider",
+    "tests": "ProviderMediaInfoTests/mediaColumnsRecognizeTheirOwnProvidersPlaceholders"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "MediaInfoLoader(copies: services.copies, reader: services.mediaReader)",
+    "replace": "MediaInfoLoader(copies: services.copies)",
+    "rule": "Provider media ownership browser columns ignore their reader",
+    "tests": "ProviderMediaInfoTests/independentNativeColumnsUseTheirOwnMediaReaderAndKeepSelection"
+  },
+  {
+    "file": "Strata/Browser/MediaInfoLoader.swift",
+    "find": "guard canRead(entry) else { cache[entry] = nil; return nil }",
+    "replace": "",
+    "rule": "Provider media ownership cached metadata remains visible for a placeholder",
+    "tests": "ProviderMediaInfoTests/completedMetadataIsHiddenAndInvalidatedWhenItsCopyBecomesAPlaceholder"
+  },
+  {
+    "file": "Strata/Browser/MediaInfoLoader.swift",
+    "find": "Self.canRead(entry, copies: copies) ? await reader(entry) : nil",
+    "replace": "await reader(entry) as MediaInfo?",
+    "rule": "Provider media ownership scheduled work reads a newly invalidated copy",
+    "tests": "ProviderMediaInfoTests/aCopyInvalidatedBeforeItsTaskStartsIsNotRead"
+  },
+  {
+    "file": "Strata/Browser/MediaInfoLoader.swift",
+    "find": "if let info, canRead(entry) {",
+    "replace": "if let info {",
+    "rule": "Provider media ownership completed work publishes metadata for an invalidated copy",
+    "tests": "ProviderMediaInfoTests/runningReadsCannotPublishMetadataForAnInvalidatedCopy"
+  },
+  {
+    "file": "Strata/Browser/MediaInfoLoader.swift",
+    "find": "while tasks.count < 4, let entry = pending.popLast() {",
+    "replace": "while tasks.count < 5, let entry = pending.popLast() {",
+    "rule": "Provider media ownership media reads exceed the concurrency limit",
+    "tests": "ProviderMediaInfoTests/queuedReadsRecheckAvailabilityAndKeepTheFourReaderLimit"
+  },
+  {
+    "file": "Strata/Browser/MediaInfoLoader.swift",
+    "find": "guard cache[entry] == nil, requested.insert(entry).inserted else { return }",
+    "replace": "guard requested.insert(entry).inserted else { return }",
+    "rule": "Provider media ownership empty results trigger repeated reads",
+    "tests": "ProviderMediaInfoTests/emptyMetadataResultsAreCachedWithoutRepeatedReads"
+  },
+  {
+    "file": "Strata/Browser/MediaInfoLoader.swift",
+    "find": "isolated deinit { tasks.values.forEach { $0.cancel() } }",
+    "replace": "isolated deinit {}",
+    "rule": "Provider media ownership released loaders leave their work running",
+    "tests": "ProviderMediaInfoTests/releasingTheLoaderCancelsItsOutstandingReadWithoutRetainingIt"
+  },
+  {
+    "file": "Strata/Browser/MediaInfoLoader.swift",
+    "find": "guard !Task.isCancelled else { return }",
+    "replace": "",
+    "rule": "Provider media ownership cancelled tasks still invoke the reader",
+    "tests": "ProviderMediaInfoTests/cancellingBeforeAReadStartsPreventsInvokingTheReader"
+  },
+  {
+    "file": "Strata/Browser/MediaInfoLoader.swift",
+    "find": "guard let self, !Task.isCancelled, gen == generation else { return }",
+    "replace": "guard let self else { return }",
+    "rule": "Provider media ownership old reads erase a replacement for the same entry",
+    "tests": "ProviderMediaInfoTests/cancelledReadsCannotEraseAReplacementForTheSameEntry"
+  },
+  {
+    "file": "Strata/Browser/MediaInfoLoader.swift",
+    "edits": [
+      {
+        "find": "guard canRead(entry) else { requested.remove(entry); continue }",
+        "replace": ""
+      },
+      {
+        "find": "Self.canRead(entry, copies: copies) ? await reader(entry) : nil",
+        "replace": "await reader(entry) as MediaInfo?"
+      }
+    ],
+    "rule": "Provider media ownership queued work reads a newly invalidated copy",
+    "tests": "ProviderMediaInfoTests/queuedReadsRecheckAvailabilityAndKeepTheFourReaderLimit"
   }
 ]

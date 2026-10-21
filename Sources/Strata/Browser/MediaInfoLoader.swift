@@ -3,29 +3,40 @@ import UniformTypeIdentifiers
 
 /// Only requested columns read media. Limit concurrent readers, reuse snapshots, and discard work on navigation.
 final class MediaInfoLoader {
+    typealias Reader = @Sendable (FileEntry) async -> MediaInfo
+    static let read: Reader = { await MediaInfo.read($0.url, contentType: $0.contentType) }
+
     var onUpdate: ((FileEntry) -> Void)?
     private var cache: [FileEntry: MediaInfo] = [:]
     private var pending: [FileEntry] = []
     private var requested: Set<FileEntry> = []
-    private var tasks: [FileEntry: Task<Void, Never>] = [:]
+    private(set) var tasks: [FileEntry: Task<Void, Never>] = [:]
     private var generation = 0
-    private let reader: @Sendable (FileEntry) async -> MediaInfo
+    private let reader: Reader
+    private let copies: CopyProviders
 
-    init(reader: @escaping @Sendable (FileEntry) async -> MediaInfo = {
-        await MediaInfo.read($0.url, contentType: $0.contentType)
-    }) {
+    init(copies: CopyProviders = .live, reader: @escaping Reader = MediaInfoLoader.read) {
+        self.copies = copies
         self.reader = reader
     }
 
-    func cached(_ entry: FileEntry) -> MediaInfo? { cache[entry] }
+    isolated deinit { tasks.values.forEach { $0.cancel() } }
 
-    static func canRead(_ entry: FileEntry) -> Bool {
-        !entry.isDirectory && !entry.isSymlink && !LazyCopies.isPlaceholder(entry.url)
+    func cached(_ entry: FileEntry) -> MediaInfo? {
+        guard canRead(entry) else { cache[entry] = nil; return nil }
+        return cache[entry]
+    }
+
+    func canRead(_ entry: FileEntry) -> Bool { Self.canRead(entry, copies: copies) }
+
+    static func canRead(_ entry: FileEntry, copies: CopyProviders = .live) -> Bool {
+        !entry.isDirectory && !entry.isSymlink && !copies.isPlaceholder(entry.url)
             && (entry.contentType?.conforms(to: .image) == true || entry.contentType?.conforms(to: .audiovisualContent) == true)
     }
 
     func request(_ entry: FileEntry) {
-        guard Self.canRead(entry), cache[entry] == nil, requested.insert(entry).inserted else { return }
+        guard canRead(entry) else { cache[entry] = nil; return }
+        guard cache[entry] == nil, requested.insert(entry).inserted else { return }
         pending.append(entry)
         startNext()
     }
@@ -41,15 +52,22 @@ final class MediaInfoLoader {
 
     private func startNext() {
         while tasks.count < 4, let entry = pending.popLast() {
+            // Files can become placeholders while waiting behind another read.
+            guard canRead(entry) else { requested.remove(entry); continue }
             let gen = generation
-            let reader = reader
+            let reader = reader, copies = copies
             tasks[entry] = Task { [weak self] in
-                let info = await reader(entry)
+                guard !Task.isCancelled else { return }
+                // Scheduling the task yields too; its copy must still be readable when execution begins.
+                let info = Self.canRead(entry, copies: copies) ? await reader(entry) : nil
                 guard let self, !Task.isCancelled, gen == generation else { return }
                 tasks[entry] = nil
-                cache[entry] = info
                 requested.remove(entry)
-                onUpdate?(entry)
+                // A provider may have invalidated its local copy while this read was running.
+                if let info, canRead(entry) {
+                    cache[entry] = info
+                    onUpdate?(entry)
+                }
                 startNext()
             }
         }

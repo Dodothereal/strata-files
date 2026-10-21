@@ -18,12 +18,14 @@ final class BrowserServices {
     let copies: CopyProviders
     let openContainer: @MainActor @Sendable (String) async throws -> URL
     let directories: DirectoryReader
+    let mediaReader: MediaInfoLoader.Reader
     let availableCapacity: @Sendable (URL) async -> Int64?
     let windows: BrowserWindows
 
     init(transfers: TransferQueue, visits: Frecency, directories: DirectoryReader? = nil, preferences: Prefs = .shared, windows: BrowserWindows = .native,
          availableCapacity: @escaping @Sendable (URL) async -> Int64? = BrowserLoading.freeSpace,
          remote: RemoteServices = .shared, remoteBrowsing: RemoteBrowsing? = nil, copies: CopyProviders? = nil,
+         mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
          openContainer: @escaping @MainActor @Sendable (String) async throws -> URL = { id in
              let store = ContainerStore.shared
              guard let engine = store.engine, let container = store.container(id: id) else { throw ContainerAPIError.notFound }
@@ -37,6 +39,7 @@ final class BrowserServices {
         self.copies = copies ?? CopyProviders(servers: remote.files, containers: .shared)
         self.openContainer = openContainer
         self.directories = directories ?? DirectoryReader(copies: self.copies)
+        self.mediaReader = mediaReader
         self.availableCapacity = availableCapacity
         self.windows = windows
     }

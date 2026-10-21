@@ -44,6 +44,7 @@ final class BrowserViewController: NSViewController {
         self.services = services
         mode = BrowserViewMode(rawValue: services.preferences.viewMode) ?? .list
         loading = BrowserLoading(reader: services.directories, capacity: services.availableCapacity)
+        mediaInfo = MediaInfoLoader(copies: services.copies, reader: services.mediaReader)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -98,7 +99,7 @@ final class BrowserViewController: NSViewController {
     private let emptyState = EmptyStateView()
     private let filterPill = FilterPill()
     private let sizer = FolderSizer()
-    let mediaInfo = MediaInfoLoader()
+    let mediaInfo: MediaInfoLoader
 
     private let listing = BrowserListing()
     private var nodes: [FileNode] { listing.nodes }
@@ -1684,7 +1685,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             case .height: text = info?.height.map(String.init)
             default: text = info?.durationText
             }
-            cell.configure(text ?? (info == nil && MediaInfoLoader.canRead(entry) ? "…" : "—"),
+            cell.configure(text ?? (info == nil && mediaInfo.canRead(entry) ? "…" : "—"),
                            alignment: column.headerCell.alignment, dimmed: dimmed)
         case .size: cell.configure(sizeText(node), alignment: .right, dimmed: dimmed)
         case .location: cell.configure(Format.tildePath(entry.url.deletingLastPathComponent()), alignment: .left, dimmed: dimmed)
