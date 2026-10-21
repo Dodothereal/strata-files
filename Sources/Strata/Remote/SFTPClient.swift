@@ -124,6 +124,11 @@ nonisolated final class SFTPClient: @unchecked Sendable {
         process.standardError = errors
         toServer = input.fileHandleForWriting
         fromServer = output.fileHandleForReading
+        // ssh can exit between a request's connection check and its write. Suppress SIGPIPE on this descriptor
+        // only, so FileHandle reports EPIPE instead of terminating the app.
+        guard fcntl(toServer.fileDescriptor, F_SETNOSIGPIPE, 1) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
         try process.run()
         let reader = Thread { [weak self] in self?.readLoop() }
         reader.name = "SFTP reader"
@@ -472,6 +477,9 @@ nonisolated final class SFTPClient: @unchecked Sendable {
 
     /// The ssh (or server) process, for tests.
     var processIdentifier: Int32 { process.processIdentifier }
+
+    /// The writer must turn a closed ssh input into an error, never a process-wide SIGPIPE.
+    var suppressesBrokenPipeSignal: Bool { fcntl(toServer.fileDescriptor, F_GETNOSIGPIPE) == 1 }
 
     private func write(type: UInt8, body: [UInt8]) throws {
         var packet = Writer()

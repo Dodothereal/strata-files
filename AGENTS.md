@@ -184,6 +184,9 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
   older APIs. Preserve streaming semantics when replacing an API: cover short pipe output while the writer stays
   open, as well as read failures and EOF. A failed read must not report partial output as success;
   a partial preview must expose its error while keeping rows already read.
+- Pipes written by the app must suppress `SIGPIPE` on their own descriptor before use (`F_SETNOSIGPIPE`). A child
+  can close its input after a connection check; a throwing write alone does not prevent process termination.
+  Test the actual transport with a closed-reader fixture and keep the signal policy local to its descriptor.
 - A closed `QLPreviewView` cannot accept another item. Use `QuickLookPreviewView` to own the native view for one
   window lifetime, reject late completions after closing, and create a new native view when moved to another window.
   Cover deferred selection work and rich-preview fallback after closing with a controlled scheduler.

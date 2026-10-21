@@ -2512,5 +2512,12 @@
     "replace": "capacityTask = Task { [self] in\n                let value = await capacity(directory)\n                guard !Task.isCancelled, reads.generation == generation else { return }",
     "rule": "Browser loading capacity work retains a closed browser",
     "tests": "BrowserLoadingTests/outstandingCapacityAndChildWorkDoNotRetainTheOwner"
+  },
+  {
+    "file": "Strata/Remote/SFTPClient.swift",
+    "find": "fcntl(toServer.fileDescriptor, F_SETNOSIGPIPE, 1)",
+    "replace": "fcntl(toServer.fileDescriptor, F_SETNOSIGPIPE, 0)",
+    "rule": "SFTP pipe ownership a closed child input terminates the application",
+    "tests": "ProcessPipeSafetyTests/aClosedSFTPInputThrowsWithoutTerminatingTheApp"
   }
 ]
