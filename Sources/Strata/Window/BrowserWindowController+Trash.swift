@@ -25,18 +25,16 @@ extension BrowserWindowController {
 
     /// Connects to `server` (saying so over the folder, with Cancel) and shows where browsing starts: its saved
     /// folder, or where the login starts (a bucket's top).
-    func openServer(_ server: RemoteServer) {
+    @discardableResult
+    func openServer(_ server: RemoteServer) -> Task<Void, Never> {
+        let browsing = services.remoteBrowsing
         let connecting = Task { [weak self] in
             do {
-                let top = try RemoteCopies.prepare(server)
-                let backend = try await RemoteSessions.shared.backend(for: server.id)
-                var start = server.path ?? ""
-                if start.isEmpty { start = try await backend.home() }
-                let folder = RemoteCopies.url(forRemotePath: start, top: top)
-                guard !Task.isCancelled, let self else { return }
-                navigate(to: await RemoteFiles.shared.reveal(folder) ? folder : top)
+                let folder = try await browsing.open(server)
+                guard !Task.isCancelled, let self, !isClosed else { return }
+                navigate(to: folder)
             } catch {
-                guard !Task.isCancelled, let self, let window else { return }
+                guard !Task.isCancelled, let self, !isClosed, let window else { return }
                 if case .folder(let shown) = destination { updateNotice(for: shown) }
                 let alert = NSAlert()
                 alert.messageText = String(localized: "Couldn’t connect to “\(server.name)”", comment: "A server's name")
@@ -47,10 +45,10 @@ extension BrowserWindowController {
         split.noticeBar.show(symbol: "network", text: String(localized: "Connecting to “\(server.name)”…", comment: "A server's name"),
                              button: String(localized: "Cancel")) { [weak self] in
             connecting.cancel()
-            Task { await RemoteSessions.shared.disconnect(server.id) }
             guard let self, case .folder(let shown) = destination else { return }
             updateNotice(for: shown)
         }
+        return connecting
     }
 }
 

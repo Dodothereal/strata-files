@@ -269,6 +269,7 @@ final class Workspaces {
     /// name and password), with a sheet that can stop it; then shows each waiting pane's folder and says what didn't
     /// work out.
     private func connect(_ controllers: [BrowserWindowController], of workspace: Workspace, missing: [String], offline: [String]) {
+        guard let browsing = services?.remoteBrowsing else { return }
         var shares: [String: String] = [:]
         var servers: [String] = []
         for controller in controllers {
@@ -314,10 +315,8 @@ final class Workspaces {
             for id in servers {
                 guard !sheet.isCancelled, let server = RemoteServers.server(id: id) else { continue }
                 sheet.show(server.name)
-                sheet.onCancel = { Task { await RemoteSessions.shared.disconnect(id) } }
                 do {
-                    _ = try RemoteCopies.prepare(server)
-                    _ = try await RemoteSessions.shared.backend(for: id)
+                    try await sheet.connect(server, using: browsing)
                     connected.insert(id)
                 } catch {
                     if !sheet.isCancelled {

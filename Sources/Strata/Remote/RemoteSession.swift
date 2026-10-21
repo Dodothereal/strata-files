@@ -363,9 +363,14 @@ actor RemoteSessions {
         self.changed = changed
     }
 
+    private struct Waiter {
+        let stopped: StopFlag
+        let result: AsyncThrowingStream<any RemoteBackend, Error>.Continuation
+    }
     private struct Attempt {
         let token: UUID
-        let task: Task<any RemoteBackend, Error>
+        let task: Task<Void, Never>
+        var waiters: [UUID: Waiter] = [:]
     }
 
     private var backends: [String: any RemoteBackend] = [:]
@@ -373,47 +378,100 @@ actor RemoteSessions {
     private var replacements: [String: RemoteSessionReplacement] = [:]
 
     func backend(for id: String) async throws -> any RemoteBackend {
+        try Task.checkCancellation()
         guard replacements[id] == nil else { throw CancellationError() }
         while let backend = backends[id] {
             if backend.isAlive { return backend }
             backends[id] = nil
             backend.close()
             await changed(id, false)
+            try Task.checkCancellation()
             guard replacements[id] == nil else { throw CancellationError() }
             // A status callback can yield to another caller that has already reconnected this server.
         }
-        let attempt: Attempt
-        if let pending = connecting[id] {
-            attempt = pending
+        // Cancellation marks the ticket synchronously. A retry must not join abandoned work just because the
+        // actor task that removes its last waiter has not run yet.
+        retireAbandonedAttempt(id)
+        let waiter = UUID(), stopped = StopFlag()
+        let token: UUID
+        if let pending = connecting[id]?.token {
+            token = pending
         } else {
             guard let server = server(id) else { throw RemoteError.unknownServer }
-            let token = UUID()
-            let task = Task<any RemoteBackend, Error> { try await establish(server, for: id, token: token) }
-            attempt = Attempt(token: token, task: task)
+            token = UUID()
+            let task = Task { await establish(server, for: id, token: token) }
             // Registered before anything awaits, so two panes share one connection and one password dialog.
-            connecting[id] = attempt
+            connecting[id] = Attempt(token: token, task: task)
         }
-        let backend = try await attempt.task.value
-        // All waiters revalidate after resuming, including when disconnection happened during a status update.
-        guard backends[id] === backend, backend.isAlive else { throw CancellationError() }
-        return backend
+        let (result, continuation) = AsyncThrowingStream<any RemoteBackend, Error>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        connecting[id]?.waiters[waiter] = Waiter(stopped: stopped, result: continuation)
+        return try await withTaskCancellationHandler {
+            var iterator = result.makeAsyncIterator()
+            guard let backend = try await iterator.next() else { throw CancellationError() }
+            try Task.checkCancellation()
+            // All waiters revalidate after resuming, including during a status callback or explicit disconnect.
+            guard backends[id] === backend, backend.isAlive else { throw CancellationError() }
+            return backend
+        } onCancel: {
+            stopped.set()
+            continuation.finish(throwing: CancellationError())
+            Task { await self.cancelWaiter(waiter, for: id, attempt: token) }
+        }
+    }
+
+    /// Observing completion does not borrow the connection or grant the observer cancellation rights.
+    nonisolated struct AttemptCompletion: Sendable {
+        fileprivate let task: Task<Void, Never>
+        var value: Void { get async { await task.value } }
+        var isCancelled: Bool { task.isCancelled }
+    }
+
+    func attemptCompletion(for id: String) -> AttemptCompletion? {
+        connecting[id].map { AttemptCompletion(task: $0.task) }
+    }
+
+    func waiterCount(for id: String) -> Int {
+        connecting[id]?.waiters.values.filter { !$0.stopped.isSet }.count ?? 0
+    }
+
+    private func cancelWaiter(_ waiter: UUID, for id: String, attempt token: UUID) {
+        guard connecting[id]?.token == token else { return }
+        connecting[id]?.waiters[waiter] = nil
+        retireAbandonedAttempt(id)
+    }
+
+    private func retireAbandonedAttempt(_ id: String) {
+        guard let pending = connecting[id], pending.waiters.values.allSatisfy({ $0.stopped.isSet }) else { return }
+        cancelAttempt(id)
+    }
+
+    private func cancelAttempt(_ id: String) {
+        guard let pending = connecting.removeValue(forKey: id) else { return }
+        pending.task.cancel()
+        for waiter in pending.waiters.values { waiter.result.finish(throwing: CancellationError()) }
     }
 
     /// Only the producer publishes or closes its result. Waiters never adopt a cancelled attempt or clear a newer one.
-    private func establish(_ server: RemoteServer, for id: String, token: UUID) async throws -> any RemoteBackend {
+    private func establish(_ server: RemoteServer, for id: String, token: UUID) async {
         do {
+            try Task.checkCancellation()
+            guard connecting[id]?.token == token, waiterCount(for: id) > 0 else { throw CancellationError() }
             let backend = try await connect(server)
-            guard connecting[id]?.token == token, !Task.isCancelled else {
+            guard let attempt = connecting[id], attempt.token == token, !Task.isCancelled, waiterCount(for: id) > 0 else {
                 backend.close()
                 throw CancellationError()
             }
             connecting[id] = nil
             backends[id] = backend
             await changed(id, true)
-            return backend
+            for waiter in attempt.waiters.values {
+                waiter.result.yield(backend)
+                waiter.result.finish()
+            }
         } catch {
-            if connecting[id]?.token == token { connecting[id] = nil }
-            throw error
+            guard let attempt = connecting[id], attempt.token == token else { return }
+            connecting[id] = nil
+            for waiter in attempt.waiters.values { waiter.result.finish(throwing: error) }
         }
     }
 
@@ -432,7 +490,7 @@ actor RemoteSessions {
 
     func disconnect(_ id: String) async {
         replacements.removeValue(forKey: id)?.invalidate()
-        connecting.removeValue(forKey: id)?.task.cancel()
+        cancelAttempt(id)
         let had = backends.removeValue(forKey: id)
         had?.close()
         if had != nil { await changed(id, false) }
@@ -445,7 +503,7 @@ actor RemoteSessions {
         let replacement = RemoteSessionReplacement(serverID: id)
         replacements.removeValue(forKey: id)?.invalidate()
         replacements[id] = replacement
-        connecting.removeValue(forKey: id)?.task.cancel()
+        cancelAttempt(id)
         let previous = backends.removeValue(forKey: id)
         previous?.close()
         if previous != nil { await changed(id, false) }

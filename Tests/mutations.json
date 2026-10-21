@@ -2046,22 +2046,22 @@
   },
   {
     "file": "Strata/Remote/RemoteSession.swift",
-    "find": "func disconnect(_ id: String) async {\n        replacements.removeValue(forKey: id)?.invalidate()\n        connecting.removeValue(forKey: id)?.task.cancel()",
-    "replace": "func disconnect(_ id: String) async {\n        replacements.removeValue(forKey: id)?.invalidate()\n        connecting[id]?.task.cancel()",
+    "find": "guard let pending = connecting.removeValue(forKey: id) else { return }",
+    "replace": "guard let pending = connecting[id] else { return }",
     "rule": "Remote session ownership retires cancelled attempts before another caller connects",
     "tests": "RemoteSessionOwnershipTests/aNewConnectionDoesNotJoinTheCancelledAttempt"
   },
   {
     "file": "Strata/Remote/RemoteSession.swift",
-    "find": "guard connecting[id]?.token == token, !Task.isCancelled else {",
-    "replace": "guard true else {",
+    "find": "guard let attempt = connecting[id], attempt.token == token, !Task.isCancelled, waiterCount(for: id) > 0 else {",
+    "replace": "guard let attempt = connecting[id] else {",
     "rule": "Remote session ownership never publishes a cancelled or replaced attempt",
     "tests": "RemoteSessionOwnershipTests/aNewConnectionDoesNotJoinTheCancelledAttempt"
   },
   {
     "file": "Strata/Remote/RemoteSession.swift",
-    "find": "if connecting[id]?.token == token { connecting[id] = nil }",
-    "replace": "connecting[id] = nil",
+    "find": "guard let attempt = connecting[id], attempt.token == token else { return }",
+    "replace": "guard let attempt = connecting[id] else { return }",
     "rule": "Remote session ownership old failures cannot erase a newer pending connection",
     "tests": "RemoteSessionOwnershipTests/aNewConnectionDoesNotJoinTheCancelledAttempt"
   },
@@ -2074,7 +2074,7 @@
   },
   {
     "file": "Strata/Remote/RemoteSession.swift",
-    "find": "await changed(id, false)\n            guard replacements[id] == nil else { throw CancellationError() }\n            // A status callback",
+    "find": "await changed(id, false)\n            try Task.checkCancellation()\n            guard replacements[id] == nil else { throw CancellationError() }\n            // A status callback",
     "replace": "// Omit the dropped connection notification.\n            guard replacements[id] == nil else { throw CancellationError() }\n            // A status callback",
     "rule": "Remote session ownership reports a dropped connection even if reconnecting fails",
     "tests": "RemoteSessionOwnershipTests/aDroppedConnectionIsRetiredEvenWhenReconnectingFails"
@@ -2249,15 +2249,15 @@
   },
   {
     "file": "Strata/Remote/RemoteSession.swift",
-    "find": "func backend(for id: String) async throws -> any RemoteBackend {\n        guard replacements[id] == nil else { throw CancellationError() }",
-    "replace": "func backend(for id: String) async throws -> any RemoteBackend {",
+    "find": "func backend(for id: String) async throws -> any RemoteBackend {\n        try Task.checkCancellation()\n        guard replacements[id] == nil else { throw CancellationError() }",
+    "replace": "func backend(for id: String) async throws -> any RemoteBackend {\n        try Task.checkCancellation()",
     "rule": "Staged connections block automatic reconnection while copies and settings change",
     "tests": "RemoteConnectionTests/cancelledHandoffsFinishCleanupBeforeTheRetryPublishes"
   },
   {
     "file": "Strata/Remote/RemoteSession.swift",
-    "find": "await changed(id, false)\n            guard replacements[id] == nil else { throw CancellationError() }",
-    "replace": "await changed(id, false)",
+    "find": "await changed(id, false)\n            try Task.checkCancellation()\n            guard replacements[id] == nil else { throw CancellationError() }",
+    "replace": "await changed(id, false)\n            try Task.checkCancellation()",
     "rule": "Staged connections recheck reservations after dropped status callbacks",
     "tests": "RemoteConnectionTests/aReservationCreatedDuringDroppedStatusBlocksAutomaticReconnection"
   },
@@ -2701,5 +2701,54 @@
     "replace": "return saved",
     "rule": "Server store exclude invalid stored definitions without rewriting the source",
     "tests": "RemoteServerStoreTests/readingInvalidSavedDataNeverRewritesItOrTouchesCredentials"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "func backend(for id: String) async throws -> any RemoteBackend {\n        try Task.checkCancellation()",
+    "replace": "func backend(for id: String) async throws -> any RemoteBackend {",
+    "rule": "Server reader cancellation refuses an already cancelled caller",
+    "tests": "RemoteSessionOwnershipTests/anAlreadyCancelledReaderCannotBorrowAnEstablishedBackend"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "await changed(id, false)\n            try Task.checkCancellation()",
+    "replace": "await changed(id, false)",
+    "rule": "Server reader cancellation rechecks after dropped status delivery",
+    "tests": "RemoteSessionOwnershipTests/cancellationDuringDroppedStatusCannotBorrowAnotherReadersReplacement"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "connecting[id]?.waiters[waiter] = nil\n        retireAbandonedAttempt(id)",
+    "replace": "connecting[id]?.waiters[waiter] = nil\n        cancelAttempt(id)",
+    "rule": "Server reader cancellation preserves other waiters on the same login",
+    "tests": "RemoteSessionOwnershipTests/cancellingOneOfTwoWaitersFinishesPromptlyWithoutStoppingTheirSharedLogin"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "        pending.task.cancel()",
+    "replace": "        // Leave the abandoned producer running.",
+    "rule": "Server reader cancellation stops the last abandoned producer",
+    "tests": "RemoteSessionOwnershipTests/theLastCancelledWaiterRetiresItsAttemptBeforeARetryInEitherCompletionOrder"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController+Trash.swift",
+    "find": "            connecting.cancel()",
+    "replace": "            // Ignore Cancel.",
+    "rule": "Server reader cancellation native browser Cancel prevents delayed navigation",
+    "tests": "RemoteSessionOwnershipTests/theNativeBrowserCancelButtonPreventsNavigationAfterADeferredReveal"
+  },
+  {
+    "file": "Strata/Window/WorkspaceSheets.swift",
+    "find": "        onCancel = { request.cancel() }",
+    "replace": "        onCancel = {}",
+    "rule": "Server reader cancellation native workspace Cancel stops only its own request",
+    "tests": "RemoteSessionOwnershipTests/theNativeWorkspaceCancelButtonLeavesAnotherPanesLoginRunning"
+  },
+  {
+    "file": "Strata/Remote/RemoteBrowsing.swift",
+    "find": "let found = await reveal(folder)\n        try Task.checkCancellation()",
+    "replace": "let found = await reveal(folder)",
+    "rule": "Server reader cancellation refuses a folder resolved after Cancel",
+    "tests": "RemoteSessionOwnershipTests/cancellingServerResolutionDoesNotReturnALateFolder"
   }
 ]

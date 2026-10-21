@@ -229,6 +229,16 @@ final class WorkspaceConnectController: NSViewController {
         view = container
     }
 
+    /// The workspace waits on its own request; Cancel never disconnects another pane's shared session.
+    func connect(_ server: RemoteServer, using browsing: RemoteBrowsing) async throws {
+        guard !isCancelled else { throw CancellationError() }
+        let request = Task { try await browsing.connect(server) }
+        onCancel = { request.cancel() }
+        defer { onCancel = nil }
+        try await withTaskCancellationHandler { try await request.value } onCancel: { request.cancel() }
+        guard !isCancelled else { throw CancellationError() }
+    }
+
     /// Which server it's connecting to now.
     func show(_ address: String) {
         _ = view

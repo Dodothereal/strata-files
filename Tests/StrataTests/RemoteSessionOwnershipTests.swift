@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Synchronization
 import Testing
@@ -28,6 +29,7 @@ struct RemoteSessionOwnershipTests {
     private actor Factory {
         private(set) var calls: [RemoteServer] = []
         private(set) var changes: [Bool] = []
+        private(set) var cancelled: Set<Int> = []
         private var waiting: [Int: CheckedContinuation<any RemoteBackend, any Error>] = [:]
         private let held: Set<Int>
         private let holdStatus: Bool?
@@ -44,6 +46,7 @@ struct RemoteSessionOwnershipTests {
         func connect(_ server: RemoteServer) async throws -> any RemoteBackend {
             let index = calls.count
             calls.append(server)
+            defer { if Task.isCancelled { cancelled.insert(index) } }
             let started = startWaiters.filter { $0.count <= calls.count }
             startWaiters.removeAll { $0.count <= calls.count }
             for waiter in started { waiter.continuation.resume() }
@@ -98,6 +101,7 @@ struct RemoteSessionOwnershipTests {
                 let old = Backend(), replacement = Backend()
                 let first = Task { try await sessions.backend(for: server.id) }
                 await factory.waitForCalls(1)
+                let previous = try #require(await sessions.attemptCompletion(for: server.id))
                 await sessions.disconnect(server.id)
                 let second = Task { try await sessions.backend(for: server.id) }
                 let restarted = await factory.waitForReplacement()
@@ -116,9 +120,10 @@ struct RemoteSessionOwnershipTests {
                     if oldFails { await factory.fail(0) } else { await factory.finish(0, with: old) }
                     firstResult = await first.result
                 }
+                await previous.value
                 switch firstResult {
                 case .success: Issue.record("The cancelled attempt returned a backend")
-                case .failure(let error): #expect(oldFails ? error is Failure : error is CancellationError)
+                case .failure(let error): #expect(error is CancellationError)
                 }
                 switch secondResult {
                 case .success(let backend): #expect(backend === replacement && backend.isAlive)
@@ -265,6 +270,266 @@ struct RemoteSessionOwnershipTests {
         #expect(await factory.changes == [true, false, true])
         await sessions.disconnect(server.id)
         #expect(replacement.closeCount == 1)
+    }
+
+    @Test func cancellingOneReaderAfterPublicationLeavesTheSharedConnectionAlive() async throws {
+        let server = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        let factory = Factory(held: [0], holdStatus: true)
+        let sessions = RemoteSessions(server: { $0 == server.id ? server : nil },
+            connect: { try await factory.connect($0) }, changed: { _, value in await factory.changed(value) })
+        let backend = Backend()
+        let first = Task { try await sessions.backend(for: server.id) }
+        await factory.waitForCalls(1)
+        await factory.finish(0, with: backend)
+        await factory.waitForHeldStatus()
+        first.cancel()
+        #expect(try await sessions.backend(for: server.id) === backend)
+        await factory.releaseStatus()
+        await #expect(throws: CancellationError.self) { try await first.value }
+        #expect(backend.closeCount == 0 && backend.isAlive)
+        #expect(await factory.calls == [server])
+        #expect(await factory.changes == [true])
+        await sessions.disconnect(server.id)
+        #expect(backend.closeCount == 1)
+    }
+
+    private func eventually(_ condition: () async -> Bool) async -> Bool {
+        for _ in 0..<500 {
+            if await condition() { return true }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return await condition()
+    }
+
+    @Test func cancellingOneOfTwoWaitersFinishesPromptlyWithoutStoppingTheirSharedLogin() async throws {
+        let server = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        let factory = Factory(held: [0])
+        let sessions = RemoteSessions(server: { $0 == server.id ? server : nil },
+            connect: { try await factory.connect($0) }, changed: { _, value in await factory.changed(value) })
+        var firstFinished = false
+        let first = Task { defer { firstFinished = true }; return try await sessions.backend(for: server.id) }
+        await factory.waitForCalls(1)
+        let producer = try #require(await sessions.attemptCompletion(for: server.id))
+        let second = Task { try await sessions.backend(for: server.id) }
+        #expect(await eventually { await sessions.waiterCount(for: server.id) == 2 })
+        first.cancel()
+        #expect(await eventually { firstFinished })
+        #expect(await sessions.waiterCount(for: server.id) == 1)
+        #expect(!producer.isCancelled)
+        let backend = Backend()
+        await factory.finish(0, with: backend)
+        await #expect(throws: CancellationError.self) { try await first.value }
+        #expect(try await second.value === backend)
+        await producer.value
+        #expect(await factory.calls == [server])
+        #expect(await factory.cancelled.isEmpty)
+        #expect(backend.closeCount == 0 && backend.isAlive)
+        #expect(await sessions.waiterCount(for: server.id) == 0)
+        await sessions.disconnect(server.id)
+    }
+
+    @Test func theLastCancelledWaiterRetiresItsAttemptBeforeARetryInEitherCompletionOrder() async throws {
+        for oldFirst in [false, true] {
+            for oldFails in [false, true] {
+                let server = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+                let factory = Factory()
+                let sessions = RemoteSessions(server: { $0 == server.id ? server : nil },
+                    connect: { try await factory.connect($0) }, changed: { _, value in await factory.changed(value) })
+                let first = Task { try await sessions.backend(for: server.id) }
+                await factory.waitForCalls(1)
+                let producer = try #require(await sessions.attemptCompletion(for: server.id))
+                first.cancel()
+                await #expect(throws: CancellationError.self) { try await first.value }
+                let second = Task { try await sessions.backend(for: server.id) }
+                let restarted = await factory.waitForReplacement()
+                #expect(restarted && producer.isCancelled)
+                let old = Backend(), replacement = Backend()
+                if oldFirst || !restarted {
+                    if oldFails { await factory.fail(0) } else { await factory.finish(0, with: old) }
+                    await producer.value
+                }
+                await factory.finish(1, with: replacement)
+                if restarted { #expect(try await second.value === replacement) }
+                else { _ = await second.result }
+                if !oldFirst && restarted {
+                    if oldFails { await factory.fail(0) } else { await factory.finish(0, with: old) }
+                    await producer.value
+                }
+                #expect(old.closeCount == (oldFails ? 0 : 1) && replacement.closeCount == 0)
+                #expect(await factory.cancelled == [0])
+                if restarted { #expect(try await sessions.backend(for: server.id) === replacement) }
+                #expect(await sessions.isConnected(server.id))
+                #expect(await factory.changes == [true])
+                await sessions.disconnect(server.id)
+            }
+        }
+    }
+
+    @Test func anAlreadyCancelledReaderCannotBorrowAnEstablishedBackend() async throws {
+        let server = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        let factory = Factory(held: [])
+        let sessions = RemoteSessions(server: { $0 == server.id ? server : nil },
+            connect: { try await factory.connect($0) }, changed: { _, value in await factory.changed(value) })
+        let backend = try await sessions.backend(for: server.id)
+        var gate: CheckedContinuation<Void, Never>?
+        let request = Task {
+            await withCheckedContinuation { gate = $0 }
+            return try await sessions.backend(for: server.id)
+        }
+        #expect(await eventually { gate != nil })
+        request.cancel()
+        gate?.resume()
+        await #expect(throws: CancellationError.self) { try await request.value }
+        #expect(backend.isAlive)
+        #expect(try await sessions.backend(for: server.id) === backend)
+        #expect(await factory.calls == [server])
+        await sessions.disconnect(server.id)
+    }
+
+    @Test func cancellationDuringDroppedStatusCannotBorrowAnotherReadersReplacement() async throws {
+        let server = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        let factory = Factory(holdStatus: false)
+        let sessions = RemoteSessions(server: { $0 == server.id ? server : nil },
+            connect: { try await factory.connect($0) }, changed: { _, value in await factory.changed(value) })
+        let old = Backend(), replacement = Backend()
+        let first = Task { try await sessions.backend(for: server.id) }
+        await factory.waitForCalls(1)
+        await factory.finish(0, with: old)
+        #expect(try await first.value === old)
+        old.drop()
+        let noticing = Task { try await sessions.backend(for: server.id) }
+        await factory.waitForHeldStatus()
+        let other = Task { try await sessions.backend(for: server.id) }
+        await factory.waitForCalls(2)
+        await factory.finish(1, with: replacement)
+        #expect(try await other.value === replacement)
+        noticing.cancel()
+        await factory.releaseStatus()
+        await #expect(throws: CancellationError.self) { try await noticing.value }
+        #expect(old.closeCount == 1 && replacement.closeCount == 0)
+        #expect(try await sessions.backend(for: server.id) === replacement)
+        await sessions.disconnect(server.id)
+    }
+
+    private func views<T: NSView>(_ view: NSView, of type: T.Type) -> [T] {
+        (view as? T).map { [$0] } ?? view.subviews.flatMap { views($0, of: type) }
+    }
+
+    private final class BrowserEnvironment {
+        let domain = "StrataServerOpening.\(UUID().uuidString)"
+        let defaults: UserDefaults
+        let services: BrowserServices
+        init(_ tree: TestTree, browsing: RemoteBrowsing) throws {
+            defaults = try #require(UserDefaults(suiteName: domain))
+            let preferences = Prefs(defaults: defaults, domainName: domain)
+            preferences.showIconPreviews = false
+            let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
+            let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage))
+            services = BrowserServices(transfers: transfers, visits: Frecency(preferences: defaults),
+                directories: DirectoryReader { _, _, _ in [] }, preferences: preferences, remoteBrowsing: browsing)
+        }
+        isolated deinit { defaults.removePersistentDomain(forName: domain) }
+    }
+
+    @Test func theNativeBrowserCancelButtonPreventsNavigationAfterADeferredReveal() async throws {
+        _ = NSApplication.shared
+        let tree = try TestTree("local/", "server/")
+        let server = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        let factory = Factory(held: []), revealGate = Factory(held: [], holdStatus: false)
+        let sessions = RemoteSessions(server: { $0 == server.id ? server : nil },
+            connect: { try await factory.connect($0) }, changed: { _, value in await factory.changed(value) })
+        let top = tree.url("server")
+        let browsing = RemoteBrowsing(prepare: { _ in top }, backend: { try await sessions.backend(for: $0) },
+            reveal: { _ in await revealGate.changed(false); return true })
+        let environment = try BrowserEnvironment(tree, browsing: browsing)
+        let window = BrowserWindowController(location: tree.url("local"), services: environment.services)
+        defer { window.window?.close(); withExtendedLifetime(environment) {} }
+        let before = tree.snapshot(), originalLocation = window.location
+        let opening = window.openServer(server)
+        await revealGate.waitForHeldStatus()
+        let backend = try await sessions.backend(for: server.id)
+        let cancel = try #require(views(window.split.noticeBar.view, of: NSButton.self).first)
+        #expect(cancel.sendAction(cancel.action, to: cancel.target))
+        await revealGate.releaseStatus()
+        await opening.value
+        #expect(window.location == originalLocation)
+        #expect(window.split.noticeBar.isHidden && window.window?.attachedSheet == nil)
+        #expect(backend.isAlive)
+        #expect(try await sessions.backend(for: server.id) === backend)
+        await sessions.disconnect(server.id)
+        #expect(tree.snapshot() == before)
+    }
+
+    @Test func theNativeWorkspaceCancelButtonLeavesAnotherPanesLoginRunning() async throws {
+        _ = NSApplication.shared
+        let tree = try TestTree("server/")
+        let server = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        let factory = Factory(held: [0])
+        let sessions = RemoteSessions(server: { $0 == server.id ? server : nil },
+            connect: { try await factory.connect($0) }, changed: { _, value in await factory.changed(value) })
+        let top = tree.url("server")
+        let browsing = RemoteBrowsing(prepare: { _ in top }, backend: { try await sessions.backend(for: $0) }, reveal: { _ in true })
+        let sheet = WorkspaceConnectController()
+        sheet.show(server.name)
+        let before = tree.snapshot()
+        var finished = false
+        let opening = Task { defer { finished = true }; try await sheet.connect(server, using: browsing) }
+        await factory.waitForCalls(1)
+        let producer = try #require(await sessions.attemptCompletion(for: server.id))
+        let other = Task { try await sessions.backend(for: server.id) }
+        #expect(await eventually { await sessions.waiterCount(for: server.id) == 2 })
+        let cancel = try #require(views(sheet.view, of: NSButton.self).first)
+        #expect(cancel.sendAction(cancel.action, to: cancel.target))
+        #expect(await eventually { finished })
+        #expect(sheet.isCancelled && sheet.onCancel == nil && !producer.isCancelled)
+        let backend = Backend()
+        await factory.finish(0, with: backend)
+        await #expect(throws: CancellationError.self) { try await opening.value }
+        #expect(try await other.value === backend)
+        await producer.value
+        #expect(backend.closeCount == 0)
+        await #expect(throws: CancellationError.self) { try await sheet.connect(server, using: browsing) }
+        #expect(await factory.calls == [server])
+        await sessions.disconnect(server.id)
+        #expect(tree.snapshot() == before)
+    }
+
+    @Test func cancellingServerResolutionDoesNotReturnALateFolder() async throws {
+        let tree = try TestTree("server/")
+        let server = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        let backend = Backend(), top = tree.url("server")
+        let gate = Factory(held: [], holdStatus: false)
+        let browsing = RemoteBrowsing(prepare: { _ in top }, backend: { _ in backend },
+            reveal: { _ in await gate.changed(false); return true })
+        let before = tree.snapshot()
+        let request = Task { try await browsing.open(server) }
+        await gate.waitForHeldStatus()
+        request.cancel()
+        await gate.releaseStatus()
+        await #expect(throws: CancellationError.self) { try await request.value }
+        #expect(backend.isAlive && backend.closeCount == 0)
+        #expect(tree.snapshot() == before)
+    }
+
+    @Test func openingAServerKeepsItsStartingFolderAndMissingFolderFallback() async throws {
+        let tree = try TestTree("server/", "server/nested/")
+        let base = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        let backend = Backend(), top = tree.url("server"), nested = tree.url("server/nested")
+        let before = tree.snapshot()
+        for hasPath in [false, true] {
+            for found in [false, true] {
+                var definition = base; definition.path = hasPath ? "/nested" : nil
+                let server = definition
+                let expected = hasPath && found ? nested : top
+                let browsing = RemoteBrowsing(prepare: { value in #expect(value == server); return top },
+                    backend: { id in #expect(id == server.id); return backend },
+                    reveal: { url in #expect(url == (hasPath ? nested : top)); return found })
+                #expect(try await browsing.open(server).standardizedFileURL == expected.standardizedFileURL)
+                try await browsing.connect(server)
+            }
+        }
+        #expect(backend.closeCount == 0)
+        #expect(tree.snapshot() == before)
     }
 
 }

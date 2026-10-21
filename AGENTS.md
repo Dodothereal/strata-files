@@ -268,6 +268,11 @@ sheet's text before clicking a destructive button. Both builds share preferences
   publish or close its result; disconnect removes pending work before cancelling it, and late completion must not
   erase a replacement attempt. Recheck ownership after status callbacks. Tests use independent pools and controlled
   backends, including cancelled attempts, late failures and dropped connections; never fall back to live credentials.
+- Cancelling a server reader cancels only its waiting ticket. Keep a shared login alive for other panes; retire and
+  cancel it when its last reader leaves. A retry must not join an abandoned attempt, and a late result must not
+  publish over its replacement. Once published, the backend belongs to the pool, even if its original reader cancels.
+  Browser and workspace Cancel actions cancel their own requests, never disconnect by server ID. Check cancellation
+  after resolving a starting folder too, before applying navigation. Test native buttons with held fake I/O.
 - Providers backed by a session pool receive that pool through `RemoteFiles(sessions:)`. A failed read may retire
   only the exact backend it acquired, through that owner. It cannot disconnect a replacement, cancel a newer login
   or revoke a publication reservation. Ordinary operation errors keep the connection; test late timeouts and
