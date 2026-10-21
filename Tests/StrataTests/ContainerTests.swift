@@ -505,7 +505,7 @@ struct ContainerTests {
         #expect(ContainerAction.unpause.applies(to: .paused) && !ContainerAction.pause.applies(to: .paused))
     }
 
-    @Test func theTerminalScriptQuotesEverything() throws {
+    @Test func theTerminalScriptQuotesEverything() async throws {
         let bin = FileManager.default.temporaryDirectory.appending(path: "strata-bin-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: bin) }
@@ -524,16 +524,29 @@ struct ContainerTests {
         let socket = "/Users/me/odd 'socket'.sock"
         let script = bin.appending(path: "t.command")
         try ContainerControl.terminalScript(id: id, path: path, socket: socket).write(to: script, atomically: true, encoding: .utf8)
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = [script.path]
-        process.environment = ["PATH": "/usr/bin:/bin", "SHELL": bin.appending(path: "login").path, "HOME": bin.path]
-        process.currentDirectoryURL = bin
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        try process.run()
-        process.waitUntilExit()
-        let lines = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let (status, output) = try await withCheckedThrowingContinuation { (done: CheckedContinuation<(Int32, Data), Error>) in
+            DispatchQueue.global().async {
+                done.resume(with: Result {
+                    let process = Process()
+                    process.executableURL = URL(fileURLWithPath: "/bin/sh")
+                    process.arguments = [script.path]
+                    process.environment = ["PATH": "/usr/bin:/bin", "SHELL": bin.appending(path: "login").path, "HOME": bin.path]
+                    process.currentDirectoryURL = bin
+                    process.standardInput = FileHandle.nullDevice
+                    let pipe = Pipe()
+                    process.standardOutput = pipe
+                    process.standardError = pipe
+                    try process.run()
+                    defer { if process.isRunning { process.terminate() } }
+                    // Drain output before waiting for exit, and keep both waits off the main actor.
+                    let output = try pipe.fileHandleForReading.readToEnd() ?? Data()
+                    process.waitUntilExit()
+                    return (process.terminationStatus, output)
+                })
+            }
+        }
+        #expect(status == 0)
+        let lines = String(decoding: output, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         #expect(lines.prefix(8) == ["HOST=unix://" + socket, "exec", "-it", "-w", path, id, "/bin/sh", "-c"])
         #expect(!FileManager.default.fileExists(atPath: bin.appending(path: "pwned").path))
         #expect(!FileManager.default.fileExists(atPath: bin.appending(path: "pwned2").path))
