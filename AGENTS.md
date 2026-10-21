@@ -119,7 +119,8 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
   terminal path. Test teardown while finished jobs remain in the queue.
 - Tests that use the real Trash remove exactly what they put there (`tree.removeFromTrash()`). Never empty the real
   Trash: cleanup must match the saved file identity, because a restored item's old Trash path can be reused by
-  another file. Cover that reuse explicitly; a historical path alone is not ownership. `Trash.empty(_:)` takes
+  another file. Cover that reuse explicitly; a historical path alone is not ownership. Keep parked originals alive
+  through this cleanup too, so their file identities cannot be reused before the checks. `Trash.empty(_:)` takes
   the folders, so pass a fake one. Never trash or delete a real Trash, even to show
   it's refused: test the decision (`FileOps.canTrash`, `deletionPlan`) instead. Don't use `NSPasteboard.general` or
   Strata's preferences in tests: clipboard tests set `Clipboard.pasteboard` to a named pasteboard of their own.

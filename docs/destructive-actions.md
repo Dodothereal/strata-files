@@ -22,7 +22,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 | Action | Code | Tests |
 |---|---|---|
 | ⌘Z / ⇧⌘Z of moves, renames, Move to Trash | `FileOps.registerMoveUndo`, `LandedFiles` | `TrashUndoTests/undoingARenameLeavesAFileSwappedInSince`, `undoAndRedoPressedAtOnceHappenInOrder`, `undoingTwoOperationsAtOnceUndoesBoth`; `AcrossDisksTests/aRenameAcrossDisksUndoesAndRedoes` |
-| ⌘Z / ⇧⌘Z of copies, duplicates, move jobs | `TransferUndo.register`, `TransferUndo.perform`, `TransferJob.landed` | `TrashUndoTests/undoingACopyTrashesOnlyItsOwnCopies`, `undoingAMoveJobMovesBackOnlyItsOwnItems`; `TransferTests/undoingACopyLeavesAFileSwappedInWhileTheJobRan`, `aFileSwappedTheMomentItLandsIsNeverUndone`, `aRenamedFileSwappedTheMomentItLandsIsNeverUndone`; `AcrossDisksTests/aMoveJobAcrossDisksUndoesAndRedoesOnlyItsOwnItems`, `undoAndRedoPressedAtOnceAcrossDisksBothHappenInOrder`, `aFileSwappedTheMomentItLandsAcrossDisksIsNeverUndone` |
+| ⌘Z / ⇧⌘Z of copies, duplicates, move jobs | `TransferUndo.register`, `TransferUndo.perform`, `TransferJob.landed` | `TrashUndoTests/undoingACopyTrashesOnlyItsOwnCopies`, `undoingAMoveJobMovesBackOnlyItsOwnItems`; `TransferTests/replacedItemsKeepTheirOwnershipAcrossTheWorkerHandoff` (replacement ownership through worker completion, native Undo/Redo and persisted History), `undoingACopyLeavesAFileSwappedInWhileTheJobRan`, `aFileSwappedTheMomentItLandsIsNeverUndone`, `aRenamedFileSwappedTheMomentItLandsIsNeverUndone`; `AcrossDisksTests/aMoveJobAcrossDisksUndoesAndRedoesOnlyItsOwnItems`, `undoAndRedoPressedAtOnceAcrossDisksBothHappenInOrder`, `aFileSwappedTheMomentItLandsAcrossDisksIsNeverUndone` |
 | ⌘Z of New Folder / New File | `FileOps.registerTrashUndo` | `TrashUndoTests/undoingANewFolderLeavesOneMadeInItsPlace` |
 | Undo from History | `OperationLog.undo`, `holdsOriginal`, `FileIdentity.matchesHistory` | `TrashUndoTests/historyUndoBringsBackWhatWasTrashedAndOnlyThat`, `undoLeavesAloneWhatTookTheOldPlace`, `undoNeverMovesBackAnItemThatWasSwappedForAnother`, `undoMovesBackOnlyTheMovedItems`, `historyUndoChecksIdentitiesSavedByOlderVersions`, `HistoryOwnershipTests`, `TransferTests/historyRejectsItemsReplacedBeforeTransferRegistration`, `historyRejectsARenameReplacedBeforeRegistration` |
 | Saved History pairs have exactly one source and destination before undo can read them | `OperationLog.Entry.init(from:)` | `HistoryDecodingSafetyTests/malformedHistoryPairsAreRejectedBeforeUndo`, `validAndOlderHistoryRecordsKeepTheirPairs`, `invalidRecordsDoNotHideValidNeighborsOrRewriteHistory`, `unreadableHistoryNeverFallsBackToUnauthenticatedRecords`; mutation: “Malformed History pairs reach undo” |
@@ -156,6 +156,9 @@ on any function that is in neither this table nor a mutation.
   and recorded for undo, before anything else happens to it (also in same-disk `TransferUndo.start`). Tests swap the file right then, for a copy, a rename
   and a move across disks, and show the undo leaves the swapped file alone. (A move across disks keeps its original
   too: the copy no longer matches it.)
+- **Worker completion.** `TransferEngine.hooks.afterResult` runs before the main actor receives the worker’s result.
+  Tests replace an operation’s own Trash item at that point. The result must carry captured identity,
+  never adopt the item now at that path. Cleanup identifies each fixture item individually.
 - **Alerts and sheets.** What they decide is a plain function, and that function is tested (`deletionPlan`,
   `uploadChoice`, `FolderCompare.syncPlan`, `CommandLineTool.mayReplace`).
 - **Disks.** Moves across disks run against a disk image each test attaches and detaches (`ScratchVolume`). Ejecting

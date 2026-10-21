@@ -1868,5 +1868,26 @@
     "replace": "self.now = { Date() }",
     "rule": "Listing freshness clock controls cache reuse and expiry for containers",
     "tests": "CopyListingsTests/containerListingsUseTheSharedInvalidationRulesBeforeReportingFreshness"
+  },
+  {
+    "file": "Strata/Transfers/TransferJob.swift",
+    "find": "landed.set(result.replacedIdentity, at: replaced.to)",
+    "replace": "landed.record([replaced.to])",
+    "rule": "Transfer result ownership never recaptures a replaced item at the worker handoff",
+    "tests": "TransferTests/replacedItemsKeepTheirOwnershipAcrossTheWorkerHandoff"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "            if replacing {\n                result.replacedIdentity = FileIdentity.read(item.destination.path)",
+    "replace": "            if replacing {\n                result.replacedIdentity = nil",
+    "rule": "Transfer result ownership keeps replaced item ownership for moves",
+    "tests": "TransferTests/replacedItemsKeepTheirOwnershipAcrossTheWorkerHandoff"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "            let trashed: URL\n            result.replacedIdentity = FileIdentity.read(item.destination.path)",
+    "replace": "            let trashed: URL\n            result.replacedIdentity = nil",
+    "rule": "Transfer result ownership keeps replaced item ownership for copies",
+    "tests": "TransferTests/replacedItemsKeepTheirOwnershipAcrossTheWorkerHandoff"
   }
 ]

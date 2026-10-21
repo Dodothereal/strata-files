@@ -109,6 +109,8 @@ nonisolated struct TransferItemResult: Sendable {
     var failures: [TransferFailure] = []
     /// The item it replaced, now in the Trash.
     var replaced: TransferMove?
+    /// Captured before moving the replaced item into the Trash, never inferred at the later worker handoff.
+    var replacedIdentity: FileIdentity?
     /// The original is gone (move finished).
     var sourceRemoved = false
     /// What the item is where it landed (see `LandedFiles`), read as it was put there: for undo.
@@ -130,6 +132,8 @@ nonisolated enum TransferEngine {
         /// Called with an item's place the moment it has landed there and been recorded (for undo), before anything
         /// else happens to it: a test swaps the file right then.
         var afterLanding: (@Sendable (URL) -> Void)?
+        /// The worker has finished, before its result is applied on the main actor.
+        var afterResult: (@Sendable (TransferItemResult) -> Void)?
     }
 
     private static let hooksLock = NSLock()
@@ -155,6 +159,7 @@ nonisolated enum TransferEngine {
                         progress: TransferProgress) -> TransferItemResult {
         let replacing = item.decision == .replace
         var result = TransferItemResult(outcome: .failed, destination: item.destination)
+        defer { hooks.afterResult?(result) }
         guard control.checkpoint() else { result.outcome = .cancelled; return result }
         progress.update { $0.currentName = item.source.lastPathComponent }
 
@@ -169,6 +174,7 @@ nonisolated enum TransferEngine {
         if operation == .rename {
             var trashed: URL?
             if replacing {
+                result.replacedIdentity = FileIdentity.read(item.destination.path)
                 do { trashed = try trash(item.destination) } catch { return fail(trashMessage(item.destination, error)) }
             }
             // A rename keeps what the item is.
@@ -245,6 +251,7 @@ nonisolated enum TransferEngine {
                 return result
             }
             let trashed: URL
+            result.replacedIdentity = FileIdentity.read(item.destination.path)
             do { trashed = try trash(item.destination) } catch {
                 removeIfPresent(target)
                 return fail(trashMessage(item.destination, error))

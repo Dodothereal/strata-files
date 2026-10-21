@@ -2,6 +2,7 @@ import AppKit
 import CryptoKit
 import Foundation
 import Testing
+import Synchronization
 @testable import Strata
 
 private final class HistoryEnvironment {
@@ -172,6 +173,87 @@ extension TransferTests {
                 }
                 #expect(env.history.entries.isEmpty)
                 #expect(tree.snapshot() == moved.sorted())
+            }
+        }
+    }
+
+    @Test func replacedItemsKeepTheirOwnershipAcrossTheWorkerHandoff() async throws {
+        for mode in [TransferMode.copy, .move] {
+            for replacement in ["none", "file", "folder", "link", "missing"] {
+                let tree = try TestTree("from/a.txt", "from/ab.txt", "to/a.txt", "to/ab.txt", "outside/keep", "state/")
+                let env = try HistoryEnvironment(tree)
+                let target = tree.url("to/a.txt"), parked = tree.url("original")
+                let originalID = try #require(FileIdentity.read(target.path))
+                let location = Self.fixtureLocation(target)
+                let records = Mutex<[(URL, String?)]>([])
+                TransferEngine.hooks.afterResult = { result in
+                    guard Self.fixtureLocation(result.destination) == location, let moved = result.replaced else { return }
+                    // Only the fixture's original may be moved out of its precise Trash location.
+                    guard FileIdentity.read(moved.to.path) == originalID else { Issue.record("The fixture's original was lost"); return }
+                    records.withLock { $0.append((moved.to, OperationLog.identity(moved.to.path))) }
+                    guard replacement != "none" else { return }
+                    do {
+                        try FileManager.default.moveItem(at: moved.to, to: parked)
+                        switch replacement {
+                        case "file": try Data("replacement".utf8).write(to: moved.to, options: .withoutOverwriting)
+                        case "folder": try FileManager.default.createDirectory(at: moved.to, withIntermediateDirectories: false)
+                        case "link": try FileManager.default.createSymbolicLink(atPath: moved.to.path, withDestinationPath: parked.deletingLastPathComponent().appending(path: "outside").path)
+                        default: break
+                        }
+                        records.withLock { $0.append((moved.to, OperationLog.identity(moved.to.path))) }
+                    } catch { Issue.record(error) }
+                }
+                defer {
+                    TransferEngine.hooks = .init()
+                    for (url, identity) in records.withLock({ $0 }) { TestTree.removeFromTrash(url, matching: identity) }
+                    withExtendedLifetime((tree, env)) {}
+                }
+                try unrelatedTransfersKeepTheirFiles(alongside: tree)
+                let undo = UndoManager()
+                undo.groupsByEvent = false
+                undo.beginUndoGrouping()
+                let job = env.queue.enqueue([tree.url("from/a.txt")], to: tree.url("to"), mode: mode,
+                                            options: .init(verify: false, clone: false), undo: undo, conflicts: .replace)
+                await job.finished()
+                undo.endUndoGrouping()
+                TransferEngine.hooks = .init()
+                #expect(job.failures.isEmpty && job.completedItems == 1)
+                let record = try #require(env.history.entries.first)
+                let trashPath = try #require(record.replaced.first?.last)
+                let trashed = URL(fileURLWithPath: trashPath)
+                #expect(job.landed.holds(trashed) == (replacement == "none"))
+                let reopened = OperationLog(storage: env.storage)
+                let persisted = try #require(reopened.entries.first)
+                #expect(persisted.identities[trashPath] == (replacement == "none" ? OperationLog.identity(trashPath) : ""))
+                var finished = ["from/", "from/ab.txt", "outside/", "outside/keep", "state/", "state/history.sealed", "to/", "to/a.txt", "to/ab.txt"]
+                if mode == .copy { finished.append("from/a.txt") }
+                if replacement != "none" { finished.append("original") }
+                #expect(tree.snapshot() == finished.sorted())
+                var finalListing = finished
+                // Moves exercise native Undo/Redo and persisted History without sending another copy into the real Trash.
+                if mode == .move {
+                    var restored = finished.filter { $0 != "to/a.txt" }
+                    restored.append("from/a.txt")
+                    if replacement == "none" { restored.append("to/a.txt") }
+                    for _ in 0..<2 {
+                        undo.undo()
+                        await FileOps.undoWork?.value
+                        #expect(tree.snapshot() == restored.sorted())
+                        #expect(tree.text("from/a.txt") == "from/a.txt")
+                        #expect(tree.text("to/a.txt") == (replacement == "none" ? "to/a.txt" : nil))
+                        undo.redo()
+                        await FileOps.undoWork?.value
+                        #expect(tree.snapshot() == finished.sorted())
+                    }
+                    try await reopened.undo(persisted, undoManager: nil)
+                    finalListing = restored
+                    #expect(tree.snapshot() == restored.sorted())
+                    #expect(tree.text("from/a.txt") == "from/a.txt")
+                }
+                if replacement != "none" { #expect(tree.text("original") == "to/a.txt") }
+                #expect(tree.text("outside/keep") == "outside/keep")
+                #expect(tree.text("to/a.txt") == (mode == .copy ? "from/a.txt" : replacement == "none" ? "to/a.txt" : nil))
+                #expect(tree.snapshot() == finalListing.sorted())
             }
         }
     }

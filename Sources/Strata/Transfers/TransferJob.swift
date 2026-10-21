@@ -549,7 +549,7 @@ final class TransferJob {
             placed.insert(result.destination.standardizedFileURL.path.lowercased())
             // As the engine read it when it put the item there; a retry's, read now.
             landed.set(result.landed ?? FileIdentity.read(result.destination.path), at: result.destination)
-            if let replaced = result.replaced { landed.record([replaced.to]) }
+            if let replaced = result.replaced { landed.set(result.replacedIdentity, at: replaced.to) }
             // A move whose original couldn't be (or wasn't) removed leaves the only complete copy at the destination:
             // undo must not trash it.
             let originalKept = mode == .move && result.failures.contains { $0.stage == .removeSource }
