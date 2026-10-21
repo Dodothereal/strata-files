@@ -177,6 +177,91 @@ extension TransferTests {
         }
     }
 
+    @Test func retriedCopiesKeepTheirOwnershipAcrossTheWorkerHandoff() async throws {
+        for folder in [false, true] {
+            for replacement in ["none", "file", "folder", "link", "missing"] {
+                let tree = try TestTree("from/ab.txt", "to/ab.txt", "outside/keep", "state/")
+                let name = folder ? "a" : "a.txt"
+                let relative = folder ? "a/inner.txt" : "a.txt"
+                try tree.add(["from/" + relative])
+                let initial = tree.snapshot()
+                let env = try HistoryEnvironment(tree)
+                let target = tree.url("to/" + name), parked = tree.url("original")
+                let checked = tree.url("to/" + relative)
+                let location = Self.fixtureLocation(target)
+                TransferEngine.hooks.beforeVerify = { url in
+                    guard Self.fixtureLocation(url) == location else { return }
+                    do { try Data("corrupted".utf8).write(to: checked) } catch { Issue.record(error) }
+                }
+                defer { TransferEngine.hooks = .init(); withExtendedLifetime((tree, env)) {} }
+                try unrelatedTransfersKeepTheirFiles(alongside: tree)
+                let undo = UndoManager()
+                undo.groupsByEvent = false
+                undo.beginUndoGrouping()
+                let job = env.queue.enqueue([tree.url("from/" + name)], to: tree.url("to"), mode: .copy,
+                                           options: .init(verify: true, clone: false), undo: undo, conflicts: .keepBoth)
+                await job.finished()
+                undo.endUndoGrouping()
+                TransferEngine.hooks = .init()
+                #expect(job.canRetry && job.failures.count == 1 && job.failures.first?.stage == .verify)
+                #expect(!TransferEngine.exists(checked))
+                let landedAt = try #require(job.createdItems.first)
+                #expect(tree.snapshot() == (initial + ["state/history.sealed"] + (folder ? ["to/a/"] : [])).sorted())
+                let previous = FileIdentity.read(target.path)
+                let receipt = Mutex<FileIdentity?>(nil)
+                TransferEngine.hooks.afterResult = { result in
+                    guard Self.fixtureLocation(result.destination) == location else { return }
+                    receipt.withLock { $0 = result.landed }
+                    guard replacement != "none" else { return }
+                    do {
+                        try FileManager.default.moveItem(at: result.destination, to: parked)
+                        switch replacement {
+                        case "file": try Data("replacement".utf8).write(to: result.destination, options: .withoutOverwriting)
+                        case "folder": try FileManager.default.createDirectory(at: result.destination, withIntermediateDirectories: false)
+                        case "link": try FileManager.default.createSymbolicLink(atPath: result.destination.path, withDestinationPath: "../outside")
+                        default: break
+                        }
+                    } catch { Issue.record(error) }
+                }
+                try unrelatedTransfersKeepTheirFiles(alongside: tree)
+                job.retryFailed()
+                await job.finished()
+                TransferEngine.hooks = .init()
+                #expect(job.failures.isEmpty && job.completedItems == 1)
+                let owned = replacement == "none" ? target : parked
+                #expect(receipt.withLock { $0 } == FileIdentity.read(owned.path))
+                if folder { #expect(receipt.withLock { $0 } == previous) }
+                #expect(job.landed.holds(landedAt) == (replacement == "none"))
+                var expected = initial + ["state/history.sealed"]
+                let copyRoot = replacement == "none" ? "to/" + name : "original"
+                expected += folder ? [copyRoot + "/", copyRoot + "/inner.txt"] : [copyRoot]
+                switch replacement {
+                case "file": expected.append("to/" + name)
+                case "folder": expected.append("to/" + name + "/")
+                case "link": expected.append("to/" + name + " -> ../outside")
+                default: break
+                }
+                let beforeUndo = expected.sorted()
+                #expect(tree.snapshot() == beforeUndo)
+                if replacement != "none", !job.landed.holds(landedAt) {
+                    undo.undo()
+                    await FileOps.undoWork?.value
+                    #expect(tree.snapshot() == beforeUndo)
+                    undo.redo()
+                    await FileOps.undoWork?.value
+                    #expect(tree.snapshot() == beforeUndo)
+                }
+                #expect(tree.text("from/" + relative) == "from/" + relative)
+                #expect(tree.text("outside/keep") == "outside/keep")
+                #expect(tree.text("from/ab.txt") == "from/ab.txt")
+                #expect(tree.text("to/ab.txt") == "to/ab.txt")
+                let copied = replacement == "none" ? "to/" + relative : folder ? "original/inner.txt" : "original"
+                #expect(tree.text(copied) == "from/" + relative)
+                #expect(tree.snapshot() == beforeUndo)
+            }
+        }
+    }
+
     @Test func replacedItemsKeepTheirOwnershipAcrossTheWorkerHandoff() async throws {
         for mode in [TransferMode.copy, .move] {
             for replacement in ["none", "file", "folder", "link", "missing"] {

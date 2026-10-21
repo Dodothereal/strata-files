@@ -20,6 +20,9 @@ final class LandedFiles {
         identities[url.path] = identity
     }
 
+    /// Ownership already captured by the operation, carried to a worker without reading a later replacement.
+    func identity(at url: URL) -> FileIdentity? { identities[url.path] }
+
     /// The item at `url` is about to move to `destination`: a move on one disk keeps what it is, so it's expected
     /// there already. Call `arrived` once it's moved.
     func expect(_ url: URL, at destination: URL) {

@@ -292,9 +292,10 @@ nonisolated enum TransferEngine {
     }
 
     /// Second attempt at the parts of an item that failed: individual files and folders, or removing the original.
-    static func retry(_ index: Int, _ item: TransferItem, failures: [TransferFailure], options: Options,
+    static func retry(_ index: Int, _ item: TransferItem, landed: FileIdentity?, failures: [TransferFailure], options: Options,
                       control: TransferControl, progress: TransferProgress) -> TransferItemResult {
-        var result = TransferItemResult(outcome: .done, destination: item.destination)
+        var result = TransferItemResult(outcome: .done, destination: item.destination, landed: landed)
+        defer { hooks.afterResult?(result) }
         for failure in failures where failure.stage == .copy || failure.stage == .verify {
             guard control.checkpoint() else { result.outcome = .cancelled; return result }
             guard let destination = failure.destination else { continue }
@@ -311,6 +312,10 @@ nonisolated enum TransferEngine {
                                                        destination: destination, message: fatal))
                 continue
             }
+            // Recreating a top-level file gives it a new identity. Repairing a child keeps the original folder's
+            // ownership; never adopt whichever folder happens to occupy that path after the retry.
+            if destination == item.destination { result.landed = FileIdentity.read(destination.path) }
+            hooks.afterLanding?(destination)
             result.failures += copy.errors.map {
                 TransferFailure(item: index, stage: .copy, source: URL(fileURLWithPath: $0.source),
                                 destination: URL(fileURLWithPath: $0.destination), message: $0.message)

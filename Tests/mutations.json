@@ -1889,5 +1889,26 @@
     "replace": "            let trashed: URL\n            result.replacedIdentity = nil",
     "rule": "Transfer result ownership keeps replaced item ownership for copies",
     "tests": "TransferTests/replacedItemsKeepTheirOwnershipAcrossTheWorkerHandoff"
+  },
+  {
+    "file": "Strata/Transfers/TransferJob.swift",
+    "find": "landed.set(result.landed, at: result.destination)",
+    "replace": "landed.set(FileIdentity.read(result.destination.path), at: result.destination)",
+    "rule": "Retry result ownership never adopts a replacement at the worker handoff",
+    "tests": "TransferTests/retriedCopiesKeepTheirOwnershipAcrossTheWorkerHandoff"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "if destination == item.destination { result.landed = FileIdentity.read(destination.path) }",
+    "replace": "if destination == item.destination { result.landed = nil }",
+    "rule": "Retry result ownership captures a repaired top-level copy",
+    "tests": "TransferTests/retriedCopiesKeepTheirOwnershipAcrossTheWorkerHandoff"
+  },
+  {
+    "file": "Strata/Transfers/TransferJob.swift",
+    "find": "let ownership = self.landed.identity(at: item.destination)",
+    "replace": "let ownership: FileIdentity? = nil",
+    "rule": "Retry result ownership preserves the parent folder when repairing a child",
+    "tests": "TransferTests/retriedCopiesKeepTheirOwnershipAcrossTheWorkerHandoff"
   }
 ]

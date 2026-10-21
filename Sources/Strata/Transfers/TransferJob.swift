@@ -274,9 +274,10 @@ final class TransferJob {
                         continue
                     }
                     let item = self.items[index]
+                    let ownership = self.landed.identity(at: item.destination)
                     let options = self.options, control = self.control, progress = self.progress
                     let result = await self.worker.run {
-                        TransferEngine.retry(index, item, failures: list, options: options, control: control, progress: progress)
+                        TransferEngine.retry(index, item, landed: ownership, failures: list, options: options, control: control, progress: progress)
                     }
                     self.apply(result, to: index, isRetry: true)
                 }
@@ -547,8 +548,8 @@ final class TransferJob {
         switch result.outcome {
         case .done, .partial:
             placed.insert(result.destination.standardizedFileURL.path.lowercased())
-            // As the engine read it when it put the item there; a retry's, read now.
-            landed.set(result.landed ?? FileIdentity.read(result.destination.path), at: result.destination)
+            // Both the first pass and retries carry ownership captured by the worker.
+            landed.set(result.landed, at: result.destination)
             if let replaced = result.replaced { landed.set(result.replacedIdentity, at: replaced.to) }
             // A move whose original couldn't be (or wasn't) removed leaves the only complete copy at the destination:
             // undo must not trash it.
