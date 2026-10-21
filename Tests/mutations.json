@@ -2344,5 +2344,103 @@
     "replace": "guard false else { return }\n        backends[id] = nil",
     "rule": "Remote read ownership retires and closes an unresponsive current backend",
     "tests": "RemoteFilesTests/unresponsiveListingsRetireOnlyTheirOwningPoolAndLeaveOtherErrorsConnected"
+  },
+  {
+    "file": "Strata/Browser/BrowserOrdering.swift",
+    "find": "guard let choice else { return [] }",
+    "replace": "let choice = choice ?? folderChoice",
+    "rule": "Browser ordering results keep incoming order until a column is chosen",
+    "tests": "BrowserOrderingTests/resultOrderBelongsToOneResultSessionAndRestoresTheFolderChoice"
+  },
+  {
+    "file": "Strata/Browser/BrowserOrdering.swift",
+    "find": "return choice.ascending ? result == .orderedAscending : result == .orderedDescending",
+    "replace": "return result == .orderedAscending",
+    "rule": "Browser ordering every field respects its selected direction",
+    "tests": "BrowserOrderingTests/everySortKeyUsesItsValueAndDirection"
+  },
+  {
+    "file": "Strata/Browser/BrowserOrdering.swift",
+    "find": "case .dimensions: result = compare(metadata.media(a)?.pixels ?? -1, metadata.media(b)?.pixels ?? -1)",
+    "replace": "case .dimensions: result = compare(metadata.media(a)?.width ?? -1, metadata.media(b)?.width ?? -1)",
+    "rule": "Browser ordering dimensions compare pixel count rather than width",
+    "tests": "BrowserOrderingTests/everySortKeyUsesItsValueAndDirection"
+  },
+  {
+    "file": "Strata/Browser/BrowserOrdering.swift",
+    "find": "if foldersFirst, a.isFolder != b.isFolder { return a.isFolder }",
+    "replace": "if foldersFirst, a.isDirectory != b.isDirectory { return a.isDirectory }",
+    "rule": "Browser ordering folders first excludes packages and does not reverse",
+    "tests": "BrowserOrderingTests/foldersFirstDoesNotReverseOrTreatPackagesAsNavigableFolders"
+  },
+  {
+    "file": "Strata/Browser/BrowserOrdering.swift",
+    "find": "names == .orderedAscending\n        }",
+    "replace": "(choice.ascending ? names == .orderedAscending : names == .orderedDescending)\n        }",
+    "rule": "Browser ordering equal values retain ascending name ties in descending order",
+    "tests": "BrowserOrderingTests/equalValuesKeepAscendingNameAndPathTiesInBothDirections"
+  },
+  {
+    "file": "Strata/Browser/BrowserOrdering.swift",
+    "find": "names == .orderedSame ? a.url.path < b.url.path :",
+    "replace": "names == .orderedSame ? false :",
+    "rule": "Browser ordering equal labels retain a deterministic path tie",
+    "tests": "BrowserOrderingTests/equalValuesKeepAscendingNameAndPathTiesInBothDirections"
+  },
+  {
+    "file": "Strata/Browser/BrowserOrdering.swift",
+    "find": "visit(&children)",
+    "replace": "// Do not visit loaded descendants.",
+    "rule": "Browser ordering loaded descendants receive their own metadata requests",
+    "tests": "BrowserOrderingTests/mediaRequestsIncludeLoadedDescendantsButOtherOrdersDoNotLoadMetadata"
+  },
+  {
+    "file": "Strata/Browser/BrowserOrdering.swift",
+    "find": "sizes[key] = bytes",
+    "replace": "// Do not remember this folder size.",
+    "rule": "Browser ordering one pass memoizes missing folder sizes too",
+    "tests": "BrowserOrderingTests/aSizePassBatchesEachParentAndMemoizesMissingTotalsWithoutRetainingThem"
+  },
+  {
+    "file": "Strata/Browser/BrowserOrdering.swift",
+    "find": "if parents.insert(parent).inserted {",
+    "replace": "if true {",
+    "rule": "Browser ordering one batch serves siblings in the same parent",
+    "tests": "BrowserOrderingTests/aSizePassBatchesEachParentAndMemoizesMissingTotalsWithoutRetainingThem"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "if !changedParents.isEmpty {",
+    "replace": "if false {",
+    "rule": "Browser ordering native descendants refresh even when roots stay in place",
+    "tests": "BrowserOrderingTests/metadataResortUpdatesNativeDescendantRowsAndKeepsSelection"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "guard !updatingSortDescriptor, let descriptor = outlineView.sortDescriptors.first,",
+    "replace": "guard let descriptor = outlineView.sortDescriptors.first,",
+    "rule": "Browser ordering programmatic choices update the native header without persisting",
+    "tests": "BrowserOrderingTests/nativeHeadersSelectionsAndSavedChoicesFollowResultAndFolderTransitions"
+  },
+  {
+    "file": "Strata/Browser/BrowserOrdering.swift",
+    "find": "if isShowingResults { resultChoice = choice }",
+    "replace": "if isShowingResults { resultChoice = choice; folderChoice = choice }",
+    "rule": "Browser ordering result sorting leaves the remembered folder choice intact",
+    "tests": "BrowserOrderingTests/resultOrderBelongsToOneResultSessionAndRestoresTheFolderChoice"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "if isRenamingInPlace { deferredMetadataOrder = true; return }",
+    "replace": "// Reorder during native editing.",
+    "rule": "Browser ordering metadata waits for the native inline edit to end",
+    "tests": "BrowserOrderingTests/metadataResortWaitsForTheNativeInlineEditorToFinish"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "deferredMetadataOrder = false\n            resortAfterMetadata()",
+    "replace": "deferredMetadataOrder = false",
+    "rule": "Browser ordering deferred metadata order resumes when editing ends",
+    "tests": "BrowserOrderingTests/metadataResortWaitsForTheNativeInlineEditorToFinish"
   }
 ]

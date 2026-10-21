@@ -77,6 +77,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 | Action | Code | Tests |
 |---|---|---|
 | Remote connections retain their own attempt and backend through cancellation, reconnection and status delivery | `RemoteSessions.backend`, `establish`, `disconnect` | `RemoteSessionOwnershipTests/*`; mutations: “Remote session ownership” |
+| Sorting preserves file identity and native selection, including loaded descendants; metadata cannot impose folder order on unsorted results | `BrowserOrdering`, `BrowserViewController.resortAfterMetadata`, `applySort` | `BrowserOrderingTests/*`, `BrowserListingTests/*`, `MediaColumnsTests/*`; mutations: “Browser ordering” |
 | Remote listing timeouts retire only the acquired backend in its owning pool; late failures leave replacements and reservations intact | `RemoteFiles.list`, `RemoteSessions.retire` | `RemoteFilesTests/unresponsiveListingsRetireOnlyTheirOwningPoolAndLeaveOtherErrorsConnected`, `lateListingTimeoutCannotRetireAReplacementOrRevokeItsReservation`, `failedBackendAcquisitionHasNoConnectionToRetire`; mutations: “Remote read ownership” |
 | Proposed server settings and credentials stay private until verification; cache retirement and publication retain request ownership through cancellation, removal and retry | `RemoteConnections`, `RemoteSessions.reserveReplacement`, `release`, `install`, `ConnectToServerController.tryConnecting` | `RemoteConnectionTests/*`; mutations: “Staged connections” |
 | Remote secrets are updated in place and kept on errors; all reads, writes and deletion target only their server and service | `RemoteKeychain`, `KeychainAccess`, `S3Backend.init` | `RemoteKeychainTests/*`; mutations: “Remote credentials” |
@@ -137,7 +138,6 @@ on any function that is in neither this table nor a mutation.
 |---|---|
 | `AI/PlanGenerator :: (top level)`, `recipe`, `init`, `expand`; `AI/PlanModel :: init`; `AI/PlanValidator :: validate`, `needFolder`; `AI/RenameRules :: plan` | `rename` here is a plan step's name, not a file call. The steps are carried out by `PlanExecutor` (mutated). |
 | `App/StrataCommand :: init`; `App/MainMenu :: build`, `menuNeedsUpdate`, `rename`; `Window/Workspaces :: rename`, `askToRename` | A workspace's name in saved settings, and the menu items for it. No files. |
-| `Browser/BrowserViewController :: resortAnimated` | Moves rows of a table. |
 | `Browser/BrowserViewController :: renameItem`; `Views/ClickToRename :: clicked`; `Browser/BrowserViewController+Servers :: renameOnServer` | Hand the typed name to `FileOps.rename` or `RemoteFiles.rename` (both mutated), which hold every check. |
 | `Model/Places :: eject`; `Sidebar/SidebarViewController :: menuNeedsUpdate`, `ejectItem`; `Window/BrowserWindowController :: focusSearch`, `ejectVolume`, `validateMenuItem` | Hand a disk to macOS to eject. Nothing of the user's changes. |
 | `Dock/DockSearch :: restartDock` | Relaunches the Dock (`killall Dock`). No files. |
@@ -191,7 +191,7 @@ belong to.
 | `Browser/BrowserViewController+ArchiveBrowsing :: unpackForBrowsing` (makes the copy's folder) | `ArchiveSafetyTests/*` |
 | `Browser/BrowserViewController+Servers :: renameOnServer` | `ServerSafetyTests/renamingOnAServerStaysInTheFolderAndReplacesNothing` |
 | `Browser/BrowserViewController+Trash :: putBack` (remakes missing folders), `deleteAll` | `PutBackTests/*`, `TrashUndoTests/undoingAPutBackRemovesOnlyTheFoldersItMadeOnceEmpty`; `DeleteTests/*` |
-| `Browser/BrowserViewController :: resortAnimated` (rows in a table, not files), `renameItem` | `InlineRenameTests/*` |
+| `Browser/BrowserViewController :: resortAfterMetadata` (rows in a table, not files), `renameItem` | `BrowserOrderingTests/*`; `InlineRenameTests/*` |
 | `Containers/ContainerCopies :: prepare`, `stackFolder`, `record`, `setAttribute`, `finish`, `setAsideForRemoval` | `ContainerTests/theContainersFolderFollowsTheEngine` … `aContainerCalledLikeAProjectKeepsItsFiles`; `RemoteFilesTests/copiedOutLinksLeadingOutsideAreDropped`, `mergingOutLeavesWhatWasThereAlone`; `CacheRemovalTests/settingCopiesAsideRemovesOnlyThemAtQuit` |
 | `Containers/ContainerDrag :: filePromiseProvider` | `ContainerCopyTests/aDraggedOutItemNeverReplacesWhatsAtTheDrop` |
 | `Containers/ContainerFiles :: place`, `bringDown`, `apply`, `makeFolders`, `folderFD`, `write`, `makePlaceholder`, `remember`, `restoreTimes`, `setTimes`, `setLinkTimes`, `markDownloaded`, `systemQuarantine` (a probe file of its own), `removeAt` | `ContainerCopyTests/aContainersFolderIsWrittenOnlyIntoItsCopy`, `aCopyThatIsALinkIsNotWrittenThrough`; `ContainerTests/listingsAreWrittenWithoutEscapingTheFolder`, `linksAlwaysResolveInsideTheCopy`, `composeProjectsGroupTheirContainers`, `aLeftoverFolderNamedLikeAProjectMakesWay` |

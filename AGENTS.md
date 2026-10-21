@@ -212,6 +212,13 @@ sheet's text before clicking a destructive button. Both builds share preferences
 - Browser entries, filtered rows and path lookup belong to `BrowserListing`. Preserve node identity on refresh,
   create fresh roots on navigation, and validate a whole result update before changing any node. Keep native
   selection, expansion and editing in the AppKit controller; publish entries before applying pending actions.
+- Sort choices and comparisons belong to `BrowserOrdering`, with cached metadata supplied by its owner. Results
+  retain incoming order until a column is selected; late metadata must not impose the previous folder's order.
+  Returning to a folder restores its choice, and programmatic choices must not write preferences through a native
+  descriptor callback. Keep native headers and row animation in AppKit. Refresh changed child orders even when
+  roots do not move, preserving expansion and selection. Defer metadata ordering during a native inline edit and
+  apply it when editing ends. Batch directory totals per pass and never cache an
+  unknown size across passes; test read counts and results with injected metadata, not elapsed-time thresholds.
 - `BrowserPresentations` owns lazy view creation and attachment. Feed alternative views through
   `FileCollectionController.apply` with the same sorted/filtered content; each view keeps its native selection
   policy and requests only the metadata it needs. Metadata and view callbacks must keep the browser weak.

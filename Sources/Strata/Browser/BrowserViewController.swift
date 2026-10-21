@@ -16,13 +16,6 @@ protocol BrowserViewControllerDelegate: AnyObject {
     func browser(_ browser: BrowserViewController, reveal url: URL)
 }
 
-enum SortKey: String {
-    case name, modified, created, added, size, kind, dimensions, width, height, duration
-    case fileExtension = "extension"
-
-    var isMedia: Bool { ListColumn(rawValue: rawValue)?.isMedia == true }
-}
-
 private extension NSUserInterfaceItemIdentifier {
     static let name = Self("name")
     static let modified = Self("modified")
@@ -48,8 +41,6 @@ final class BrowserViewController: NSViewController {
 
     init(services: BrowserServices = .shared) {
         self.services = services
-        sortKey = SortKey(rawValue: services.preferences.sortColumn) ?? .name
-        ascending = services.preferences.sortAscending
         mode = BrowserViewMode(rawValue: services.preferences.viewMode) ?? .list
         directoryReads = DirectoryReadSession(reader: services.directories)
         super.init(nibName: nil, bundle: nil)
@@ -102,8 +93,6 @@ final class BrowserViewController: NSViewController {
 
     /// Date and Kind widths from before showing results (they make room for "Where").
     private var columnWidthsBeforeResults: [(NSUserInterfaceItemIdentifier, CGFloat)] = []
-    /// Folder sizes for the sort in progress, by standardized path.
-    private var sizeMemo: [String: Int64]?
     var filter: String { listing.filter }
     private(set) var availableCapacity: Int64?
 
@@ -123,8 +112,14 @@ final class BrowserViewController: NSViewController {
     private var watchers: [DirectoryWatcher] = []
     /// Keeps git status for the shown folder's repository fresh (FSEvents) while this folder is shown.
     private var gitObservation: GitObservation?
-    private var sortKey: SortKey
-    private var ascending: Bool
+    private lazy var ordering = BrowserOrdering(
+        choice: .init(key: SortKey(rawValue: preferences.sortColumn) ?? .name, ascending: preferences.sortAscending),
+        foldersFirst: { [weak self] in self?.preferences.foldersFirst ?? true },
+        metadata: .init(folderSize: { [weak self] in self?.folderSize($0)?.bytes },
+                        childFolderSizes: { FileIndex.shared.childFolderSizes($0).mapValues(\.bytes) },
+                        media: { [weak self] in self?.mediaInfo.cached($0) },
+                        requestMedia: { [weak self] in self?.mediaInfo.request($0) }))
+    private var updatingSortDescriptor = false
     /// Selected once the folder shows them (after the reload a change brings).
     var pendingSelection: [URL]?
     /// Opens the folder row a drag rests on (only rows still on screen).
@@ -145,11 +140,11 @@ final class BrowserViewController: NSViewController {
     /// The folder read again while a name was being edited in place: shown once the edit ends.
     private var deferredApply: (entries: [FileEntry], preservingState: Bool, fromTop: Bool, generation: Int)?
     private var resortWork: DispatchWorkItem?
+    private var deferredMetadataOrder = false
     /// Showing search results or Recents instead of a folder's contents.
-    private(set) var isShowingResults = false
+    var isShowingResults: Bool { ordering.isShowingResults }
     private var resultsTotal = 0
     private var resultsSummary: String?
-    private var folderSortDescriptors: [NSSortDescriptor] = []
     /// How the folder is presented. Results (search, Recents, Duplicates) always use the list.
     private(set) var mode: BrowserViewMode
     let presentations = BrowserPresentations()
@@ -261,7 +256,7 @@ final class BrowserViewController: NSViewController {
         }
         ov.headerView?.menu = columnsMenu
         applyColumnVisibility(fitName: false)
-        ov.sortDescriptors = [NSSortDescriptor(key: preferences.sortColumn, ascending: preferences.sortAscending)]
+        syncSortDescriptor()
 
         ov.onType = { [weak self] text in self?.setFilter((self?.filter ?? "") + text) }
         ov.onBackspace = { [weak self] in
@@ -554,9 +549,7 @@ final class BrowserViewController: NSViewController {
         resultsSummary = nil
         loadError = nil
         isLoaded = true
-        listing.replace(entries, preservingNodes: false, sort: { nodes in
-            if !outlineView.sortDescriptors.isEmpty { sort(&nodes) }
-        })
+        listing.replace(entries, preservingNodes: false, sort: sort)
         localizeResultNames()
         outlineView.reloadData()
         select(selection, scroll: false)
@@ -569,7 +562,7 @@ final class BrowserViewController: NSViewController {
     /// When `entries` are the files already listed (in any order: a clicked column header sorts them), takes their new
     /// sizes and dates and returns true. Otherwise changes nothing and returns false.
     private func updateResultsInPlace(_ entries: [FileEntry]) -> Bool {
-        guard let changed = listing.updateResults(entries, sorted: !outlineView.sortDescriptors.isEmpty) else { return false }
+        guard let changed = listing.updateResults(entries, sorted: ordering.choice != nil) else { return false }
         guard !changed.isEmpty else { return true }
         var rowsToReload = IndexSet()
         for node in changed {
@@ -621,7 +614,7 @@ final class BrowserViewController: NSViewController {
             }
             guard changed else { return }
             listing.sort { nodes in
-                if !outlineView.sortDescriptors.isEmpty, resultsSummary == nil { sort(&nodes) }
+                if resultsSummary == nil { sort(&nodes) }
             }
             outlineView.reloadData()
             for node in expanded { outlineView.expandItem(node) }
@@ -646,10 +639,9 @@ final class BrowserViewController: NSViewController {
         if !isShowingResults {
             cancelPendingActions()
             deferredApply = nil
-            isShowingResults = true
+            ordering.enterResults()
             installActiveView()
-            folderSortDescriptors = outlineView.sortDescriptors
-            outlineView.sortDescriptors = []
+            syncSortDescriptor()
             // Make room for "Where" from Date and Kind, not from Name (the only column that gives up width on its own).
             columnWidthsBeforeResults = [.modified, .created, .kind].compactMap { id in outlineView.tableColumn(withIdentifier: id).map { (id, $0.width) } }
             outlineView.tableColumn(withIdentifier: .modified)?.width = 130
@@ -663,68 +655,31 @@ final class BrowserViewController: NSViewController {
     }
 
     private func leaveResults() {
-        isShowingResults = false
+        if let remembered = ordering.leaveResults() {
+            preferences.sortColumn = remembered.key.rawValue
+            preferences.sortAscending = remembered.ascending
+        }
         installActiveView()
         outlineView.tableColumn(withIdentifier: .location)?.isHidden = true
         for (id, width) in columnWidthsBeforeResults { outlineView.tableColumn(withIdentifier: id)?.width = width }
         columnWidthsBeforeResults = []
         fitNameColumn()
-        outlineView.sortDescriptors = folderSortDescriptors.isEmpty
-            ? [NSSortDescriptor(key: preferences.sortColumn, ascending: preferences.sortAscending)] : folderSortDescriptors
+        syncSortDescriptor()
     }
 
     // MARK: - Sorting and filtering
 
-    private func sort(_ list: inout [FileNode]) {
-        if sortKey.isMedia { for node in list { mediaInfo.request(node.entry) } }
-        // Sorting by size needs every folder's size: look them up once per folder, not twice per comparison.
-        let ownsMemo = sortKey == .size && sizeMemo == nil
-        if ownsMemo {
-            sizeMemo = [:]
-            for folder in Set(list.map { $0.url.deletingLastPathComponent() }) {
-                for (path, size) in FileIndex.shared.childFolderSizes(folder) { sizeMemo?[path] = size.bytes }
-            }
-        }
-        defer { if ownsMemo { sizeMemo = nil } }
-        list.sort { ordered($0.entry, $1.entry) }
-        for node in list { if var children = node.children { sort(&children); node.children = children } }
-    }
+    private func sort(_ list: inout [FileNode]) { _ = ordering.sort(&list) }
 
-    /// The current sort order (column, direction, folders on top), shared with the column view.
-    func ordered(_ a: FileEntry, _ b: FileEntry) -> Bool {
-        if preferences.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
-        let result: ComparisonResult
-        switch sortKey {
-        case .name: result = a.displayName.localizedStandardCompare(b.displayName)
-        case .modified: result = compare(a.modified ?? .distantPast, b.modified ?? .distantPast)
-        case .created: result = compare(a.created ?? .distantPast, b.created ?? .distantPast)
-        case .added: result = compare(a.added ?? .distantPast, b.added ?? .distantPast)
-        case .size: result = compare(sizeValue(a), sizeValue(b))
-        case .kind: result = a.kind.localizedStandardCompare(b.kind)
-        case .fileExtension: result = a.url.pathExtension.localizedStandardCompare(b.url.pathExtension)
-        case .dimensions: result = compare(mediaInfo.cached(a)?.pixels ?? -1, mediaInfo.cached(b)?.pixels ?? -1)
-        case .width: result = compare(mediaInfo.cached(a)?.width ?? -1, mediaInfo.cached(b)?.width ?? -1)
-        case .height: result = compare(mediaInfo.cached(a)?.height ?? -1, mediaInfo.cached(b)?.height ?? -1)
-        case .duration: result = compare(mediaInfo.cached(a)?.duration ?? -1, mediaInfo.cached(b)?.duration ?? -1)
-        }
-        if result == .orderedSame {
-            let names = a.displayName.localizedStandardCompare(b.displayName)
-            return names == .orderedSame ? a.url.path < b.url.path : names == .orderedAscending
-        }
-        return ascending ? result == .orderedAscending : result == .orderedDescending
-    }
+    /// The same order feeds the native list and deeper columns.
+    func ordered(_ a: FileEntry, _ b: FileEntry) -> Bool { ordering.ordered(a, b) }
 
-    private func compare<T: Comparable>(_ a: T, _ b: T) -> ComparisonResult {
-        a < b ? .orderedAscending : a > b ? .orderedDescending : .orderedSame
-    }
-
-    private func sizeValue(_ entry: FileEntry) -> Int64 {
-        guard entry.isDirectory else { return entry.size ?? 0 }
-        let key = entry.url.standardizedFileURL.path
-        if let cached = sizeMemo?[key] { return cached }
-        let bytes = folderSize(entry.url)?.bytes ?? -1
-        sizeMemo?[key] = bytes
-        return bytes
+    private func syncSortDescriptor() {
+        let descriptors = ordering.choice.map { [NSSortDescriptor(key: $0.key.rawValue, ascending: $0.ascending)] } ?? []
+        guard outlineView.sortDescriptors != descriptors else { return }
+        updatingSortDescriptor = true
+        defer { updatingSortDescriptor = false }
+        outlineView.sortDescriptors = descriptors
     }
 
     func setFilter(_ text: String) {
@@ -744,16 +699,31 @@ final class BrowserViewController: NSViewController {
 
     /// Re-sorts after folder sizes arrive while sorting by size, animating rows into place.
     private func scheduleResort() {
+        guard ordering.choice != nil else { return }
         resortWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.resortAnimated() } }
+        let work = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.resortAfterMetadata() } }
         resortWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
     }
 
-    private func resortAnimated() {
-        guard filter.isEmpty else { return }
+    func resortAfterMetadata() {
+        guard ordering.choice != nil, filter.isEmpty else { return }
+        if isRenamingInPlace { deferredMetadataOrder = true; return }
+        let selection = selectedURLs
         var sorted = nodes
-        sort(&sorted)
+        let changedParents = ordering.sort(&sorted)
+        if !changedParents.isEmpty {
+            let expanded = (0..<outlineView.numberOfRows).compactMap { outlineView.item(atRow: $0) as? FileNode }
+                .filter { outlineView.isItemExpanded($0) }
+            // Root moves alone cannot update the outline's cached child rows. Keep native expansion and selection
+            // while applying changed descendant orders; shallow lists retain the usual animated root moves below.
+            listing.reorderRoots(sorted)
+            outlineView.reloadData()
+            for node in expanded { outlineView.expandItem(node) }
+            select(selection, scroll: false)
+            pushContent()
+            return
+        }
         guard sorted.map(ObjectIdentifier.init) != rows.map(ObjectIdentifier.init) else { return }
         var working = rows
         outlineView.beginUpdates()
@@ -776,7 +746,7 @@ final class BrowserViewController: NSViewController {
         if row >= 0, column >= 0 { outlineView.reloadData(forRowIndexes: [row], columnIndexes: [column]) }
         treemapController?.updateSize(folderSize(url)?.bytes, for: url)
         if mode == .grid { gridController?.reloadItems([url]) }
-        if sortKey == .size { scheduleResort() }
+        if ordering.choice?.key == .size { scheduleResort() }
         if row >= 0, outlineView.selectedRowIndexes.contains(row) { delegate?.browserContentDidChange(self) }
     }
 
@@ -788,7 +758,7 @@ final class BrowserViewController: NSViewController {
             return !column.isHidden && ListColumn(rawValue: column.identifier.rawValue)?.isMedia == true
         })
         if row >= 0, !columns.isEmpty { outlineView.reloadData(forRowIndexes: [row], columnIndexes: columns) }
-        if sortKey.isMedia { scheduleResort() }
+        if ordering.choice?.key.isMedia == true { scheduleResort() }
     }
 
     // MARK: - Selection
@@ -1247,7 +1217,7 @@ final class BrowserViewController: NSViewController {
         if column >= 0, !folders.isEmpty {
             outlineView.reloadData(forRowIndexes: folders, columnIndexes: [column])
         }
-        if sortKey == .size, !outlineView.sortDescriptors.isEmpty { scheduleResort() }
+        if ordering.choice?.key == .size { scheduleResort() }
         if effectiveMode == .treemap { pushContent(animated: true) }
         if effectiveMode == .grid { gridController?.refreshVisibleItems(reconfigure: true) }
         delegate?.browserContentDidChange(self)
@@ -1789,13 +1759,14 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     }
 
     func outlineView(_ outlineView: NSOutlineView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-        guard let descriptor = outlineView.sortDescriptors.first, let key = SortKey(rawValue: descriptor.key ?? "") else { return }
+        guard !updatingSortDescriptor, let descriptor = outlineView.sortDescriptors.first,
+              let key = SortKey(rawValue: descriptor.key ?? "") else { return }
         applySort(key, ascending: descriptor.ascending)
     }
 
     func applySort(_ key: SortKey, ascending direction: Bool, remember: Bool = true) {
-        sortKey = key
-        ascending = direction
+        ordering.choose(.init(key: key, ascending: direction), remember: remember)
+        syncSortDescriptor()
         if remember { preferences.sortColumn = key.rawValue; preferences.sortAscending = direction }
         let selection = selectedURLs
         listing.sort(using: sort)
@@ -1887,6 +1858,10 @@ extension BrowserViewController: NSTextFieldDelegate {
             if row >= 0 { outlineView.reloadData(forRowIndexes: [row], columnIndexes: [outlineView.column(withIdentifier: .name)]) }
         }
         view.window?.makeFirstResponder(outlineView)
+        if deferredMetadataOrder {
+            deferredMetadataOrder = false
+            resortAfterMetadata()
+        }
         guard !newName.isEmpty, newName != node.entry.name else { return }
         renameItem(node.url, to: newName)
     }
