@@ -419,14 +419,15 @@ struct RemoteSessionOwnershipTests {
         let domain = "StrataServerOpening.\(UUID().uuidString)"
         let defaults: UserDefaults
         let services: BrowserServices
-        init(_ tree: TestTree, browsing: RemoteBrowsing) throws {
+        init(_ tree: TestTree, browsing: RemoteBrowsing,
+             openContainer: @escaping @MainActor @Sendable (String) async throws -> URL = { _ in throw Failure.refused }) throws {
             defaults = try #require(UserDefaults(suiteName: domain))
             let preferences = Prefs(defaults: defaults, domainName: domain)
             preferences.showIconPreviews = false
             let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
             let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage))
             services = BrowserServices(transfers: transfers, visits: Frecency(preferences: defaults),
-                directories: DirectoryReader { _, _, _ in [] }, preferences: preferences, remoteBrowsing: browsing)
+                directories: DirectoryReader { _, _, _ in [] }, preferences: preferences, remoteBrowsing: browsing, openContainer: openContainer)
         }
         isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }
@@ -458,6 +459,187 @@ struct RemoteSessionOwnershipTests {
         #expect(try await sessions.backend(for: server.id) === backend)
         await sessions.disconnect(server.id)
         #expect(tree.snapshot() == before)
+    }
+
+    @Test func aDeferredServerOpeningKeepsItsOriginalPaneWhenFocusChanges() async throws {
+        _ = NSApplication.shared
+        let tree = try TestTree("local/", "other/", "server/")
+        let server = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        let gate = Factory(held: [], holdStatus: false), backend = Backend(), top = tree.url("server")
+        let browsing = RemoteBrowsing(prepare: { _ in top }, backend: { _ in backend },
+            reveal: { _ in await gate.changed(false); return true })
+        let environment = try BrowserEnvironment(tree, browsing: browsing)
+        let window = BrowserWindowController(location: tree.url("local"), services: environment.services)
+        defer { window.window?.close(); withExtendedLifetime(environment) {} }
+        let before = tree.snapshot(), original = window.pane
+        window.toggleDualPane(at: tree.url("other"))
+        let opening = window.openServer(server)
+        await gate.waitForHeldStatus()
+        window.focusOtherPane(nil)
+        let focused = window.pane, focusedLocation = window.location
+        await gate.releaseStatus()
+        await opening.value
+        #expect(window.pane === focused)
+        #expect(window.location == focusedLocation)
+        #expect(original.location == top.standardizedFileURL)
+        #expect(original.backStack == [.folder(tree.url("local").standardizedFileURL)])
+        #expect(focused.backStack.isEmpty)
+        #expect(tree.snapshot() == before)
+    }
+
+    @Test func navigatingAwayAndBackDiscardsADeferredServerOpening() async throws {
+        _ = NSApplication.shared
+        let tree = try TestTree("local/", "other/", "server/")
+        let server = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        let gate = Factory(held: [], holdStatus: false), backend = Backend(), top = tree.url("server")
+        let browsing = RemoteBrowsing(prepare: { _ in top }, backend: { _ in backend },
+            reveal: { _ in await gate.changed(false); return true })
+        let environment = try BrowserEnvironment(tree, browsing: browsing)
+        let window = BrowserWindowController(location: tree.url("local"), services: environment.services)
+        defer { window.window?.close(); withExtendedLifetime(environment) {} }
+        let before = tree.snapshot(), originalLocation = window.location
+        let opening = window.openServer(server)
+        await gate.waitForHeldStatus()
+        window.navigate(to: tree.url("other"))
+        window.navigate(to: originalLocation)
+        let history = window.pane.backStack
+        await gate.releaseStatus()
+        await opening.value
+        #expect(window.location == originalLocation)
+        #expect(window.pane.backStack == history)
+        #expect(window.window?.attachedSheet == nil)
+        #expect(tree.snapshot() == before)
+    }
+
+    @Test func closingAnOpeningPaneCancelsItsRequestWithoutMovingTheRemainingPane() async throws {
+        _ = NSApplication.shared
+        let tree = try TestTree("local/", "other/", "server/")
+        let server = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        let gate = Factory(held: [], holdStatus: false), backend = Backend(), top = tree.url("server")
+        let browsing = RemoteBrowsing(prepare: { _ in top }, backend: { _ in backend },
+            reveal: { _ in await gate.changed(false); return true })
+        let environment = try BrowserEnvironment(tree, browsing: browsing)
+        let window = BrowserWindowController(location: tree.url("local"), services: environment.services)
+        defer { window.window?.close(); withExtendedLifetime(environment) {} }
+        let before = tree.snapshot()
+        window.toggleDualPane(at: tree.url("other"))
+        let opening = window.openServer(server)
+        await gate.waitForHeldStatus()
+        window.focusOtherPane(nil)
+        let retained = window.pane, destination = window.location
+        window.toggleDualPane(nil)
+        #expect(opening.isCancelled)
+        await gate.releaseStatus()
+        await opening.value
+        #expect(window.pane === retained && window.location == destination)
+        #expect(window.window?.attachedSheet == nil)
+        #expect(tree.snapshot() == before)
+    }
+
+    @Test func containerOpeningsUseTheSamePaneOwnershipAndNavigationCancellation() async throws {
+        _ = NSApplication.shared
+        let tree = try TestTree("local/", "other/", "container/")
+        for navigateAway in [false, true] {
+            let gate = Factory(held: [], holdStatus: false), backend = Backend(), top = tree.url("container")
+            let browsing = RemoteBrowsing(prepare: { _ in top }, backend: { _ in backend }, reveal: { _ in true })
+            let environment = try BrowserEnvironment(tree, browsing: browsing, openContainer: { id in
+                #expect(id == "fixture")
+                await gate.changed(false)
+                return top
+            })
+            let window = BrowserWindowController(location: tree.url("local"), services: environment.services)
+            let before = tree.snapshot(), origin = window.pane
+            window.toggleDualPane(at: tree.url("other"))
+            let opening = window.openContainer("fixture")
+            await gate.waitForHeldStatus()
+            if navigateAway { window.navigate(to: tree.url("other")) }
+            window.focusOtherPane(nil)
+            let focused = window.pane, destination = window.location
+            await gate.releaseStatus()
+            await opening.value
+            #expect(window.pane === focused && window.location == destination)
+            #expect(origin.location == tree.url(navigateAway ? "other" : "container").standardizedFileURL)
+            #expect(opening.isCancelled == navigateAway)
+            window.window?.close()
+            #expect(tree.snapshot() == before)
+            withExtendedLifetime(environment) {}
+        }
+    }
+
+    @Test func aPendingOpeningNoticeFollowsItsPaneAndSurvivesOldListingFailures() async throws {
+        _ = NSApplication.shared
+        let tree = try TestTree("local/", "other/", "server/")
+        let server = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        let gate = Factory(held: [], holdStatus: false), backend = Backend(), top = tree.url("server")
+        let browsing = RemoteBrowsing(prepare: { _ in top }, backend: { _ in backend },
+            reveal: { _ in await gate.changed(false); return true })
+        let environment = try BrowserEnvironment(tree, browsing: browsing)
+        let window = BrowserWindowController(location: tree.url("local"), services: environment.services)
+        defer { window.window?.close(); withExtendedLifetime(environment) {} }
+        let before = tree.snapshot(), original = window.pane
+        window.toggleDualPane(at: tree.url("other"))
+        let opening = window.openServer(server)
+        await gate.waitForHeldStatus()
+        #expect(!window.split.noticeBar.isHidden)
+        window.focusOtherPane(nil)
+        #expect(window.split.noticeBar.isHidden)
+        window.focusOtherPane(nil)
+        #expect(window.pane === original && !window.split.noticeBar.isHidden)
+        window.containerCopyProblem(Notification(name: .containerCopyProblem,
+            userInfo: ["folder": original.location, "message": "Old listing failure"]))
+        let cancel = try #require(views(window.split.noticeBar.view, of: NSButton.self).first)
+        #expect(cancel.title == String(localized: "Cancel"))
+        #expect(cancel.sendAction(cancel.action, to: cancel.target))
+        #expect(opening.isCancelled && window.split.noticeBar.isHidden)
+        await gate.releaseStatus()
+        await opening.value
+        #expect(window.location == tree.url("local").standardizedFileURL)
+        #expect(tree.snapshot() == before)
+    }
+
+    @Test func enteringADeeperColumnCancelsAPendingOpeningButReportingTheSameFolderDoesNot() async throws {
+        _ = NSApplication.shared
+        let tree = try TestTree("local/child/", "server/")
+        let server = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        let gate = Factory(held: [], holdStatus: false), backend = Backend(), top = tree.url("server")
+        let browsing = RemoteBrowsing(prepare: { _ in top }, backend: { _ in backend },
+            reveal: { _ in await gate.changed(false); return true })
+        let environment = try BrowserEnvironment(tree, browsing: browsing)
+        let window = BrowserWindowController(location: tree.url("local"), services: environment.services)
+        defer { window.window?.close(); withExtendedLifetime(environment) {} }
+        let before = tree.snapshot(), original = window.location
+        let opening = window.openServer(server)
+        await gate.waitForHeldStatus()
+        window.browser(window.browser, columnLocationChanged: original)
+        #expect(!opening.isCancelled)
+        window.browser(window.browser, columnLocationChanged: tree.url("local/child"))
+        #expect(opening.isCancelled && window.split.noticeBar.isHidden)
+        await gate.releaseStatus()
+        await opening.value
+        #expect(window.location == original)
+        #expect(window.pane.columnLocation == tree.url("local/child"))
+        #expect(tree.snapshot() == before)
+    }
+
+    @Test func closingAWindowCancelsItsOpeningBeforeTheBackendFinishes() async throws {
+        _ = NSApplication.shared
+        let tree = try TestTree("local/", "server/")
+        let server = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        let gate = Factory(held: [], holdStatus: false), backend = Backend(), top = tree.url("server")
+        let browsing = RemoteBrowsing(prepare: { _ in top }, backend: { _ in backend },
+            reveal: { _ in await gate.changed(false); return true })
+        let environment = try BrowserEnvironment(tree, browsing: browsing)
+        let window = BrowserWindowController(location: tree.url("local"), services: environment.services)
+        let before = tree.snapshot(), original = window.location
+        let opening = window.openServer(server)
+        await gate.waitForHeldStatus()
+        window.window?.close()
+        #expect(opening.isCancelled && window.isClosed)
+        await gate.releaseStatus()
+        await opening.value
+        #expect(window.location == original && window.window?.attachedSheet == nil)
+        #expect(tree.snapshot() == before)
+        withExtendedLifetime(environment) {}
     }
 
     @Test func theNativeWorkspaceCancelButtonLeavesAnotherPanesLoginRunning() async throws {

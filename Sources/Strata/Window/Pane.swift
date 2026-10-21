@@ -13,12 +13,14 @@ final class Pane {
     let browser: BrowserViewController
     var destination: Destination {
         didSet {
+            opening.cancel()
             guard destination != oldValue else { return }
             navigationRevision += 1
             browser.cancelPendingActions()
         }
     }
     private(set) var navigationRevision = 0
+    let opening = FolderOpenSession()
     /// The current folder, or the last one shown before a search or Recents.
     var location: URL
     var backStack: [Destination] = []
@@ -51,6 +53,7 @@ final class Pane {
     /// Stops what the pane is doing in the background (duplicate hashing, a folder scan): its window or the pane is
     /// closing.
     func stopBackgroundWork() {
+        opening.cancel()
         duplicateSearch?.set()
         duplicateSearch = nil
         folderSearch?.cancel()

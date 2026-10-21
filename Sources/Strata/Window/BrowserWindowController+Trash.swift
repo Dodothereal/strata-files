@@ -32,27 +32,14 @@ extension BrowserWindowController {
     @discardableResult
     func openServer(_ server: RemoteServer) -> Task<Void, Never> {
         let browsing = services.remoteBrowsing
-        let connecting = Task { [weak self] in
-            do {
-                let folder = try await browsing.open(server)
-                guard !Task.isCancelled, let self, !isClosed else { return }
-                navigate(to: folder)
-            } catch {
-                guard !Task.isCancelled, let self, !isClosed, let window else { return }
-                if case .folder(let shown) = destination { updateNotice(for: shown) }
-                let alert = NSAlert()
-                alert.messageText = String(localized: "Couldn’t connect to “\(server.name)”", comment: "A server's name")
-                alert.informativeText = RemoteFiles.message(for: error)
-                alert.beginSheetModal(for: window, completionHandler: nil)
-            }
+        return openFolder(notice: .init(symbol: "network", text: String(localized: "Connecting to “\(server.name)”…", comment: "A server's name")),
+                          operation: { try await browsing.open(server) }) { [weak self] error in
+            guard let self, let window, window.attachedSheet == nil else { return }
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Couldn’t connect to “\(server.name)”", comment: "A server's name")
+            alert.informativeText = RemoteFiles.message(for: error)
+            alert.beginSheetModal(for: window, completionHandler: nil)
         }
-        split.noticeBar.show(symbol: "network", text: String(localized: "Connecting to “\(server.name)”…", comment: "A server's name"),
-                             button: String(localized: "Cancel")) { [weak self] in
-            connecting.cancel()
-            guard let self, case .folder(let shown) = destination else { return }
-            updateNotice(for: shown)
-        }
-        return connecting
     }
 }
 
@@ -60,6 +47,7 @@ extension BrowserWindowController {
     /// Under the toolbar: inside an archive opened as a folder, say so; while a Trash is shown, say when other disks'
     /// Trashes hold something too (each disk keeps its own).
     func updateNotice(for url: URL) {
+        guard !showPendingOpening() else { return }
         if let engine = ContainerCopies.engineFolder(url) {
             return split.noticeBar.show(symbol: "shippingbox",
                                         text: String(localized: "Containers on \(engine.name). Each opens as a read-only copy of its files.",
@@ -96,7 +84,8 @@ extension BrowserWindowController {
         split.noticeBar.hide()
         Task { [weak self] in
             let others = await Trash.contents().filter { $0.count > 0 && $0.folder.standardizedFileURL != url.standardizedFileURL }
-            guard let self, case .folder(let shown) = destination, shown == url, let first = others.first else { return }
+            guard let self, pane.opening.request == nil, case .folder(let shown) = destination, shown == url,
+                  let first = others.first else { return }
             let text: String
             if others.count == 1 {
                 text = String(localized: "“\(first.disk)” has \(first.count) more items in its own Trash.", comment: "plural")
@@ -115,6 +104,7 @@ extension BrowserWindowController {
 
     /// A container's folder couldn't be read: say why, over the folder (if it's the one shown).
     @objc func containerCopyProblem(_ notification: Notification) {
+        guard !showPendingOpening() else { return }
         guard case .folder(let shown) = destination, let folder = notification.userInfo?["folder"] as? URL,
               let message = notification.userInfo?["message"] as? String else { return }
         // The folder shown, or one below it (a column, a folder expanded in the list).

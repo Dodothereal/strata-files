@@ -1127,8 +1127,8 @@
   },
   {
     "file": "Strata/Window/BrowserWindowController.swift",
-    "find": "panes.contains(where: { $0 === origin }) else { return }",
-    "replace": "true else { return }",
+    "find": "                  panes.contains(where: { $0 === origin }) else { return }",
+    "replace": "                  true else { return }",
     "rule": "Applied browser actions completion reloads a removed pane",
     "tests": "DirectoryReadSessionTests/operationCompletionRejectsLeavingAndReturningAndRemovedPanes"
   },
@@ -2731,9 +2731,9 @@
     "tests": "RemoteSessionOwnershipTests/theLastCancelledWaiterRetiresItsAttemptBeforeARetryInEitherCompletionOrder"
   },
   {
-    "file": "Strata/Window/BrowserWindowController+Trash.swift",
-    "find": "            connecting.cancel()",
-    "replace": "            // Ignore Cancel.",
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "guard let self, let origin, origin.opening.cancel(request) else { return }",
+    "replace": "guard let self, let origin else { return }",
     "rule": "Server reader cancellation native browser Cancel prevents delayed navigation",
     "tests": "RemoteSessionOwnershipTests/theNativeBrowserCancelButtonPreventsNavigationAfterADeferredReveal"
   },
@@ -2876,5 +2876,61 @@
     "replace": "budget.count -= 1",
     "rule": "Folder watcher ownership composite Applications watcher release counts as one",
     "tests": "FolderWatcherTests"
+  },
+  {
+    "file": "Strata/Window/FolderOpenSession.swift",
+    "find": "guard let self, self.request === request else { return }",
+    "replace": "guard let self else { return }",
+    "rule": "Pane opening ownership late results clear their replacement",
+    "tests": "FolderOpenSessionTests/replacementsDiscardOldSuccessAndFailureInEitherCompletionOrder"
+  },
+  {
+    "file": "Strata/Window/FolderOpenSession.swift",
+    "find": "guard self.request === request else { return false }",
+    "replace": "guard self.request != nil else { return false }",
+    "rule": "Pane opening ownership old Cancel buttons cancel new requests",
+    "tests": "FolderOpenSessionTests/anOldCancelButtonCannotCancelTheReplacementRequest"
+  },
+  {
+    "file": "Strata/Window/FolderOpenSession.swift",
+    "find": "isolated deinit { cancel() }",
+    "replace": "isolated deinit {}",
+    "rule": "Pane opening ownership closed owners leave their IO running",
+    "tests": "FolderOpenSessionTests/releasingAnOwnerDuringIOCancelsAndDiscardsItsLateFailure"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "case .success(let folder): go(.folder(folder.standardizedFileURL), in: origin)",
+    "replace": "case .success(let folder): go(.folder(folder.standardizedFileURL))",
+    "rule": "Pane opening ownership a delayed open navigates the focused pane",
+    "tests": "RemoteSessionOwnershipTests/aDeferredServerOpeningKeepsItsOriginalPaneWhenFocusChanges|RemoteSessionOwnershipTests/containerOpeningsUseTheSamePaneOwnershipAndNavigationCancellation"
+  },
+  {
+    "file": "Strata/Window/Pane.swift",
+    "find": "didSet {\n            opening.cancel()",
+    "replace": "didSet {",
+    "rule": "Pane opening ownership a delayed open overrides newer navigation",
+    "tests": "RemoteSessionOwnershipTests/navigatingAwayAndBackDiscardsADeferredServerOpening"
+  },
+  {
+    "file": "Strata/Window/Pane.swift",
+    "find": "func stopBackgroundWork() {\n        opening.cancel()",
+    "replace": "func stopBackgroundWork() {",
+    "rule": "Pane opening ownership closing a pane leaves its opening alive",
+    "tests": "RemoteSessionOwnershipTests/closingAnOpeningPaneCancelsItsRequestWithoutMovingTheRemainingPane|RemoteSessionOwnershipTests/closingAWindowCancelsItsOpeningBeforeTheBackendFinishes"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "            pane.opening.cancel()",
+    "replace": "            // Keep opening despite deeper column navigation.",
+    "rule": "Pane opening ownership entering a deeper column leaves its opening alive",
+    "tests": "RemoteSessionOwnershipTests/enteringADeeperColumnCancelsAPendingOpeningButReportingTheSameFolderDoesNot"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController+Trash.swift",
+    "find": "    @objc func containerCopyProblem(_ notification: Notification) {\n        guard !showPendingOpening() else { return }",
+    "replace": "    @objc func containerCopyProblem(_ notification: Notification) {",
+    "rule": "Pane opening ownership an old listing failure replaces the Cancel button",
+    "tests": "RemoteSessionOwnershipTests/aPendingOpeningNoticeFollowsItsPaneAndSurvivesOldListingFailures"
   }
 ]

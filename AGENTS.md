@@ -231,6 +231,11 @@ sheet's text before clicking a destructive button. Both builds share preferences
   must not read or change another environment's settings. Production windows share the application services.
   App-wide theme/material integration retains its application scope. Test independent settings with native headless
   views, including updates to cached views and deeper columns, rather than temporarily changing shared preferences.
+- Asynchronous server/container navigation belongs to the originating pane's `FolderOpenSession`. Replacing its
+  request, navigating (including deeper Columns), closing the pane or closing the window cancels that ownership.
+  Focus changes alone keep the request with its pane. Native Cancel buttons target their captured request; old
+  successes, failures and listing notices cannot replace a newer request or navigate another pane. Test held I/O
+  in both completion orders and keep the window weak while waiting.
 - Connect to Server's selected protocol and recent shares belong to `BrowserServices.connectionSettings`. Preserve
   the `connectKind` and `recentServers` formats, password removal and ten-address limit. Inject those settings into
   new and editing sheets; headless settings tests must not mount shares, connect servers or read the real keychain.

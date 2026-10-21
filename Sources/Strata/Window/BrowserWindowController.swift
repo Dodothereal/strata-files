@@ -282,13 +282,47 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Shows a container's files: its read-only copy, filled in from the container as you browse.
-    func openContainer(_ id: String) {
-        let store = ContainerStore.shared
-        guard let engine = store.engine, let container = store.container(id: id) else { return NSSound.beep() }
-        Task { [weak self] in
-            guard let top = try? await ContainerFiles.shared.open(container, on: engine) else { return NSSound.beep() }
-            self?.navigate(to: top)
+    @discardableResult
+    func openContainer(_ id: String) -> Task<Void, Never> {
+        let open = services.openContainer
+        return openFolder(operation: { try await open(id) }, failed: { _ in NSSound.beep() })
+    }
+
+    /// Async destinations keep their originating pane, even when the other pane gets focus while waiting.
+    @discardableResult
+    func openFolder(notice: FolderOpenSession.Notice? = nil,
+                    operation: @escaping @Sendable () async throws -> URL,
+                    failed: @escaping (Error) -> Void) -> Task<Void, Never> {
+        guard !isClosed else { return Task {} }
+        let origin = pane
+        let work = origin.opening.open(notice: notice, operation: operation) { [weak self, weak origin] result in
+            guard let self, !isClosed, let origin, panes.contains(where: { $0 === origin }) else { return }
+            switch result {
+            case .success(let folder): go(.folder(folder.standardizedFileURL), in: origin)
+            case .failure(let error):
+                if pane === origin { refreshOpeningNotice() }
+                failed(error)
+            }
         }
+        refreshOpeningNotice()
+        return work
+    }
+
+    private func refreshOpeningNotice() {
+        guard !showPendingOpening() else { return }
+        if case .folder(let shown) = destination { updateNotice(for: shown) }
+        else { split.noticeBar.hide() }
+    }
+
+    @discardableResult
+    func showPendingOpening() -> Bool {
+        let origin = pane
+        guard let request = origin.opening.request, let notice = origin.opening.notice else { return false }
+        split.noticeBar.show(symbol: notice.symbol, text: notice.text, button: String(localized: "Cancel")) { [weak self, weak origin] in
+            guard let self, let origin, origin.opening.cancel(request) else { return }
+            if pane === origin { refreshOpeningNotice() }
+        }
+        return true
     }
 
 
@@ -397,6 +431,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             split.scopeBar.isHidden = true
             split.noticeBar.hide()
         }
+        showPendingOpening()
         syncViewModeItem()
         window?.toolbar?.validateVisibleItems()
         updateHeaders()
@@ -1091,6 +1126,10 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
     /// Column view went deeper: show that folder in the path bar and title, without a new history entry.
     func browser(_ browser: BrowserViewController, columnLocationChanged url: URL) {
         guard browser === pane.browser, case .folder = destination else { return }
+        if (pane.columnLocation ?? pane.location).fileViewKey != url.fileViewKey {
+            pane.opening.cancel()
+            refreshOpeningNotice()
+        }
         pane.columnLocation = url
         pathBar.url = url
         window?.title = Places.displayName(url)
