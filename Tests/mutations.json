@@ -2046,8 +2046,8 @@
   },
   {
     "file": "Strata/Remote/RemoteSession.swift",
-    "find": "connecting.removeValue(forKey: id)?.task.cancel()",
-    "replace": "connecting[id]?.task.cancel()",
+    "find": "func disconnect(_ id: String) async {\n        replacements.removeValue(forKey: id)?.invalidate()\n        connecting.removeValue(forKey: id)?.task.cancel()",
+    "replace": "func disconnect(_ id: String) async {\n        replacements.removeValue(forKey: id)?.invalidate()\n        connecting[id]?.task.cancel()",
     "rule": "Remote session ownership retires cancelled attempts before another caller connects",
     "tests": "RemoteSessionOwnershipTests/aNewConnectionDoesNotJoinTheCancelledAttempt"
   },
@@ -2074,8 +2074,8 @@
   },
   {
     "file": "Strata/Remote/RemoteSession.swift",
-    "find": "await changed(id, false)\n            // A status callback",
-    "replace": "// Omit the dropped connection notification.\n            // A status callback",
+    "find": "await changed(id, false)\n            guard replacements[id] == nil else { throw CancellationError() }\n            // A status callback",
+    "replace": "// Omit the dropped connection notification.\n            guard replacements[id] == nil else { throw CancellationError() }\n            // A status callback",
     "rule": "Remote session ownership reports a dropped connection even if reconnecting fails",
     "tests": "RemoteSessionOwnershipTests/aDroppedConnectionIsRetiredEvenWhenReconnectingFails"
   },
@@ -2116,8 +2116,8 @@
   },
   {
     "file": "Strata/Window/ConnectToServerController.swift",
-    "find": "isolated deinit { mounts.cancel() }",
-    "replace": "isolated deinit {}",
+    "find": "isolated deinit { mounts.cancel(); connection?.cancel(); connecting?.cancel() }",
+    "replace": "isolated deinit { connection?.cancel(); connecting?.cancel() }",
     "rule": "Share mount ownership releasing a native sheet cancels its retained session",
     "tests": "ServerMountSessionTests/releasingTheSheetCancelsEvenWhenItsSessionIsRetained"
   },
@@ -2197,5 +2197,110 @@
     "replace": "guard let data = result as? Data else { return nil }",
     "rule": "Remote credentials never accepts returned data with an error status",
     "tests": "RemoteKeychainTests/unreadableCredentialsNeverChangeTheStoreOrConstructAnAuthenticatedBackend"
+  },
+  {
+    "file": "Strata/Remote/RemoteConnections.swift",
+    "find": "func cancel() { stopped.set(); task.cancel() }",
+    "replace": "func cancel() { stopped.set() }",
+    "rule": "Staged connections cancel the underlying authentication task",
+    "tests": "RemoteConnectionTests/failuresAndCancellationNeverPublishProposedSecretsOrDisconnectTheWorkingServer"
+  },
+  {
+    "file": "Strata/Remote/RemoteConnections.swift",
+    "find": "defer { if !installed { backend.close() } }",
+    "replace": "// Leave the unaccepted backend open.",
+    "rule": "Staged connections close only their unaccepted private backend",
+    "tests": "RemoteConnectionTests/failuresAndCancellationNeverPublishProposedSecretsOrDisconnectTheWorkingServer"
+  },
+  {
+    "file": "Strata/Remote/RemoteConnections.swift",
+    "find": "if server.kind == .s3 { _ = try await backend.list(\"/\") }",
+    "replace": "// Skip bucket verification.",
+    "rule": "Staged connections verify bucket access before saving credentials",
+    "tests": "RemoteConnectionTests/failuresAndCancellationNeverPublishProposedSecretsOrDisconnectTheWorkingServer"
+  },
+  {
+    "file": "Strata/Remote/RemoteConnections.swift",
+    "find": "defer { if current[server.id]?.id == id { current[server.id] = nil } }",
+    "replace": "defer { current[server.id] = nil }",
+    "rule": "Staged connections late completion cannot erase the newer request",
+    "tests": "RemoteConnectionTests/cancelledAttemptsCannotOverwriteOrDisconnectTheirReplacementInEitherCompletionOrder"
+  },
+  {
+    "file": "Strata/Remote/RemoteConnections.swift",
+    "find": "guard savedServers.first(where: { $0.id == server.id }) == previous else { throw CancellationError() }\n            let replacement",
+    "replace": "// Skip saved-definition validation.\n            let replacement",
+    "rule": "Staged connections refuse changed saved settings before retiring a working session",
+    "tests": "RemoteConnectionTests/removedOrChangedSavedServersAndRefusedSecretWritesAreNeverOverwritten"
+  },
+  {
+    "file": "Strata/Remote/RemoteConnections.swift",
+    "find": "guard savedServers.first(where: { $0.id == server.id }) == previous else { throw CancellationError() }\n                // A changed login",
+    "replace": "// Skip saved-definition revalidation.\n                // A changed login",
+    "rule": "Staged connections recheck saved settings after retiring the old session",
+    "tests": "RemoteConnectionTests/changingTheSavedDefinitionWhileRetiringTheOldSessionPreventsCacheRemoval"
+  },
+  {
+    "file": "Strata/Remote/RemoteConnections.swift",
+    "find": "if let previous, previous.reachesSomewhereElse(than: server) || changedLogin {",
+    "replace": "if let previous, previous.reachesSomewhereElse(than: server) {",
+    "rule": "Staged connections retire copies when login or backend changes",
+    "tests": "RemoteConnectionTests/changingLoginOrBackendRetiresCopiesButRenamingAndIdenticalSecretsPreserveThem"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "func backend(for id: String) async throws -> any RemoteBackend {\n        guard replacements[id] == nil else { throw CancellationError() }",
+    "replace": "func backend(for id: String) async throws -> any RemoteBackend {",
+    "rule": "Staged connections block automatic reconnection while copies and settings change",
+    "tests": "RemoteConnectionTests/cancelledHandoffsFinishCleanupBeforeTheRetryPublishes"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "await changed(id, false)\n            guard replacements[id] == nil else { throw CancellationError() }",
+    "replace": "await changed(id, false)",
+    "rule": "Staged connections recheck reservations after dropped status callbacks",
+    "tests": "RemoteConnectionTests/aReservationCreatedDuringDroppedStatusBlocksAutomaticReconnection"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "if replacements[replacement.serverID] === replacement { replacements[replacement.serverID] = nil }",
+    "replace": "replacements[replacement.serverID] = nil",
+    "rule": "Staged connections stale release cannot clear a newer reservation",
+    "tests": "RemoteConnectionTests/staleReservationsCannotSaveOrReleaseANewerReservation"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "guard replacements[replacement.serverID] === replacement, replacement.isValid, !Task.isCancelled else {",
+    "replace": "guard true else {",
+    "rule": "Staged connections refuse a stale reservation before saving",
+    "tests": "RemoteConnectionTests/staleReservationsCannotSaveOrReleaseANewerReservation"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "func disconnect(_ id: String) async {\n        replacements.removeValue(forKey: id)?.invalidate()",
+    "replace": "func disconnect(_ id: String) async {\n        replacements.removeValue(forKey: id)",
+    "rule": "Staged connections disconnect revokes outstanding reservations",
+    "tests": "RemoteConnectionTests/staleReservationsCannotSaveOrReleaseANewerReservation"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "await changed(replacement.serverID, true)\n        return true",
+    "replace": "await changed(replacement.serverID, true)\n        return backends[replacement.serverID] === backend",
+    "rule": "Staged connections pool owns accepted backends even when disconnected during status delivery",
+    "tests": "RemoteConnectionTests/aPublishedBackendBelongsToThePoolEvenIfDisconnectedDuringNotification"
+  },
+  {
+    "file": "Strata/Window/ConnectToServerController.swift",
+    "find": "guard let self, connection?.id == request.id else { return }",
+    "replace": "guard let self else { return }",
+    "rule": "Staged connections native controls accept only their current request result",
+    "tests": "RemoteConnectionTests/nativeSheetKeepsNewAttemptsBusyWhenOldResultsArrive"
+  },
+  {
+    "file": "Strata/Window/ConnectToServerController.swift",
+    "find": "isolated deinit { mounts.cancel(); connection?.cancel(); connecting?.cancel() }",
+    "replace": "isolated deinit { mounts.cancel() }",
+    "rule": "Staged connections releasing the sheet cancels private authentication",
+    "tests": "RemoteConnectionTests/releasingTheNativeSheetCancelsItsPrivateConnection"
   }
 ]

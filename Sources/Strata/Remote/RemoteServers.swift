@@ -42,6 +42,7 @@ enum RemoteServers {
 
     /// Forgets `server`, its keychain item, and its files in Strata's caches.
     static func remove(_ server: RemoteServer) {
+        RemoteConnections.shared.cancel(server.id)
         all = all.filter { $0.id != server.id }
         RemoteKeychain.shared.delete(server)
         Task {

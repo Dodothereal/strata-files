@@ -247,6 +247,12 @@ sheet's text before clicking a destructive button. Both builds share preferences
   publish or close its result; disconnect removes pending work before cancelling it, and late completion must not
   erase a replacement attempt. Recheck ownership after status callbacks. Tests use independent pools and controlled
   backends, including cancelled attempts, late failures and dropped connections; never fall back to live credentials.
+- Connect to Server authenticates proposed settings through `RemoteConnections` before saving credentials or
+  changing the registry. Cancel by request identity; never roll back another attempt's settings by server ID.
+  Serialize cache retirement and publication per server, with a revocable pool reservation. Readers must fail
+  promptly during that handoff because cleanup can await their completion. Keep the pool and copy cache in the
+  same environment, recheck ownership after every suspension, and test both orders of late completion with fake
+  backends and credentials. Sheet teardown cancels its request; published backends belong exclusively to the pool.
 - Listing coalescing and freshness belong in `CopyListings`, owned by each provider actor. Invalidation during a
   read requires another read; an old waiter cannot clear its replacement or make it fresh. Drain listings before
   removing a copy. Inject container listing readers or server backends to test held responses without live services.

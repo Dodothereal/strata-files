@@ -33,10 +33,15 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
     private let connectButton = NSButton(title: String(localized: "Connect", comment: "Button: connect to the server"), target: nil, action: nil)
     private let cancelButton = NSButton(title: String(localized: "Cancel"), target: nil, action: nil)
     private let mounts: ServerMountSession
-    private var connecting: Task<Void, Never>?
-    private var connectingID: String?
+    private let connections: RemoteConnections
+    private let sshHosts: @MainActor () -> [String]
+    private var connection: RemoteConnectionRequest?
+    private(set) var connecting: Task<Void, Never>?
 
-    init(editing server: RemoteServer? = nil, settings: ServerConnectionSettings, mounts: ServerMountSession = ServerMountSession()) {
+    init(editing server: RemoteServer? = nil, settings: ServerConnectionSettings, mounts: ServerMountSession = ServerMountSession(),
+         connections: RemoteConnections = .shared, sshHosts: @escaping @MainActor () -> [String] = ConnectToServerController.sshConfigHosts) {
+        self.connections = connections
+        self.sshHosts = sshHosts
         self.mounts = mounts
         self.settings = settings
         editing = server
@@ -46,7 +51,7 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
 
     required init?(coder: NSCoder) { fatalError() }
 
-    isolated deinit { mounts.cancel() }
+    isolated deinit { mounts.cancel(); connection?.cancel(); connecting?.cancel() }
 
     override func loadView() {
         let title = NSTextField(labelWithString: editing == nil ? String(localized: "Connect to Server")
@@ -198,8 +203,8 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         case .sftp:
             hint.stringValue = String(localized: "user@host, a Host from ~/.ssh/config, or sftp://user@host:port/folder. Your SSH keys and agent log in; a password is asked for when one is needed.")
             address.placeholderString = "deploy@example.com"
-            let saved = RemoteServers.all.filter { $0.kind == .sftp }.map(\.address)
-            address.addItems(withObjectValues: saved + Self.sshConfigHosts().filter { !saved.contains($0) })
+            let saved = connections.savedServers.filter { $0.kind == .sftp }.map(\.address)
+            address.addItems(withObjectValues: saved + sshHosts().filter { !saved.contains($0) })
             if editing == nil { address.stringValue = "" }
             clearRecents.isHidden = true
         case .s3:
@@ -277,7 +282,7 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         if let editing {
             server.id = editing.id
             server.name = editing.name == editing.host ? server.host : editing.name
-        } else if let saved = RemoteServers.all.first(where: { $0.kind == .sftp && $0.host == server.host && $0.user == server.user && $0.port == server.port }) {
+        } else if let saved = connections.savedServers.first(where: { $0.kind == .sftp && $0.host == server.host && $0.user == server.user && $0.port == server.port }) {
             server.id = saved.id
             server.name = saved.name
         }
@@ -303,54 +308,32 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
                                   pathStyle: s3PathStyle.state == .on)
         if let problem = server.validate() { return show(problem.message) }
         let secret = s3Secret.stringValue
-        if secret.isEmpty, editing == nil || RemoteKeychain.shared.secret(for: server) == nil {
+        if secret.isEmpty, editing == nil || !connections.hasSecret(for: server) {
             return show(String(localized: "Type the secret key that goes with the access key ID."))
         }
-        let previous = editing.flatMap(RemoteKeychain.shared.secret(for:))
-        if !secret.isEmpty, !RemoteKeychain.shared.setSecret(secret, for: server) {
-            return show(String(localized: "The secret key couldn’t be saved in your keychain."))
-        }
-        tryConnecting(server) { connected in
-            // A new secret that didn't work isn't kept.
-            guard !connected, !secret.isEmpty else { return }
-            if let previous { _ = RemoteKeychain.shared.setSecret(previous, for: server) } else { RemoteKeychain.shared.delete(server) }
-        }
+        tryConnecting(server, secret: secret.isEmpty ? nil : secret)
     }
 
-    /// Connects (and for a bucket, lists its top, so wrong keys show now); saves the server when it works.
-    private func tryConnecting(_ server: RemoteServer, then finished: @escaping (Bool) -> Void = { _ in }) {
-        // Known to the copies' paths while connecting; saved only once it works.
-        RemoteRegistry.update(RemoteServers.all.filter { $0.id != server.id } + [server])
-        connectingID = server.id
+    /// The service owns verification and publication. The sheet accepts only its current request's result.
+    private func tryConnecting(_ server: RemoteServer, secret: String? = nil) {
+        let request = connections.connect(server, secret: secret)
+        connection = request
         setBusy(true)
-        let previous = editing
         connecting = Task { [weak self] in
-            await RemoteSessions.shared.disconnect(server.id)
-            // Edited to reach somewhere else: what was read from the old address isn't this server's.
-            if let previous, previous.reachesSomewhereElse(than: server) {
-                await RemoteFiles.shared.discard(server.id)
-                NotificationCenter.default.post(name: .remoteServerDisconnected, object: server.id)
-            }
-            do {
-                let backend = try await RemoteSessions.shared.backend(for: server.id)
-                if server.kind == .s3 { _ = try await backend.list("/") }
-                // Stopped meanwhile: nothing is kept (the connection, an unsaved server, a new secret).
-                try Task.checkCancellation()
-                guard let self else { throw CancellationError() }
-                RemoteServers.save(server)
-                finished(true)
-                connecting = nil
-                setBusy(false)
+            let result: Result<RemoteServer, Error>
+            do { result = .success(try await request.value) }
+            catch { result = .failure(error) }
+            guard let self, connection?.id == request.id else { return }
+            connection = nil
+            connecting = nil
+            setBusy(false)
+            guard !request.isCancelled else { return }
+            switch result {
+            case .success(let saved):
                 dismiss(nil)
-                onServer?(server)
-            } catch {
-                await RemoteSessions.shared.disconnect(server.id)
-                RemoteServers.load()
-                finished(false)
-                guard let self else { return }
-                connecting = nil
-                setBusy(false)
-                if !Task.isCancelled { show(RemoteFiles.message(for: error)) }
+                onServer?(saved)
+            case .failure(let error):
+                if !(error is CancellationError) { show(RemoteFiles.message(for: error)) }
             }
         }
     }
@@ -362,10 +345,11 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
             setBusy(false)
             return
         }
-        if let connecting, let id = connectingID {
-            connecting.cancel()
-            self.connecting = nil
-            Task { await RemoteSessions.shared.disconnect(id) }
+        if let connection {
+            self.connection = nil
+            connection.cancel()
+            connecting?.cancel()
+            connecting = nil
             setBusy(false)
             return
         }

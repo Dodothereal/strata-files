@@ -233,9 +233,15 @@ nonisolated final class SFTPBackend: RemoteBackend {
 nonisolated final class S3Backend: RemoteBackend {
     private let client: S3Client
 
-    init(_ server: RemoteServer, credentials: RemoteKeychain = .shared) throws {
-        guard let bucket = server.bucket, let region = server.region, let keyID = server.accessKeyID else { throw RemoteError.unknownServer }
+    convenience init(_ server: RemoteServer, credentials: RemoteKeychain) throws {
+        guard server.bucket != nil, server.region != nil, server.accessKeyID != nil else { throw RemoteError.unknownServer }
         guard let secret = credentials.secret(for: server) else { throw RemoteError.noSecret }
+        try self.init(server, secret: secret)
+    }
+
+    /// A proposed credential stays private to this backend until its connection is verified and saved.
+    init(_ server: RemoteServer, secret: String) throws {
+        guard let bucket = server.bucket, let region = server.region, let keyID = server.accessKeyID else { throw RemoteError.unknownServer }
         client = S3Client(host: server.host, port: server.port, bucket: bucket, region: region, pathStyle: server.pathStyle ?? false,
                           credentials: S3Credentials(accessKeyID: keyID, secretAccessKey: secret))
     }
@@ -364,13 +370,16 @@ actor RemoteSessions {
 
     private var backends: [String: any RemoteBackend] = [:]
     private var connecting: [String: Attempt] = [:]
+    private var replacements: [String: RemoteSessionReplacement] = [:]
 
     func backend(for id: String) async throws -> any RemoteBackend {
+        guard replacements[id] == nil else { throw CancellationError() }
         while let backend = backends[id] {
             if backend.isAlive { return backend }
             backends[id] = nil
             backend.close()
             await changed(id, false)
+            guard replacements[id] == nil else { throw CancellationError() }
             // A status callback can yield to another caller that has already reconnected this server.
         }
         let attempt: Attempt
@@ -413,23 +422,82 @@ actor RemoteSessions {
     }
 
     func disconnect(_ id: String) async {
+        replacements.removeValue(forKey: id)?.invalidate()
         connecting.removeValue(forKey: id)?.task.cancel()
         let had = backends.removeValue(forKey: id)
         had?.close()
         if had != nil { await changed(id, false) }
     }
 
-    nonisolated private static func makeBackend(_ server: RemoteServer) async throws -> any RemoteBackend {
-        let askpass = await askpassEnvironment(for: server)
-        switch server.kind {
-        case .sftp: return try await SFTPBackend.connect(server, askpass: askpass)
-        case .s3: return try S3Backend(server)
+    /// Stop readers from reconnecting to the old definition while its copies and saved settings change. Readers
+    /// fail promptly instead of waiting: copy cleanup may itself be waiting for those reads to finish.
+    func reserveReplacement(for id: String) async throws -> RemoteSessionReplacement {
+        try Task.checkCancellation()
+        let replacement = RemoteSessionReplacement(serverID: id)
+        replacements.removeValue(forKey: id)?.invalidate()
+        replacements[id] = replacement
+        connecting.removeValue(forKey: id)?.task.cancel()
+        let previous = backends.removeValue(forKey: id)
+        previous?.close()
+        if previous != nil { await changed(id, false) }
+        guard replacements[id] === replacement, !Task.isCancelled else {
+            release(replacement)
+            throw CancellationError()
         }
+        return replacement
+    }
+
+    func release(_ replacement: RemoteSessionReplacement) {
+        replacement.invalidate()
+        if replacements[replacement.serverID] === replacement { replacements[replacement.serverID] = nil }
+    }
+
+    /// The caller owns the backend until true is returned. Once accepted, only this pool closes it, including if
+    /// a status callback disconnects it before this method returns. Saving runs at the coordinator's commit point.
+    func install(_ backend: any RemoteBackend, replacing replacement: RemoteSessionReplacement,
+                 save: @escaping @MainActor @Sendable () throws -> Void) async throws -> Bool {
+        guard replacements[replacement.serverID] === replacement, replacement.isValid, !Task.isCancelled else {
+            throw CancellationError()
+        }
+        try await save()
+        guard replacements[replacement.serverID] === replacement, replacement.isValid else { return false }
+        replacements[replacement.serverID] = nil
+        replacement.invalidate()
+        backends[replacement.serverID] = backend
+        await changed(replacement.serverID, true)
+        return true
+    }
+
+    nonisolated private static func makeBackend(_ server: RemoteServer) async throws -> any RemoteBackend {
+        try await RemoteConnector.native.connect(server, server.kind == .s3 ? RemoteKeychain.shared.secret(for: server) : nil)
     }
 
     @MainActor private static func announce(_ id: String, connected: Bool) {
         if connected { RemoteStatus.connected.insert(id) } else { RemoteStatus.connected.remove(id) }
         NotificationCenter.default.post(name: .remoteSessionsChanged, object: id)
+    }
+}
+
+/// A replacement can be revoked by a disconnect while its owner is waiting on another actor.
+nonisolated final class RemoteSessionReplacement: Sendable {
+    let serverID: String
+    private let invalidated = StopFlag()
+    var isValid: Bool { !invalidated.isSet }
+    fileprivate init(serverID: String) { self.serverID = serverID }
+    fileprivate func invalidate() { invalidated.set() }
+}
+
+/// Makes a private backend from the exact proposed settings; it does not publish it or write credentials.
+nonisolated struct RemoteConnector: Sendable {
+    let connect: @Sendable (RemoteServer, String?) async throws -> any RemoteBackend
+
+    static let native = RemoteConnector { server, secret in
+        switch server.kind {
+        case .sftp: return try await SFTPBackend.connect(server, askpass: await askpassEnvironment(for: server))
+        case .s3:
+            guard let secret else { throw RemoteError.noSecret }
+            return try S3Backend(server, secret: secret)
+        }
     }
 
     /// ssh asks for passwords and new hosts' fingerprints through the `strata` helper, in your language.
