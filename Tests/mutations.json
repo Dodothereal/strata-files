@@ -2043,5 +2043,47 @@
     "replace": "preferences.defaults.removePersistentDomain(forName: preferences.domainName)",
     "rule": "Connection settings clear only recent addresses",
     "tests": "ServerConnectionSettingsTests/savedProtocolsAndRecentSharesKeepTheirFormatAndOwner"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "connecting.removeValue(forKey: id)?.task.cancel()",
+    "replace": "connecting[id]?.task.cancel()",
+    "rule": "Remote session ownership retires cancelled attempts before another caller connects",
+    "tests": "RemoteSessionOwnershipTests/aNewConnectionDoesNotJoinTheCancelledAttempt"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "guard connecting[id]?.token == token, !Task.isCancelled else {",
+    "replace": "guard true else {",
+    "rule": "Remote session ownership never publishes a cancelled or replaced attempt",
+    "tests": "RemoteSessionOwnershipTests/aNewConnectionDoesNotJoinTheCancelledAttempt"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "if connecting[id]?.token == token { connecting[id] = nil }",
+    "replace": "connecting[id] = nil",
+    "rule": "Remote session ownership old failures cannot erase a newer pending connection",
+    "tests": "RemoteSessionOwnershipTests/aNewConnectionDoesNotJoinTheCancelledAttempt"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "guard backends[id] === backend, backend.isAlive else { throw CancellationError() }",
+    "replace": "guard true else { throw CancellationError() }",
+    "rule": "Remote session ownership revalidates results after status publication",
+    "tests": "RemoteSessionOwnershipTests/disconnectionDuringStatusPublicationCannotReturnAClosedBackend"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "await changed(id, false)\n            // A status callback",
+    "replace": "// Omit the dropped connection notification.\n            // A status callback",
+    "rule": "Remote session ownership reports a dropped connection even if reconnecting fails",
+    "tests": "RemoteSessionOwnershipTests/aDroppedConnectionIsRetiredEvenWhenReconnectingFails"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "find": "while let backend = backends[id] {",
+    "replace": "if let backend = backends[id] {",
+    "rule": "Remote session ownership rechecks current connections after a dropped status callback",
+    "tests": "RemoteSessionOwnershipTests/reconnectingDuringDroppedStatusPublicationReusesTheNewConnection"
   }
 ]

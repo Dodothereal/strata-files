@@ -76,6 +76,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 
 | Action | Code | Tests |
 |---|---|---|
+| Remote connections retain their own attempt and backend through cancellation, reconnection and status delivery | `RemoteSessions.backend`, `establish`, `disconnect` | `RemoteSessionOwnershipTests/*`; mutations: “Remote session ownership” |
 | Delete, move, rename, new items on a server | `RemoteFiles`, `SFTPBackend`, `BrowserViewController.newFileNameOnServer` | `ServerSafetyTests/*`; `RemoteFilesTests/newFilesAreMadeOnTheServerNeverOverAnything`, `deletingALinkLeavesWhatItPointsTo`; `SFTPClientTests/foldersRenamesAndRemoval`; `BrowserPreferencesTests/serverNewFileNamesUseTheirOwnSettingsAndAvoidExistingFilesAndLinks` |
 | Upload (asks before replacing) | `copyToServer`, `uploadChoice`, `RemoteFiles.upload` | `ServerSafetyTests/copyingOntoTakenNamesAsksOrLeavesThem`; `RemoteFilesTests/uploadsFilesAndFolders`, `uploadingOverALinkReplacesTheLink` |
 | S3 delete, rename, upload | `S3Backend` | `DeleteScopeTests` (S3Tests extension): `deletingAFolderTakesOnlyTheKeysInIt`, `deletingAFileTakesOnlyThatKey`, `theBucketItselfIsNeverDeleted`, `renamingAFolderMovesExactlyItsKeys`, `renamingOnS3NeverReplacesAnything`, `aCopyThatFailsLeavesTheOriginal`, `uploadsAndFoldersNeverTakeTheBucketsTop`, `whatsTakenIsSeenBeforeCopyingOntoIt` |

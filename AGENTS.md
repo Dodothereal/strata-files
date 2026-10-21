@@ -128,6 +128,9 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
   of shared folders like `$TMPDIR`. `for _ in 0..<n where !done() { sleep }` skips rather than stops, so it only
   works for a condition that stays true once met: after ⌘Z or ⇧⌘Z, whose steps pass through states that can equal the
   one expected, `await FileOps.undoWork?.value` instead (undo and redo work runs there, in order).
+- Use continuation signals for asynchronous test work that is guaranteed to start. A background polling deadline
+  can expire while main-actor request tasks are still queued behind other suites. When a negative-path mutation
+  intentionally prevents a callback, keep its bounded condition polling on the request tasks' actor.
 - Cache freshness tests inject a clock and advance it explicitly, including expiry boundaries and delayed reads.
   A test runner resuming within a real-time cache lifetime is not a reliable synchronization condition.
 - A test helper that blocks (a `Process`, a semaphore) runs on a Dispatch queue, never on the main thread or in a
@@ -231,6 +234,10 @@ sheet's text before clicking a destructive button. Both builds share preferences
   owning provider, propagate fetch/preparation errors, and retain the existing bounded selection-prefetch policy.
   Provider-specific write, permission and archive behavior stays in its implementation. Inject providers or server
   services for tests; never let a fixture fall back to a live connection.
+- Remote session pools inject server lookup, backend creation and status delivery. Only an attempt's producer may
+  publish or close its result; disconnect removes pending work before cancelling it, and late completion must not
+  erase a replacement attempt. Recheck ownership after status callbacks. Tests use independent pools and controlled
+  backends, including cancelled attempts, late failures and dropped connections; never fall back to live credentials.
 - Listing coalescing and freshness belong in `CopyListings`, owned by each provider actor. Invalidation during a
   read requires another read; an old waiter cannot clear its replacement or make it fresh. Drain listings before
   removing a copy. Inject container listing readers or server backends to test held responses without live services.

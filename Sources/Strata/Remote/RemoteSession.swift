@@ -340,39 +340,70 @@ nonisolated final class S3Backend: RemoteBackend {
 
 /// One connection per server, made when it's first needed and made again if it dropped.
 actor RemoteSessions {
-    static let shared = RemoteSessions()
+    typealias ServerLookup = @Sendable (String) -> RemoteServer?
+    typealias Connector = @Sendable (RemoteServer) async throws -> any RemoteBackend
+    typealias StatusChange = @Sendable (String, Bool) async -> Void
+
+    static let shared = RemoteSessions(server: { RemoteRegistry.server(id: $0) }, connect: makeBackend,
+                                       changed: { await announce($0, connected: $1) })
+
+    private let server: ServerLookup
+    private let connect: Connector
+    private let changed: StatusChange
+
+    init(server: @escaping ServerLookup, connect: @escaping Connector, changed: @escaping StatusChange) {
+        self.server = server
+        self.connect = connect
+        self.changed = changed
+    }
+
+    private struct Attempt {
+        let token: UUID
+        let task: Task<any RemoteBackend, Error>
+    }
 
     private var backends: [String: any RemoteBackend] = [:]
-    private var connecting: [String: Task<any RemoteBackend, Error>] = [:]
+    private var connecting: [String: Attempt] = [:]
 
     func backend(for id: String) async throws -> any RemoteBackend {
-        if let backend = backends[id], backend.isAlive { return backend }
-        // A connection that dropped is closed (its ssh, its threads) before another is made.
-        backends.removeValue(forKey: id)?.close()
-        if let pending = connecting[id] { return try await pending.value }
-        guard let server = RemoteRegistry.server(id: id) else { throw RemoteError.unknownServer }
-        // Registered before anything awaits, so two panes asking at once share one connection (and one password dialog).
-        let task = Task<any RemoteBackend, Error> {
-            let askpass = await Self.askpassEnvironment(for: server)
-            switch server.kind {
-            case .sftp: return try await SFTPBackend.connect(server, askpass: askpass)
-            case .s3: return try S3Backend(server)
-            }
+        while let backend = backends[id] {
+            if backend.isAlive { return backend }
+            backends[id] = nil
+            backend.close()
+            await changed(id, false)
+            // A status callback can yield to another caller that has already reconnected this server.
         }
-        connecting[id] = task
+        let attempt: Attempt
+        if let pending = connecting[id] {
+            attempt = pending
+        } else {
+            guard let server = server(id) else { throw RemoteError.unknownServer }
+            let token = UUID()
+            let task = Task<any RemoteBackend, Error> { try await establish(server, for: id, token: token) }
+            attempt = Attempt(token: token, task: task)
+            // Registered before anything awaits, so two panes share one connection and one password dialog.
+            connecting[id] = attempt
+        }
+        let backend = try await attempt.task.value
+        // All waiters revalidate after resuming, including when disconnection happened during a status update.
+        guard backends[id] === backend, backend.isAlive else { throw CancellationError() }
+        return backend
+    }
+
+    /// Only the producer publishes or closes its result. Waiters never adopt a cancelled attempt or clear a newer one.
+    private func establish(_ server: RemoteServer, for id: String, token: UUID) async throws -> any RemoteBackend {
         do {
-            let backend = try await task.value
-            connecting[id] = nil
-            // Disconnected while connecting: not kept.
-            guard !task.isCancelled else {
+            let backend = try await connect(server)
+            guard connecting[id]?.token == token, !Task.isCancelled else {
                 backend.close()
                 throw CancellationError()
             }
+            connecting[id] = nil
             backends[id] = backend
-            await Self.announce(id, connected: true)
+            await changed(id, true)
             return backend
         } catch {
-            if connecting[id] == task { connecting[id] = nil }
+            if connecting[id]?.token == token { connecting[id] = nil }
             throw error
         }
     }
@@ -382,10 +413,18 @@ actor RemoteSessions {
     }
 
     func disconnect(_ id: String) async {
-        connecting[id]?.cancel()
+        connecting.removeValue(forKey: id)?.task.cancel()
         let had = backends.removeValue(forKey: id)
         had?.close()
-        if had != nil { await Self.announce(id, connected: false) }
+        if had != nil { await changed(id, false) }
+    }
+
+    nonisolated private static func makeBackend(_ server: RemoteServer) async throws -> any RemoteBackend {
+        let askpass = await askpassEnvironment(for: server)
+        switch server.kind {
+        case .sftp: return try await SFTPBackend.connect(server, askpass: askpass)
+        case .s3: return try S3Backend(server)
+        }
     }
 
     @MainActor private static func announce(_ id: String, connected: Bool) {
