@@ -66,10 +66,7 @@ final class TransferJob {
     private var isRunningPass = false
     private var measured = false
 
-    // Undo journal for the current pass.
-    private var journalCreated: [URL] = []
-    private var journalMoved: [TransferMove] = []
-    private var journalReplaced: [TransferMove] = []
+    private let journal = TransferJournal()
     /// What each item is where it landed, recorded as it lands (for undo; see `LandedFiles`).
     let landed = LandedFiles()
 
@@ -560,16 +557,8 @@ final class TransferJob {
             if !isRetry {
                 completedItems += 1
                 createdItems.append(result.destination)
-                if result.sourceRemoved {
-                    journalMoved.append(TransferMove(from: items[index].source, to: result.destination))
-                } else if !originalKept {
-                    journalCreated.append(result.destination)
-                }
-            } else if result.sourceRemoved {
-                // A retry finished a cross-volume move: the earlier pass recorded it as a copy.
-                journalMoved.append(TransferMove(from: items[index].source, to: result.destination))
             }
-            if let replaced = result.replaced { journalReplaced.append(replaced) }
+            journal.append(result, source: items[index].source, originalKept: originalKept)
         case .cancelled:
             items[index].outcome = .pending
         case .pending, .failed, .skipped:
@@ -621,15 +610,8 @@ final class TransferJob {
 
     private func registerUndo() {
         guard let queue else { return }
-        let created = journalCreated, moved = journalMoved, replaced = journalReplaced
-        journalCreated = []
-        journalMoved = []
-        journalReplaced = []
-        // Items a retry finished moving were journaled as copies first; they're moves now.
-        let movedDestinations = Set(moved.map(\.to))
-        TransferUndo.register(created: created.filter { !movedDestinations.contains($0) }, moved: moved,
-                              replaced: replaced, actionName: actionName ?? (mode == .copy ? "Copy" : "Move"), undo: undoManager,
-                              logHistory: logsHistory, containers: containers, landed: landed, queue: queue)
+        journal.finish(actionName: actionName ?? (mode == .copy ? "Copy" : "Move"), undo: undoManager,
+                       logHistory: logsHistory, containers: containers, queue: queue)
     }
 
     // MARK: - Progress

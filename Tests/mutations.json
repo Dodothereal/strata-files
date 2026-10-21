@@ -106,15 +106,15 @@
   },
   {
     "file": "Strata/Transfers/TransferQueue.swift",
-    "find": "                let existing = created.filter(landed.holds)",
-    "replace": "                let existing = created.filter { TransferEngine.exists($0) }",
+    "find": "                let existing = receipt.created.filter(receipt.landed.holds)",
+    "replace": "                let existing = receipt.created.filter { TransferEngine.exists($0) }",
     "rule": "Undo of a copy trashes a file swapped in since",
     "tests": "TrashUndoTests/undoingACopyTrashesOnlyItsOwnCopies"
   },
   {
     "file": "Strata/Transfers/TransferQueue.swift",
-    "find": "                let back = moved.filter { landed.holds($0.to) }.reversed().map(\\.reversed)",
-    "replace": "                let back = moved.reversed().map(\\.reversed)",
+    "find": "                let back = receipt.moved.filter { receipt.landed.holds($0.to) }.reversed().map(\\.reversed)",
+    "replace": "                let back = receipt.moved.reversed().map(\\.reversed)",
     "rule": "Undo of a move job moves back a file swapped in since",
     "tests": "TrashUndoTests|TransferTests/aMoveJobAcross"
   },
@@ -126,9 +126,9 @@
     "tests": "TransferTests/undoAndRedoPressedAtOnceAcrossDisks"
   },
   {
-    "file": "Strata/Transfers/TransferJob.swift",
-    "find": "                              logHistory: logsHistory, containers: containers, landed: landed, queue: queue)",
-    "replace": "                              logHistory: logsHistory, containers: containers, queue: queue)",
+    "file": "Strata/Transfers/TransferJournal.swift",
+    "find": "landed.set(originalKept ? nil : result.landed, at: result.destination)",
+    "replace": "landed.set(originalKept ? nil : FileIdentity.read(result.destination.path), at: result.destination)",
     "rule": "A job records its items only when done, not as they land",
     "tests": "TransferTests/undoingACopyLeavesAFileSwappedInWhileTheJobRan"
   },
@@ -1597,8 +1597,8 @@
   },
   {
     "file": "Strata/Transfers/TransferJob.swift",
-    "find": "logHistory: logsHistory, containers: containers, landed: landed, queue: queue)",
-    "replace": "logHistory: logsHistory, containers: CreatedFolders(containers.urls), landed: landed, queue: queue)",
+    "find": "logHistory: logsHistory, containers: containers, queue: queue)",
+    "replace": "logHistory: logsHistory, containers: CreatedFolders(containers.urls), queue: queue)",
     "rule": "Created folder ownership is captured before a job can suspend",
     "tests": "CreatedFolderOwnershipTests/liveUndoLeavesReplacementContainers|CreatedFolderOwnershipTests/historyUndoLeavesReplacementContainers"
   },
@@ -1661,8 +1661,8 @@
   },
   {
     "file": "Strata/Transfers/TransferQueue.swift",
-    "find": "containerIdentities: containers.historyIdentities, landed: landed)",
-    "replace": "containerIdentities: containers.historyIdentities)",
+    "find": "containerIdentities: containers.historyIdentities, landed: receipt.landed, updating: receipt.historyEntry)",
+    "replace": "containerIdentities: containers.historyIdentities, updating: receipt.historyEntry)",
     "rule": "Transfer History ownership survives callbacks before registration",
     "tests": "TransferTests/historyRejectsItemsReplacedBeforeTransferRegistration"
   },
@@ -1910,5 +1910,54 @@
     "replace": "let ownership: FileIdentity? = nil",
     "rule": "Retry result ownership preserves the parent folder when repairing a child",
     "tests": "TransferTests/retriedCopiesKeepTheirOwnershipAcrossTheWorkerHandoff"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "updating: receipt.historyEntry)",
+    "replace": "updating: nil)",
+    "rule": "Retry journal updates the existing History entry after a repair",
+    "tests": "TransferTests/repairedCopiesKeepTheOriginalHistoryEntryAndItsOtherItems"
+  },
+  {
+    "file": "Strata/Transfers/TransferJournal.swift",
+    "find": "if !receipt.canExtend(in: queue.history) { receipt = Receipt() }",
+    "replace": "if false { receipt = Receipt() }",
+    "rule": "Retry journal starts a new record after Undo or Clear History",
+    "tests": "TransferTests/retriesAfterUndoOrClearingHistoryStartANewRecord"
+  },
+  {
+    "file": "Strata/Transfers/TransferJournal.swift",
+    "find": "guard !wasUndone else { return false }",
+    "replace": "if false { return false }",
+    "rule": "Retry journal never reuses an Undo action after it has been replayed",
+    "tests": "TransferTests/unloggedRetriesKeepNativeUndoAfterTheirFirstActionWasUsed"
+  },
+  {
+    "file": "Strata/Transfers/TransferJournal.swift",
+    "find": "place(.moved(TransferMove(from: source, to: result.destination)), at: result.destination)",
+    "replace": "place(.created(result.destination), at: result.destination)",
+    "rule": "Retry journal converts repaired copies into completed moves",
+    "tests": "TransferTests/repairedCrossVolumeMovesUpdateBothNativeUndoAndHistory"
+  },
+  {
+    "file": "Strata/Transfers/TransferJournal.swift",
+    "find": "landed.set(originalKept ? nil : result.landed, at: result.destination)",
+    "replace": "landed.set(result.landed, at: result.destination)",
+    "rule": "Retry journal withholds copy Undo when a move kept its original",
+    "tests": "TransferTests/aPartialMoveCannotKeepCopyUndoAfterItsOriginalRemovalFails"
+  },
+  {
+    "file": "Strata/Model/OperationLog.swift",
+    "find": "guard let current = entries.first(where: { $0.id == entry.id }), canUndo(current) else {",
+    "replace": "guard let current = Optional(entry), canUndo(current) else {",
+    "rule": "Retry journal History Undo resolves the latest saved record",
+    "tests": "TransferTests/repairedCrossVolumeMovesUpdateBothNativeUndoAndHistory|TransferTests/staleHistoryRowsCannotUndoClearedOrAlreadyUndoneRecords"
+  },
+  {
+    "file": "Strata/Model/OperationLog.swift",
+    "find": "!retiredTransfers.contains(id) && entries.contains { $0.id == id && !$0.undone }",
+    "replace": "entries.contains { $0.id == id && !$0.undone }",
+    "rule": "Retry journal retires a History record before asynchronous Undo finishes",
+    "tests": "TransferTests/retryFinishingDuringHistoryUndoStartsItsOwnRecord"
   }
 ]

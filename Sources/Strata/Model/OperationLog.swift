@@ -106,9 +106,16 @@ final class OperationLog {
     private let file: URL
     private let storage: SecureStorage.Context
     private let limit = 500
+    private var undoing: Set<UUID> = []
+    private var retiredTransfers: Set<UUID> = []
+    typealias Mover = ([FileOps.Move], String) async throws -> Void
+    private let moveItems: Mover
 
-    init(storage: SecureStorage.Context = SecureStorage.current) {
+    init(storage: SecureStorage.Context = SecureStorage.current, moveItems: Mover? = nil) {
         self.storage = storage
+        self.moveItems = moveItems ?? { pairs, name in
+            try await FileOps.move(pairs, actionName: name, undo: nil, record: false)
+        }
         file = storage.url("history.sealed")
         entries = Self.readEntries(from: file, storage: storage)
         // Never import a plain history file: anything running as you could plant one, and undoing its entries would
@@ -149,12 +156,27 @@ final class OperationLog {
     @discardableResult
     func recordTransfer(_ name: String, created: [URL], moved: [(from: URL, to: URL)],
                         replaced: [(from: URL, to: URL)], containers: [URL] = [],
-                        containerIdentities: [String: String]? = nil, landed: LandedFiles? = nil) -> UUID? {
+                        containerIdentities: [String: String]? = nil, landed: LandedFiles? = nil,
+                        updating id: UUID? = nil) -> UUID? {
         guard !(created.isEmpty && moved.isEmpty) else { return nil }
-        return append(Entry(name: name, kind: created.isEmpty ? .move : .create, pairs: Self.paths(moved),
-                            created: created.map(\.path), replaced: Self.paths(replaced), containers: containers.map(\.path),
-                            containerIdentities: containerIdentities ?? CreatedFolders(containers).historyIdentities,
-                            fileIdentities: landed?.historyIdentities(for: created + moved.map(\.to) + replaced.map(\.to))))
+        var entry = Entry(name: name, kind: created.isEmpty ? .move : .create, pairs: Self.paths(moved),
+                          created: created.map(\.path), replaced: Self.paths(replaced), containers: containers.map(\.path),
+                          containerIdentities: containerIdentities ?? CreatedFolders(containers).historyIdentities,
+                          fileIdentities: landed?.historyIdentities(for: created + moved.map(\.to) + replaced.map(\.to)))
+        guard let id else { return append(entry) }
+        // A retry updates its original operation, never an entry that has been undone or cleared meanwhile.
+        guard canUpdateTransfer(id), let index = entries.firstIndex(where: { $0.id == id }) else { return nil }
+        entry.id = id
+        entry.date = entries[index].date
+        entry.changed = entries[index].changed
+        entries[index] = entry
+        save()
+        return id
+    }
+
+    /// A transfer being undone is already retired, even while its cross-volume moves are still running.
+    func canUpdateTransfer(_ id: UUID) -> Bool {
+        !retiredTransfers.contains(id) && entries.contains { $0.id == id && !$0.undone }
     }
 
     /// One entry for an applied Ask Strata plan: its moves (Trash included) and the folders it made for them.
@@ -170,6 +192,7 @@ final class OperationLog {
     /// Keeps an entry in step with ⌘Z and ⇧⌘Z (undoing marks it undone; redoing marks it done again).
     func setUndone(_ id: UUID, _ undone: Bool) {
         guard let index = entries.firstIndex(where: { $0.id == id }), entries[index].undone != undone else { return }
+        if undone { retiredTransfers.insert(id) }
         entries[index].undone = undone
         entries[index].changed = Date()
         save()
@@ -223,7 +246,7 @@ final class OperationLog {
     /// Whether undoing `entry` can still work: the very items the operation left are still where it left them, and
     /// nothing else occupies the places they'd go back to (a case-only rename's old spelling is the item itself).
     func canUndo(_ entry: Entry) -> Bool {
-        guard !entry.undone else { return false }
+        guard !entry.undone, !undoing.contains(entry.id) else { return false }
         // A place counts as free when nothing is there, it's the item itself (a case-only rename), or another move in
         // the same entry will vacate it first ("trash X, rename Y to X").
         let destinations = Set(entry.pairs.map { $0[1] })
@@ -242,12 +265,17 @@ final class OperationLog {
     /// Reverses `entry`: created items go to the Trash, moves go back, replaced items come back out of the Trash, and
     /// folders made for moved items are removed if empty. The reversal is itself undoable with ⌘Z.
     func undo(_ entry: Entry, undoManager: UndoManager?) async throws {
-        // Checked again now: the window may have been open a while.
-        guard canUndo(entry) else {
+        // A retry may have repaired a copy or finished a move since this button was built. Undo the current saved
+        // operation, and never revive an entry removed by Clear History.
+        guard let current = entries.first(where: { $0.id == entry.id }), canUndo(current) else {
             throw CocoaError(.fileWriteUnknown, userInfo: [
                 NSLocalizedDescriptionKey: String(localized: "“\(entry.displayName)” can’t be undone: its items have moved or changed since."),
             ])
         }
+        let entry = current
+        undoing.insert(entry.id)
+        retiredTransfers.insert(entry.id)
+        defer { undoing.remove(entry.id) }
         let containers = CreatedFolders(paths: entry.containers, recorded: entry.identities)
         // Everything happens without registering undo piecemeal; one ⌘Z afterwards puts it all back (below).
         var done: [FileOps.Move] = []
@@ -260,7 +288,7 @@ final class OperationLog {
         }
         if !back.isEmpty {
             do {
-                try await FileOps.move(back, actionName: "Undo \(entry.name)", undo: nil, record: false)
+                try await moveItems(back, "Undo \(entry.name)")
                 done += back
             } catch {
                 // Part of it may have moved: keep ⌘Z able to put back what did.
@@ -284,12 +312,16 @@ final class OperationLog {
 
     func clear() {
         entries.removeAll()
+        retiredTransfers.removeAll()
         save()
     }
 
     private func append(_ entry: Entry) -> UUID {
         entries.append(entry)
-        if entries.count > limit { entries.removeFirst(entries.count - limit) }
+        if entries.count > limit {
+            entries.removeFirst(entries.count - limit)
+            retiredTransfers.formIntersection(Set(entries.map(\.id)))
+        }
         save()
         return entry.id
     }

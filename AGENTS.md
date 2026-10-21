@@ -264,6 +264,10 @@ sheet's text before clicking a destructive button. Both builds share preferences
   shared by live Undo, History and cancellation cleanup. Redo records the folders it recreates and updates their
   saved History identities. Old records without container identities may restore files but must not remove those
   folders. Read and remove Finder records relative to an owned, opened directory; never follow a cleanup symlink.
+- Transfer results are journaled by `TransferJournal` after each completed pass. Native Undo and History share the
+  same receipt: a repaired copy updates its captured identity, and a finished move replaces its copy classification.
+  Never extend a record whose Undo has started, whose action has been replayed, or which History has cleared.
+  Resolve History buttons by the current saved entry ID before acting; a captured row can predate a retry.
 - File identity reads belong in `FileIdentity`, and live operation ownership belongs in `LandedFiles`. Preserve
   no-follow reads and record identities when items land, before callbacks can replace them. Runtime identities include
   birth time; History retains its volume UUID/inode and legacy device:inode formats. Do not silently change those

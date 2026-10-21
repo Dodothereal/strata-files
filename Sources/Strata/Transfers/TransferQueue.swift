@@ -272,23 +272,34 @@ enum TransferUndo {
                          undo: UndoManager?, logHistory: Bool = true, containers: CreatedFolders = CreatedFolders(), landed: LandedFiles? = nil,
                          queue: TransferQueue) {
         let landed = landed ?? LandedFiles(created + moved.map(\.to) + replaced.map(\.to))
-        let entry = logHistory
-            ? queue.history.recordTransfer(actionName, created: created, moved: moved.map { (from: $0.from, to: $0.to) },
-                                                 replaced: replaced.map { (from: $0.from, to: $0.to) }, containers: containers.urls,
-                                                 containerIdentities: containers.historyIdentities, landed: landed)
-            : nil
-        guard let undo, !(created.isEmpty && moved.isEmpty && replaced.isEmpty) else { return }
-        if let entry { FileOps.registerLogMark(entry, undone: true, undo, history: queue.history) }
-        // Undo touches only these very items: never one put in an item's place since.
+        register(receipt: TransferJournal.Receipt(created: created, moved: moved, replaced: replaced, landed: landed),
+                 actionName: actionName, undo: undo, logHistory: logHistory, containers: containers, queue: queue)
+    }
+
+    static func register(receipt: TransferJournal.Receipt, actionName: String, undo: UndoManager?, logHistory: Bool,
+                         containers: CreatedFolders, queue: TransferQueue) {
+        if logHistory {
+            receipt.historyEntry = queue.history.recordTransfer(actionName, created: receipt.created,
+                moved: receipt.moved.map { (from: $0.from, to: $0.to) },
+                replaced: receipt.replaced.map { (from: $0.from, to: $0.to) }, containers: containers.urls,
+                containerIdentities: containers.historyIdentities, landed: receipt.landed, updating: receipt.historyEntry)
+        }
+        guard let undo, !receipt.isEmpty, !receipt.undoRegistered else { return }
+        receipt.undoRegistered = true
         undo.registerUndo(withTarget: undo) { undo in
             MainActor.assumeIsolated {
-                let existing = created.filter(landed.holds)
+                receipt.wasUndone = true
+                let existing = receipt.created.filter(receipt.landed.holds)
                 if !existing.isEmpty { _ = try? FileOps.trash(existing, undo: undo, record: false) }
                 // Moved items go back first, then whatever they replaced comes out of the Trash into the freed spots.
-                let back = moved.filter { landed.holds($0.to) }.reversed().map(\.reversed)
-                    + replaced.filter { landed.holds($0.to) }.reversed().map(\.reversed)
+                let back = receipt.moved.filter { receipt.landed.holds($0.to) }.reversed().map(\.reversed)
+                    + receipt.replaced.filter { receipt.landed.holds($0.to) }.reversed().map(\.reversed)
                 perform(back, actionName: actionName, undo: undo, containers: containers.urls.isEmpty ? .none : .remove(containers),
-                        queue: queue, historyEntry: entry)
+                        queue: queue, historyEntry: receipt.historyEntry)
+                if let entry = receipt.historyEntry {
+                    queue.history.setUndone(entry, true)
+                    FileOps.registerLogMark(entry, undone: false, undo, history: queue.history)
+                }
                 undo.setActionName(OperationLog.displayName(actionName))
             }
         }
