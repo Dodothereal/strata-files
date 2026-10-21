@@ -33,6 +33,16 @@ final class LandedFiles {
         if expected.device != now.device { identities[destination.path] = now }
     }
 
+    /// Convert live ownership to History's persistent format only while the item still matches. An empty key
+    /// explicitly refuses Undo; omitting a key would invoke the compatibility rule for old, untracked records.
+    func historyIdentities(for urls: [URL]) -> [String: String] {
+        var saved: [String: String] = [:]
+        for url in urls {
+            saved[url.path] = identities[url.path]?.historyKey(at: url.path) ?? ""
+        }
+        return saved
+    }
+
     func holds(_ url: URL) -> Bool {
         guard let identity = identities[url.path] else { return false }
         return FileIdentity.read(url.path) == identity

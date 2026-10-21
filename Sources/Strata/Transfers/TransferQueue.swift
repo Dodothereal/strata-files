@@ -271,15 +271,15 @@ enum TransferUndo {
     static func register(created: [URL], moved: [TransferMove], replaced: [TransferMove], actionName: String,
                          undo: UndoManager?, logHistory: Bool = true, containers: CreatedFolders = CreatedFolders(), landed: LandedFiles? = nil,
                          queue: TransferQueue) {
+        let landed = landed ?? LandedFiles(created + moved.map(\.to) + replaced.map(\.to))
         let entry = logHistory
             ? queue.history.recordTransfer(actionName, created: created, moved: moved.map { (from: $0.from, to: $0.to) },
                                                  replaced: replaced.map { (from: $0.from, to: $0.to) }, containers: containers.urls,
-                                                 containerIdentities: containers.historyIdentities)
+                                                 containerIdentities: containers.historyIdentities, landed: landed)
             : nil
         guard let undo, !(created.isEmpty && moved.isEmpty && replaced.isEmpty) else { return }
         if let entry { FileOps.registerLogMark(entry, undone: true, undo, history: queue.history) }
         // Undo touches only these very items: never one put in an item's place since.
-        let landed = landed ?? LandedFiles(created + moved.map(\.to) + replaced.map(\.to))
         undo.registerUndo(withTarget: undo) { undo in
             MainActor.assumeIsolated {
                 let existing = created.filter(landed.holds)

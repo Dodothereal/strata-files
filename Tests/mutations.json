@@ -1658,5 +1658,54 @@
     "replace": "job.containers = CreatedFolders(containers)",
     "rule": "Created folder ownership supplied before queueing is retained through cancellation",
     "tests": "CreatedFolderOwnershipTests/cancelledJobsKeepTheOwnershipCapturedBeforeTheyWereQueued"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "containerIdentities: containers.historyIdentities, landed: landed)",
+    "replace": "containerIdentities: containers.historyIdentities)",
+    "rule": "Transfer History ownership survives callbacks before registration",
+    "tests": "TransferTests/historyRejectsItemsReplacedBeforeTransferRegistration"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "history.recordMove(actionName, done, landed: landed)",
+    "replace": "history.recordMove(actionName, done)",
+    "rule": "Rename History ownership survives callbacks before registration",
+    "tests": "TransferTests/historyRejectsARenameReplacedBeforeRegistration"
+  },
+  {
+    "file": "Strata/AI/PlanExecutor.swift",
+    "find": "containerIdentities: createdFolders.historyIdentities, landed: applied)",
+    "replace": "containerIdentities: createdFolders.historyIdentities)",
+    "rule": "Plan History ownership survives changes before registration",
+    "tests": "HistoryOwnershipTests/planHistoryUsesTheTransactionOwnership"
+  },
+  {
+    "file": "Strata/Model/LandedFiles.swift",
+    "find": "saved[url.path] = identities[url.path]?.historyKey(at: url.path) ?? \"\"",
+    "replace": "saved[url.path] = FileIdentity.historyKey(at: url.path) ?? \"\"",
+    "rule": "Saved History ownership never adopts current replacements",
+    "tests": "HistoryOwnershipTests/absentOwnershipIsExplicitAndNeverBecomesLegacyHistory"
+  },
+  {
+    "file": "Strata/Model/OperationLog.swift",
+    "find": "identities[path] = fileIdentities.map { $0[path] ?? \"\" } ?? OperationLog.identity(path) ?? \"\"",
+    "replace": "identities[path] = fileIdentities?[path] ?? OperationLog.identity(path) ?? \"\"",
+    "rule": "Missing supplied History ownership never falls back to current files",
+    "tests": "HistoryOwnershipTests/absentOwnershipIsExplicitAndNeverBecomesLegacyHistory"
+  },
+  {
+    "file": "Strata/Model/OperationLog.swift",
+    "find": "identities[path] = fileIdentities.map { $0[path] ?? \"\" } ?? OperationLog.identity(path) ?? \"\"",
+    "replace": "let recorded = fileIdentities.map { $0[path] ?? \"\" } ?? OperationLog.identity(path) ?? \"\"; identities[path] = recorded.isEmpty ? nil : recorded",
+    "rule": "Refused History ownership never becomes an untracked legacy record",
+    "tests": "TransferTests/historyRejectsItemsReplacedBeforeTransferRegistration|HistoryOwnershipTests/absentOwnershipIsExplicitAndNeverBecomesLegacyHistory"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "registerMoveUndo(done, actionName, undo, entry: entry, landed: landed, history: history)",
+    "replace": "registerMoveUndo(done, actionName, undo, entry: entry, landed: landed)",
+    "rule": "Move History ownership retains its injected journal through Undo",
+    "tests": "HistoryOwnershipTests/ownedMoveHistoryAndLiveUndoKeepTheInjectedJournal"
   }
 ]

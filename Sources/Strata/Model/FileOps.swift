@@ -33,7 +33,8 @@ enum FileOps {
 
     /// `record: false` for moves that are themselves an undo or redo (or part of a larger logged operation): History
     /// keeps one entry per operation and marks it undone instead of growing a row per ⌘Z.
-    static func move(_ pairs: [Move], actionName: String, undo: UndoManager?, record: Bool = true) async throws {
+    static func move(_ pairs: [Move], actionName: String, undo: UndoManager?, record: Bool = true,
+                     history: OperationLog = .shared) async throws {
         guard !pairs.contains(where: { ReadOnlyCopies.contains($0.from) || ReadOnlyCopies.contains($0.to) }) else {
             throw insideArchiveError
         }
@@ -41,8 +42,8 @@ enum FileOps {
         for pair in pairs { landed.expect(pair.from, at: pair.to) }
         let (done, error) = await moveAll(pairs)
         done.forEach { landed.arrived($0.to); TransferEngine.hooks.afterLanding?($0.to) }
-        let entry = record ? OperationLog.shared.recordMove(actionName, done) : nil
-        registerMoveUndo(done, actionName, undo, entry: entry, landed: landed)
+        let entry = record ? history.recordMove(actionName, done, landed: landed) : nil
+        registerMoveUndo(done, actionName, undo, entry: entry, landed: landed, history: history)
         if let error { throw error }
     }
 
@@ -220,14 +221,18 @@ enum FileOps {
     static func trash(_ urls: [URL], undo: UndoManager?, record: Bool = true, entry: UUID? = nil,
                       marksUndone: Bool = true) throws -> [Move] {
         var moved: [Move] = []
+        let landed = LandedFiles()
         defer {
-            let logged = record ? OperationLog.shared.recordMove("Move to Trash", moved) : entry
-            registerMoveUndo(moved, "Move to Trash", undo, entry: logged, marksUndone: record ? true : marksUndone)
+            let logged = record ? OperationLog.shared.recordMove("Move to Trash", moved, landed: landed) : entry
+            registerMoveUndo(moved, "Move to Trash", undo, entry: logged, marksUndone: record ? true : marksUndone, landed: landed)
         }
         for url in urls where !ReadOnlyCopies.contains(url) {
             var result: NSURL?
             try FileManager.default.trashItem(at: url, resultingItemURL: &result)
-            if let result { moved.append((from: url, to: result as URL)) }
+            if let result {
+                moved.append((from: url, to: result as URL))
+                landed.record([result as URL])
+            }
         }
         trashSound?.stop()
         trashSound?.play()
@@ -282,9 +287,9 @@ enum FileOps {
     /// records and registers undo like `trash`. Items on disks without a Trash come back in `NoTrash`.
     static func trashInBackground(_ urls: [URL], undo: UndoManager?) async throws {
         let (moved, identities, noTrash, failure) = await trashItems(urls)
-        let entry = OperationLog.shared.recordMove("Move to Trash", moved)
         let landed = LandedFiles()
         for (move, identity) in zip(moved, identities) { landed.set(identity, at: move.to) }
+        let entry = OperationLog.shared.recordMove("Move to Trash", moved, landed: landed)
         registerMoveUndo(moved, "Move to Trash", undo, entry: entry, landed: landed)
         if !moved.isEmpty {
             trashSound?.stop()

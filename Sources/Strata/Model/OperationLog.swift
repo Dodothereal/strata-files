@@ -35,7 +35,7 @@ final class OperationLog {
         var changed: Date?
 
         init(name: String, kind: Kind, pairs: [[String]] = [], created: [String] = [], replaced: [[String]] = [],
-             containers: [String] = [], containerIdentities: [String: String] = [:]) {
+             containers: [String] = [], containerIdentities: [String: String] = [:], fileIdentities: [String: String]? = nil) {
             self.name = name
             self.kind = kind
             self.pairs = pairs
@@ -45,7 +45,7 @@ final class OperationLog {
             let containerPaths = Set(containers)
             identities = containerIdentities.filter { containerPaths.contains($0.key) }
             for path in pairs.map({ $0[1] }) + created + replaced.map({ $0[1] }) {
-                identities[path] = OperationLog.identity(path)
+                identities[path] = fileIdentities.map { $0[path] ?? "" } ?? OperationLog.identity(path) ?? ""
             }
         }
 
@@ -133,9 +133,10 @@ final class OperationLog {
     }
 
     @discardableResult
-    func recordMove(_ name: String, _ pairs: [(from: URL, to: URL)]) -> UUID? {
+    func recordMove(_ name: String, _ pairs: [(from: URL, to: URL)], landed: LandedFiles? = nil) -> UUID? {
         guard !pairs.isEmpty else { return nil }
-        return append(Entry(name: name, kind: .move, pairs: Self.paths(pairs)))
+        return append(Entry(name: name, kind: .move, pairs: Self.paths(pairs),
+                            fileIdentities: landed?.historyIdentities(for: pairs.map(\.to))))
     }
 
     @discardableResult
@@ -148,20 +149,22 @@ final class OperationLog {
     @discardableResult
     func recordTransfer(_ name: String, created: [URL], moved: [(from: URL, to: URL)],
                         replaced: [(from: URL, to: URL)], containers: [URL] = [],
-                        containerIdentities: [String: String]? = nil) -> UUID? {
+                        containerIdentities: [String: String]? = nil, landed: LandedFiles? = nil) -> UUID? {
         guard !(created.isEmpty && moved.isEmpty) else { return nil }
         return append(Entry(name: name, kind: created.isEmpty ? .move : .create, pairs: Self.paths(moved),
                             created: created.map(\.path), replaced: Self.paths(replaced), containers: containers.map(\.path),
-                            containerIdentities: containerIdentities ?? CreatedFolders(containers).historyIdentities))
+                            containerIdentities: containerIdentities ?? CreatedFolders(containers).historyIdentities,
+                            fileIdentities: landed?.historyIdentities(for: created + moved.map(\.to) + replaced.map(\.to))))
     }
 
     /// One entry for an applied Ask Strata plan: its moves (Trash included) and the folders it made for them.
     @discardableResult
     func recordPlan(_ name: String, moved: [(from: URL, to: URL)], containers: [URL],
-                    containerIdentities: [String: String]? = nil) -> UUID? {
+                    containerIdentities: [String: String]? = nil, landed: LandedFiles? = nil) -> UUID? {
         guard !moved.isEmpty else { return nil }
         return append(Entry(name: name, kind: .move, pairs: Self.paths(moved), containers: containers.map(\.path),
-                            containerIdentities: containerIdentities ?? CreatedFolders(containers).historyIdentities))
+                            containerIdentities: containerIdentities ?? CreatedFolders(containers).historyIdentities,
+                            fileIdentities: landed?.historyIdentities(for: moved.map(\.to))))
     }
 
     /// Keeps an entry in step with ⌘Z and ⇧⌘Z (undoing marks it undone; redoing marks it done again).

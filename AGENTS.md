@@ -258,6 +258,9 @@ sheet's text before clicking a destructive button. Both builds share preferences
   no-follow reads and record identities when items land, before callbacks can replace them. Runtime identities include
   birth time; History retains its volume UUID/inode and legacy device:inode formats. Do not silently change those
   saved representations or replace a same-disk expectation with an identity read later.
+- Pass captured `LandedFiles` into History registration after asynchronous work or callbacks. Converting to saved
+  identities must still match that ownership; a failed match gets an explicit refusing key, never an absent key
+  that would enable legacy existence-only Undo. Cover saving, reopening and a replacement arriving before logging.
 
 ## Commits and releases
 

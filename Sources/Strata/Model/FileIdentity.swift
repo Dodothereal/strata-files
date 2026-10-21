@@ -31,6 +31,15 @@ nonisolated struct FileIdentity: Sendable, Equatable {
         return identity.historyKey(volumeID: volume)
     }
 
+    /// Reading volume metadata can race a replacement. Check both sides of that lookup against the identity
+    /// captured by the operation; the file currently at this path does not become ours merely by being there.
+    func historyKey(at path: String) -> String? {
+        guard Self.read(path) == self else { return nil }
+        let volume = (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.volumeUUIDStringKey]))?.volumeUUIDString
+        guard Self.read(path) == self else { return nil }
+        return historyKey(volumeID: volume)
+    }
+
     static func matchesHistory(_ recorded: String, at path: String) -> Bool {
         guard recorded.contains(":"), !recorded.contains("/") else { return historyKey(at: path) == recorded }
         return read(path)?.legacyHistoryKey == recorded
