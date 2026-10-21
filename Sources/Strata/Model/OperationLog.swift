@@ -253,7 +253,9 @@ final class OperationLog {
         var done: [FileOps.Move] = []
         let existing = entry.created.filter { holdsOriginal(entry, $0) }.map { URL(fileURLWithPath: $0) }
         if !existing.isEmpty { done += try FileOps.trash(existing, undo: nil, record: false) }
-        let back = (entry.pairs.reversed() + entry.replaced.reversed().filter { holdsOriginal(entry, $0[1]) }).map {
+        // A mixed transfer can still undo its own copies after a moved item is replaced. Check every move too;
+        // canUndo accepting part of an entry never gives ownership of the rest.
+        let back = (entry.pairs.reversed() + entry.replaced.reversed()).filter { holdsOriginal(entry, $0[1]) }.map {
             (from: URL(fileURLWithPath: $0[1]), to: URL(fileURLWithPath: $0[0]))
         }
         if !back.isEmpty {

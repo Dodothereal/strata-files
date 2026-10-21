@@ -189,4 +189,48 @@ struct HistoryOwnershipTests {
         try await reopened.undo(try #require(reopened.entries.first), undoManager: nil)
         #expect(tree.snapshot() == ["a.txt", "ab.txt", "state/", "state/history.sealed"])
     }
+
+    @Test func mixedHistoryUndoSkipsReplacedMovesWhileUndoingItsOwnCopy() async throws {
+        for beforeRegistration in [false, true] {
+            for replacement in ["file", "folder", "link", "missing"] {
+                let tree = try TestTree("copy.txt", "moved.txt", "good.txt", "keep.txt", "outside/keep", "state/")
+                let env = try HistoryEnvironment(tree)
+                let ownership = LandedFiles([tree.url("copy.txt"), tree.url("moved.txt"), tree.url("good.txt")])
+                func record() {
+                    env.history.recordTransfer("Move", created: [tree.url("copy.txt")],
+                                               moved: [(from: tree.url("source.txt"), to: tree.url("moved.txt")),
+                                                       (from: tree.url("other.txt"), to: tree.url("good.txt"))],
+                                               replaced: [], landed: ownership)
+                }
+                if !beforeRegistration { record() }
+                try FileManager.default.moveItem(at: tree.url("moved.txt"), to: tree.url("saved.txt"))
+                switch replacement {
+                case "file": try tree.add(["moved.txt"])
+                case "folder": try tree.add(["moved.txt/"])
+                case "link": try tree.add(["moved.txt -> outside"])
+                default: break
+                }
+                if beforeRegistration { record() }
+                let history = OperationLog(storage: env.storage)
+                let entry = try #require(history.entries.first)
+                try #require(history.canUndo(entry), "The original copy can still be undone.")
+                let before = tree.snapshot()
+                let undo = UndoManager()
+                undo.groupsByEvent = false
+                undo.beginUndoGrouping()
+                do { try await history.undo(entry, undoManager: undo) } catch { Issue.record(error) }
+                undo.endUndoGrouping()
+                let expected = (before.filter { $0 != "copy.txt" && $0 != "good.txt" } + ["other.txt"]).sorted()
+                #expect(tree.snapshot() == expected)
+                #expect(tree.text("saved.txt") == "moved.txt")
+                #expect(tree.text("other.txt") == "good.txt")
+                #expect(tree.text("outside/keep") == "outside/keep")
+                // Restore the test's own copy from the real Trash, including on the failing baseline.
+                undo.undo()
+                await FileOps.undoWork?.value
+                #expect(tree.text("copy.txt") == "copy.txt" && tree.text("good.txt") == "good.txt")
+                #expect(tree.snapshot() == before)
+            }
+        }
+    }
 }
