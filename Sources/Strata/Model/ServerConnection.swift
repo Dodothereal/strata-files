@@ -5,8 +5,6 @@ import NetFS
 /// password itself (and can keep them in the Keychain); Strata never sees them unless they're typed into the address.
 nonisolated enum ServerConnection {
     static let schemes: Set<String> = ["smb", "cifs", "afp", "nfs", "https", "http"]
-    private static let recentsKey = "recentServers"
-    private static let recentLimit = 10
 
     struct Problem: Error, Equatable {
         let message: String
@@ -41,21 +39,6 @@ nonisolated enum ServerConnection {
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url.absoluteString }
         components.password = nil
         return components.string ?? url.absoluteString
-    }
-
-    @MainActor static var recents: [String] {
-        (Prefs.shared.defaults.stringArray(forKey: recentsKey) ?? []).filter { !$0.isEmpty }
-    }
-
-    @MainActor static func remember(_ url: URL) {
-        let shown = displayString(url)
-        var list = recents.filter { $0.caseInsensitiveCompare(shown) != .orderedSame }
-        list.insert(shown, at: 0)
-        Prefs.shared.defaults.set(Array(list.prefix(recentLimit)), forKey: recentsKey)
-    }
-
-    @MainActor static func clearRecents() {
-        Prefs.shared.defaults.removeObject(forKey: recentsKey)
     }
 
     /// A mount in progress, which can be stopped. It finishes exactly once: with what NetFS reports, or (cancelled)

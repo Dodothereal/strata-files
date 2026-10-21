@@ -7,6 +7,7 @@ final class BrowserServices {
 
     let preferences: Prefs
     lazy var workspaces = Workspaces(services: self)
+    lazy var connectionSettings = ServerConnectionSettings(preferences: preferences)
     lazy var savedSearches = SavedSearches(preferences: preferences)
     lazy var viewOptions = ViewOptionsWindowController(preferences: preferences)
 

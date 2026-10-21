@@ -4,7 +4,8 @@ import AppKit
 /// SFTP server (through your Mac's own ssh: your ~/.ssh/config, keys and agent; a password is asked when needed), or an
 /// S3 bucket (its secret key goes in your keychain). A server that connects is saved to the sidebar's Servers.
 final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSControlTextEditingDelegate {
-    enum Kind: Int { case share, sftp, s3 }
+    typealias Kind = ServerConnectionSettings.Kind
+    private let settings: ServerConnectionSettings
 
     /// Called with where the share is mounted.
     var onConnected: ((URL) -> Void)?
@@ -35,9 +36,10 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
     private var connecting: Task<Void, Never>?
     private var connectingID: String?
 
-    init(editing server: RemoteServer? = nil) {
+    init(editing server: RemoteServer? = nil, settings: ServerConnectionSettings) {
+        self.settings = settings
         editing = server
-        kind = server.map { $0.kind == .s3 ? .s3 : .sftp } ?? Kind(rawValue: Prefs.shared.defaults.integer(forKey: "connectKind")) ?? .share
+        kind = server.map { $0.kind == .s3 ? .s3 : .sftp } ?? settings.kind
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -173,7 +175,7 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
 
     @objc private func kindChanged(_ sender: NSSegmentedControl) {
         kind = Kind(rawValue: sender.selectedSegment) ?? .share
-        Prefs.shared.defaults.set(kind.rawValue, forKey: "connectKind")
+        settings.kind = kind
         message.isHidden = true
         showKind()
         focusFirstField()
@@ -187,9 +189,9 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         case .share:
             hint.stringValue = String(localized: "smb://server/share, afp://, nfs:// or a WebDAV https:// address. A server name alone connects with SMB.")
             address.placeholderString = "smb://server/share"
-            address.addItems(withObjectValues: ServerConnection.recents)
-            if editing == nil { address.stringValue = ServerConnection.recents.first ?? "" }
-            clearRecents.isHidden = ServerConnection.recents.isEmpty
+            address.addItems(withObjectValues: settings.recents)
+            if editing == nil { address.stringValue = settings.recents.first ?? "" }
+            clearRecents.isHidden = settings.recents.isEmpty
         case .sftp:
             hint.stringValue = String(localized: "user@host, a Host from ~/.ssh/config, or sftp://user@host:port/folder. Your SSH keys and agent log in; a password is asked for when one is needed.")
             address.placeholderString = "deploy@example.com"
@@ -255,7 +257,7 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
             setBusy(false)
             switch result {
             case .success(let mounted):
-                ServerConnection.remember(url)
+                settings.remember(url)
                 dismiss(nil)
                 onConnected?(mounted)
             case .failure(let problem):
@@ -373,7 +375,7 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
     }
 
     @objc private func clearRecents(_ sender: NSButton) {
-        ServerConnection.clearRecents()
+        settings.clearRecents()
         address.removeAllItems()
         sender.isHidden = true
     }

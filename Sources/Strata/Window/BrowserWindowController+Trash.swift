@@ -9,7 +9,7 @@ extension BrowserWindowController {
     /// Go ▸ Connect to Server…: mounts a share (macOS asks for the login), then shows it.
     @objc func connectToServer(_ sender: Any?) {
         guard let window, window.attachedSheet == nil else { return }
-        let controller = ConnectToServerController()
+        let controller = ConnectToServerController(settings: services.connectionSettings)
         controller.onConnected = { [weak self] mounted in self?.navigate(to: mounted) }
         controller.onServer = { [weak self] server in self?.openServer(server) }
         contentViewController?.presentAsSheet(controller)
@@ -18,7 +18,7 @@ extension BrowserWindowController {
     /// Edit… for a saved SFTP server or bucket: the same sheet, filled in.
     func editServer(_ server: RemoteServer) {
         guard let window, window.attachedSheet == nil else { return }
-        let controller = ConnectToServerController(editing: server)
+        let controller = ConnectToServerController(editing: server, settings: services.connectionSettings)
         controller.onServer = { [weak self] server in self?.openServer(server) }
         contentViewController?.presentAsSheet(controller)
     }

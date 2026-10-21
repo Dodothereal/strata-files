@@ -2029,5 +2029,19 @@
     "replace": "guard let current = Optional(entry), canUndo(current) else {",
     "rule": "History window stale actions still resolve saved entries",
     "tests": "HistoryWindowOwnershipTests/aCapturedHistoryActionCannotReviveAClearedEntry"
+  },
+  {
+    "file": "Strata/Model/ServerConnection.swift",
+    "find": "components.password = nil",
+    "replace": "// Keep the supplied password.",
+    "rule": "Connection settings never persist a share password",
+    "tests": "ServerConnectionSettingsTests/rememberingSharesRemovesPasswordsDeduplicatesAndKeepsTheRecentLimit"
+  },
+  {
+    "file": "Strata/Model/ServerConnectionSettings.swift",
+    "find": "preferences.defaults.removeObject(forKey: recentsKey)",
+    "replace": "preferences.defaults.removePersistentDomain(forName: preferences.domainName)",
+    "rule": "Connection settings clear only recent addresses",
+    "tests": "ServerConnectionSettingsTests/savedProtocolsAndRecentSharesKeepTheirFormatAndOwner"
   }
 ]
