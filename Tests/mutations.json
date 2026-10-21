@@ -2514,6 +2514,97 @@
     "tests": "BrowserLoadingTests/outstandingCapacityAndChildWorkDoNotRetainTheOwner"
   },
   {
+    "file": "Strata/Remote/RemoteCopyStore.swift",
+    "find": "        guard UUID(uuidString: server.id) != nil else { throw RemoteError.unknownServer }",
+    "replace": "        // Accept an invalid cache child.",
+    "rule": "Remote copy ownership preparation accepts IDs that escape the cache",
+    "tests": "RemoteCopyOwnershipTests/preparingCopiesRefusesInvalidIDsAndReplacementLinks"
+  },
+  {
+    "file": "Strata/Remote/RemoteCopyStore.swift",
+    "find": "fstatat(parent, server.id, &info, AT_SYMLINK_NOFOLLOW)",
+    "replace": "fstatat(parent, server.id, &info, 0)",
+    "rule": "Remote copy ownership preparation follows a replacement child link",
+    "tests": "RemoteCopyOwnershipTests/preparingCopiesRefusesInvalidIDsAndReplacementLinks"
+  },
+  {
+    "file": "Strata/Remote/RemoteCopyStore.swift",
+    "find": "        let parent = open(rootPath, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)\n        guard parent >= 0 else { return }",
+    "replace": "        let parent = open(rootPath, O_RDONLY | O_DIRECTORY | O_CLOEXEC)\n        guard parent >= 0 else { return }",
+    "rule": "Remote copy ownership cleanup follows a replacement cache root",
+    "tests": "RemoteCopyOwnershipTests/removingCopiesNeverFollowsAReplacedRootOrAChildLink"
+  },
+  {
+    "file": "Strata/Remote/RemoteCopyStore.swift",
+    "find": "        guard UUID(uuidString: id) != nil else { return }",
+    "replace": "        // Accept an arbitrary cache folder.",
+    "rule": "Remote copy ownership cleanup removes folders that are not saved server IDs",
+    "tests": "RemoteCopyOwnershipTests/removingCopiesNeverFollowsAReplacedRootOrAChildLink"
+  },
+  {
+    "file": "Strata/Remote/RemoteCopyStore.swift",
+    "find": "let server = lookup(id), server.id == id",
+    "replace": "let server = lookup(id)",
+    "rule": "Remote copy ownership lookup accepts another servers registry record",
+    "tests": "RemoteCopyOwnershipTests/copyLookupRespectsPathBoundariesAndRejectsMismatchedRegistryEntries"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "find": "        guard !name.isEmpty, name != \".\", name != \"..\", !name.contains(\"/\"), !name.utf8.contains(0) else { return }",
+    "replace": "        // Accept escaping child names.",
+    "rule": "Remote copy ownership descriptor cleanup accepts escaping child names",
+    "tests": "RemoteCopyOwnershipTests/descriptorCleanupStaysWithTheOpenedFolderAndRejectsEscapingNames"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "        self.copies = copies",
+    "replace": "        self.copies = RemoteCopies.store",
+    "rule": "Remote copy ownership an injected file service uses the application cache",
+    "tests": "RemoteCopyOwnershipTests/matchingServerIDsKeepListingsDownloadsAndCleanupInTheirOwnEnvironment"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "temporary: copies.root.appending(path: \".fetching\", directoryHint: .isDirectory)",
+    "replace": "temporary: RemoteCopies.root.appending(path: \".fetching\", directoryHint: .isDirectory)",
+    "rule": "Remote copy ownership downloads stage into another environments cache",
+    "tests": "RemoteCopyOwnershipTests/matchingServerIDsKeepListingsDownloadsAndCleanupInTheirOwnEnvironment"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "self.removeCopy = removeCopy ?? { copies.remove($0) }",
+    "replace": "self.removeCopy = removeCopy ?? { RemoteCopies.remove($0) }",
+    "rule": "Remote copy ownership discard removes from the application cache instead of its owner",
+    "tests": "RemoteCopyOwnershipTests/matchingServerIDsKeepListingsDownloadsAndCleanupInTheirOwnEnvironment"
+  },
+  {
+    "file": "Strata/Remote/CopyProviders.swift",
+    "find": "func contains(_ url: URL) -> Bool { files.copies.contains(url) }",
+    "replace": "func contains(_ url: URL) -> Bool { RemoteCopies.contains(url) }",
+    "rule": "Remote copy ownership the server provider classifies paths using another environment",
+    "tests": "RemoteCopyOwnershipTests/matchingServerIDsKeepListingsDownloadsAndCleanupInTheirOwnEnvironment"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "rule": "Remote copy ownership deletion validates only the first selected source",
+    "find": "let removals = try urls.map { ($0, try target($0)) }",
+    "replace": "let removals = try urls.prefix(1).map { ($0, try target($0)) }",
+    "tests": "RemoteCopyOwnershipTests/batchWritesValidateEverySourceOwnerBeforeChangingAnything"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "rule": "Remote copy ownership moves validate only the first selected source",
+    "find": "let sources = try urls.map { ($0, try target($0)) }",
+    "replace": "let sources = try urls.prefix(1).map { ($0, try target($0)) }",
+    "tests": "RemoteCopyOwnershipTests/batchWritesValidateEverySourceOwnerBeforeChangingAnything"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "rule": "Remote copy ownership moves accept another saved server",
+    "find": "guard sources.allSatisfy({ $0.1.server.id == server.id }) else {",
+    "replace": "guard true else {",
+    "tests": "RemoteCopyOwnershipTests/batchWritesValidateEverySourceOwnerBeforeChangingAnything"
+  },
+  {
     "file": "Strata/Remote/SFTPClient.swift",
     "find": "fcntl(toServer.fileDescriptor, F_SETNOSIGPIPE, 1)",
     "replace": "fcntl(toServer.fileDescriptor, F_SETNOSIGPIPE, 0)",

@@ -66,8 +66,8 @@ nonisolated struct CopyProviders: Sendable {
 
 private nonisolated struct ServerCopyProvider: CopyProvider {
     let files: RemoteFiles
-    func contains(_ url: URL) -> Bool { RemoteCopies.contains(url) }
-    func isPlaceholder(_ url: URL) -> Bool { RemoteCopies.isPlaceholder(url) }
+    func contains(_ url: URL) -> Bool { files.copies.contains(url) }
+    func isPlaceholder(_ url: URL) -> Bool { files.copies.isPlaceholder(url) }
     func refresh(_ folder: URL) async { await files.refresh(folder) }
     func invalidate(_ folder: URL) async { await files.invalidate(folder) }
     func reveal(_ url: URL) async -> Bool { await files.reveal(url) }
@@ -75,8 +75,8 @@ private nonisolated struct ServerCopyProvider: CopyProvider {
     func fetchSelection(_ urls: [URL], limit: Int64) async { await files.fetchSelection(urls, limit: limit) }
     func prepareForCopying(_ urls: [URL]) async throws { try await files.prepareForCopying(urls) }
     func message(for error: Error, about url: URL) -> String { RemoteFiles.message(for: error) }
-    func displayPath(_ url: URL) -> String? { RemoteCopies.displayPath(url) }
-    func sourceName(_ url: URL) -> String? { RemoteCopies.server(containing: url)?.server.name }
+    func displayPath(_ url: URL) -> String? { files.copies.displayPath(url) }
+    func sourceName(_ url: URL) -> String? { files.copies.server(containing: url)?.server.name }
 }
 
 private nonisolated struct ContainerCopyProvider: CopyProvider {

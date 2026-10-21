@@ -19,6 +19,7 @@ actor RemoteFiles {
     /// …and this many.
     static let eagerFolderCount = 100
 
+    nonisolated let copies: RemoteCopyStore
     private let now: @Sendable () -> Date
     private let removeCopy: @Sendable (String) -> Void
     private var removals: [String: Task<Void, Never>] = [:]
@@ -33,21 +34,22 @@ actor RemoteFiles {
     /// Servers whose copies are being removed: nothing new starts in them.
     private(set) var closing: Set<String> = []
 
-    init(sessions: RemoteSessions, now: @escaping @Sendable () -> Date = { Date() },
-         removeCopy: @escaping @Sendable (String) -> Void = { RemoteCopies.remove($0) }) {
-        self.init(now: now, backends: { try await sessions.backend(for: $0) },
+    init(sessions: RemoteSessions, copies: RemoteCopyStore = RemoteCopies.store, now: @escaping @Sendable () -> Date = { Date() },
+         removeCopy: (@Sendable (String) -> Void)? = nil) {
+        self.init(copies: copies, now: now, backends: { try await sessions.backend(for: $0) },
                   retire: { await sessions.retire($1, for: $0) }, removeCopy: removeCopy)
     }
 
     /// Standalone backends can omit pool retirement. A managed source must supply its matching retirement callback.
-    init(now: @escaping @Sendable () -> Date = { Date() },
+    init(copies: RemoteCopyStore = RemoteCopies.store, now: @escaping @Sendable () -> Date = { Date() },
          backends: @escaping @Sendable (String) async throws -> any RemoteBackend,
          retire: @escaping @Sendable (String, any RemoteBackend) async -> Void = { _, _ in },
-         removeCopy: @escaping @Sendable (String) -> Void = { RemoteCopies.remove($0) }) {
+         removeCopy: (@Sendable (String) -> Void)? = nil) {
+        self.copies = copies
         self.backends = backends
         self.retire = retire
         self.now = now
-        self.removeCopy = removeCopy
+        self.removeCopy = removeCopy ?? { copies.remove($0) }
     }
 
     // MARK: - Listing
@@ -56,7 +58,7 @@ actor RemoteFiles {
     /// window shows them over the folder); what's in the copy stays as it was.
     func refresh(_ folder: URL) async {
         let real = folder.resolvingSymlinksInPath().standardizedFileURL
-        guard let (server, top) = RemoteCopies.server(containing: real), let path = RemoteCopies.remotePath(of: real, top: top),
+        guard let (server, top) = copies.server(containing: real), let path = RemoteCopies.remotePath(of: real, top: top),
               !closing.contains(server.id) else { return }
         let key = real.path
         while !closing.contains(server.id), let request = listings.request(for: key, now: now(), start: {
@@ -76,7 +78,7 @@ actor RemoteFiles {
     /// Makes `url`, a path in a server's copy, exist by listing the folders on the way to it from the top. False when
     /// it isn't on the server.
     func reveal(_ url: URL) async -> Bool {
-        guard let (_, top) = RemoteCopies.server(containing: url), let path = RemoteCopies.remotePath(of: url, top: top) else { return false }
+        guard let (_, top) = copies.server(containing: url), let path = RemoteCopies.remotePath(of: url, top: top) else { return false }
         var current = top
         for part in ContainerCopies.normalized(path) {
             await refresh(current)
@@ -107,7 +109,7 @@ actor RemoteFiles {
                 // a bucket's objects have no such permissions.
                 let everyone = server.kind == .s3 || entry.mode & 0o004 != 0
                 if everyone, entry.size <= Self.eagerFileSize, bytes + entry.size <= Self.eagerFolderBytes, eager.count < Self.eagerFolderCount,
-                   RemoteCopies.isPlaceholder(url) {
+                   copies.isPlaceholder(url) {
                     bytes += entry.size
                     eager.append(url)
                 }
@@ -155,7 +157,7 @@ actor RemoteFiles {
     /// Fetches `urls` that are still placeholders (opening, previewing or copying them). Throws the first problem.
     func fetch(_ urls: [URL]) async throws {
         var fetched: [URL] = []
-        for url in urls where RemoteCopies.isPlaceholder(url) {
+        for url in urls where copies.isPlaceholder(url) {
             try Task.checkCancellation()
             if try await fetchOne(url) { fetched.append(url) }
         }
@@ -166,7 +168,7 @@ actor RemoteFiles {
     func fetchSelection(_ urls: [URL], limit: Int64) async {
         var total: Int64 = 0
         var chosen: [URL] = []
-        for url in urls where RemoteCopies.isPlaceholder(url) {
+        for url in urls where copies.isPlaceholder(url) {
             let size = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
             guard total + size <= limit else { break }
             total += size
@@ -185,7 +187,7 @@ actor RemoteFiles {
             try await join(running)
             return false
         }
-        guard let (server, top) = RemoteCopies.server(containing: url), !closing.contains(server.id), RemoteCopies.isPlaceholder(url),
+        guard let (server, top) = copies.server(containing: url), !closing.contains(server.id), copies.isPlaceholder(url),
               let path = RemoteCopies.remotePath(of: url, top: top) else { return false }
         let mode = modes[key] ?? 0o644
         let request = fetches.request(key) {
@@ -194,7 +196,7 @@ actor RemoteFiles {
                 // Stopping (cancelling this task: a Stop, a disconnect) stops the download too.
                 let stop = StopFlag()
                 try await withTaskCancellationHandler {
-                    try await RemoteWriter.fetch(path, into: url, mode: mode) { temp, limit in
+                    try await RemoteWriter.fetch(path, into: url, mode: mode, temporary: copies.root.appending(path: ".fetching", directoryHint: .isDirectory)) { temp, limit in
                         try await backend.download(path, to: temp, limit: limit, progress: { _ in }, stop: stop)
                     }
                 } onCancel: {
@@ -220,7 +222,7 @@ actor RemoteFiles {
     /// Makes everything at `urls` complete before it's copied out: placeholders fetched, and folders with all they
     /// hold (listed afresh, not just what's been browsed). Throws the first problem.
     func prepareForCopying(_ urls: [URL]) async throws {
-        for url in urls where RemoteCopies.contains(url) {
+        for url in urls where copies.contains(url) {
             try Task.checkCancellation()
             var info = stat()
             guard lstat(url.path, &info) == 0 else { continue }
@@ -260,7 +262,7 @@ actor RemoteFiles {
     }
 
     private func drainAndRemove(_ id: String) async {
-        let top = RemoteCopies.top(of: id).standardizedFileURL.path
+        let top = copies.top(of: id).standardizedFileURL.path
         let inside: (String) -> Bool = { $0 == top || $0.hasPrefix(top + "/") }
         let background = Array((eager.removeValue(forKey: id) ?? [:]).values)
         let fetching = fetches.tasks(under: top)
@@ -279,7 +281,7 @@ actor RemoteFiles {
 
     /// The server's path for `url` and its server's ID; throws outside a server's copy.
     private func target(_ url: URL) throws -> (server: RemoteServer, top: URL, path: String) {
-        guard let (server, top) = RemoteCopies.server(containing: url), let path = RemoteCopies.remotePath(of: url, top: top),
+        guard let (server, top) = copies.server(containing: url), let path = RemoteCopies.remotePath(of: url, top: top),
               !closing.contains(server.id) else { throw RemoteError.unknownServer }
         return (server, top, path)
     }
@@ -348,10 +350,11 @@ actor RemoteFiles {
 
     /// Deletes `urls` from the server (folders with everything in them). There's no Trash on a server.
     func delete(_ urls: [URL]) async throws {
+        let removals = try urls.map { ($0, try target($0)) }
         var parents: Set<URL> = []
-        for url in urls {
+        for (url, destination) in removals {
             try Task.checkCancellation()
-            let (server, _, path) = try target(url)
+            let (server, _, path) = destination
             guard path != "/" else { continue }
             let backend = try await backends(server.id)
             // What it is (a folder, or a link to one) is the server's to say: a link goes, what it points to stays.
@@ -365,15 +368,16 @@ actor RemoteFiles {
     /// refused (they'd have to come through this Mac). Returns where they are in the copy now.
     func move(_ urls: [URL], into folder: URL) async throws -> [URL] {
         let (server, _, destination) = try target(folder)
+        let sources = try urls.map { ($0, try target($0)) }
+        guard sources.allSatisfy({ $0.1.server.id == server.id }) else {
+            throw RemoteError.refused(String(localized: "Items can only be moved within one server. Copy them to this Mac first."))
+        }
         let backend = try await backends(server.id)
         var parents: Set<URL> = [folder.standardizedFileURL]
         var moved: [URL] = []
-        for url in urls {
+        for (url, source) in sources {
             try Task.checkCancellation()
-            let (source, _, path) = try target(url)
-            guard source.id == server.id else {
-                throw RemoteError.refused(String(localized: "Items can only be moved within one server. Copy them to this Mac first."))
-            }
+            let path = source.path
             // Never the top, never into itself.
             guard path != "/", destination != path, !destination.hasPrefix(path + "/") else { continue }
             let newPath = RemotePath.join(destination, RemotePath.name(path))
@@ -469,8 +473,9 @@ nonisolated final class Counter: @unchecked Sendable {
 nonisolated enum RemoteWriter {
     /// Downloads with `download` (given a temporary file to fill) and puts the result at `url` if the placeholder is
     /// still there.
-    static func fetch(_ path: String, into url: URL, mode: UInt32, download: (URL, Int64) async throws -> Void) async throws {
-        let temporary = RemoteCopies.root.appending(path: ".fetching", directoryHint: .isDirectory)
+    static func fetch(_ path: String, into url: URL, mode: UInt32,
+                      temporary: URL,
+                      download: (URL, Int64) async throws -> Void) async throws {
         try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let temp = temporary.appending(path: UUID().uuidString)
         defer { unlink(temp.path) }

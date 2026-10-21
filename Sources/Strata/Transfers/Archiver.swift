@@ -485,7 +485,14 @@ nonisolated enum Archiver {
         let parent = open(url.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
         guard parent >= 0 else { return }
         defer { close(parent) }
-        removeEntry(in: parent, url.lastPathComponent)
+        removeTree(url.lastPathComponent, in: parent)
+    }
+
+    /// Remove one child of an already opened folder. Cache owners pin their root without following a replacement
+    /// symlink; recursive cleanup keeps using descriptor-relative paths below it.
+    static func removeTree(_ name: String, in parent: Int32) {
+        guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.utf8.contains(0) else { return }
+        removeEntry(in: parent, name)
     }
 
     private static func removeEntry(in parent: Int32, _ name: String) {

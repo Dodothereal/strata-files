@@ -253,6 +253,12 @@ sheet's text before clicking a destructive button. Both builds share preferences
   owning provider, propagate fetch/preparation errors, and retain the existing bounded selection-prefetch policy.
   Provider-specific write, permission and archive behavior stays in its implementation. Inject providers or server
   services for tests; never let a fixture fall back to a live connection.
+- `RemoteFiles` and its `CopyProvider` adapter use the same `RemoteCopyStore` for server lookup, paths, placeholders,
+  download staging and removal. An injected backend must not fall back to the application's copy root. Test identical
+  server IDs in independent roots, including refused cross-environment writes and scoped cleanup. Prepare and remove
+  cache children relative to an opened root without following a replacement symlink; invalid IDs change nothing.
+  Validate every source in a remote delete/move batch before connecting or changing files. An unsupported later
+  source must not turn an up-front refusal into a partial operation.
 - Remote credentials use an injected `RemoteKeychain` / `KeychainAccess` boundary. Update existing secrets in place;
   do not delete a working secret before saving its replacement. Only a missing item permits creation, and a
   concurrent creator permits one scoped update retry. Keep the native service/account format and an existing
