@@ -101,6 +101,81 @@ extension TransferTests {
         #expect(tree.snapshot() == ["ab.txt", "b.txt", "saved.txt", "state/", "state/history.sealed"])
     }
 
+    @Test func sameDiskUndoStepsNeverAdoptItemsReplacedBeforeRegistration() async throws {
+        for conflict in [false, true] {
+            for replacement in ["none", "file", "folder", "link", "missing"] {
+                let tree = try TestTree("from/a.txt", "from/ab.txt", "from/b.txt", "from/folder/keep",
+                                        "from/link -> ../outside", "to/", "outside/keep", "state/")
+                let env = try HistoryEnvironment(tree)
+                if conflict { try tree.add(["to/a.txt"]) }
+                let targetName = conflict ? "a 2.txt" : "a.txt"
+                let target = tree.url("to/" + targetName), parked = tree.url("original")
+                let location = Self.fixtureLocation(target)
+                TransferEngine.hooks.afterLanding = { url in
+                    guard Self.fixtureLocation(url) == location, replacement != "none" else { return }
+                    do {
+                        try FileManager.default.moveItem(at: url, to: parked)
+                        switch replacement {
+                        case "file": try Data("replacement".utf8).write(to: url)
+                        case "folder": try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+                        case "link": try FileManager.default.createSymbolicLink(atPath: url.path, withDestinationPath: "../outside")
+                        default: break
+                        }
+                    } catch { Issue.record(error) }
+                }
+                defer { TransferEngine.hooks = .init() }
+                // A same-name move in another tree must not trigger the installed fault.
+                let other = try TestTree("from/a.txt", "to/")
+                TransferUndo.perform([TransferMove(from: other.url("from/a.txt"), to: other.url("to/" + targetName))],
+                                     actionName: "Move", undo: nil, queue: env.queue)
+                #expect(other.text("to/" + targetName) == "from/a.txt")
+                #expect(other.snapshot() == ["from/", "to/", "to/" + targetName])
+                let undo = UndoManager()
+                undo.groupsByEvent = false
+                undo.beginUndoGrouping()
+                TransferUndo.perform([TransferMove(from: tree.url("from/a.txt"), to: tree.url("to/a.txt")),
+                                      TransferMove(from: tree.url("from/b.txt"), to: tree.url("to/b.txt")),
+                                      TransferMove(from: tree.url("from/folder"), to: tree.url("to/folder")),
+                                      TransferMove(from: tree.url("from/link"), to: tree.url("to/link")),
+                                      TransferMove(from: tree.url("from/ab.txt"), to: tree.url("from/ab.txt/nested"))],
+                                     actionName: "Move", undo: undo, queue: env.queue)
+                undo.endUndoGrouping()
+                TransferEngine.hooks = .init()
+                var moved = ["from/", "from/ab.txt", "outside/", "outside/keep", "state/", "to/", "to/b.txt",
+                             "to/folder/", "to/folder/keep", "to/link -> ../outside"]
+                if conflict { moved.append("to/a.txt") }
+                if replacement != "none" { moved.append("original") }
+                switch replacement {
+                case "none", "file": moved.append("to/" + targetName)
+                case "folder": moved.append("to/" + targetName + "/")
+                case "link": moved.append("to/" + targetName + " -> ../outside")
+                default: break
+                }
+                #expect(tree.snapshot() == moved.sorted())
+                var restored = moved.filter { !["to/b.txt", "to/folder/", "to/folder/keep", "to/link -> ../outside"].contains($0) }
+                restored += ["from/b.txt", "from/folder/", "from/folder/keep", "from/link -> ../outside"]
+                if replacement == "none" {
+                    restored.removeAll { $0 == "to/" + targetName }
+                    restored.append("from/a.txt")
+                }
+                for _ in 0..<2 {
+                    undo.undo()
+                    await FileOps.undoWork?.value
+                    #expect(tree.snapshot() == restored.sorted(), "\(replacement), conflict: \(conflict)")
+                    #expect(tree.text("from/b.txt") == "from/b.txt")
+                    if replacement != "none" { #expect(tree.text("original") == "from/a.txt") }
+                    if replacement == "file" { #expect(tree.text("to/" + targetName) == "replacement") }
+                    #expect(tree.text("outside/keep") == "outside/keep")
+                    undo.redo()
+                    await FileOps.undoWork?.value
+                    #expect(tree.snapshot() == moved.sorted())
+                }
+                #expect(env.history.entries.isEmpty)
+                #expect(tree.snapshot() == moved.sorted())
+            }
+        }
+    }
+
 }
 
 

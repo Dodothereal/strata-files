@@ -153,7 +153,7 @@ on any function that is in neither this table nor a mutation.
   evict call and the test records exactly which items it's asked to free, in which order, and that it goes on past a
   refusal. What macOS does with an item not in the cloud is tested too: it refuses, and the item stays.
 - **The moment an item lands.** `TransferEngine.hooks.afterLanding` is called the instant an item has been placed
-  and recorded for undo, before anything else happens to it. Tests swap the file right then, for a copy, a rename
+  and recorded for undo, before anything else happens to it (also in same-disk `TransferUndo.start`). Tests swap the file right then, for a copy, a rename
   and a move across disks, and show the undo leaves the swapped file alone. (A move across disks keeps its original
   too: the copy no longer matches it.)
 - **Alerts and sheets.** What they decide is a plain function, and that function is tested (`deletionPlan`,
@@ -206,6 +206,6 @@ belong to.
 | `Sidebar/SidebarViewController :: menuNeedsUpdate`, `ejectItem`; `Window/BrowserWindowController :: focusSearch`, `ejectVolume`, `validateMenuItem` (Eject) | not a file change; see above |
 | `Transfers/Archiver :: compress`, `extractContents`, `unpack`, `check`, `clearAccessList`, `markQuarantined`, `place`, `removeEntry`, `run` (`ditto`, `tar`) | `MetadataEditTests/compressingAddsOneArchiveAndNeverReplacesOne`, `aLinkIsArchivedAsALink`; `ArchiveSafetyTests/*`; `CacheRemovalTests/removingATreeNeverFollowsALinkOut` |
 | `Transfers/TransferEngine :: fail`, `copy`, `copyfile`, `rename`, `trash`, `removeIfPresent`, `removeSource` | `TransferTests/*` |
-| `Transfers/TransferQueue :: start` (undo's moves) | `TrashUndoTests/undoingAMoveJobMovesBackOnlyItsOwnItems`, `AcrossDisksTests/*` |
+| `Transfers/TransferQueue :: start` (undo's moves) | `TrashUndoTests/undoingAMoveJobMovesBackOnlyItsOwnItems`, `AcrossDisksTests/*`, `TransferTests/sameDiskUndoStepsNeverAdoptItemsReplacedBeforeRegistration` (captured identity, conflicts, replacements, failed moves and repeated Undo/Redo) |
 | `Views/ClickToRename :: clicked` | `InlineRenameTests/*` |
 | `Window/Workspaces :: rename`, `askToRename` (a workspace's name, saved settings) | `WorkspaceTests/*` |

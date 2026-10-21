@@ -1849,6 +1849,13 @@
     "tests": "WorkspaceOwnershipTests/menuPaletteAndSaveSheetUseTheirWindowOwner"
   },
   {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "return .renamed(done, landed)",
+    "replace": "return .renamed(done, LandedFiles(done.map(\\.to)))",
+    "rule": "Same-disk Undo keeps the identity captured before moving instead of adopting a replacement afterward",
+    "tests": "TransferTests/sameDiskUndoStepsNeverAdoptItemsReplacedBeforeRegistration"
+  },
+  {
     "file": "Strata/Remote/RemoteFiles.swift",
     "find": "self.now = now",
     "replace": "self.now = { Date() }",

@@ -370,14 +370,19 @@ enum TransferUndo {
             return .moving(job)
         }
         var done: [TransferMove] = []
+        let landed = LandedFiles()
         for move in moves {
             let target = TransferEngine.exists(move.to) ? FileOps.available(move.to, copyStyle: false) : move.to
-            if TransferEngine.rename(move.from, to: target) == 0 { done.append(TransferMove(from: move.from, to: target)) }
+            landed.expect(move.from, at: target)
+            if TransferEngine.rename(move.from, to: target) == 0 {
+                done.append(TransferMove(from: move.from, to: target))
+                TransferEngine.hooks.afterLanding?(target)
+            }
         }
         containers.finish()
         for folder in Set(done.flatMap { [$0.from, $0.to] }.map { $0.deletingLastPathComponent() }) {
             FolderSizer.invalidate(folder)
         }
-        return .renamed(done, LandedFiles(done.map(\.to)))
+        return .renamed(done, landed)
     }
 }
