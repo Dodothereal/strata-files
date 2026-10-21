@@ -44,7 +44,9 @@ final class FolderTreeController: NSViewController {
     private let transfers: TransferQueue
     private let remote: RemoteServices
 
-    init(transfers: TransferQueue = .shared, preferences: Prefs = .shared, remote: RemoteServices = .shared) {
+    init(transfers: TransferQueue = .shared, preferences: Prefs = .shared, remote: RemoteServices = .shared,
+         watchBudget: FolderWatchers.Budget = .shared) {
+        watchers = FolderWatchers(budget: watchBudget)
         self.remote = remote
         self.transfers = transfers
         self.preferences = preferences
@@ -79,13 +81,7 @@ final class FolderTreeController: NSViewController {
             }
         }
     }
-    /// Expanded folders are watched for subfolders coming and going; past `maxWatchers` (or `maxWatchersInAll` across
-    /// every window's tree: each holds a file descriptor), the longest-watched stops.
-    private var watchers: [String: [DirectoryWatcher]] = [:]
-    private var watchOrder: [String] = []
-    private static let maxWatchers = 48
-    private static let maxWatchersInAll = 96
-    private static var watchersInAll = 0
+    private let watchers: FolderWatchers
     /// Reads for expanding and revealing; looking ahead has its own queue, one folder at a time, so it never holds those
     /// up (or the index and search).
     private static let reads = DispatchQueue(label: "dev.strata.folder-tree", qos: .userInitiated, attributes: .concurrent)
@@ -334,42 +330,16 @@ final class FolderTreeController: NSViewController {
 
     /// Re-reads an expanded folder when folders are added, removed or renamed in it.
     private func watch(_ node: FolderNode) {
-        let key = node.url.fileViewKey
-        guard node.kind == .folder, watchers[key] == nil else { return }
-        while watchers.count >= Self.maxWatchers || Self.watchersInAll + ApplicationsFolders.standard.directories(for: node.url).count > Self.maxWatchersInAll {
-            guard let oldest = watchOrder.first else { return }
-            unwatchOne(oldest)
+        guard node.kind == .folder else { return }
+        watchers.watch(node.url) { [weak self, weak node] in
+            guard let self, let node else { return }
+            refresh(node)
         }
-        let sources = ApplicationsFolders.standard.directories(for: node.url).compactMap { folder in
-            DirectoryWatcher(url: folder, onChange: { [weak self, weak node] in
-                guard let self, let node else { return }
-                refresh(node)
-            })
-        }
-        guard !sources.isEmpty else { return }
-        watchers[key] = sources
-        watchOrder.append(key)
-        Self.watchersInAll += sources.count
     }
 
-    private func unwatchOne(_ key: String) {
-        guard let sources = watchers.removeValue(forKey: key) else { return }
-        watchOrder.removeAll { $0 == key }
-        Self.watchersInAll -= sources.count
-    }
+    private func unwatch(below url: URL) { watchers.remove(under: url) }
 
-    /// Stops watching `url` and every folder inside it.
-    private func unwatch(below url: URL) {
-        let keys = ApplicationsFolders.standard.directories(for: url).map(\.fileViewKey)
-        let inside: (String) -> Bool = { path in keys.contains { path == $0 || path.hasPrefix($0 == "/" ? "/" : $0 + "/") } }
-        for watched in watchers.keys where inside(watched) { unwatchOne(watched) }
-    }
-
-    private func unwatchAll() {
-        Self.watchersInAll -= watchers.values.reduce(0) { $0 + $1.count }
-        watchers.removeAll()
-        watchOrder.removeAll()
-    }
+    private func unwatchAll() { watchers.removeAll() }
 
     /// The folder changed: its subfolders are read again; nothing moves unless they changed (and the scroll stays). A
     /// burst of changes is one read, and one more after it.

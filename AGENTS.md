@@ -241,6 +241,9 @@ sheet's text before clicking a destructive button. Both builds share preferences
 - Saved searches belong to `BrowserServices.savedSearches`, including saving from the active pane, sidebar removal
   and change notifications. Keep their existing preference format and distinguish searches by query and scope as
   well as name. Compare reads the owning window’s current hidden-files setting each time it scans.
+- Expanded sidebar watchers belong to `FolderWatchers`. Release their shared allowance when a tree closes,
+  collapses folders or becomes inactive. Count successfully opened physical directories, including both Applications
+  roots; never evict another tree's watchers. Tests inject an independent budget and expand native headless outlines.
 - Folder read scheduling belongs in `DirectoryReadSession`: each presentation owns its generation, rejects late
   success and error responses, and invalidates reads when removed or replaced by results. Inject `DirectoryReader`
   for controlled completion tests; keep callbacks weak so pending I/O cannot retain closed browsers.

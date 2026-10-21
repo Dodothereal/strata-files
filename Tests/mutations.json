@@ -2834,5 +2834,47 @@
     "replace": "node.title == server.name ? node",
     "rule": "Remote environment folder tree icons follow a changed server protocol",
     "tests": "RemoteEnvironmentTests/sidebarsAndFolderTreesKeepTheirServerStoreStatusAndNotifications"
+  },
+  {
+    "file": "Strata/Sidebar/FolderWatchers.swift",
+    "find": "isolated deinit { removeAll() }",
+    "replace": "isolated deinit {}",
+    "rule": "Folder watcher ownership closed trees keep their watcher allowance",
+    "tests": "FolderWatcherTests"
+  },
+  {
+    "file": "Strata/Sidebar/FolderWatchers.swift",
+    "find": "sources.count >= limit || !budget.fits(folders.count)",
+    "replace": "sources.count >= limit",
+    "rule": "Folder watcher ownership shared allowance is ignored",
+    "tests": "FolderWatcherTests"
+  },
+  {
+    "file": "Strata/Sidebar/FolderWatchers.swift",
+    "find": "sources.count >= limit || !budget.fits(folders.count)",
+    "replace": "!budget.fits(folders.count)",
+    "rule": "Folder watcher ownership one tree ignores its local limit",
+    "tests": "FolderWatcherTests"
+  },
+  {
+    "file": "Strata/Sidebar/FolderWatchers.swift",
+    "find": "budget.count += opened.count",
+    "replace": "budget.count += folders.count",
+    "rule": "Folder watcher ownership failed native opens consume allowance",
+    "tests": "FolderWatcherTests"
+  },
+  {
+    "file": "Strata/Sidebar/FolderWatchers.swift",
+    "find": "path.hasPrefix($0 == \"/\" ? \"/\" : $0 + \"/\")",
+    "replace": "path.hasPrefix($0)",
+    "rule": "Folder watcher ownership collapsing a folder stops watching lookalike siblings",
+    "tests": "FolderWatcherTests"
+  },
+  {
+    "file": "Strata/Sidebar/FolderWatchers.swift",
+    "find": "budget.count -= removed.count",
+    "replace": "budget.count -= 1",
+    "rule": "Folder watcher ownership composite Applications watcher release counts as one",
+    "tests": "FolderWatcherTests"
   }
 ]
