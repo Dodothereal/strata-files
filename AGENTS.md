@@ -274,9 +274,10 @@ sheet's text before clicking a destructive button. Both builds share preferences
   action or a late failure message. Small reads keep browsers weak and do not present an error after closure.
   Selection prefetch keeps its 20-item/256 MB limits and ends on replacement, navigation or pane closure.
   Media-column readers use the same provider owner and `BrowserServices.mediaReader`. Recheck placeholder state
-  when queued work starts and before publishing metadata; do not reuse cached dimensions for an invalidated copy.
-  Preserve the four-reader bound, deduplication and empty-result caching. Cancel owned work when its loader closes,
-  and test replacement reads and reentrant update callbacks with held completions.
+  when queued work starts and before publishing metadata; do not reuse cached dimensions for an invalidated copy,
+  and cancel an in-flight read when its copy becomes a placeholder. Fetched placeholders start media reads for
+  active media sorts. Preserve the four-reader bound, deduplication and empty-result caching. Cancel owned work
+  when its loader, pane or listing closes, and test replacement reads and reentrant callbacks with held completions.
 - `RemoteFiles` and its `CopyProvider` adapter use the same `RemoteCopyStore` for server lookup, paths, placeholders,
   download staging and removal. An injected backend must not fall back to the application's copy root. Test identical
   server IDs in independent roots, including refused cross-environment writes and scoped cleanup. Prepare and remove

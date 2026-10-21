@@ -55,6 +55,9 @@ final class Pane {
     func stopBackgroundWork() {
         browser.cancelPendingActions()
         opening.cancel()
+        browser.stopBackgroundWork()
+        searchTask?.cancel()
+        searchTask = nil
         duplicateSearch?.set()
         duplicateSearch = nil
         folderSearch?.cancel()

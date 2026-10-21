@@ -325,4 +325,87 @@ struct ProviderMediaInfoTests {
         #expect(tree.snapshot() == before)
     }
 
+    @Test func inFlightReadsAreCancelledWhenTheirCopyBecomesAPlaceholderBeforeRefetch() async throws {
+        let tree = try TestTree("provider/photo.jpg"), item = tree.url("provider/photo.jpg"), before = tree.snapshot()
+        let entry = try #require(FileEntry(url: item))
+        for oldFirst in [false, true] {
+            let state = State([]), reads = Reads(held: true)
+            let copies = CopyProviders([Provider(root: tree.url("provider"), state: state)])
+            let loader = MediaInfoLoader(copies: copies, reader: { await reads.read($0) })
+            var updates = 0
+            loader.onUpdate = { _ in updates += 1 }
+            loader.request(entry)
+            let old = try #require(loader.tasks[entry])
+            await reads.started(1)
+            state.set(item, missing: true)
+            #expect(loader.cached(entry) == nil && old.isCancelled && loader.tasks.isEmpty)
+            state.set(item, missing: false)
+            loader.request(entry)
+            let replacement = try #require(loader.tasks[entry])
+            await reads.started(2)
+            if oldFirst { await reads.finish(0, MediaInfo(width: 1, height: 2)); await old.value }
+            await reads.finish(1, MediaInfo(width: 9, height: 13))
+            await replacement.value
+            if !oldFirst { await reads.finish(0, MediaInfo(width: 1, height: 2)); await old.value }
+            #expect(loader.cached(entry)?.dimensions == "9 × 13" && updates == 1 && loader.tasks.isEmpty)
+        }
+        #expect(tree.snapshot() == before)
+    }
+
+    @Test func resultsMessagesAndClosingPanesCancelPendingMediaReads() async throws {
+        let tree = try TestTree("provider/photo.jpg", "provider/result.jpg")
+        let item = tree.url("provider/photo.jpg"), resultURL = tree.url("provider/result.jpg")
+        let resultEntry = try #require(FileEntry(url: resultURL))
+        let copies = CopyProviders([Provider(root: tree.url("provider"), state: State([]))])
+        let reads = Reads(held: true)
+        let environment = try Environment(tree, copies: copies, reader: { await reads.read($0) })
+        let before = tree.snapshot()
+        for mode in ["results", "groups", "message", "stop"] {
+            let pane = Pane(location: tree.url("provider"), services: environment.services)
+            let browser = pane.browser
+            _ = browser.view
+            browser.load(tree.url("provider"))
+            await browser.directoryReads.task?.value
+            let node = try #require(browser.allRows.first { $0.url == item })
+            let column = try #require(browser.outlineView.tableColumn(withIdentifier: .init("dimensions")))
+            _ = browser.outlineView(browser.outlineView, viewFor: column, item: node)
+            let work = try #require(browser.mediaInfo.tasks[node.entry])
+            let count = await reads.entries.count
+            await reads.started(count)
+            switch mode {
+            case "results": browser.showResults([resultEntry], total: 1)
+            case "groups": browser.showGroups([(title: "Set", detail: "2", entries: [resultEntry])], summary: "1")
+            case "message": browser.showMessage(symbol: "magnifyingglass", title: "Searching…")
+            default: pane.stopBackgroundWork()
+            }
+            #expect(work.isCancelled && browser.mediaInfo.tasks.isEmpty)
+            await reads.finishAll()
+            await work.value
+            withExtendedLifetime(pane) {}
+        }
+        withExtendedLifetime(environment) {}
+        #expect(tree.snapshot() == before)
+    }
+
+    @Test func fetchedPlaceholderFilesRequestMediaWhenSortedByAMediaColumn() async throws {
+        let tree = try TestTree("provider/photo.jpg"), item = tree.url("provider/photo.jpg")
+        let state = State([item]), reads = Reads(result: MediaInfo(width: 19, height: 8))
+        let copies = CopyProviders([Provider(root: tree.url("provider"), state: state)])
+        let environment = try Environment(tree, copies: copies, reader: { await reads.read($0) })
+        let browser = BrowserViewController(services: environment.services), before = tree.snapshot()
+        _ = browser.view
+        browser.load(tree.url("provider"))
+        await browser.directoryReads.task?.value
+        browser.applySort(.width, ascending: true, remember: false)
+        #expect(await reads.entries.isEmpty)
+        state.set(item, missing: false)
+        NotificationCenter.default.post(name: .containerFilesFetched, object: [item])
+        let node = try #require(browser.allRows.first { $0.url == item })
+        await browser.mediaInfo.tasks[node.entry]?.value
+        #expect(browser.mediaInfo.cached(node.entry)?.dimensions == "19 × 8")
+        #expect(await reads.entries.map(\.url) == [item])
+        withExtendedLifetime((browser, environment)) {}
+        #expect(tree.snapshot() == before)
+    }
+
 }

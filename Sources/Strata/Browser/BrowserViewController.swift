@@ -111,7 +111,7 @@ final class BrowserViewController: NSViewController {
     private var watchers: [DirectoryWatcher] = []
     /// Keeps git status for the shown folder's repository fresh (FSEvents) while this folder is shown.
     private var gitObservation: GitObservation?
-    private lazy var ordering = BrowserOrdering(
+    lazy var ordering = BrowserOrdering(
         choice: .init(key: SortKey(rawValue: preferences.sortColumn) ?? .name, ascending: preferences.sortAscending),
         foldersFirst: { [weak self] in self?.preferences.foldersFirst ?? true },
         metadata: .init(folderSize: { [weak self] in self?.folderSize($0)?.bytes },
@@ -444,7 +444,7 @@ final class BrowserViewController: NSViewController {
 
     static func key(_ url: URL) -> String { BrowserListing.key(url) }
 
-    private func node(for url: URL) -> FileNode? { listing.node(for: url) }
+    func node(for url: URL) -> FileNode? { listing.node(for: url) }
 
     /// The URL a row of this folder uses for `url`. Icons, columns and disk usage match paths exactly, and a listing
     /// reached through a symlink doesn't spell them like the folder does ("/tmp/x" lists "/private/tmp/x/a").
@@ -452,6 +452,8 @@ final class BrowserViewController: NSViewController {
 
     private func showLoadError() {
         cancelPendingActions()
+        sizer.cancelPending()
+        mediaInfo.cancelPending()
         deferredApply = nil
         listing.clear()
         outlineView.reloadData()
@@ -523,6 +525,8 @@ final class BrowserViewController: NSViewController {
         let selection = pendingSelection ?? selectedURLs
         enterResults()
         loading.showResults()
+        sizer.cancelPending()
+        mediaInfo.cancelPending()
         resultsTotal = total
         resultsSummary = nil
         listing.replace(entries, preservingNodes: false, sort: sort)
@@ -557,6 +561,8 @@ final class BrowserViewController: NSViewController {
     func showGroups(_ groups: [(title: String, detail: String, entries: [FileEntry])], summary: String) {
         enterResults()
         loading.showResults()
+        sizer.cancelPending()
+        mediaInfo.cancelPending()
         resultsTotal = groups.count
         resultsSummary = summary
         listing.replaceGroups(groups)
@@ -601,6 +607,8 @@ final class BrowserViewController: NSViewController {
     func showMessage(symbol: String, title: String, message: String = "") {
         enterResults()
         loading.showResults(loaded: false)
+        sizer.cancelPending()
+        mediaInfo.cancelPending()
         listing.clear()
         resultsSummary = ""
         outlineView.reloadData()
@@ -924,6 +932,13 @@ final class BrowserViewController: NSViewController {
         pendingSelection = nil
         pendingRename = nil
         columnController?.cancelPendingRename()
+    }
+
+    func stopBackgroundWork() {
+        cancelPendingActions()
+        loading.invalidate()
+        sizer.cancelPending()
+        mediaInfo.cancelPending()
     }
 
     @objc func renameSelection(_ sender: Any?) {

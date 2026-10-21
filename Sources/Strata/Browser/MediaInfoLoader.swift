@@ -23,7 +23,7 @@ final class MediaInfoLoader {
     isolated deinit { tasks.values.forEach { $0.cancel() } }
 
     func cached(_ entry: FileEntry) -> MediaInfo? {
-        guard canRead(entry) else { cache[entry] = nil; return nil }
+        guard canRead(entry) else { invalidate(entry); return nil }
         return cache[entry]
     }
 
@@ -35,10 +35,20 @@ final class MediaInfoLoader {
     }
 
     func request(_ entry: FileEntry) {
-        guard canRead(entry) else { cache[entry] = nil; return }
+        guard canRead(entry) else { invalidate(entry); return }
         guard cache[entry] == nil, requested.insert(entry).inserted else { return }
         pending.append(entry)
         startNext()
+    }
+
+    private func invalidate(_ entry: FileEntry) {
+        cache[entry] = nil
+        pending.removeAll { $0 == entry }
+        requested.remove(entry)
+        if let task = tasks.removeValue(forKey: entry) {
+            task.cancel()
+            startNext()
+        }
     }
 
     func cancelPending() {

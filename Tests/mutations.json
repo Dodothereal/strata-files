@@ -3154,10 +3154,31 @@
   },
   {
     "file": "Strata/Browser/MediaInfoLoader.swift",
-    "find": "guard canRead(entry) else { cache[entry] = nil; return nil }",
+    "find": "guard canRead(entry) else { invalidate(entry); return nil }",
     "replace": "",
     "rule": "Provider media ownership cached metadata remains visible for a placeholder",
     "tests": "ProviderMediaInfoTests/completedMetadataIsHiddenAndInvalidatedWhenItsCopyBecomesAPlaceholder"
+  },
+  {
+    "file": "Strata/Browser/MediaInfoLoader.swift",
+    "find": "if let task = tasks.removeValue(forKey: entry) {\n            task.cancel()\n            startNext()\n        }",
+    "replace": "",
+    "rule": "Provider media ownership invalidated in-flight reads block or overwrite refetched copies",
+    "tests": "ProviderMediaInfoTests/inFlightReadsAreCancelledWhenTheirCopyBecomesAPlaceholderBeforeRefetch"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "    func stopBackgroundWork() {\n        cancelPendingActions()\n        loading.invalidate()\n        sizer.cancelPending()\n        mediaInfo.cancelPending()\n    }",
+    "replace": "    func stopBackgroundWork() {\n        cancelPendingActions()\n        loading.invalidate()\n        sizer.cancelPending()\n    }",
+    "rule": "Provider media ownership closing a pane leaves media reads running",
+    "tests": "ProviderMediaInfoTests/resultsMessagesAndClosingPanesCancelPendingMediaReads"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "find": "if ordering.choice?.key.isMedia == true {\n            for url in urls {\n                if let entry = node(for: url)?.entry { mediaInfo.request(entry) }\n            }\n        }",
+    "replace": "",
+    "rule": "Provider media ownership fetched files do not start media reads for active media sorts",
+    "tests": "ProviderMediaInfoTests/fetchedPlaceholderFilesRequestMediaWhenSortedByAMediaColumn"
   },
   {
     "file": "Strata/Browser/MediaInfoLoader.swift",
