@@ -2134,5 +2134,68 @@
     "replace": "guard true else {",
     "rule": "Share addresses refuse embedded control characters before mounting",
     "tests": "ServerAddressTests/shareAddressesAcceptOrdinaryTextAndRejectEmbeddedControls"
+  },
+  {
+    "file": "Strata/Remote/RemoteKeychain.swift",
+    "find": "let updated = access.update(base as CFDictionary, changes as CFDictionary)",
+    "replace": "_ = access.delete(base as CFDictionary)\n        let updated = access.update(base as CFDictionary, changes as CFDictionary)",
+    "rule": "Remote credentials never deletes a working secret before replacing it",
+    "tests": "RemoteKeychainTests/replacingASecretKeepsTheOriginalWhenSecurityRefusesTheUpdate"
+  },
+  {
+    "file": "Strata/Remote/RemoteKeychain.swift",
+    "find": "guard updated == errSecItemNotFound else { return false }",
+    "replace": "guard true else { return false }",
+    "rule": "Remote credentials returns update errors without trying to create another item",
+    "tests": "RemoteKeychainTests/replacingASecretKeepsTheOriginalWhenSecurityRefusesTheUpdate"
+  },
+  {
+    "file": "Strata/Remote/RemoteKeychain.swift",
+    "find": "return access.update(base as CFDictionary, changes as CFDictionary) == errSecSuccess",
+    "replace": "return true",
+    "rule": "Remote credentials handles concurrent creation with a checked in-place update",
+    "tests": "RemoteKeychainTests/anotherCreatorIsUpdatedInPlaceAndFailedRetriesLeaveItsItemIntact"
+  },
+  {
+    "file": "Strata/Remote/RemoteKeychain.swift",
+    "find": "kSecAttrAccount as String: server.id",
+    "replace": "kSecAttrGeneric as String: server.id",
+    "rule": "Remote credentials scopes reads and deletion to the selected server account",
+    "tests": "RemoteKeychainTests/readsAndDeletesStayWithTheirStoreAndExactServer"
+  },
+  {
+    "file": "Strata/Remote/RemoteKeychain.swift",
+    "find": "kSecAttrService as String: Self.service",
+    "replace": "kSecAttrGeneric as String: Self.service",
+    "rule": "Remote credentials never changes another service’s credentials",
+    "tests": "RemoteKeychainTests/readsAndDeletesStayWithTheirStoreAndExactServer"
+  },
+  {
+    "file": "Strata/Remote/RemoteKeychain.swift",
+    "find": "return String(data: data, encoding: .utf8)",
+    "replace": "return String(data: data, encoding: .utf8) ?? \"\"",
+    "rule": "Remote credentials refuses malformed credential bytes before constructing a backend",
+    "tests": "RemoteKeychainTests/unreadableCredentialsNeverChangeTheStoreOrConstructAnAuthenticatedBackend"
+  },
+  {
+    "file": "Strata/Remote/RemoteKeychain.swift",
+    "find": "kSecAttrLabel as String: \"Strata S3: \\(server.bucket ?? server.host)\"]",
+    "replace": "kSecAttrLabel as String: \"Strata S3: \\(server.bucket ?? server.host)\", kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked]",
+    "rule": "Remote credentials preserves an existing item’s native protection",
+    "tests": "RemoteKeychainTests/creationAndReplacementKeepExactIdentityAndNativeProtection"
+  },
+  {
+    "file": "Strata/Remote/RemoteKeychain.swift",
+    "find": "item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked",
+    "replace": "// Omit the new item protection.",
+    "rule": "Remote credentials sets native protection when creating a credential",
+    "tests": "RemoteKeychainTests/creationAndReplacementKeepExactIdentityAndNativeProtection"
+  },
+  {
+    "file": "Strata/Remote/RemoteKeychain.swift",
+    "find": "guard status == errSecSuccess, let data = result as? Data else { return nil }",
+    "replace": "guard let data = result as? Data else { return nil }",
+    "rule": "Remote credentials never accepts returned data with an error status",
+    "tests": "RemoteKeychainTests/unreadableCredentialsNeverChangeTheStoreOrConstructAnAuthenticatedBackend"
   }
 ]

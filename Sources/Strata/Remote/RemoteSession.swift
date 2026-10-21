@@ -233,9 +233,9 @@ nonisolated final class SFTPBackend: RemoteBackend {
 nonisolated final class S3Backend: RemoteBackend {
     private let client: S3Client
 
-    init(_ server: RemoteServer) throws {
+    init(_ server: RemoteServer, credentials: RemoteKeychain = .shared) throws {
         guard let bucket = server.bucket, let region = server.region, let keyID = server.accessKeyID else { throw RemoteError.unknownServer }
-        guard let secret = RemoteKeychain.secret(for: server) else { throw RemoteError.noSecret }
+        guard let secret = credentials.secret(for: server) else { throw RemoteError.noSecret }
         client = S3Client(host: server.host, port: server.port, bucket: bucket, region: region, pathStyle: server.pathStyle ?? false,
                           credentials: S3Credentials(accessKeyID: keyID, secretAccessKey: secret))
     }

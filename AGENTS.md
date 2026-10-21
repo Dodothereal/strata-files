@@ -238,6 +238,11 @@ sheet's text before clicking a destructive button. Both builds share preferences
   owning provider, propagate fetch/preparation errors, and retain the existing bounded selection-prefetch policy.
   Provider-specific write, permission and archive behavior stays in its implementation. Inject providers or server
   services for tests; never let a fixture fall back to a live connection.
+- Remote credentials use an injected `RemoteKeychain` / `KeychainAccess` boundary. Update existing secrets in place;
+  do not delete a working secret before saving its replacement. Only a missing item permits creation, and a
+  concurrent creator permits one scoped update retry. Keep the native service/account format and an existing
+  item's access policy. Credential tests use independent in-memory Security implementations, never the real
+  keychain, and assert unchanged neighboring items on errors and deletion.
 - Remote session pools inject server lookup, backend creation and status delivery. Only an attempt's producer may
   publish or close its result; disconnect removes pending work before cancelling it, and late completion must not
   erase a replacement attempt. Recheck ownership after status callbacks. Tests use independent pools and controlled

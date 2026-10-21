@@ -1,5 +1,4 @@
 import Foundation
-import Security
 import Synchronization
 
 extension Notification.Name {
@@ -44,7 +43,7 @@ enum RemoteServers {
     /// Forgets `server`, its keychain item, and its files in Strata's caches.
     static func remove(_ server: RemoteServer) {
         all = all.filter { $0.id != server.id }
-        RemoteKeychain.delete(server)
+        RemoteKeychain.shared.delete(server)
         Task {
             await RemoteSessions.shared.disconnect(server.id)
             await RemoteFiles.shared.discard(server.id)
@@ -67,37 +66,5 @@ nonisolated enum RemoteRegistry {
 
     static func server(id: String) -> RemoteServer? {
         servers.withLock { $0[id] }
-    }
-}
-
-/// S3 secret keys, one generic password per server in the login keychain ("Strata S3", the server's ID). Never logged,
-/// never in preferences.
-nonisolated enum RemoteKeychain {
-    private static let service = "Strata S3"
-
-    static func setSecret(_ secret: String, for server: RemoteServer) -> Bool {
-        let base: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-                                   kSecAttrAccount as String: server.id]
-        SecItemDelete(base as CFDictionary)
-        var item = base
-        item[kSecValueData as String] = Data(secret.utf8)
-        item[kSecAttrLabel as String] = "Strata S3: \(server.bucket ?? server.host)"
-        item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
-        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
-    }
-
-    static func secret(for server: RemoteServer) -> String? {
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-                                    kSecAttrAccount as String: server.id, kSecReturnData as String: true,
-                                    kSecMatchLimit as String: kSecMatchLimitOne]
-        var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-
-    static func delete(_ server: RemoteServer) {
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-                                    kSecAttrAccount as String: server.id]
-        SecItemDelete(query as CFDictionary)
     }
 }

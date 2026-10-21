@@ -303,17 +303,17 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
                                   pathStyle: s3PathStyle.state == .on)
         if let problem = server.validate() { return show(problem.message) }
         let secret = s3Secret.stringValue
-        if secret.isEmpty, editing == nil || RemoteKeychain.secret(for: server) == nil {
+        if secret.isEmpty, editing == nil || RemoteKeychain.shared.secret(for: server) == nil {
             return show(String(localized: "Type the secret key that goes with the access key ID."))
         }
-        let previous = editing.flatMap(RemoteKeychain.secret(for:))
-        if !secret.isEmpty, !RemoteKeychain.setSecret(secret, for: server) {
+        let previous = editing.flatMap(RemoteKeychain.shared.secret(for:))
+        if !secret.isEmpty, !RemoteKeychain.shared.setSecret(secret, for: server) {
             return show(String(localized: "The secret key couldn’t be saved in your keychain."))
         }
         tryConnecting(server) { connected in
             // A new secret that didn't work isn't kept.
             guard !connected, !secret.isEmpty else { return }
-            if let previous { _ = RemoteKeychain.setSecret(previous, for: server) } else { RemoteKeychain.delete(server) }
+            if let previous { _ = RemoteKeychain.shared.setSecret(previous, for: server) } else { RemoteKeychain.shared.delete(server) }
         }
     }
 
