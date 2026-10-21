@@ -224,6 +224,10 @@ sheet's text before clicking a destructive button. Both builds share preferences
 - Connect to Server's selected protocol and recent shares belong to `BrowserServices.connectionSettings`. Preserve
   the `connectKind` and `recentServers` formats, password removal and ten-address limit. Inject those settings into
   new and editing sheets; headless settings tests must not mount shares, connect servers or read the real keychain.
+  Share requests belong to the sheet's `ServerMountSession`. Detach an old request before cancellation and accept
+  results only from the current request; late results must not alter controls, navigate or save recent addresses.
+  Keep the sheet weak across mounting and cancel when it is released. Inject `ServerMounter` for native headless
+  button/lifetime tests, including failure, cancellation, replacement and both completion orders.
 - Saved searches belong to `BrowserServices.savedSearches`, including saving from the active pane, sidebar removal
   and change notifications. Keep their existing preference format and distinguish searches by query and scope as
   well as name. Compare reads the owning window’s current hidden-files setting each time it scans.

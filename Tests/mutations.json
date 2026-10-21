@@ -2087,6 +2087,48 @@
     "tests": "RemoteSessionOwnershipTests/reconnectingDuringDroppedStatusPublicationReusesTheNewConnection"
   },
   {
+    "file": "Strata/Model/ServerMountSession.swift",
+    "find": "guard let self, self.request === request else { return }",
+    "replace": "guard let self else { return }",
+    "rule": "Share mount ownership rejects late results before clearing the replacement",
+    "tests": "ServerMountSessionTests/cancelledResultsNeverCompleteOrClearANewerAttempt"
+  },
+  {
+    "file": "Strata/Model/ServerMountSession.swift",
+    "find": "        task?.cancel()",
+    "replace": "        // Leave the mount task running.",
+    "rule": "Share mount ownership cancels the underlying task on replacement and release",
+    "tests": "ServerMountSessionTests/replacingAndReleasingAnOwnerCancelOnlyItsRequest"
+  },
+  {
+    "file": "Strata/Model/ServerMountSession.swift",
+    "find": "        cancel()\n        let request",
+    "replace": "        // Keep the previous request running.\n        let request",
+    "rule": "Share mount ownership replacing a request cancels the previous mount",
+    "tests": "ServerMountSessionTests/replacingAndReleasingAnOwnerCancelOnlyItsRequest"
+  },
+  {
+    "file": "Strata/Model/ServerMountSession.swift",
+    "find": "isolated deinit { cancel() }",
+    "replace": "isolated deinit {}",
+    "rule": "Share mount ownership releasing an owner cancels the current mount",
+    "tests": "ServerMountSessionTests/replacingAndReleasingAnOwnerCancelOnlyItsRequest"
+  },
+  {
+    "file": "Strata/Window/ConnectToServerController.swift",
+    "find": "isolated deinit { mounts.cancel() }",
+    "replace": "isolated deinit {}",
+    "rule": "Share mount ownership releasing a native sheet cancels its retained session",
+    "tests": "ServerMountSessionTests/releasingTheSheetCancelsEvenWhenItsSessionIsRetained"
+  },
+  {
+    "file": "Strata/Model/ServerMountSession.swift",
+    "find": "if !Task.isCancelled { receive(result) }",
+    "replace": "receive(result)",
+    "rule": "Share mount ownership a directly cancelled task cannot deliver success",
+    "tests": "ServerMountSessionTests/cancellingTheTaskBeforeOrAfterMountStartsSuppressesItsResult"
+  },
+  {
     "file": "Strata/Model/ServerConnection.swift",
     "find": "guard !trimmed.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {",
     "replace": "guard true else {",

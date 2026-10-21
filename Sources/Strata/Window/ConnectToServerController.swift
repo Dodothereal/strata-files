@@ -32,11 +32,12 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
     private let spinner = NSProgressIndicator()
     private let connectButton = NSButton(title: String(localized: "Connect", comment: "Button: connect to the server"), target: nil, action: nil)
     private let cancelButton = NSButton(title: String(localized: "Cancel"), target: nil, action: nil)
-    private var request: ServerConnection.Request?
+    private let mounts: ServerMountSession
     private var connecting: Task<Void, Never>?
     private var connectingID: String?
 
-    init(editing server: RemoteServer? = nil, settings: ServerConnectionSettings) {
+    init(editing server: RemoteServer? = nil, settings: ServerConnectionSettings, mounts: ServerMountSession = ServerMountSession()) {
+        self.mounts = mounts
         self.settings = settings
         editing = server
         kind = server.map { $0.kind == .s3 ? .s3 : .sftp } ?? settings.kind
@@ -44,6 +45,8 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    isolated deinit { mounts.cancel() }
 
     override func loadView() {
         let title = NSTextField(labelWithString: editing == nil ? String(localized: "Connect to Server")
@@ -233,7 +236,7 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
     // MARK: - Connecting
 
     @objc private func connect(_ sender: Any?) {
-        guard request == nil, connecting == nil else { return }
+        guard !mounts.isConnecting, connecting == nil else { return }
         switch kind {
         case .share: connectShare()
         case .sftp: connectSFTP()
@@ -247,13 +250,9 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         case .success(let parsed): url = parsed
         case .failure(let problem): return show(problem.message)
         }
-        let request = ServerConnection.Request()
-        self.request = request
         setBusy(true)
-        Task { [weak self] in
-            let result = await ServerConnection.mount(url, request: request)
+        mounts.connect(url) { [weak self] result in
             guard let self else { return }
-            self.request = nil
             setBusy(false)
             switch result {
             case .success(let mounted):
@@ -358,9 +357,8 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
 
     @objc private func cancel(_ sender: Any?) {
         // Stops a connection under way; the sheet stays for another try. Otherwise it closes.
-        if let request {
-            request.cancel()
-            self.request = nil
+        if mounts.isConnecting {
+            mounts.cancel()
             setBusy(false)
             return
         }
