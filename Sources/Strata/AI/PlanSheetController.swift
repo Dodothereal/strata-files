@@ -13,7 +13,7 @@ final class PlanSheetController: NSViewController {
         case applying(Plan)
     }
 
-    private(set) var phase: Phase = .prompt {
+    var phase: Phase = .prompt {
         didSet { render() }
     }
 
@@ -448,9 +448,37 @@ final class PlanSheetController: NSViewController {
         completion = nil
     }
 
-    fileprivate func toggle(_ id: Int, on: Bool) {
+    func toggle(_ id: Int, on: Bool) {
         guard case var .review(plan) = phase, let index = plan.steps.firstIndex(where: { $0.id == id }) else { return }
         plan.steps[index].isEnabled = on
+        if !on {
+            // Unchecking a step that vacates a name disables any step that would otherwise land on that existing file.
+            var unvacated = plan.steps[index].source.map { [PlanValidator.key($0)] } ?? []
+            while let key = unvacated.popLast() {
+                for i in plan.steps.indices where plan.steps[i].isEnabled {
+                    guard let dest = plan.steps[i].destination, PlanValidator.key(dest) == key,
+                          TransferEngine.exists(dest),
+                          plan.steps[i].source.map({ !PlanValidator.sameItem(dest, $0) }) ?? true else { continue }
+                    plan.steps[i].isEnabled = false
+                    if let source = plan.steps[i].source { unvacated.append(PlanValidator.key(source)) }
+                }
+            }
+        } else {
+            // Re-enabling a step whose destination is occupied by another planned item re-enables the step that vacates it.
+            var needed: [String] = plan.steps[index].destination.flatMap { dest in
+                let same = plan.steps[index].source.map { PlanValidator.sameItem(dest, $0) } ?? false
+                return TransferEngine.exists(dest) && !same ? [PlanValidator.key(dest)] : nil
+            } ?? []
+            while let key = needed.popLast() {
+                for i in plan.steps.indices where !plan.steps[i].isEnabled && plan.steps[i].problem == nil {
+                    guard let source = plan.steps[i].source, PlanValidator.key(source) == key else { continue }
+                    plan.steps[i].isEnabled = true
+                    if let dest = plan.steps[i].destination, TransferEngine.exists(dest), !PlanValidator.sameItem(dest, source) {
+                        needed.append(PlanValidator.key(dest))
+                    }
+                }
+            }
+        }
         // New folders follow the moves that need them.
         for (i, step) in plan.steps.enumerated() where step.kind == .createFolder {
             let folder = step.destination.map(PlanValidator.key) ?? ""

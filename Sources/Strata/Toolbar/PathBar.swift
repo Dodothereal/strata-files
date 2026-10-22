@@ -330,8 +330,8 @@ final class PathBar: NSView, NSTextFieldDelegate {
     private func resolvedPath() -> String {
         let text = field.stringValue.trimmingCharacters(in: .whitespaces)
         let expanded = (text as NSString).expandingTildeInPath
-        if expanded.hasPrefix("/") || url == nil { return expanded }
-        return url!.appending(path: expanded).path
+        guard let url, !expanded.hasPrefix("/") else { return expanded }
+        return url.appending(path: expanded).path
     }
 
     /// Return: a suggestion picked with the arrows, else what's typed if it's there, else the best suggestion for what's
@@ -518,7 +518,7 @@ final class ChevronButton: NSButton {
             let item = NSMenuItem(title: url.lastPathComponent, action: #selector(pick(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = url
-            let icon = IconCache.shared.icon(forPath: url.path).copy() as! NSImage
+            let icon = (IconCache.shared.icon(forPath: url.path).copy() as? NSImage) ?? IconCache.shared.icon(forPath: url.path)
             icon.size = NSSize(width: 16, height: 16)
             item.image = icon
             menu.addItem(item)

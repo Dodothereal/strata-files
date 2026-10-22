@@ -217,9 +217,9 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
     private func resetActions() {
         let way = FolderCompare.Direction(rawValue: direction.indexOfSelectedItem) ?? .bothWays
         let mirrors = way != .bothWays && mirror.state == .on
-        actions = Dictionary(uniqueKeysWithValues: differences.map {
+        actions = Dictionary(differences.map {
             ($0.id, FolderCompare.defaultAction(for: $0.kind, direction: way, mirror: mirrors))
-        })
+        }, uniquingKeysWith: { _, latest in latest })
     }
 
     @objc private func filterChanged(_ sender: Any?) {

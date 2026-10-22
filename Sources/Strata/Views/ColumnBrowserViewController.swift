@@ -223,6 +223,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     private func removeColumns(after index: Int) {
         while panes.count > index + 1 {
             let pane = panes.removeLast()
+            if renameField?.superview === pane.tableView { renameField?.cancel() }
             if renameWhenLoaded === pane { cancelPendingRename() }
             pane.tearDown()
             pane.removeFromSuperview()
@@ -467,13 +468,14 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         selectWhenLoaded = nil
     }
 
+    func cancelRename() {
+        renameField?.cancel()
+    }
+
     @discardableResult
     func beginRename(_ url: URL) -> Bool {
         if let existing = renameField {
-            let previousPane = panes.first { $0.tableView === existing.superview }
-            existing.removeFromSuperview()
-            renameField = nil
-            previousPane?.applyDeferred()
+            existing.cancel()
         }
         guard let pane = panes.last(where: { $0.row(for: url) != nil }), let row = pane.row(for: url) else { return false }
         let entry = pane.entries[row]

@@ -444,7 +444,7 @@
   },
   {
     "file": "Strata/Containers/ContainerFiles.swift",
-    "find": "            guard !targetParts.isEmpty, targetParts.allSatisfy(ContainerCopies.isSafeName) else { continue }",
+    "find": "            guard !targetParts.isEmpty, targetParts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) }) else { continue }",
     "replace": "            guard !targetParts.isEmpty else { continue }",
     "rule": "A container's hard link leads out of the copy",
     "tests": "ContainerTests/aContainersFolder"
@@ -3096,7 +3096,7 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "func cancelPendingActions() {\n        noteNavigationContextChanged()\n        selectionFetch?.cancel()\n        selectionFetch = nil",
+    "find": "func cancelPendingActions() {\n        noteNavigationContextChanged()\n        cancelOutlineRename()\n        presentations.cached.forEach { $0.cancelRename() }\n        selectionFetch?.cancel()\n        selectionFetch = nil",
     "replace": "func cancelPendingActions() {",
     "rule": "Provider fetch ownership navigation leaves selection prefetch running",
     "tests": "ProviderFetchTests/changingSelectionAndLeavingThePaneCancelItsPrefetch"
@@ -3767,8 +3767,8 @@
   },
   {
     "file": "Strata/Window/ShelfPanel.swift",
-    "find": "if controller.services.remote.copies.contains(controller.location) {",
-    "replace": "if RemoteCopies.contains(controller.location) {",
+    "find": "if controller.services.remote.copies.contains(target) {",
+    "replace": "if RemoteCopies.contains(target) {",
     "rule": "Module and provider boundaries Shelf transfers check the global remote copy store",
     "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
   },

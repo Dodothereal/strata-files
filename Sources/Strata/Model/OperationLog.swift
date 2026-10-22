@@ -292,6 +292,9 @@ final class OperationLog {
         // canUndo accepting part of an entry never gives ownership of the rest.
         let back = (entry.pairs.reversed() + entry.replaced.reversed()).filter { holdsOriginal(entry, $0[1]) }.map {
             (from: URL(fileURLWithPath: $0[1]), to: URL(fileURLWithPath: $0[0]))
+        }.filter { move in
+            Self.identity(move.to.path) == nil || Self.identity(move.to.path) == Self.identity(move.from.path)
+                || entry.pairs.contains { $0[1] == move.to.path && holdsOriginal(entry, $0[1]) }
         }
         if !back.isEmpty {
             do {

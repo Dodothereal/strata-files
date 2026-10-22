@@ -24,7 +24,9 @@ final class BrowserPresentations {
 
     func install(_ mode: BrowserViewMode, in browser: BrowserViewController) {
         let active = controller(for: mode, in: browser)
+        if active != nil { browser.cancelOutlineRename() }
         for controller in cached where controller !== active && controller.isViewLoaded {
+            controller.cancelRename()
             controller.view.removeFromSuperview()
         }
         guard let active else {

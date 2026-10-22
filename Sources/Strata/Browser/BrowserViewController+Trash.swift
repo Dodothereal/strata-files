@@ -189,7 +189,7 @@ extension BrowserViewController {
     }
 
     /// `urls` without those inside another of them.
-    static func outermost(_ urls: [URL]) -> [URL] {
+    nonisolated static func outermost(_ urls: [URL]) -> [URL] {
         let paths = urls.map { $0.standardizedFileURL.path }.sorted { $0.count < $1.count }
         var kept: [String] = []
         for path in paths where !kept.contains(where: { path == $0 || path.hasPrefix($0 == "/" ? "/" : $0 + "/") }) {

@@ -694,13 +694,13 @@ final class BrowserViewController: NSViewController {
         guard text != filter else { return }
         listing.setFilter(text)
         outlineView.reloadData()
-        if !rows.isEmpty {
-            outlineView.selectRowIndexes([0], byExtendingSelection: false)
-            outlineView.scrollRowToVisible(0)
+        if let firstRow = (0..<outlineView.numberOfRows).first(where: { (outlineView.item(atRow: $0) as? FileNode)?.groupTitle == nil }) {
+            outlineView.selectRowIndexes([firstRow], byExtendingSelection: false)
+            outlineView.scrollRowToVisible(firstRow)
         }
         filterPill.update(query: text, matches: rows.count)
         pushContent()
-        if let first = rows.first, activeView != nil { activeView?.select([first.url], scroll: true) }
+        if let first = rows.first(where: { $0.groupTitle == nil }), activeView != nil { activeView?.select([first.url], scroll: true) }
         updateEmptyState()
         delegate?.browserContentDidChange(self)
     }
@@ -772,7 +772,7 @@ final class BrowserViewController: NSViewController {
     // MARK: - Selection
 
     private var selectedNodes: [FileNode] {
-        outlineView.selectedRowIndexes.compactMap { outlineView.item(atRow: $0) as? FileNode }
+        outlineView.selectedRowIndexes.compactMap { outlineView.item(atRow: $0) as? FileNode }.filter { $0.groupTitle == nil }
     }
 
     /// The selection in whichever presentation is active.
@@ -923,12 +923,13 @@ final class BrowserViewController: NSViewController {
         let urls = selectedURLs
         // The menus are off in the Trash and in archives opened as folders; this also covers ⌘K.
         guard !urls.isEmpty, !isShowingTrash, !isInsideArchive else { return }
+        let revision = navigationRevision
         // Copying onto itself with "keep both" gives Finder's "name copy" naming, with progress for big items.
         let job = services.transfers.enqueue(moves: urls.map { TransferMove(from: $0, to: $0) }, mode: .copy,
                                                undo: undoManager, conflicts: .keepBoth)
         job.onFinish = { [weak self] job in
             guard let self else { return }
-            if !job.createdItems.isEmpty { pendingSelection = job.createdItems }
+            if navigationRevision == revision, !job.createdItems.isEmpty { pendingSelection = job.createdItems }
             refresh()
         }
     }
@@ -980,11 +981,24 @@ final class BrowserViewController: NSViewController {
     /// Navigation and failed reads must not leave a selection or rename waiting for an unrelated later listing.
     func cancelPendingActions() {
         noteNavigationContextChanged()
+        cancelOutlineRename()
+        presentations.cached.forEach { $0.cancelRename() }
         selectionFetch?.cancel()
         selectionFetch = nil
         pendingSelection = nil
         pendingRename = nil
         columnController?.cancelPendingRename()
+    }
+
+    func cancelOutlineRename() {
+        guard let field = renamingField, let node = renaming else { return }
+        field.stringValue = node.entry.name
+        renaming = nil
+        renamingField = nil
+        field.abortEditing()
+        field.isEditable = false
+        field.isSelectable = false
+        field.drawsBackground = false
     }
 
     func stopBackgroundWork() {
@@ -1018,11 +1032,13 @@ final class BrowserViewController: NSViewController {
     func renameItems() {
         let urls = selectedURLs
         guard urls.count > 1, !isInsideArchive, !isOnServer, !isLoadingFolder else { return }
+        let revision = navigationRevision
         let base = targetDirectory ?? directory ?? urls[0].deletingLastPathComponent()
         let controller = BatchRenameController(urls: urls, baseFolder: base, undo: undoManager,
                                                copies: services.copies, history: services.transfers.history)
         controller.onApplied = { [weak self] results in
-            if !results.isEmpty { self?.selectWhenShown(results) }
+            guard let self, navigationRevision == revision, !results.isEmpty else { return }
+            selectWhenShown(results)
         }
         presentAsSheet(controller)
     }
@@ -1335,7 +1351,7 @@ final class BrowserViewController: NSViewController {
                                                undo: undoManager, conflicts: .sheet(for: view.window))
         job.onFinish = { [weak self] job in
             guard let self else { return }
-            if target.standardizedFileURL == directory?.standardizedFileURL, !job.createdItems.isEmpty {
+            if target.standardizedFileURL == targetDirectory?.standardizedFileURL, !job.createdItems.isEmpty {
                 pendingSelection = job.createdItems
             }
             refresh()
@@ -1374,12 +1390,13 @@ final class BrowserViewController: NSViewController {
                           String(localized: "These names are reserved for the system, and the item would be hidden. Please choose another name."))
             return
         }
+        let revision = navigationRevision
         let commit: (String) -> Void = { [self] targetName in
             guard !targetName.isEmpty, targetName != oldName else { return }
             if services.remote.copies.contains(url) { return renameOnServer(url, to: targetName) }
             performAsync { [self] in
                 let renamed = try await FileOps.rename(url, to: targetName, undo: undoManager, copies: services.copies)
-                pendingSelection = [renamed]
+                if navigationRevision == revision { pendingSelection = [renamed] }
                 refresh()
             }
         }
@@ -1876,7 +1893,13 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
         springLoader.cancel()
         isDragOver = false
-        guard let urls = draggedURLs(info), let target = (item as? FileNode)?.url ?? directory else { return false }
+        let dropTarget: URL?
+        if let node = item as? FileNode {
+            dropTarget = node.groupTitle == nil && node.entry.isFolder ? node.url : nil
+        } else {
+            dropTarget = isShowingResults ? nil : directory
+        }
+        guard let urls = draggedURLs(info), let target = dropTarget else { return false }
         let operation = FileDrop.operation(urls, into: target, info: info, copies: services.copies)
         guard !operation.isEmpty else { return false }
         transfer(urls, into: target, move: operation == .move)
@@ -1899,12 +1922,12 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     }
 
     private func retargetDrop(_ outlineView: NSOutlineView, _ item: Any?) -> URL? {
-        if let node = item as? FileNode {
+        if let node = item as? FileNode, node.groupTitle == nil {
             if node.entry.isFolder {
                 outlineView.setDropItem(node, dropChildIndex: NSOutlineViewDropOnItemIndex)
                 return node.url
             }
-            if let parent = node.parent {
+            if let parent = node.parent, parent.groupTitle == nil, parent.entry.isFolder {
                 outlineView.setDropItem(parent, dropChildIndex: NSOutlineViewDropOnItemIndex)
                 return parent.url
             }

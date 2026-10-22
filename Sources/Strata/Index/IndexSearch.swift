@@ -358,7 +358,8 @@ nonisolated package enum IndexSearch {
         let ordered: ((id: Int32, score: Int32), (id: Int32, score: Int32)) -> Bool = {
             $0.score != $1.score ? $0.score > $1.score : $0.id < $1.id
         }
-        guard limit > 0, all.count > limit * 4 else { return Array(all.sorted(by: ordered).prefix(limit)) }
+        guard limit > 0 else { return [] }
+        guard all.count / 4 > limit else { return Array(all.sorted(by: ordered).prefix(limit)) }
         var low = Int32.max, high = Int32.min
         for item in all {
             low = min(low, item.score)

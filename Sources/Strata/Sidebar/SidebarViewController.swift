@@ -496,8 +496,9 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         guard let target = (item as? SidebarItem)?.url else { return false }
         let urls = FileDrop.urls(info, copies: copies)
         if Trash.isTrash(target) {
+            guard Self.canTrash(urls, copies: copies) else { return false }
             moveToTrash(urls)
-            return !urls.isEmpty
+            return true
         }
         let operation = FileDrop.operation(urls, into: target, info: info, copies: copies)
         guard !urls.isEmpty, !operation.isEmpty else { return false }

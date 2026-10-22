@@ -115,6 +115,7 @@ final class GridViewController: NSViewController, FileCollectionController {
     // MARK: - Content
 
     func apply(_ content: FileCollectionContent, metadata: FileCollectionMetadata, animated: Bool) {
+        if directory?.fileViewKey != content.directory.fileViewKey { cancelRename() }
         directory = content.directory
         setEntries(content.entries, matches: content.matches)
     }
@@ -416,15 +417,14 @@ final class GridViewController: NSViewController, FileCollectionController {
 
     // MARK: - Rename
 
+    func cancelRename() {
+        renameField?.cancel()
+    }
+
     @discardableResult
     func beginRename(_ url: URL) -> Bool {
         if let existing = renameField {
-            existing.removeFromSuperview()
-            renameField = nil
-            if let (entries, matches) = deferredEntries {
-                deferredEntries = nil
-                setEntries(entries, matches: matches)
-            }
+            existing.cancel()
         }
         guard let index = indexByKey[url.fileViewKey] else { return false }
         let entry = entries[index]

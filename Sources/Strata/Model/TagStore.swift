@@ -163,7 +163,7 @@ final class TagStore {
 
     /// Writes each item's tags, going on past failures (reported together at the end). Links are skipped.
     private func apply(_ changes: [(URL, [FinderTag])], undo: UndoManager?, added: [String]) throws {
-        var previous: [(URL, [FinderTag])] = []
+        var previous: [(url: URL, identity: FileIdentity?, tags: [FinderTag])] = []
         var changed: [URL] = []
         var failures: [(url: URL, error: Error)] = []
         let labels = NSWorkspace.shared.fileLabels
@@ -185,7 +185,7 @@ final class TagStore {
                 // another Mac, a zip, a share) keeps it.
                 if Self.read(path, labels: labels) != wanted { try Self.write(wanted, to: path) }
                 cache[path] = nil
-                previous.append((url, before))
+                previous.append((url, FileIdentity.read(path), before))
                 changed.append(url)
             } catch {
                 failures.append((url, error))
@@ -199,10 +199,17 @@ final class TagStore {
         if !failures.isEmpty { throw Failure(failures: failures) }
     }
 
-    private func registerUndo(_ previous: [(URL, [FinderTag])], undo: UndoManager?) {
+    private func registerUndo(_ previous: [(url: URL, identity: FileIdentity?, tags: [FinderTag])], undo: UndoManager?) {
         guard let undo else { return }
-        undo.registerUndo(withTarget: undo) { undo in
-            MainActor.assumeIsolated { try? TagStore.shared.apply(previous, undo: undo, added: []) }
+        undo.registerUndo(withTarget: undo) { [weak self] undo in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let valid = previous.compactMap { item -> (URL, [FinderTag])? in
+                    guard let identity = item.identity, FileIdentity.read(item.url.standardizedFileURL.path) == identity else { return nil }
+                    return (item.url, item.tags)
+                }
+                try? self.apply(valid, undo: undo, added: [])
+            }
         }
         undo.setActionName(String(localized: "Tags", comment: "Undo action name: changing Finder tags"))
     }

@@ -296,8 +296,11 @@ enum TransferUndo {
                 let existing = receipt.created.filter(receipt.landed.holds)
                 if !existing.isEmpty { _ = try? FileOps.trash(existing, undo: undo, record: false) }
                 // Moved items go back first, then whatever they replaced comes out of the Trash into the freed spots.
+                let vacated = Set((existing + receipt.moved.filter { receipt.landed.holds($0.to) }.map(\.to)).map { $0.standardizedFileURL.path })
                 let back = receipt.moved.filter { receipt.landed.holds($0.to) }.reversed().map(\.reversed)
-                    + receipt.replaced.filter { receipt.landed.holds($0.to) }.reversed().map(\.reversed)
+                    + receipt.replaced.filter {
+                        receipt.landed.holds($0.to) && (vacated.contains($0.from.standardizedFileURL.path) || !TransferEngine.exists($0.from))
+                    }.reversed().map(\.reversed)
                 perform(back, actionName: actionName, undo: undo, containers: containers.urls.isEmpty ? .none : .remove(containers),
                         queue: queue, historyEntry: receipt.historyEntry)
                 if let entry = receipt.historyEntry {

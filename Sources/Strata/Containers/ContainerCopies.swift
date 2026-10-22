@@ -354,8 +354,12 @@ nonisolated enum ContainerCopies {
         guard !target.isEmpty, !target.contains("\0"), target.utf8.count <= 4096 else { return nil }
         let folder = Array(normalized(link).dropLast())
         let resolved = normalized(target, from: folder)
-        let up = Array(repeating: "..", count: folder.count)
-        let parts = up + resolved
+        var common = 0
+        while common < folder.count, common < resolved.count, folder[common] == resolved[common] {
+            common += 1
+        }
+        let up = Array(repeating: "..", count: folder.count - common)
+        let parts = up + resolved.dropFirst(common)
         return parts.isEmpty ? "." : parts.joined(separator: "/")
     }
 

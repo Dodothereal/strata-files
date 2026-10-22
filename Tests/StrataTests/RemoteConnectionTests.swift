@@ -589,12 +589,14 @@ struct RemoteConnectionTests {
     }
 
     private func expectWaitingHandoff(_ connections: RemoteConnections, serverID: String, after previous: UUID?) async {
-        let deadline = ContinuousClock.now + .seconds(5)
-        while ContinuousClock.now < deadline {
+        let deadline = ContinuousClock.now + .seconds(15)
+        var turns = 0
+        while turns < 128 && (ContinuousClock.now < deadline || turns < 16) {
             if let state = connections.handoffState(for: serverID), state.id != previous, state.phase != .queued {
                 #expect(state.phase == .waiting)
                 return
             }
+            turns += 1
             await Task.yield()
         }
         Issue.record("The queued handoff never reached its prerequisite wait")

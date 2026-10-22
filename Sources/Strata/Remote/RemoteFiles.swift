@@ -375,7 +375,8 @@ actor RemoteFiles {
         let empty = FileManager.default.temporaryDirectory.appending(path: "strata-empty-\(UUID().uuidString)")
         try Data().write(to: empty, options: .withoutOverwriting)
         defer { try? FileManager.default.removeItem(at: empty) }
-        let temp = RemotePath.join(path, ".\(name).strata-\(UUID().uuidString.prefix(8))")
+        let stem = TransferEngine.fitting(name, maxBytes: 255 - 17)
+        let temp = RemotePath.join(path, ".\(stem).strata-\(UUID().uuidString.prefix(8))")
         try await backend.upload(empty, to: temp, modified: nil, progress: { _ in }, stop: StopFlag())
         do {
             try ensureCurrent(server, top: top)
@@ -504,8 +505,8 @@ actor RemoteFiles {
             try ensureCurrent(server, top: top)
             let before = sent.value
             let modified = (try? source.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-            try await backend.upload(source, to: path, modified: modified, progress: { done in progress(before + done) }, stop: stop)
-            sent.add(Int64(info.st_size))
+            try await backend.upload(source, to: path, modified: modified, progress: { done in progress(before.saturatingAdd(done)) }, stop: stop)
+            sent.add(max(0, Int64(info.st_size)))
             progress(sent.value)
         default:
             return
@@ -535,7 +536,7 @@ nonisolated final class Counter: @unchecked Sendable {
     private let lock = NSLock()
     private var total: Int64 = 0
     var value: Int64 { lock.withLock { total } }
-    func add(_ bytes: Int64) { lock.withLock { total += bytes } }
+    func add(_ bytes: Int64) { lock.withLock { total = total.saturatingAdd(bytes) } }
     func set(_ bytes: Int64) { lock.withLock { total = bytes } }
 }
 

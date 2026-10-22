@@ -33,8 +33,8 @@ extension ProjectInfo {
         for index in info.artifacts.indices {
             let paths = info.artifacts[index].urls.map(\.path)
             if paths.allSatisfy({ sizeCache[$0].map { now.timeIntervalSince($0.date) < sizeCacheLifetime } ?? false }) {
-                info.artifacts[index].bytes = paths.reduce(0) { $0 + sizeCache[$1]!.bytes }
-                info.artifacts[index].files = paths.reduce(0) { $0 + sizeCache[$1]!.files }
+                info.artifacts[index].bytes = paths.compactMap { sizeCache[$0]?.bytes }.saturatingSum
+                info.artifacts[index].files = paths.reduce(0) { $0 + (sizeCache[$1]?.files ?? 0) }
             } else if info.artifacts[index].urls.count == 1, let size = sharedSizer.cached(info.artifacts[index].urls[0]) {
                 info.artifacts[index].bytes = size.bytes
                 info.artifacts[index].files = size.files
@@ -106,7 +106,7 @@ enum ProjectActions {
     /// `completion` with the trashed folders (empty when cancelled or failed).
     static func confirmClean(_ artifacts: [ProjectArtifact], window: NSWindow, completion: @escaping ([URL]) -> Void) {
         guard !artifacts.isEmpty else { return completion([]) }
-        let total = artifacts.compactMap(\.bytes).reduce(0, +)
+        let total = artifacts.compactMap(\.bytes).saturatingSum
         let alert = NSAlert()
         let count = artifacts.reduce(0) { $0 + $1.urls.count }
         alert.messageText = count == 1

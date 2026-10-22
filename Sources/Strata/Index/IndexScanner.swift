@@ -81,7 +81,7 @@ nonisolated package enum BulkDirectoryReader {
                 }
                 var size: Int64 = 0
                 if returned.fileattr & attrgroup_t(ATTR_FILE_DATALENGTH) != 0 {
-                    size = field.loadUnaligned(as: Int64.self)
+                    size = max(0, field.loadUnaligned(as: Int64.self))
                     field += 8
                 }
 

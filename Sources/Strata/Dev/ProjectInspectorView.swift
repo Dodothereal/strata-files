@@ -235,12 +235,12 @@ final class ProjectInspectorView: NSView {
             artifactRows[artifact.id]?.update(artifact, selected: isSelected(artifact))
         }
         let all = info.artifacts
-        let known = all.compactMap(\.bytes).reduce(0, +)
+        let known = all.compactMap(\.bytes).saturatingSum
         artifactsTotalLabel?.stringValue = info.isMeasuring
             ? (known > 0 ? String(localized: "\(Format.bytes(known))+", comment: "A total size still being measured: at least this much") : "")
             : Format.bytes(known)
         let chosen = selectedArtifacts
-        let chosenBytes = chosen.compactMap(\.bytes).reduce(0, +)
+        let chosenBytes = chosen.compactMap(\.bytes).saturatingSum
         let pending = chosen.contains { !$0.isMeasured }
         if let cleanButton {
             cleanButton.title = chosen.isEmpty ? String(localized: "Clean", comment: "Button: move the selected build folders to the Trash")

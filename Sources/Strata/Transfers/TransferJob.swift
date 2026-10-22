@@ -440,7 +440,7 @@ final class TransferJob {
         switch decision {
         case .replace:
             let existing = item.destination.standardizedFileURL.path
-            if item.source.path.hasPrefix(existing + "/") {
+            if Self.isInside(item.source.path, existing) {
                 fail(index, String(localized: "“\(item.destination.lastPathComponent)” can’t be replaced by an item inside it"))
             } else {
                 items[index].decision = .replace

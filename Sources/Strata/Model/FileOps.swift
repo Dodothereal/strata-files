@@ -45,6 +45,9 @@ enum FileOps {
         let landed = LandedFiles()
         for pair in pairs { landed.expect(pair.from, at: pair.to) }
         let (done, error) = await moveAll(pairs)
+        let arrivedPaths = Set(done.map(\.to.path))
+        for pair in pairs where !arrivedPaths.contains(pair.to.path) { landed.set(nil, at: pair.to) }
+        for pair in done where landed.identity(at: pair.to) == nil { landed.record([pair.to]) }
         done.forEach { landed.arrived($0.to); TransferEngine.hooks.afterLanding?($0.to) }
         let entry = record ? history.recordMove(actionName, done, landed: landed) : nil
         registerMoveUndo(done, actionName, undo, entry: entry, landed: landed, history: history)
@@ -80,7 +83,10 @@ enum FileOps {
                 for item in executed.reversed() {
                     if (try? await moveItem(item.step.to, item.step.from)) != nil { continue }
                     if item.step.isParking {
-                        try? await moveItem(item.step.to, available(item.step.from, copyStyle: false))
+                        let fallback = available(item.step.from, copyStyle: false)
+                        if (try? await moveItem(item.step.to, fallback)) != nil {
+                            kept.insert((from: item.step.from, to: fallback), at: 0)
+                        }
                     } else if let completed = item.completes {
                         kept.insert(pairs[completed], at: 0)
                     }
@@ -230,7 +236,7 @@ enum FileOps {
             let logged = record ? OperationLog.shared.recordMove("Move to Trash", moved, landed: landed) : entry
             registerMoveUndo(moved, "Move to Trash", undo, entry: logged, marksUndone: record ? true : marksUndone, landed: landed)
         }
-        for url in urls where !ReadOnlyCopies.contains(url, copies: copies) {
+        for url in BrowserViewController.outermost(urls) where Self.canTrash(url, copies: copies) {
             var result: NSURL?
             try FileManager.default.trashItem(at: url, resultingItemURL: &result)
             if let result {
@@ -320,6 +326,7 @@ enum FileOps {
         var moved: [Move] = []
         var identities: [FileIdentity?] = []
         var noTrash: [URL] = []
+        let urls = BrowserViewController.outermost(urls)
         for url in urls where canTrash(url, copies: copies) {
             var result: NSURL?
             do {

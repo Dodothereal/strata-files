@@ -183,7 +183,7 @@ nonisolated enum PlanValidator {
                 changed = changedFolder(holding: destination.deletingLastPathComponent(), including: true)
                 if changed == step.source { changed = nil }
             }
-            if changed == nil, step.kind == .rename || step.kind == .move, let source = step.source {
+            if changed == nil, step.kind == .rename || step.kind == .move || step.kind == .trash, let source = step.source {
                 changed = changedFolder(holding: source, including: false)
             }
             if let changed {
@@ -288,6 +288,11 @@ nonisolated enum PlanValidator {
     }
 
     static func key(_ url: URL) -> String {
-        url.standardizedFileURL.path.lowercased()
+        let standardized = url.standardizedFileURL
+        if (try? standardized.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]))?.volumeSupportsCaseSensitiveNames == true
+            || (try? standardized.deletingLastPathComponent().resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]))?.volumeSupportsCaseSensitiveNames == true {
+            return standardized.path
+        }
+        return standardized.path.lowercased()
     }
 }

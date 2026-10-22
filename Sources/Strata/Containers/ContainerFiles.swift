@@ -942,15 +942,16 @@ nonisolated enum CopyWriter {
                     if let spelling = seen[key], spelling != path { return }
                     guard parts.dropLast().indices.allSatisfy({ seen[parts[...$0].map(folded).joined(separator: "/")] == parts[...$0].joined(separator: "/")
                         || seen[parts[...$0].map(folded).joined(separator: "/")] == nil }) else { return }
-                    seen[key] = path
                     let parent = try folderFD(parts.dropLast()[...])
                     let last = parts[parts.count - 1]
                     switch entry.kind {
                     case .directory:
+                        seen[key] = path
                         _ = try folderFD(parts[...])
                         folderDates.append((parts, entry.modified))
                     case .symlink:
                         guard let target = ContainerCopies.copyLinkTarget(entry.linkTarget, at: base + "/" + path) else { return }
+                        seen[key] = path
                         if linkTarget(last, fd: parent) == target { return }
                         removeAt(parent, last)
                         symlinkat(target, parent, last)
@@ -959,6 +960,7 @@ nonisolated enum CopyWriter {
                         // Linked to its first name once the stream is through (hardlinks carry no data).
                         hardlinks.append((parts, streamName(entry.linkTarget)))
                     case .file:
+                        seen[key] = path
                         var info = stat()
                         if fstatat(parent, last, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFREG, !ContainerCopies.isPlaceholderMode(info.st_mode),
                            Int64(info.st_size) == entry.size, Int(info.st_mtimespec.tv_sec) == ContainerTime.seconds(entry.modified) {
@@ -997,7 +999,8 @@ nonisolated enum CopyWriter {
         for link in hardlinks {
             guard let targetRest = relative(link.target, to: rootName) else { continue }
             let targetParts = targetRest.split(separator: "/").map(String.init)
-            guard !targetParts.isEmpty, targetParts.allSatisfy(ContainerCopies.isSafeName) else { continue }
+            guard !targetParts.isEmpty, targetParts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) }) else { continue }
+            seen[link.parts.map(folded).joined(separator: "/")] = link.parts.joined(separator: "/")
             let linkDir = try folderFD(link.parts.dropLast()[...])
             let name = link.parts[link.parts.count - 1]
             var linked = false

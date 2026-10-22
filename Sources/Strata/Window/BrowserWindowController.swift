@@ -208,7 +208,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     @objc func moveToOtherPane(_ sender: Any?) { transferToOtherPane(move: true) }
 
     private func transferToOtherPane(move: Bool) {
-        guard let other = panes.first(where: { $0 !== pane }), case .folder(let target) = other.destination else { return }
+        guard let other = panes.first(where: { $0 !== pane }), case .folder = other.destination,
+              let target = other.browser.targetDirectory,
+              !ReadOnlyCopies.contains(target, copies: services.copies), !Trash.isTrash(target) else { return }
         let urls = browser.selectedURLs
         guard !urls.isEmpty else { return }
         // Onto a server: copied there (or moved within it), through the server.
@@ -1262,7 +1264,9 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
         case #selector(askStrata(_:)):
             return canAskStrata
         case #selector(copyToOtherPane(_:)), #selector(moveToOtherPane(_:)):
-            guard isDualPane, let other = panes.first(where: { $0 !== pane }), case .folder = other.destination else { return false }
+            guard isDualPane, let other = panes.first(where: { $0 !== pane }), case .folder = other.destination,
+                  let target = other.browser.targetDirectory,
+                  !ReadOnlyCopies.contains(target, copies: services.copies), !Trash.isTrash(target) else { return false }
             return !browser.selectedURLs.isEmpty
         case #selector(goToEnclosingFolder(_:)):
             if case .folder = destination { return location.path != "/" }

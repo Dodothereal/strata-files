@@ -66,6 +66,10 @@ extension BrowserViewController {
         Task { [weak self] in
             let inspection = await Archiver.inspect(archive, kind: kind)
             if inspection.complete, inspection.bytes > Self.largeArchive {
+                if (OpeningArchives.waiters[key]?.count ?? 0) <= 1, self?.navigationRevision != startedRevision {
+                    OpeningArchives.waiters[key] = nil
+                    return
+                }
                 let size = ByteCountFormatter.string(fromByteCount: inspection.bytes, countStyle: .file)
                 let alert = NSAlert()
                 alert.messageText = String(localized: "“\(archive.lastPathComponent)” holds \(size).", comment: "An archive, then its unpacked size (“5 GB”)")

@@ -80,7 +80,7 @@ extension BrowserViewController {
         runOnServer(in: folder) { [weak self] in
             let renamed = try await files.rename(url, to: name)
             guard let self else { return }
-            if Self.key(folder) == self.directory.map(Self.key) { self.pendingSelection = [renamed] }
+            if Self.key(folder) == self.targetDirectory.map(Self.key) { self.pendingSelection = [renamed] }
             self.refresh()
         }
     }
@@ -90,7 +90,8 @@ extension BrowserViewController {
         let copies = services.remote.copies
         let urls = Self.serverDeletionTargets(urls, copies: copies)
         guard !urls.isEmpty, let window = view.window else { return NSSound.beep() }
-        let expected = Dictionary(uniqueKeysWithValues: urls.compactMap { copies.server(containing: $0).map { ($0.server.id, $0.server) } })
+        let expected = Dictionary(urls.compactMap { copies.server(containing: $0).map { ($0.server.id, $0.server) } },
+                                  uniquingKeysWith: { first, _ in first })
         let serverName = copies.server(containing: urls[0])?.server.name ?? serverName
         let alert = NSAlert()
         alert.messageText = urls.count == 1
@@ -133,7 +134,7 @@ extension BrowserViewController {
             return runOnServer(in: folder) { [weak self] in
                 let moved = try await files.move(urls, into: folder, expected: expected)
                 guard let self else { return }
-                if folder.standardizedFileURL == self.directory?.standardizedFileURL, !moved.isEmpty { self.pendingSelection = moved }
+                if folder.standardizedFileURL == self.targetDirectory?.standardizedFileURL, !moved.isEmpty { self.pendingSelection = moved }
                 self.refresh()
             }
         }
@@ -164,7 +165,7 @@ extension BrowserViewController {
                                       files: services.remote.files, copies: services.copies)
             job.onFinish = { job in
                 guard let self else { return }
-                if folder.standardizedFileURL == self.directory?.standardizedFileURL, !job.createdItems.isEmpty {
+                if folder.standardizedFileURL == self.targetDirectory?.standardizedFileURL, !job.createdItems.isEmpty {
                     self.pendingSelection = job.createdItems
                 }
                 self.refresh()

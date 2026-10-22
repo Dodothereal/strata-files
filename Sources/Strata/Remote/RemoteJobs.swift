@@ -49,8 +49,10 @@ final class RemoteUploadJob {
                 }
                 let elsewhere = sources.filter(copies.contains)
                 if !elsewhere.isEmpty {
-                    prepSource = elsewhere.first
-                    try await copies.prepareForCopying(elsewhere)
+                    for url in elsewhere {
+                        prepSource = url
+                        try await copies.prepareForCopying([url])
+                    }
                     guard !copies.containsPlaceholder(in: elsewhere) else { throw CocoaError(.fileReadUnknown) }
                     prepSource = nil
                 }
@@ -80,7 +82,7 @@ final class RemoteUploadJob {
                 var info = stat()
                 guard lstat(path, &info) == 0 else { return }
                 switch info.st_mode & S_IFMT {
-                case S_IFREG: total += Int64(info.st_size)
+                case S_IFREG: total = total.saturatingAdd(max(0, Int64(info.st_size)))
                 case S_IFDIR: for name in (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? [] { add(path + "/" + name) }
                 default: break
                 }

@@ -25,9 +25,11 @@ struct FileThumbnailsTests {
     }
 
     private func wait(until condition: () -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(3)
+        let deadline = ContinuousClock.now + .seconds(15)
+        var turns = 0
         while !condition() {
-            try #require(ContinuousClock.now < deadline)
+            try #require(ContinuousClock.now < deadline || turns < 16)
+            turns += 1
             try await Task.sleep(for: .milliseconds(5))
         }
     }

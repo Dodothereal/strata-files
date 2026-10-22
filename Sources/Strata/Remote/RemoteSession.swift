@@ -154,7 +154,8 @@ nonisolated final class SFTPBackend: RemoteBackend {
         try await Self.run(stop: stop) { [client] in
             // Written under a temporary name next to it, then put in place: a stopped or failed copy never leaves a
             // half-written file, and a link at the name is replaced rather than written through.
-            let temp = RemotePath.join(RemotePath.parent(path), ".\(RemotePath.name(path)).strata-\(UUID().uuidString.prefix(8))")
+            let stem = TransferEngine.fitting(RemotePath.name(path), maxBytes: 255 - 17)
+            let temp = RemotePath.join(RemotePath.parent(path), ".\(stem).strata-\(UUID().uuidString.prefix(8))")
             do {
                 try client.upload(source, to: temp, permissions: permissions, modificationDate: modified, progress: progress, stop: { stop.isSet })
                 if client.canReplace {

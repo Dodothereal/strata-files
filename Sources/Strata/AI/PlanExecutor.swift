@@ -131,6 +131,9 @@ final class PlanTransaction {
             // Swaps and chains move together, through temporary names.
             for pair in moves { applied.expect(pair.from, at: pair.to) }
             let (moved, error) = await FileOps.moveAll(moves.map { (from: $0.from, to: $0.to) })
+            let arrivedPaths = Set(moved.map(\.to.path))
+            for pair in moves where !arrivedPaths.contains(pair.to.path) { applied.set(nil, at: pair.to) }
+            for pair in moved where applied.identity(at: pair.to) == nil { applied.record([pair.to]) }
             moved.forEach { applied.arrived($0.to) }
             done = moved.map { ($0.from, $0.to) }
             outcome.results += moved.map(\.to)
@@ -144,6 +147,7 @@ final class PlanTransaction {
                     done.append(pair)
                     outcome.results.append(pair.to)
                 } catch {
+                    applied.set(nil, at: pair.to)
                     outcome.failures.append(String(localized: "“\(pair.from.lastPathComponent)”: \(error.localizedDescription)",
                                                    comment: "An item’s name, then why it couldn’t be renamed or moved"))
                 }

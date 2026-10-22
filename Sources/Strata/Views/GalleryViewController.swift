@@ -212,6 +212,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
     // MARK: - Content
 
     func apply(_ content: FileCollectionContent, metadata: FileCollectionMetadata, animated: Bool) {
+        if directory?.fileViewKey != content.directory.fileViewKey { cancelRename() }
         directory = content.directory
         setEntries(content.entries)
     }
@@ -270,15 +271,14 @@ final class GalleryViewController: NSViewController, FileCollectionController {
 
     // MARK: - Rename (the name under the preview)
 
+    func cancelRename() {
+        renameField?.cancel()
+    }
+
     @discardableResult
     func beginRename(_ url: URL) -> Bool {
         if let existing = renameField {
-            existing.removeFromSuperview()
-            renameField = nil
-            if let deferred = deferredEntries {
-                deferredEntries = nil
-                setEntries(deferred)
-            }
+            existing.cancel()
         }
         guard let index = indexByKey[url.fileViewKey] else { return false }
         let entry = entries[index]

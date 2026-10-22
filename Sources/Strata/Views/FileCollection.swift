@@ -73,11 +73,13 @@ protocol FileCollectionController: NSViewController {
     func screenRect(for url: URL) -> NSRect?
     /// Starts inline rename of `url`; false when the item isn't shown or the view can't rename.
     @discardableResult func beginRename(_ url: URL) -> Bool
+    func cancelRename()
 }
 
 extension FileCollectionController {
     var insetsContentToSafeArea: Bool { false }
     var selectedURLs: [URL] { selectedEntries.map(\.url) }
+    func cancelRename() {}
 }
 
 extension URL {
@@ -437,6 +439,11 @@ final class InlineRenameField: NSTextField, NSTextFieldDelegate {
     func begin(in window: NSWindow?) {
         window?.makeFirstResponder(self)
         currentEditor()?.selectedRange = NSRange(location: 0, length: baseLength)
+    }
+
+    func cancel() {
+        cancelled = true
+        finish()
     }
 
     func controlTextDidEndEditing(_ obj: Notification) { finish() }

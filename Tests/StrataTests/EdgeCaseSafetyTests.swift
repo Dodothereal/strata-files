@@ -249,4 +249,85 @@ struct EdgeCaseSafetyTests {
             _ = try JSONDecoder().decode(OperationLog.Entry.self, from: badEntryJSON)
         }
     }
+
+    @Test func containerSubfolderLinkTargetsStayInsideSubfolderWhenCopiedOut() throws {
+        let targetInSameSubtree = ContainerCopies.copyLinkTarget("/app/sub/b.txt", at: "/app/sub/a")
+        #expect(targetInSameSubtree == "b.txt")
+        let targetInSiblingSubtree = ContainerCopies.copyLinkTarget("/app/lib/c.txt", at: "/app/sub/a")
+        #expect(targetInSiblingSubtree == "../lib/c.txt")
+
+        let tree = try TestTree("copied/", "copied/sub/", "copied/sub/b.txt", "copied/lib/", "copied/lib/c.txt")
+        try FileManager.default.createSymbolicLink(atPath: tree.url("copied/sub/a").path, withDestinationPath: try #require(targetInSameSubtree))
+        try FileManager.default.createSymbolicLink(atPath: tree.url("copied/sub/escape").path, withDestinationPath: "../../outside.txt")
+        ContainerCopies.finishCopyingOut(tree.url("copied/sub"))
+        #expect(tree.snapshot() == ["copied/", "copied/lib/", "copied/lib/c.txt", "copied/sub/", "copied/sub/a -> b.txt", "copied/sub/b.txt"])
+    }
+
+    @Test func planValidatorExcludesNestedTrashInsideChangedFolderAndToggleDisablesVacatedDependents() async throws {
+        let tree = try TestTree("dir/", "dir/inner.txt", "a.txt", "b.txt")
+        let items = await PlanItem.load([tree.url("dir"), tree.url("dir/inner.txt"), tree.url("a.txt"), tree.url("b.txt")])
+        let nestedTrashPlan = PlanValidator.validate(
+            [.trash(tree.url("dir")), .trash(tree.url("dir/inner.txt"))],
+            request: .init(instruction: "trash", items: items, baseFolder: tree.root),
+            source: .model,
+            interpretation: ""
+        )
+        #expect(nestedTrashPlan.steps.count == 1)
+        #expect(nestedTrashPlan.steps.first?.source?.lastPathComponent == "dir")
+        #expect(nestedTrashPlan.excluded.count == 1)
+
+        let chainPlan = PlanValidator.validate(
+            [.rename(tree.url("a.txt"), to: "c.txt"), .rename(tree.url("b.txt"), to: "a.txt")],
+            request: .init(instruction: "rename", items: items, baseFolder: tree.root),
+            source: .model,
+            interpretation: ""
+        )
+        #expect(chainPlan.steps.count == 2)
+        let sheet = PlanSheetController(urls: [tree.url("a.txt"), tree.url("b.txt")], baseFolder: tree.root, undoManager: nil)
+        _ = sheet.view
+        sheet.phase = .review(chainPlan)
+        sheet.toggle(chainPlan.steps[0].id, on: false)
+        guard case let .review(updatedPlan) = sheet.phase else {
+            Issue.record("Expected review phase")
+            return
+        }
+        #expect(updatedPlan.steps.allSatisfy { !$0.isEnabled })
+        #expect(tree.snapshot() == ["a.txt", "b.txt", "dir/", "dir/inner.txt"])
+    }
+
+    @Test func inlineRenameFieldCancelDiscardsEditsWithoutCommitting() {
+        var committed: String?
+        var ended = false
+        let field = InlineRenameField(name: "original.txt", isFolder: false, centered: false)
+        field.onCommit = { committed = $0 }
+        field.onEnd = { ended = true }
+        field.stringValue = "half-typed.txt"
+        field.cancel()
+        #expect(committed == nil)
+        #expect(ended)
+    }
+
+    @Test func tagStoreUndoDoesNotRestoreTagsOntoReplacementFile() async throws {
+        let tree = try TestTree("doc.txt", "replacement.txt")
+        let doc = tree.url("doc.txt")
+        let replacement = tree.url("replacement.txt")
+        let store = TagStore()
+        defer { store.forget("Strata Edge Test") }
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        undo.beginUndoGrouping()
+        try store.update([doc], adding: ["Strata Edge Test"], removing: [], undo: undo)
+        undo.endUndoGrouping()
+        #expect(store.tags(for: doc).map(\.name) == ["Strata Edge Test"])
+
+        try FileManager.default.removeItem(at: doc)
+        try FileManager.default.moveItem(at: replacement, to: doc)
+        store.invalidate(tree.root)
+        #expect(store.tags(for: doc).isEmpty)
+
+        undo.undo()
+        store.invalidate(tree.root)
+        #expect(store.tags(for: doc).isEmpty)
+        #expect(tree.snapshot() == ["doc.txt"])
+    }
 }
