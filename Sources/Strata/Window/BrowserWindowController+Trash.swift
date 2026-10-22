@@ -20,19 +20,27 @@ extension BrowserWindowController {
 
     /// Build the native sheet with the same server owner as the window, including when editing saved settings.
     func serverController(editing server: RemoteServer? = nil) -> ConnectToServerController {
+        let origin = pane
         let controller = ConnectToServerController(editing: server, settings: services.connectionSettings,
                                                    connections: services.remote.connections)
-        controller.onConnected = { [weak self] mounted in self?.navigate(to: mounted) }
-        controller.onServer = { [weak self] server in self?.openServer(server) }
+        controller.onConnected = { [weak self, weak origin] mounted in
+            guard let self, !isClosed, let origin, panes.contains(where: { $0 === origin }) else { return }
+            go(.folder(mounted.standardizedFileURL), in: origin)
+        }
+        controller.onServer = { [weak self, weak origin] server in
+            guard let self, let origin else { return }
+            openServer(server, in: origin)
+        }
         return controller
     }
 
     /// Connects to `server` (saying so over the folder, with Cancel) and shows where browsing starts: its saved
     /// folder, or where the login starts (a bucket's top).
     @discardableResult
-    func openServer(_ server: RemoteServer) -> Task<Void, Never> {
+    func openServer(_ server: RemoteServer, in origin: Pane? = nil) -> Task<Void, Never> {
         let browsing = services.remoteBrowsing
-        return openFolder(notice: .init(symbol: "network", text: String(localized: "Connecting to “\(server.name)”…", comment: "A server's name")),
+        return openFolder(in: origin,
+                          notice: .init(symbol: "network", text: String(localized: "Connecting to “\(server.name)”…", comment: "A server's name")),
                           operation: { try await browsing.open(server) }) { [weak self] error in
             guard let self, let window, window.attachedSheet == nil else { return }
             let alert = NSAlert()
@@ -48,7 +56,8 @@ extension BrowserWindowController {
     /// Trashes hold something too (each disk keeps its own).
     func updateNotice(for url: URL) {
         guard !showPendingOpening() else { return }
-        if let engine = ContainerCopies.engineFolder(url) {
+        let containerCopies = services.copies.containerCopies
+        if let engine = containerCopies.engineFolder(url) {
             return split.noticeBar.show(symbol: "shippingbox",
                                         text: String(localized: "Containers on \(engine.name). Each opens as a read-only copy of its files.",
                                                      comment: "Notice over the Containers folder; placeholder: Docker Desktop, OrbStack…"),
@@ -56,7 +65,7 @@ extension BrowserWindowController {
                 self?.browser.reloadFolder(nil)
             }
         }
-        if let (source, _) = ContainerCopies.copy(containing: url) {
+        if let (source, _) = containerCopies.copy(containing: url) {
             return split.noticeBar.show(symbol: "shippingbox",
                                         text: String(localized: "Files in “\(source.name)” on \(source.engineName): a read-only copy, read from the container as you browse.",
                                                      comment: "Notice over a container's files; placeholders: the container, then its engine (Docker Desktop, OrbStack…)"),
@@ -107,6 +116,10 @@ extension BrowserWindowController {
         guard !showPendingOpening() else { return }
         guard case .folder(let shown) = destination, let folder = notification.userInfo?["folder"] as? URL,
               let message = notification.userInfo?["message"] as? String else { return }
+        if let root = notification.userInfo?["copyRoot"] as? String {
+            let ownedRoots = [services.copies.remoteCopies.root.path, services.copies.containerCopies.root.path]
+            guard ownedRoots.contains(root) else { return }
+        }
         // The folder shown, or one below it (a column, a folder expanded in the list).
         let shownPath = shown.resolvingSymlinksInPath().standardizedFileURL.path, problem = folder.standardizedFileURL.path
         guard problem == shownPath || problem.hasPrefix(shownPath + "/") else { return }

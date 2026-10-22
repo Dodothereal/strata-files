@@ -67,7 +67,7 @@ final class Pane {
     /// Short description for the pane header.
     var title: (text: String, symbol: String) {
         switch destination {
-        case .folder(let url): (Places.displayName(url), Trash.isTrash(url) ? "trash" : "folder")
+        case .folder(let url): (Places.displayName(url, copies: browser.services.copies), Trash.isTrash(url) ? "trash" : "folder")
         case .search(let text, _): (BrowserWindowController.searchTitle(text), "magnifyingglass")
         case .recents: (String(localized: "Recents", comment: "Title of the view listing recently used files"), "clock")
         case .duplicates: (String(localized: "Duplicates", comment: "Title of the view listing duplicate files"), "square.on.square")

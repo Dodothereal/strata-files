@@ -472,7 +472,7 @@
   },
   {
     "file": "Strata/Containers/ContainerCopies.swift",
-    "find": "        if depth == 3, source(of: folder.deletingLastPathComponent()) != nil { return }\n",
+    "find": "        if depth == 3, source(of: folder.deletingLastPathComponent(), in: store) != nil { return }\n",
     "replace": "",
     "rule": "A folder inside a container's own files is removed",
     "tests": "CacheRemovalTests/aContainers"
@@ -1042,8 +1042,8 @@
   },
   {
     "file": "Strata/Sidebar/SidebarViewController.swift",
-    "find": "tree = FolderTreeController(transfers: services.transfers, preferences: services.preferences,\n                                    remote: services.remote, copies: services.copies)",
-    "replace": "tree = FolderTreeController(preferences: services.preferences,\n                                    remote: services.remote, copies: services.copies)",
+    "find": "tree = FolderTreeController(transfers: services.transfers, preferences: services.preferences,\n                                    remote: services.remote, copies: services.copies,\n                                    containerStore: services.containerStore)",
+    "replace": "tree = FolderTreeController(preferences: services.preferences,\n                                    remote: services.remote, copies: services.copies,\n                                    containerStore: services.containerStore)",
     "rule": "Browser service ownership folder tree drops use the global queue",
     "tests": "TransferContextTests/bothSidebarDropModesUseTheWindowQueue"
   },
@@ -2578,8 +2578,8 @@
   },
   {
     "file": "Strata/Remote/CopyProviders.swift",
-    "find": "func contains(_ url: URL) -> Bool { files.copies.contains(url) }",
-    "replace": "func contains(_ url: URL) -> Bool { RemoteCopies.contains(url) }",
+    "find": "    let files: RemoteFiles\n    func contains(_ url: URL) -> Bool { files.copies.contains(url) }",
+    "replace": "    let files: RemoteFiles\n    func contains(_ url: URL) -> Bool { RemoteCopies.contains(url) }",
     "rule": "Remote copy ownership the server provider classifies paths using another environment",
     "tests": "RemoteCopyOwnershipTests/matchingServerIDsKeepListingsDownloadsAndCleanupInTheirOwnEnvironment"
   },
@@ -2921,7 +2921,7 @@
   },
   {
     "file": "Strata/Window/BrowserWindowController.swift",
-    "find": "            pane.opening.cancel()",
+    "find": "            owner.opening.cancel()",
     "replace": "            // Keep opening despite deeper column navigation.",
     "rule": "Pane opening ownership entering a deeper column leaves its opening alive",
     "tests": "RemoteSessionOwnershipTests/enteringADeeperColumnCancelsAPendingOpeningButReportingTheSameFolderDoesNot"
@@ -2935,7 +2935,7 @@
   },
   {
     "file": "Strata/Browser/BrowserServices.swift",
-    "find": "copies ?? CopyProviders(servers: remote.files, containers: .shared)",
+    "find": "copies ?? CopyProviders(servers: remote.files, containers: containers)",
     "replace": "copies ?? .live",
     "rule": "Provider directory ownership default copies ignore their server environment",
     "tests": "RemoteEnvironmentTests/defaultWindowReadersUseTheirRemoteEnvironmentWithoutAnOverride"
@@ -2970,8 +2970,8 @@
   },
   {
     "file": "Strata/Window/BrowserWindowController.swift",
-    "find": "if !ReadOnlyCopies.contains(url) && !services.copies.contains(url) {",
-    "replace": "if !ReadOnlyCopies.contains(url) {",
+    "find": "if !ReadOnlyCopies.contains(url, copies: services.copies) && !services.copies.contains(url) {",
+    "replace": "if !ReadOnlyCopies.contains(url, copies: services.copies) {",
     "rule": "Provider directory ownership provider paths become saved local destinations",
     "tests": "InspectorFolderOpeningTests/providerFoldersArePreparedWithoutBecomingLocalSavedLocationsOrDraggableTitles"
   },
@@ -3096,7 +3096,7 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "func cancelPendingActions() {\n        selectionFetch?.cancel()\n        selectionFetch = nil",
+    "find": "func cancelPendingActions() {\n        noteNavigationContextChanged()\n        selectionFetch?.cancel()\n        selectionFetch = nil",
     "replace": "func cancelPendingActions() {",
     "rule": "Provider fetch ownership navigation leaves selection prefetch running",
     "tests": "ProviderFetchTests/changingSelectionAndLeavingThePaneCancelItsPrefetch"
@@ -3168,8 +3168,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "    func stopBackgroundWork() {\n        cancelPendingActions()\n        loading.invalidate()\n        sizer.cancelPending()\n        mediaInfo.cancelPending()\n    }",
-    "replace": "    func stopBackgroundWork() {\n        cancelPendingActions()\n        loading.invalidate()\n        sizer.cancelPending()\n    }",
+    "find": "        loading.invalidate()\n        sizer.cancelPending()\n        mediaInfo.cancelPending()",
+    "replace": "        loading.invalidate()\n        sizer.cancelPending()",
     "rule": "Provider media ownership closing a pane leaves media reads running",
     "tests": "ProviderMediaInfoTests/resultsMessagesAndClosingPanesCancelPendingMediaReads"
   },
@@ -3565,5 +3565,54 @@
     "replace": "let clipboard = Clipboard.shared\n        // A container's or a server's items are read first",
     "rule": "Browser copy provider ownership Copy command writes to the global clipboard",
     "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController+Trash.swift",
+    "find": "        controller.onConnected = { [weak self, weak origin] mounted in\n            guard let self, !isClosed, let origin, panes.contains(where: { $0 === origin }) else { return }\n            go(.folder(mounted.standardizedFileURL), in: origin)\n        }\n        controller.onServer = { [weak self, weak origin] server in\n            guard let self, let origin else { return }\n            openServer(server, in: origin)\n        }",
+    "replace": "        controller.onConnected = { [weak self] mounted in\n            self?.navigate(to: mounted)\n        }\n        controller.onServer = { [weak self] server in\n            self?.openServer(server)\n        }",
+    "rule": "Async action context ownership Connect to Server sheet navigates the currently focused pane instead of its originating pane",
+    "tests": "AsyncActionContextTests/connectToServerKeepsItsOriginatingPaneAcrossFocusChangesAndIgnoresClosedPanes"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "    func browser(_ browser: BrowserViewController, showArchiveCopy folder: URL) {\n        // An archive opens in the pane that asked for it, even if the other pane was focused meanwhile.\n        guard !isClosed, let owner = panes.first(where: { $0.browser === browser }) else { return }\n        go(.folder(folder.standardizedFileURL), in: owner)\n    }",
+    "replace": "    func browser(_ browser: BrowserViewController, showArchiveCopy folder: URL) {\n        navigate(to: folder)\n    }",
+    "rule": "Async action context ownership archive browsing opens in the currently focused pane instead of its originating pane",
+    "tests": "AsyncActionContextTests/archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+ArchiveBrowsing.swift",
+    "find": "        let show: (URL) -> Void = { [weak self] copy in\n            // Only if you're still where you opened it: a slow archive mustn't pull you away from elsewhere.\n            guard let self, navigationRevision == startedRevision else { return }\n            delegate?.browser(self, showArchiveCopy: copy)\n        }",
+    "replace": "        let startedAt = directory?.standardizedFileURL.path\n        let show: (URL) -> Void = { [weak self] copy in\n            guard let self, directory?.standardizedFileURL.path == startedAt else { return }\n            delegate?.browser(self, showArchiveCopy: copy)\n        }",
+    "rule": "Async action context ownership archive browsing completes after leaving and returning to the same folder",
+    "tests": "AsyncActionContextTests/archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "            let revision = navigationRevision\n            actionFetch = afterFetching(files) { [weak self] in\n                guard let self, navigationRevision == revision else { return }\n                openFetched(entries, fileOpener: fileOpener)\n            }",
+    "replace": "            _ = afterFetching(files) { [weak self] in\n                self?.openFetched(entries, fileOpener: fileOpener)\n            }",
+    "rule": "Async action context ownership deferred open action fires after navigation changes",
+    "tests": "AsyncActionContextTests/deferredOpenAndQuickLookActionsStopWhenNavigationOrSelectionChanges"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "            guard let self, navigationRevision == revision,\n                  (!hadWindow || viewIfLoaded?.window?.isVisible == true),\n                  !Set(selectedURLs.map(Self.key)).isDisjoint(with: selectedKeys) else { return }",
+    "replace": "            guard let self else { return }\n            _ = (revision, hadWindow, selectedKeys)",
+    "rule": "Async action context ownership deferred Quick Look opens after its item is deselected",
+    "tests": "AsyncActionContextTests/deferredOpenAndQuickLookActionsStopWhenNavigationOrSelectionChanges"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "        columnController?.stopBackgroundWork()\n        galleryController?.stopBackgroundWork()",
+    "replace": "        // Leave presentation preview work running.",
+    "rule": "Async action context ownership closing a pane leaves Column and Gallery preview background work alive",
+    "tests": "AsyncActionContextTests/closingAPaneStopsColumnAndGalleryBackgroundWork"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController+Trash.swift",
+    "find": "        if let root = notification.userInfo?[\"copyRoot\"] as? String {\n            let ownedRoots = [services.copies.remoteCopies.root.path, services.copies.containerCopies.root.path]\n            guard ownedRoots.contains(root) else { return }\n        }",
+    "replace": "        // Accept problem notifications from any copy store.",
+    "rule": "Async action context ownership container copy problem notifications cross into another window's copy environment",
+    "tests": "AsyncActionContextTests/containerStoresAndProblemNoticesStayScopedToTheirOwningBrowserServices"
   }
 ]

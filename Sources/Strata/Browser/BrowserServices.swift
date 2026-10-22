@@ -15,6 +15,8 @@ final class BrowserServices {
     let visits: Frecency
     let remote: RemoteServices
     let remoteBrowsing: RemoteBrowsing
+    let containers: ContainerFiles
+    let containerStore: ContainerStore
     let copies: CopyProviders
     let clipboard: Clipboard
     let openContainer: @MainActor @Sendable (String) async throws -> URL
@@ -27,26 +29,29 @@ final class BrowserServices {
 
     init(transfers: TransferQueue, visits: Frecency, directories: DirectoryReader? = nil, preferences: Prefs = .shared, windows: BrowserWindows = .native,
          availableCapacity: @escaping @Sendable (URL) async -> Int64? = BrowserLoading.freeSpace,
-         remote: RemoteServices = .shared, remoteBrowsing: RemoteBrowsing? = nil, copies: CopyProviders? = nil,
+         remote: RemoteServices = .shared, remoteBrowsing: RemoteBrowsing? = nil,
+         containers: ContainerFiles = .shared, containerStore: ContainerStore = .shared,
+         copies: CopyProviders? = nil,
          clipboard: Clipboard = .shared,
          mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
          thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
-         openContainer: @escaping @MainActor @Sendable (String) async throws -> URL = { id in
-             let store = ContainerStore.shared
-             guard let engine = store.engine, let container = store.container(id: id) else { throw ContainerAPIError.notFound }
-             return try await ContainerFiles.shared.open(container, on: engine)
-         }) {
+         openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil) {
         self.preferences = preferences
         self.transfers = transfers
         self.visits = visits
         self.remote = remote
         self.remoteBrowsing = remoteBrowsing ?? remote.browsing
-        self.copies = copies ?? CopyProviders(servers: remote.files, containers: .shared)
+        self.containers = containers
+        self.containerStore = containerStore
+        self.copies = copies ?? CopyProviders(servers: remote.files, containers: containers)
         self.clipboard = clipboard
         if transfers !== TransferQueue.shared && !transfers.hasCustomCopies {
             transfers.copies = self.copies
         }
-        self.openContainer = openContainer
+        self.openContainer = openContainer ?? { id in
+            guard let engine = containerStore.engine, let container = containerStore.container(id: id) else { throw ContainerAPIError.notFound }
+            return try await containers.open(container, on: engine)
+        }
         self.directories = directories ?? DirectoryReader(copies: self.copies)
         self.mediaReader = mediaReader
         self.thumbnails = thumbnails ?? FileThumbnails(copies: self.copies)

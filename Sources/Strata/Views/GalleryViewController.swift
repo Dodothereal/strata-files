@@ -35,12 +35,24 @@ final class GalleryViewController: NSViewController, FileCollectionController {
     private var stripHeight: NSLayoutConstraint?
     private var lead: Int?
     private var anchor: Int?
-    private var previewWork: DispatchWorkItem?
+    private(set) var previewWork: DispatchWorkItem?
     private var previewTicket: FileThumbnails.Ticket?
     /// What the big preview shows (its entry, so a change to the file shows too).
-    private var previewed: FileEntry?
+    private(set) var previewed: FileEntry?
 
-    isolated deinit { thumbnails.cancel(previewTicket) }
+    isolated deinit {
+        previewWork?.cancel()
+        thumbnails.cancel(previewTicket)
+    }
+
+    func stopBackgroundWork() {
+        previewWork?.cancel()
+        previewWork = nil
+        thumbnails.cancel(previewTicket)
+        previewTicket = nil
+        preview.clear()
+        previewed = nil
+    }
     private var selectionReportPending = false
     private var lastReportedSelection: [URL] = []
     private var renameField: InlineRenameField?

@@ -99,18 +99,18 @@ enum Places {
     }
 
     /// A folder's name as Finder shows it ("Trash" for `~/.Trash`; an archive opened as a folder goes by its file name).
-    static func displayName(_ url: URL) -> String {
+    static func displayName(_ url: URL, copies: CopyProviders = .live) -> String {
         if Trash.isTrash(url) { return String(localized: "Trash", comment: "The Trash folder") }
         if let (archive, top) = ArchiveCache.archive(containing: url), top.standardizedFileURL == url.standardizedFileURL {
             return archive.lastPathComponent
         }
         // The Containers folder; a container's `/` goes by the container's name.
-        if ContainerCopies.engineFolder(url) != nil { return String(localized: "Containers", comment: "Sidebar section title: Docker containers") }
-        if let (source, top) = ContainerCopies.copy(containing: url), top.standardizedFileURL == url.standardizedFileURL {
+        if copies.containerCopies.engineFolder(url) != nil { return String(localized: "Containers", comment: "Sidebar section title: Docker containers") }
+        if let (source, top) = copies.containerCopies.copy(containing: url), top.standardizedFileURL == url.standardizedFileURL {
             return source.name
         }
         // A server's `/` (a bucket's top) goes by the server's name.
-        if let (server, top) = RemoteCopies.server(containing: url), top.standardizedFileURL == url.standardizedFileURL {
+        if let (server, top) = copies.remoteCopies.server(containing: url), top.standardizedFileURL == url.standardizedFileURL {
             return server.name
         }
         return FileManager.default.displayName(atPath: url.path)

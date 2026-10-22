@@ -23,12 +23,18 @@ final class ContainerStore {
     private var retry: Timer?
     private var started = false
 
+    init(engine: ContainerEngine? = nil, containers: [ContainerInfo] = [], busy: [String: ContainerAction] = [:]) {
+        self.engine = engine
+        self.containers = containers
+        self.busy = busy
+    }
+
     func start() {
         guard !started else { return }
         started = true
         discover()
-        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { ContainerStore.shared.refresh() }
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
         }
     }
 
@@ -132,8 +138,8 @@ final class ContainerStore {
         retry = nil
         refresh()
         if watcher == nil {
-            watcher = EventWatcher(found, changed: { ContainerStore.shared.scheduleRefresh() },
-                                   ended: { ContainerStore.shared.eventsEnded(found) })
+            watcher = EventWatcher(found, changed: { [weak self] in self?.scheduleRefresh() },
+                                   ended: { [weak self] in self?.eventsEnded(found) })
         }
     }
 
@@ -141,10 +147,10 @@ final class ContainerStore {
     private func scheduleRefresh() {
         guard !refreshScheduled else { return }
         refreshScheduled = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             MainActor.assumeIsolated {
-                ContainerStore.shared.refreshScheduled = false
-                ContainerStore.shared.refresh()
+                self?.refreshScheduled = false
+                self?.refresh()
             }
         }
     }
@@ -154,17 +160,17 @@ final class ContainerStore {
     private func eventsEnded(_ ended: ContainerEngine) {
         guard ended == engine else { return }
         watcher = nil
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             let alive = (try? await blocking { try ContainerAPI.containers(ended) }) != nil
             guard ended == engine else { return }
             guard alive else { return lost(retryIn: 5) }
             refresh()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
                 MainActor.assumeIsolated {
-                    let store = ContainerStore.shared
-                    guard store.engine == ended, store.watcher == nil else { return }
-                    store.watcher = EventWatcher(ended, changed: { ContainerStore.shared.scheduleRefresh() },
-                                                 ended: { ContainerStore.shared.eventsEnded(ended) })
+                    guard let self, self.engine == ended, self.watcher == nil else { return }
+                    self.watcher = EventWatcher(ended, changed: { [weak self] in self?.scheduleRefresh() },
+                                                ended: { [weak self] in self?.eventsEnded(ended) })
                 }
             }
         }
@@ -179,9 +185,9 @@ final class ContainerStore {
         containers = []
         NotificationCenter.default.post(name: .containersChanged, object: self)
         scheduleDiscovery()
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             MainActor.assumeIsolated {
-                if ContainerStore.shared.engine == nil { ContainerStore.shared.discover() }
+                if self?.engine == nil { self?.discover() }
             }
         }
     }
@@ -189,8 +195,8 @@ final class ContainerStore {
     /// No engine yet: look again in a while (also whenever Strata comes to the front).
     private func scheduleDiscovery() {
         guard retry == nil else { return }
-        retry = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
-            MainActor.assumeIsolated { ContainerStore.shared.discover() }
+        retry = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.discover() }
         }
     }
 }

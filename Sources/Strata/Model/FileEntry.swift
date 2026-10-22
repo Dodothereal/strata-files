@@ -159,7 +159,7 @@ nonisolated enum DirectoryLoader {
         if copies.contains(directory) { await copies.refresh(directory) }
         // Follow a symlink or Finder alias. FileManager will not list the link itself.
         let directory = FileEntry.openedFolder(directory)
-        let isContainersFolder = ContainerCopies.engineFolder(directory) != nil
+        let isContainersFolder = copies.containerCopies.engineFolder(directory) != nil
         let keys = FileEntry.resourceKeys
         let urls = try applications.contents(of: directory, keys: keys, options: showHidden ? [] : [.skipsHiddenFiles])
         let keySet = Set(keys)
@@ -168,8 +168,8 @@ nonisolated enum DirectoryLoader {
         return urls.compactMap { url in
             guard let values = try? url.resourceValues(forKeys: keySet) else { return nil }
             let entry = FileEntry(url: url, values: values)
-            if ContainerCopies.isContainerTop(url) { return entry.with(kind: containerKind) }
-            if isContainersFolder, ContainerCopies.isStack(url) { return entry.with(kind: stackKind) }
+            if copies.containerCopies.isContainerTop(url) { return entry.with(kind: containerKind) }
+            if isContainersFolder, copies.containerCopies.isStack(url) { return entry.with(kind: stackKind) }
             return entry
         }
     }

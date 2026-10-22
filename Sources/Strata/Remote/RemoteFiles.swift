@@ -125,7 +125,7 @@ actor RemoteFiles {
         } catch {
             // A late timeout belongs to the connection that made this read, never its replacement or another pool.
             if case SFTPError.stoppedAnswering = error, let acquired { await retire(server.id, acquired) }
-            await Self.report(error, folder: folder)
+            await Self.report(error, folder: folder, copyRoot: copies.root.path)
             return nil
         }
     }
@@ -447,9 +447,9 @@ actor RemoteFiles {
         NotificationCenter.default.post(name: .containerFilesFetched, object: urls)
     }
 
-    @MainActor private static func report(_ error: Error, folder: URL) {
+    @MainActor private static func report(_ error: Error, folder: URL, copyRoot: String) {
         NotificationCenter.default.post(name: .containerCopyProblem, object: nil,
-                                        userInfo: ["folder": folder, "message": message(for: error)])
+                                        userInfo: ["folder": folder, "message": message(for: error), "copyRoot": copyRoot])
     }
 
     /// What went wrong, in a sentence.

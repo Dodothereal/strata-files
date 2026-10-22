@@ -61,6 +61,7 @@ actor ContainerFiles {
     /// Longest an archive-stream listing may take.
     static let archiveBudget: TimeInterval = 120
 
+    nonisolated let copies: ContainerCopyStore
     private let now: @Sendable () -> Date
     private let removeCopy: @Sendable (URL) async -> Void
     private var removals: [String: Task<Void, Never>] = [:]
@@ -68,18 +69,19 @@ actor ContainerFiles {
     private let readFile: @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void
     private let readTree: @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void
 
-    init(now: @escaping @Sendable () -> Date = { Date() },
+    init(copies: ContainerCopyStore = ContainerCopies.store, now: @escaping @Sendable () -> Date = { Date() },
          readListing: @escaping @Sendable (ContainerSource, String) async throws -> ContainerListingResult = {
         try await ContainerFiles.loadListing($0, path: $1)
     }, readFile: @escaping @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void = { source, path, url, stop in
         try await blocking { try CopyWriter.fetchFile(source.engine, id: source.id, containerPath: path, to: url, stop: stop) }
     }, readTree: @escaping @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void = { source, path, url, stop in
         try await blocking { try CopyWriter.writeTree(source.engine, id: source.id, containerPath: path, into: url, stop: stop) }
-    }, removeCopy: @escaping @Sendable (URL) async -> Void = { url in
-        _ = try? await blocking { ContainerCopies.remove(url) }
-    }) {
+    }, removeCopy: (@Sendable (URL) async -> Void)? = nil) {
+        self.copies = copies
         self.now = now
-        self.removeCopy = removeCopy
+        self.removeCopy = removeCopy ?? { url in
+            _ = try? await blocking { copies.remove(url) }
+        }
         self.readListing = readListing
         self.readFile = readFile
         self.readTree = readTree
@@ -101,11 +103,11 @@ actor ContainerFiles {
     func refresh(_ folder: URL) async {
         // Links in a copy all point inside it, so the real folder is still in the same copy.
         let real = folder.resolvingSymlinksInPath().standardizedFileURL
-        if let engine = ContainerCopies.engineFolder(real) { return await syncContainers(real, engine: engine) }
-        if ContainerCopies.isStack(real), let engine = ContainerCopies.engineFolder(real.deletingLastPathComponent()) {
+        if let engine = copies.engineFolder(real) { return await syncContainers(real, engine: engine) }
+        if copies.isStack(real), let engine = copies.engineFolder(real.deletingLastPathComponent()) {
             return await syncContainers(real.deletingLastPathComponent(), engine: engine)
         }
-        guard let (source, top) = ContainerCopies.copy(containing: real), let path = ContainerCopies.containerPath(of: real, top: top),
+        guard let (source, top) = copies.copy(containing: real), let path = ContainerCopies.containerPath(of: real, top: top),
               !closing.contains(top.standardizedFileURL.path) else { return }
         let key = real.path
         while !closing.contains(top.standardizedFileURL.path), let request = listings.request(for: key, now: now(), start: {
@@ -120,16 +122,17 @@ actor ContainerFiles {
     /// folder with it; one made again under the same name starts over (its files aren't the old one's).
     private func syncContainers(_ folder: URL, engine: ContainerEngine) async {
         let key = folder.path
+        let copies = self.copies
         while let request = listings.request(for: key, now: now(), start: {
             Task<TimeInterval?, Never> {
                 do {
                     let list = try await blocking { try ContainerAPI.containers(engine) }
-                    let gone = try await blocking { try CopyWriter.syncContainers(list, engine: engine, in: folder) }
+                    let gone = try await blocking { try CopyWriter.syncContainers(list, engine: engine, in: folder, copies: copies) }
                     for top in gone { await self.discard(top) }
-                    if !gone.isEmpty { _ = try await blocking { try CopyWriter.syncContainers(list, engine: engine, in: folder) } }
+                    if !gone.isEmpty { _ = try await blocking { try CopyWriter.syncContainers(list, engine: engine, in: folder, copies: copies) } }
                     return 2
                 } catch {
-                    await Self.reportEngine(error, folder: folder, engine: engine)
+                    await Self.reportEngine(error, folder: folder, engine: engine, copyRoot: copies.root.path)
                     return nil
                 }
             }
@@ -142,14 +145,14 @@ actor ContainerFiles {
     /// The folder for `container` in its engine's Containers folder, ready to browse. One made again under the same
     /// name (`docker compose up`) starts over: the old one's files aren't its.
     func open(_ container: ContainerInfo, on engine: ContainerEngine) async throws -> URL {
-        let parent = try ContainerCopies.stackFolder(for: container, in: ContainerCopies.prepare(engine))
+        let parent = try copies.stackFolder(for: container, in: copies.prepare(engine))
         let fd = Darwin.open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         let recorded = fd >= 0 ? ContainerCopies.recordedSource(container.name, in: fd) : nil
         if fd >= 0 { close(fd) }
         if let recorded, recorded.id != container.id {
             await discard(parent.appending(path: container.name, directoryHint: .isDirectory))
         }
-        return try ContainerCopies.prepare(container, on: engine)
+        return try copies.prepare(container, on: engine)
     }
 
     /// The next `refresh` of `folder`, and of any folder in it, lists it again (Reload: columns and folders expanded in
@@ -162,7 +165,7 @@ actor ContainerFiles {
     /// Makes `url`, a path in a container's files, exist in its copy by listing the folders on the way to it from `/`
     /// (a mount's path, say, before it's been browsed). False when it isn't in the container.
     func reveal(_ url: URL) async -> Bool {
-        guard let (_, top) = ContainerCopies.copy(containing: url), let path = ContainerCopies.containerPath(of: url, top: top) else { return false }
+        guard let (_, top) = copies.copy(containing: url), let path = ContainerCopies.containerPath(of: url, top: top) else { return false }
         var current = top
         for part in ContainerCopies.normalized(path) {
             await refresh(current)
@@ -197,7 +200,7 @@ actor ContainerFiles {
             }
             return fresh
         } catch {
-            await Self.report(error, folder: folder, source: source)
+            await Self.report(error, folder: folder, source: source, copyRoot: copies.root.path)
             return nil
         }
     }
@@ -259,7 +262,7 @@ actor ContainerFiles {
     /// Makes everything at `urls` complete before it's copied out: placeholders fetched, and folders with all they hold
     /// (not just what's been browsed), matching the container. Throws the first problem.
     func prepareForCopying(_ urls: [URL]) async throws {
-        for url in urls where ContainerCopies.contains(url) {
+        for url in urls where copies.contains(url) {
             try Task.checkCancellation()
             var info = stat()
             guard lstat(url.path, &info) == 0 else { continue }
@@ -274,7 +277,7 @@ actor ContainerFiles {
     /// A folder with everything in it, from one archive stream (once: a second request waits for the first).
     private func fetchTree(_ folder: URL) async throws {
         let real = folder.resolvingSymlinksInPath().standardizedFileURL
-        guard let (source, top) = ContainerCopies.copy(containing: real), let path = ContainerCopies.containerPath(of: real, top: top),
+        guard let (source, top) = copies.copy(containing: real), let path = ContainerCopies.containerPath(of: real, top: top),
               !closing.contains(top.standardizedFileURL.path) else { return }
         let key = real.path
         try Task.checkCancellation()
@@ -298,7 +301,7 @@ actor ContainerFiles {
     func fetchSelection(_ urls: [URL], limit: Int64) async {
         var total: Int64 = 0
         var chosen: [URL] = []
-        for url in urls where ContainerCopies.isPlaceholder(url) {
+        for url in urls where copies.isPlaceholder(url) {
             let key = url.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: url.lastPathComponent).standardizedFileURL.path
             guard let mode = modes[key], mode & 0o004 != 0 else { continue }
             let size = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
@@ -312,9 +315,9 @@ actor ContainerFiles {
     /// Fetches `urls` that are still placeholders (opening, previewing or copying them). Throws the first problem.
     func fetch(_ urls: [URL]) async throws {
         var fetched: [URL] = []
-        for url in urls where ContainerCopies.isPlaceholder(url) {
+        for url in urls where copies.isPlaceholder(url) {
             try Task.checkCancellation()
-            guard let (source, top) = ContainerCopies.copy(containing: url) else { continue }
+            guard let (source, top) = copies.copy(containing: url) else { continue }
             if try await fetchOne(url, source: source, top: top) { fetched.append(url) }
         }
         if !fetched.isEmpty { await Self.announce(fetched) }
@@ -324,14 +327,14 @@ actor ContainerFiles {
     private func fetchOne(_ requested: URL, source: ContainerSource, top: URL) async throws -> Bool {
         // Through a linked folder (`/bin` → `usr/bin` on most images): the real folder, which is in the same copy.
         let url = requested.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: requested.lastPathComponent)
-        guard ContainerCopies.copy(containing: url)?.top.standardizedFileURL == top.standardizedFileURL else { return false }
+        guard copies.copy(containing: url)?.top.standardizedFileURL == top.standardizedFileURL else { return false }
         let key = url.standardizedFileURL.path
         try Task.checkCancellation()
         if let running = fetches.join(key) {
             try await join(running)
             return false
         }
-        guard !closing.contains(top.standardizedFileURL.path), ContainerCopies.isPlaceholder(url),
+        guard !closing.contains(top.standardizedFileURL.path), copies.isPlaceholder(url),
               let path = ContainerCopies.containerPath(of: url, top: top) else { return false }
         let request = fetches.request(key) {
             Task {
@@ -382,19 +385,20 @@ actor ContainerFiles {
     }
 
     @MainActor
-    private static func report(_ error: Error, folder: URL, source: ContainerSource) {
+    private static func report(_ error: Error, folder: URL, source: ContainerSource, copyRoot: String) {
         NotificationCenter.default.post(name: .containerCopyProblem, object: nil,
-                                        userInfo: ["folder": folder, "message": message(for: error, source: source)])
+                                        userInfo: ["folder": folder, "message": message(for: error, source: source), "copyRoot": copyRoot])
     }
 
     @MainActor
-    private static func reportEngine(_ error: Error, folder: URL, engine: ContainerEngine) {
+    private static func reportEngine(_ error: Error, folder: URL, engine: ContainerEngine, copyRoot: String) {
         let message: String = switch error as? ContainerAPIError {
         case .transport(.connect)?: String(localized: "\(engine.name) isn’t running.", comment: "Container files: the engine (Docker Desktop, OrbStack…) can’t be reached")
         case .transport(.timeout)?: String(localized: "\(engine.name) didn’t answer in time.", comment: "Container files: the engine took too long")
         default: String(localized: "Strata couldn’t list the containers on \(engine.name).", comment: "Containers folder: the engine's list couldn't be read; placeholder: Docker Desktop, OrbStack…")
         }
-        NotificationCenter.default.post(name: .containerCopyProblem, object: nil, userInfo: ["folder": folder, "message": message])
+        NotificationCenter.default.post(name: .containerCopyProblem, object: nil,
+                                        userInfo: ["folder": folder, "message": message, "copyRoot": copyRoot])
     }
 
     /// What went wrong, in words.
@@ -590,7 +594,8 @@ nonisolated enum CopyWriter {
     /// Makes the Containers `folder` match `containers`. A Compose project's containers go in a folder named after the
     /// project; the rest stay beside those. Returns the folders to discard: containers gone, and ones made again under
     /// the same name (made afresh after). A container that moved into its project keeps the files already fetched.
-    static func syncContainers(_ containers: [ContainerInfo], engine: ContainerEngine, in folder: URL) throws -> [URL] {
+    static func syncContainers(_ containers: [ContainerInfo], engine: ContainerEngine, in folder: URL,
+                               copies: ContainerCopyStore = ContainerCopies.store) throws -> [URL] {
         let fd = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw CocoaError(.fileReadNoPermission) }
         defer { close(fd) }
@@ -617,7 +622,7 @@ nonisolated enum CopyWriter {
                 gone.append(parentURL.appending(path: container.name, directoryHint: .isDirectory))
                 return
             }
-            try? ContainerCopies.record(container, on: engine, in: parent, folder: parentURL)
+            try? copies.record(container, on: engine, in: parent, folder: parentURL)
         }
         for container in loose { place(container, in: fd, at: folder, keeping: &keep) }
         for (key, stack) in byStack {
@@ -640,7 +645,7 @@ nonisolated enum CopyWriter {
                 let temp = ".hold-" + String(UUID().uuidString.prefix(8))
                 if renameat(fd, project, fd, temp) == 0 {
                     held = temp
-                    ContainerCopies.forget(folder.appending(path: project).standardizedFileURL.path)
+                    copies.forget(folder.appending(path: project).standardizedFileURL.path)
                 }
             }
             mkdirat(fd, project, 0o755)
@@ -650,12 +655,12 @@ nonisolated enum CopyWriter {
             let stack = folder.appending(path: project, directoryHint: .isDirectory)
             if let held {
                 if renameat(fd, held, child, project) == 0 {
-                    ContainerCopies.forget(folder.appending(path: held).standardizedFileURL.path)
+                    copies.forget(folder.appending(path: held).standardizedFileURL.path)
                 }
             }
             var keepChild = Set<String>()
             for container in members {
-                bringDown(container, from: fd, to: child, stack: stack, engineFolder: folder)
+                bringDown(container, from: fd, to: child, stack: stack, engineFolder: folder, copies: copies)
                 place(container, in: child, at: stack, keeping: &keepChild)
             }
             for name in names(in: child) where !keepChild.contains(folded(name)) {
@@ -669,14 +674,15 @@ nonisolated enum CopyWriter {
     }
 
     /// Moves a container's folder from the engine's folder into its project, when an older layout left it there.
-    private static func bringDown(_ container: ContainerInfo, from engineFD: Int32, to stackFD: Int32, stack: URL, engineFolder: URL) {
+    private static func bringDown(_ container: ContainerInfo, from engineFD: Int32, to stackFD: Int32, stack: URL, engineFolder: URL,
+                                  copies: ContainerCopyStore = ContainerCopies.store) {
         var info = stat()
         guard fstatat(stackFD, container.name, &info, AT_SYMLINK_NOFOLLOW) != 0 else { return }
         guard fstatat(engineFD, container.name, &info, AT_SYMLINK_NOFOLLOW) == 0,
               info.st_mode & S_IFMT == S_IFDIR else { return }
         guard let recorded = ContainerCopies.recordedSource(container.name, in: engineFD), recorded.id == container.id else { return }
         guard renameat(engineFD, container.name, stackFD, container.name) == 0 else { return }
-        ContainerCopies.forget(engineFolder.appending(path: container.name).standardizedFileURL.path)
+        copies.forget(engineFolder.appending(path: container.name).standardizedFileURL.path)
     }
 
     /// Makes `folder` match `entries`: folders and links made, files as placeholders (or written, from `contents`),

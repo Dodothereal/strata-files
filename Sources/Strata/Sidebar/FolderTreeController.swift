@@ -44,13 +44,16 @@ final class FolderTreeController: NSViewController {
     private let transfers: TransferQueue
     private let remote: RemoteServices
     private let copies: CopyProviders
+    private let containerStore: ContainerStore
     var clipboard: Clipboard
 
     init(transfers: TransferQueue = .shared, preferences: Prefs = .shared, remote: RemoteServices = .shared,
-         copies: CopyProviders? = nil, clipboard: Clipboard = .shared, watchBudget: FolderWatchers.Budget = .shared) {
+         copies: CopyProviders? = nil, containerStore: ContainerStore = .shared,
+         clipboard: Clipboard = .shared, watchBudget: FolderWatchers.Budget = .shared) {
         watchers = FolderWatchers(budget: watchBudget)
         self.remote = remote
         self.copies = copies ?? CopyProviders(servers: remote.files, containers: .shared)
+        self.containerStore = containerStore
         self.clipboard = clipboard
         self.transfers = transfers
         self.preferences = preferences
@@ -137,7 +140,7 @@ final class FolderTreeController: NSViewController {
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
         // Show Hidden Files shows hidden folders here too.
         preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .containersChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .containersChanged, object: containerStore)
         remote.notifications.addObserver(self, selector: #selector(volumesChanged), name: .remoteServersChanged, object: remote.servers)
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(trashMayHaveChanged), name: name, object: nil)
@@ -150,7 +153,7 @@ final class FolderTreeController: NSViewController {
 
     /// Home, then each disk (the startup disk as "/"), servers, Containers while an engine runs, and the Trash. Nodes already in
     /// the tree are kept, so what's expanded stays expanded.
-    func currentRoots(hasContainers: Bool = ContainerStore.shared.engine != nil) -> [FolderNode] {
+    func currentRoots(hasContainers: Bool? = nil) -> [FolderNode] {
         func reuse(_ url: URL, _ kind: FolderNode.Kind, _ make: () -> FolderNode) -> FolderNode {
             roots.first { $0.kind == kind && $0.url.fileViewKey == url.fileViewKey } ?? make()
         }
@@ -170,9 +173,10 @@ final class FolderTreeController: NSViewController {
             fresh.append(node.title == server.name && node.symbol == symbol ? node
                 : FolderNode(url: top, title: server.name, symbol: symbol, kind: .server))
         }
-        if hasContainers {
-            fresh.append(reuse(ContainerCopies.root, .containers) {
-                FolderNode(url: ContainerCopies.root, title: String(localized: "Containers", comment: "Sidebar section title: Docker containers"),
+        if hasContainers ?? (containerStore.engine != nil) {
+            let root = copies.containerCopies.root
+            fresh.append(reuse(root, .containers) {
+                FolderNode(url: root, title: String(localized: "Containers", comment: "Sidebar section title: Docker containers"),
                            symbol: "shippingbox", kind: .containers)
             })
         }
@@ -411,7 +415,7 @@ final class FolderTreeController: NSViewController {
         if Trash.isTrash(target) || Trash.isInTrash(target), let trash = roots.first(where: { $0.kind == .trash }) {
             return select(trash)
         }
-        if ContainerCopies.contains(target) {
+        if copies.containerCopies.contains(target) {
             guard let containers = roots.first(where: { $0.kind == .containers }) else { return deselect() }
             return select(containers)
         }

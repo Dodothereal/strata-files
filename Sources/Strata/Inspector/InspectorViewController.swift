@@ -53,8 +53,11 @@ final class InspectorViewController: NSViewController {
              DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: $0)
          }) {
         self.services = services
-        self.containerView = ContainerInspectorView(preferences: services.preferences)
-        self.composeView = ComposeInspectorView(preferences: services.preferences)
+        self.containerView = ContainerInspectorView(preferences: services.preferences,
+                                                    copies: services.copies.containerCopies,
+                                                    store: services.containerStore)
+        self.composeView = ComposeInspectorView(preferences: services.preferences,
+                                                store: services.containerStore)
         self.projectView = ProjectInspectorView(preferences: services.preferences)
         self.previewScheduler = previewScheduler
         super.init(nibName: nil, bundle: nil)
@@ -320,14 +323,16 @@ final class InspectorViewController: NSViewController {
     private func showSingleItem(_ entry: FileEntry, folderSize: (URL) -> FolderSize?, canMeasure: (FileEntry) -> Bool) {
         // Inside an archive opened as a folder, things are described where they appear: in the archive.
         let apparent = ArchiveCache.apparentURL(entry.url)
-        let container = ContainerCopies.copy(containing: entry.url)
+        let containerCopies = services.copies.containerCopies
+        let container = containerCopies.copy(containing: entry.url)
         let containerPath = container.flatMap { ContainerCopies.containerPath(of: entry.url, top: $0.top) }
         let server = services.remote.copies.server(containing: entry.url)
         let serverPath = server.flatMap { RemoteCopies.remotePath(of: entry.url, top: $0.top) }
         let isCopy = services.copies.contains(entry.url)
         titleLabel.stringValue = serverPath == "/" ? server?.server.name ?? entry.displayName
             : containerPath == "/" ? container?.source.name ?? entry.displayName
-            : ContainerCopies.engineFolder(entry.url) != nil ? Places.displayName(entry.url) : apparent.map(Places.displayName) ?? entry.displayName
+            : containerCopies.engineFolder(entry.url) != nil ? Places.displayName(entry.url, copies: services.copies)
+            : apparent.map { Places.displayName($0, copies: services.copies) } ?? entry.displayName
         let directorySize = entry.isDirectory && !isCopy ? folderSize(entry.url) : nil
         let size = entry.isDirectory ? directorySize.map { Format.bytes($0.bytes) } : entry.size.map(Format.bytes)
         subtitleLabel.stringValue = [entry.kind, size].compactMap { $0 }.joined(separator: " · ")

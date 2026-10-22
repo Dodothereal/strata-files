@@ -32,8 +32,10 @@ final class PathBar: NSView, NSTextFieldDelegate {
     private let suggestions: PathSuggestions
     private let suggestionList = PathSuggestionList()
     private var suggesting: Task<Void, Never>?
+    private let copies: CopyProviders
 
-    init(frame: NSRect = .zero, visits: Frecency = .shared, preferences: Prefs = .shared) {
+    init(frame: NSRect = .zero, visits: Frecency = .shared, preferences: Prefs = .shared, copies: CopyProviders = .live) {
+        self.copies = copies
         suggestions = PathSuggestions(visits: visits, preferences: preferences)
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = false
@@ -105,7 +107,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         }
         crumbs.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard let url else { return }
-        let parts = Self.components(of: url)
+        let parts = Self.components(of: url, copies: copies)
         let repoRootPath = gitRoot?.standardizedFileURL.path
         for (index, part) in parts.enumerated() {
             let isLast = index == parts.count - 1
@@ -138,9 +140,9 @@ final class PathBar: NSView, NSTextFieldDelegate {
         onNavigate?(destination, nil)
     }
 
-    private static func components(of url: URL, depth: Int = 0) -> [(title: String, url: URL, symbol: String?)] {
+    private static func components(of url: URL, depth: Int = 0, copies: CopyProviders = .live) -> [(title: String, url: URL, symbol: String?)] {
         // Containers, then a container, then its folders from `/`.
-        if let folder = ContainerCopies.containersFolder(of: url) {
+        if let folder = copies.containerCopies.containersFolder(of: url) {
             var parts: [(title: String, url: URL, symbol: String?)] = [(String(localized: "Containers", comment: "Sidebar section title: Docker containers"), folder, "shippingbox")]
             var current = folder
             let inner = url.standardizedFileURL.path.dropFirst(folder.standardizedFileURL.path.count).split(separator: "/")
@@ -151,7 +153,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
             return parts
         }
         // On a server: the server, then its folders from `/`.
-        if let (server, top) = RemoteCopies.server(containing: url) {
+        if let (server, top) = copies.remoteCopies.server(containing: url) {
             var parts: [(title: String, url: URL, symbol: String?)] = [(server.name, top, server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack")]
             var current = top
             let inner = url.standardizedFileURL.path.dropFirst(top.standardizedFileURL.path.count).split(separator: "/")
@@ -164,7 +166,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         // Inside an archive opened as a folder: the archive's own location, the archive, then the folders inside it
         // (an archive opened from inside another one nests, a few levels at most).
         if depth < 8, let (archive, top) = ArchiveCache.archive(containing: url) {
-            var parts = components(of: archive.deletingLastPathComponent(), depth: depth + 1)
+            var parts = components(of: archive.deletingLastPathComponent(), depth: depth + 1, copies: copies)
             parts.append((archive.lastPathComponent, top, "archivebox"))
             var current = top
             let inner = url.standardizedFileURL.path.dropFirst(top.standardizedFileURL.path.count).split(separator: "/")
@@ -198,7 +200,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
             if Trash.isTrash(current) {
                 parts.append((String(localized: "Trash", comment: "Path bar: a Trash folder"), current, "trash"))
             } else {
-                parts.append((Places.displayName(current), current, nil))
+                parts.append((Places.displayName(current, copies: copies), current, nil))
             }
         }
         return parts

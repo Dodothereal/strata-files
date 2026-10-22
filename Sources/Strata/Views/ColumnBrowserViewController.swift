@@ -56,6 +56,19 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     required init?(coder: NSCoder) { fatalError() }
 
+    isolated deinit {
+        for pane in panes { pane.tearDown() }
+    }
+
+    func stopBackgroundWork() {
+        cancelPendingRename()
+        pendingReveal = []
+        focusWhenLoaded = nil
+        for pane in panes { pane.tearDown() }
+        preview?.removeFromSuperview()
+        preview = nil
+    }
+
     static func defaultOrder(_ a: FileEntry, _ b: FileEntry) -> Bool {
         if Prefs.shared.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
         return a.displayName.localizedStandardCompare(b.displayName) == .orderedAscending

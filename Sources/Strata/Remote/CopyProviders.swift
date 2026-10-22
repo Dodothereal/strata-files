@@ -22,12 +22,15 @@ nonisolated struct CopyProviders: Sendable {
     static let live = CopyProviders(servers: .shared, containers: .shared)
     private let providers: [any CopyProvider]
     let remoteCopies: RemoteCopyStore
+    let containerCopies: ContainerCopyStore
     let clipboardRoot: URL
 
     init(_ providers: [any CopyProvider], remoteCopies: RemoteCopyStore = RemoteCopies.store,
+         containerCopies: ContainerCopyStore = ContainerCopies.store,
          clipboardRoot: URL = LazyCopies.clipboardRoot) {
         self.providers = providers
         self.remoteCopies = remoteCopies
+        self.containerCopies = containerCopies
         self.clipboardRoot = clipboardRoot
     }
 
@@ -36,7 +39,8 @@ nonisolated struct CopyProviders: Sendable {
             ? LazyCopies.clipboardRoot
             : servers.copies.root.deletingLastPathComponent().appending(path: "Clipboard.noindex", directoryHint: .isDirectory)
         self.init([ServerCopyProvider(files: servers), ContainerCopyProvider(files: containers)],
-                  remoteCopies: servers.copies, clipboardRoot: clipboardRoot ?? defaultRoot)
+                  remoteCopies: servers.copies, containerCopies: containers.copies,
+                  clipboardRoot: clipboardRoot ?? defaultRoot)
     }
 
     private func provider(for url: URL) -> (any CopyProvider)? { providers.first { $0.contains(url) } }
@@ -108,8 +112,8 @@ nonisolated struct ServerCopyProvider: CopyProvider {
 
 private nonisolated struct ContainerCopyProvider: CopyProvider {
     let files: ContainerFiles
-    func contains(_ url: URL) -> Bool { ContainerCopies.contains(url) }
-    func isPlaceholder(_ url: URL) -> Bool { ContainerCopies.isPlaceholder(url) }
+    func contains(_ url: URL) -> Bool { files.copies.contains(url) }
+    func isPlaceholder(_ url: URL) -> Bool { files.copies.isPlaceholder(url) }
     func refresh(_ folder: URL) async { await files.refresh(folder) }
     func invalidate(_ folder: URL) async { await files.invalidate(folder) }
     func reveal(_ url: URL) async -> Bool { await files.reveal(url) }
@@ -117,9 +121,9 @@ private nonisolated struct ContainerCopyProvider: CopyProvider {
     func fetchSelection(_ urls: [URL], limit: Int64) async { await files.fetchSelection(urls, limit: limit) }
     func prepareForCopying(_ urls: [URL]) async throws { try await files.prepareForCopying(urls) }
     func message(for error: Error, about url: URL) -> String {
-        guard let source = ContainerCopies.copy(containing: url)?.source else { return error.localizedDescription }
+        guard let source = files.copies.copy(containing: url)?.source else { return error.localizedDescription }
         return ContainerFiles.message(for: error, source: source)
     }
-    func displayPath(_ url: URL) -> String? { ContainerCopies.apparentPath(url) }
-    func sourceName(_ url: URL) -> String? { ContainerCopies.copy(containing: url)?.source.name }
+    func displayPath(_ url: URL) -> String? { files.copies.apparentPath(url) }
+    func sourceName(_ url: URL) -> String? { files.copies.copy(containing: url)?.source.name }
 }

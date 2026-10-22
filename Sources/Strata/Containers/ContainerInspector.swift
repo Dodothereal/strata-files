@@ -6,6 +6,8 @@ final class ContainerInspectorView: NSView {
     /// Shows a folder (in the container's files, or on this Mac).
     var onOpen: ((URL) -> Void)?
     let preferences: Prefs
+    let copies: ContainerCopyStore
+    let store: ContainerStore
     private let stack = NSStackView()
     private var display: Display?
 
@@ -30,8 +32,11 @@ final class ContainerInspectorView: NSView {
         let busy: ContainerAction?
     }
 
-    init(frame: NSRect = .zero, preferences: Prefs = .shared) {
+    init(frame: NSRect = .zero, preferences: Prefs = .shared,
+         copies: ContainerCopyStore = ContainerCopies.store, store: ContainerStore = .shared) {
         self.preferences = preferences
+        self.copies = copies
+        self.store = store
         super.init(frame: frame)
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -52,12 +57,12 @@ final class ContainerInspectorView: NSView {
     /// something shown changed.
     func configure(url: URL?) {
         let next: Display?
-        if let url, ContainerCopies.isStack(url) {
+        if let url, copies.isStack(url) {
             next = stackDisplay(url)
         } else {
-            next = url.flatMap(ContainerCopies.copy(containing:)).map { copy in
-                .container(Shown(source: copy.source, top: copy.top, container: ContainerStore.shared.container(id: copy.source.id),
-                                 busy: ContainerStore.shared.busy[copy.source.id]))
+            next = url.flatMap(copies.copy(containing:)).map { copy in
+                .container(Shown(source: copy.source, top: copy.top, container: store.container(id: copy.source.id),
+                                 busy: store.busy[copy.source.id]))
             }
         }
         isHidden = next == nil
@@ -136,14 +141,15 @@ final class ContainerInspectorView: NSView {
     /// The containers of the Compose project this folder is. Nil when none of them are here.
     private func stackDisplay(_ url: URL) -> Display? {
         let name = url.lastPathComponent
-        let containers = ContainerStore.shared.containers.filter {
+        let containers = store.containers.filter {
             $0.compose?.project.compare(name, options: [.caseInsensitive]) == .orderedSame
         }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         guard !containers.isEmpty else { return nil }
-        let engine = ContainerCopies.engineFolder(url.deletingLastPathComponent())?.name ?? ContainerStore.shared.engine?.name ?? ""
-        let busy = containers.lazy.compactMap { ContainerStore.shared.busy[$0.id] }.first
+        let engine = copies.engineFolder(url.deletingLastPathComponent())?.name ?? store.engine?.name ?? ""
+        let busy = containers.compactMap { store.busy[$0.id] }.first
         return .stack(StackShown(project: containers.first?.compose?.project ?? name, engine: engine,
-                                 directory: StackProjects.workingDirectory(of: url), containers: containers, busy: busy))
+                                 directory: StackProjects.workingDirectory(of: url, copies: copies, store: store),
+                                 containers: containers, busy: busy))
     }
 
     /// The same actions as a container (Start, Stop, Restart, Pause, Resume), done to every container they apply to,
@@ -202,7 +208,8 @@ final class ContainerInspectorView: NSView {
             let row = FlowView(spacing: 6, lineSpacing: 6)
             for action in ContainerControl.actions(for: shown.containers) {
                 row.add(ActionButton(ContainerControl.title(action), symbol: ContainerControl.symbol(action)) { [weak self] in
-                    ContainerControl.run(action, on: shown.containers, in: self?.window)
+                    guard let self else { return }
+                    ContainerControl.run(action, on: shown.containers, in: window, store: store)
                 })
             }
             column.addArrangedSubview(row)
@@ -210,8 +217,9 @@ final class ContainerInspectorView: NSView {
         }
         if let folder = shown.directory.flatMap(StackProjects.existing) {
             let row = FlowView(spacing: 6, lineSpacing: 6)
+            let preferences = self.preferences
             let terminal = ActionButton(String(localized: "Open in Terminal", comment: "Menu command: open a shell in the selected folder"), symbol: "terminal") {
-                guard let app = Prefs.shared.terminalURL else { return NSSound.beep() }
+                guard let app = preferences.terminalURL else { return NSSound.beep() }
                 ProjectEditors.open(folder, with: app)
             }
             terminal.toolTip = String(localized: "Open the project folder in your terminal", comment: "Inspector, a Compose project: tooltip on Open in Terminal")
@@ -261,11 +269,13 @@ final class ContainerInspectorView: NSView {
         }
         var buttons: [NSView] = ContainerAction.allCases.filter { $0.applies(to: container.state) }.map { action in
             ActionButton(ContainerControl.title(action), symbol: ContainerControl.symbol(action)) { [weak self] in
-                ContainerControl.run(action, on: [container], in: self?.window)
+                guard let self else { return }
+                ContainerControl.run(action, on: [container], in: window, store: store)
             }
         }
+        let store = self.store
         let terminal = ActionButton(String(localized: "Terminal", comment: "Inspector button: a shell in the container"), symbol: "terminal") {
-            guard let engine = ContainerStore.shared.engine, ContainerControl.openTerminal(in: container, at: "/", engine: engine) else { return NSSound.beep() }
+            guard let engine = store.engine, ContainerControl.openTerminal(in: container, at: "/", engine: engine) else { return NSSound.beep() }
         }
         terminal.isEnabled = container.isRunning
         terminal.toolTip = String(localized: "Open a shell in the container, in your terminal", comment: "Inspector: tooltip on Terminal")
@@ -409,6 +419,7 @@ final class ComposeInspectorView: NSView {
     /// Shows a container's files.
     var onOpenContainer: ((String) -> Void)?
     let preferences: Prefs
+    let store: ContainerStore
     private let stack = NSStackView()
     private var shown: Shown?
 
@@ -426,8 +437,9 @@ final class ComposeInspectorView: NSView {
 
     static let fileNames = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"]
 
-    init(frame: NSRect = .zero, preferences: Prefs = .shared) {
+    init(frame: NSRect = .zero, preferences: Prefs = .shared, store: ContainerStore = .shared) {
         self.preferences = preferences
+        self.store = store
         super.init(frame: frame)
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -445,7 +457,7 @@ final class ComposeInspectorView: NSView {
 
     /// The folder shown (nil, or a folder without Compose, hides the card).
     func configure(_ folder: URL?) {
-        let next = folder.flatMap(Self.compose(in:))
+        let next = folder.flatMap { Self.compose(in: $0, store: store) }
         isHidden = next == nil
         guard next != shown else { return }
         shown = next
@@ -457,7 +469,10 @@ final class ComposeInspectorView: NSView {
         content.spacing = 6
         for service in next.services {
             let row = ServiceRow(service, open: { [weak self] id in self?.onOpenContainer?(id) },
-                                 act: { [weak self] action, containers in ContainerControl.run(action, on: containers, in: self?.window) })
+                                 act: { [weak self] action, containers in
+                guard let self else { return }
+                ContainerControl.run(action, on: containers, in: window, store: store)
+            })
             content.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
         }
@@ -469,7 +484,8 @@ final class ComposeInspectorView: NSView {
                 let title = action == .start ? String(localized: "Start All", comment: "Compose card: start every container of the project")
                     : String(localized: "Stop All", comment: "Compose card: stop every container of the project")
                 buttons.append(ActionButton(title, symbol: ContainerControl.symbol(action)) { [weak self] in
-                    ContainerControl.run(action, on: all, in: self?.window)
+                    guard let self else { return }
+                    ContainerControl.run(action, on: all, in: window, store: store)
                 })
             }
             if !next.busy.isEmpty {
@@ -483,7 +499,7 @@ final class ComposeInspectorView: NSView {
             buttons.forEach(row.add)
             content.setCustomSpacing(10, after: content.arrangedSubviews.last!)
             content.addArrangedSubview(row)
-            row.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
+            row.widthAnchor.constraint(equalTo: columnOrContent(content).widthAnchor).isActive = true
         }
         let running = next.services.filter { $0.containers.contains(where: \.isRunning) }.count
         let total = next.services.count
@@ -495,6 +511,8 @@ final class ComposeInspectorView: NSView {
         card.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     }
 
+    private func columnOrContent(_ view: NSView) -> NSView { view }
+
     /// The services of the Compose project in `folder`: from its compose file, and the containers `docker compose`
     /// made there. Nil when there's neither.
     /// Compose files' services, by path and modification date (the Inspector refreshes often).
@@ -502,9 +520,9 @@ final class ComposeInspectorView: NSView {
     /// Working folders with links resolved, by the path a container gives.
     private static var resolvedCache: [String: String] = [:]
 
-    private static func compose(in folder: URL) -> Shown? {
+    private static func compose(in folder: URL, store: ContainerStore = .shared) -> Shown? {
         let real = folder.resolvingSymlinksInPath().standardizedFileURL.path
-        let containers = ContainerStore.shared.containers.filter { container in
+        let containers = store.containers.filter { container in
             guard let directory = container.compose?.workingDirectory else { return false }
             let resolved = resolvedCache[directory] ?? URL(fileURLWithPath: directory).resolvingSymlinksInPath().standardizedFileURL.path
             if resolvedCache.count > 500 { resolvedCache.removeAll() }
@@ -529,7 +547,7 @@ final class ComposeInspectorView: NSView {
             Service(name: name, containers: containers.filter { $0.compose?.service == name }.sorted { $0.name < $1.name })
         }
         let project = containers.first?.compose?.project ?? folder.lastPathComponent
-        let busy = containers.map(\.id).filter { ContainerStore.shared.busy[$0] != nil }
+        let busy = containers.map(\.id).filter { store.busy[$0] != nil }
         return Shown(project: project, services: services, busy: busy)
     }
 

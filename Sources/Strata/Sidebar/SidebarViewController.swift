@@ -71,7 +71,8 @@ final class SidebarViewController: NSViewController {
     init(services: BrowserServices = .shared) {
         self.services = services
         tree = FolderTreeController(transfers: services.transfers, preferences: services.preferences,
-                                    remote: services.remote, copies: services.copies)
+                                    remote: services.remote, copies: services.copies,
+                                    containerStore: services.containerStore)
         tree.clipboard = services.clipboard
         super.init(nibName: nil, bundle: nil)
     }
@@ -175,7 +176,7 @@ final class SidebarViewController: NSViewController {
         // A tag used for the first time joins the Tags section.
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .tagsChanged, object: nil)
         preferences.notifications.addObserver(self, selector: #selector(volumesChanged), name: .favoritesChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: services.containerStore)
         preferences.notifications.addObserver(self, selector: #selector(collapsedSectionsChanged(_:)), name: .sidebarSectionsCollapsed, object: nil)
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(trashMayHaveChanged), name: name, object: nil)
@@ -214,7 +215,7 @@ final class SidebarViewController: NSViewController {
             SidebarItem(title: String(localized: "Duplicates", comment: "Sidebar item: identical files"), target: .duplicates, symbol: "square.on.square"),
         ]))
         // Containers, like a disk: there while an engine (Docker Desktop, OrbStack…) runs.
-        let containers = ContainerStore.shared.engine.map { engine -> SidebarItem in
+        let containers = services.containerStore.engine.map { engine -> SidebarItem in
             let item = SidebarItem(title: String(localized: "Containers", comment: "Sidebar section title: Docker containers"), target: .containers,
                                    symbol: "shippingbox")
             item.help = engine.name
@@ -309,7 +310,7 @@ final class SidebarViewController: NSViewController {
     private var showsContainers = false
 
     @objc private func containersChanged() {
-        let engine = ContainerStore.shared.engine != nil
+        let engine = services.containerStore.engine != nil
         guard engine != showsContainers else { return }
         showsContainers = engine
         reload()
@@ -327,7 +328,7 @@ final class SidebarViewController: NSViewController {
         // Anywhere in that server's files.
         case (.server(let id), .folder(let url)?): services.remote.copies.server(containing: url)?.server.id == id
         // Anywhere in the containers or their files.
-        case (.containers, .folder(let url)?): ContainerCopies.contains(url)
+        case (.containers, .folder(let url)?): services.copies.containerCopies.contains(url)
         default: false
         }
     }

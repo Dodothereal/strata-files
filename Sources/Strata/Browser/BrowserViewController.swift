@@ -107,6 +107,10 @@ final class BrowserViewController: NSViewController {
     private var generation: Int { directoryReads.generation }
     /// Optional provider reads for the current selection (see `prefetchSelection`).
     var selectionFetch: Task<Void, Never>?
+    /// Explicit file fetch before opening or Quick Look; cancelled when the navigation context changes.
+    var actionFetch: Task<Void, Never>?
+    /// Bumped whenever this pane changes folder, column location or results context.
+    private(set) var navigationRevision = 0
     /// The latest asynchronous file or server command started by this pane.
     var commandWork: Task<Void, Never>?
 
@@ -163,7 +167,11 @@ final class BrowserViewController: NSViewController {
     func contextMenu() -> NSMenu { makeContextMenu() }
     func moveOrCopy(_ urls: [URL], into target: URL, move: Bool) { transfer(urls, into: target, move: move) }
 
-    isolated deinit { selectionFetch?.cancel() }
+    isolated deinit {
+        selectionFetch?.cancel()
+        actionFetch?.cancel()
+        resortWork?.cancel()
+    }
 
     // MARK: - View
 
@@ -608,6 +616,7 @@ final class BrowserViewController: NSViewController {
 
     /// Replaces the list with a message while results are being computed.
     func showMessage(symbol: String, title: String, message: String = "") {
+        noteNavigationContextChanged()
         enterResults()
         loading.showResults(loaded: false)
         sizer.cancelPending()
@@ -817,24 +826,30 @@ final class BrowserViewController: NSViewController {
         open(selectedEntries)
     }
 
-    private func open(_ entries: [FileEntry]) {
+    func open(_ entries: [FileEntry], fileOpener: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }) {
         guard !entries.isEmpty else { return }
+        actionFetch?.cancel()
+        actionFetch = nil
         // A container's files are fetched first.
         let files = entries.filter { !$0.isFolder }.map(\.url)
         if files.contains(where: services.copies.isPlaceholder) {
-            afterFetching(files) { [weak self] in self?.openFetched(entries) }
+            let revision = navigationRevision
+            actionFetch = afterFetching(files) { [weak self] in
+                guard let self, navigationRevision == revision else { return }
+                openFetched(entries, fileOpener: fileOpener)
+            }
             return
         }
-        openFetched(entries)
+        openFetched(entries, fileOpener: fileOpener)
     }
 
-    private func openFetched(_ entries: [FileEntry]) {
+    private func openFetched(_ entries: [FileEntry], fileOpener: (URL) -> Void = { NSWorkspace.shared.open($0) }) {
         // One archive opens like a folder (Windows-style), unless that's turned off in Settings.
         if entries.count == 1, let entry = entries.first, opensAsFolder(entry) { return browseArchive(entry.url) }
         // A Finder alias to a folder opens that folder here, like a folder (macOS would hand it to Finder).
         let aliasedFolders = entries.filter { !$0.isFolder && !$0.isSymlink && FileEntry.openedFolder($0.url) != $0.url }
         for entry in entries where !entry.isFolder && !aliasedFolders.contains(entry) {
-            NSWorkspace.shared.open(entry.url)
+            fileOpener(entry.url)
         }
         if let folder = entries.first(where: \.isFolder) ?? aliasedFolders.first {
             delegate?.browser(self, navigateTo: folder.url)
@@ -843,9 +858,19 @@ final class BrowserViewController: NSViewController {
 
     @objc func openWithApplication(_ sender: NSMenuItem) {
         guard let app = sender.representedObject as? URL else { return }
-        let urls = selectedURLs
-        afterFetching(urls) {
-            NSWorkspace.shared.open(urls, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+        open(selectedURLs, withApplicationAt: app)
+    }
+
+    func open(_ urls: [URL], withApplicationAt app: URL,
+              opener: @escaping ([URL], URL) -> Void = { urls, app in
+                  NSWorkspace.shared.open(urls, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+              }) {
+        guard !urls.isEmpty else { return }
+        let revision = navigationRevision
+        actionFetch?.cancel()
+        actionFetch = afterFetching(urls) { [weak self] in
+            guard let self, navigationRevision == revision else { return }
+            opener(urls, app)
         }
     }
 
@@ -931,8 +956,15 @@ final class BrowserViewController: NSViewController {
         refresh()
     }
 
+    func noteNavigationContextChanged() {
+        navigationRevision += 1
+        actionFetch?.cancel()
+        actionFetch = nil
+    }
+
     /// Navigation and failed reads must not leave a selection or rename waiting for an unrelated later listing.
     func cancelPendingActions() {
+        noteNavigationContextChanged()
         selectionFetch?.cancel()
         selectionFetch = nil
         pendingSelection = nil
@@ -942,9 +974,15 @@ final class BrowserViewController: NSViewController {
 
     func stopBackgroundWork() {
         cancelPendingActions()
+        resortWork?.cancel()
+        resortWork = nil
+        watchers = []
+        gitObservation = nil
         loading.invalidate()
         sizer.cancelPending()
         mediaInfo.cancelPending()
+        columnController?.stopBackgroundWork()
+        galleryController?.stopBackgroundWork()
     }
 
     @objc func renameSelection(_ sender: Any?) {
@@ -1047,12 +1085,15 @@ final class BrowserViewController: NSViewController {
         // it quits.
         let paths = urls.compactMap { url -> String? in
             if copies.remoteCopies.contains(url) { return copies.remoteCopies.displayPath(url) }
-            if copies.contains(url) { return copies.displayPath(url) }
-            guard ContainerCopies.contains(url) else { return url.path }
-            guard let (source, top) = ContainerCopies.copy(containing: url), let path = ContainerCopies.containerPath(of: url, top: top) else {
-                return nil
+            if copies.containerCopies.contains(url) {
+                guard let (source, top) = copies.containerCopies.copy(containing: url),
+                      let path = ContainerCopies.containerPath(of: url, top: top) else {
+                    return nil
+                }
+                return top.standardizedFileURL == url.standardizedFileURL ? source.name : path
             }
-            return top.standardizedFileURL == url.standardizedFileURL ? source.name : path
+            if copies.contains(url) { return copies.displayPath(url) }
+            return url.path
         }
         guard !paths.isEmpty else { return NSSound.beep() }
         services.clipboard.pasteboard.clearContents()
@@ -1138,14 +1179,16 @@ final class BrowserViewController: NSViewController {
 
     /// The selection is a Compose project (or the folder shown is one, with nothing selected).
     var isStackContext: Bool {
-        if selectedEntries.isEmpty { return directory.map(ContainerCopies.isStack) == true }
-        return selectedEntries.allSatisfy { ContainerCopies.isStack($0.url) }
+        let copies = services.copies.containerCopies
+        if selectedEntries.isEmpty { return directory.map(copies.isStack) == true }
+        return selectedEntries.allSatisfy { copies.isStack($0.url) }
     }
 
     /// Project folders on this Mac for the stacks in the context menu.
     func stackProjectFolders() -> [URL] {
         let stacks = selectedEntries.isEmpty ? [directory].compactMap { $0 } : selectedEntries.map(\.url)
-        return stacks.compactMap(StackProjects.existingFolder(of:))
+        let copies = services.copies.containerCopies, store = services.containerStore
+        return stacks.compactMap { StackProjects.existingFolder(of: $0, copies: copies, store: store) }
     }
 
     /// Opens those project folders in the terminal. True when this was a stack, even if the folder is gone.
@@ -1396,10 +1439,23 @@ final class BrowserViewController: NSViewController {
         if QLPreviewPanel.sharedPreviewPanelExists(), panel.isVisible {
             panel.orderOut(nil)
         } else {
-            // A container's file being fetched: show it once it's here.
-            afterFetching(selectedURLs.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory != true }) {
-                panel.makeKeyAndOrderFront(nil)
-            }
+            openQuickLook { panel.makeKeyAndOrderFront(nil) }
+        }
+    }
+
+    func openQuickLook(showPanel: @escaping () -> Void = { QLPreviewPanel.shared()?.makeKeyAndOrderFront(nil) }) {
+        let urls = selectedURLs.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory != true }
+        let selectedKeys = Set(selectedURLs.map(Self.key))
+        guard !selectedKeys.isEmpty else { return }
+        let revision = navigationRevision
+        let hadWindow = viewIfLoaded?.window != nil
+        actionFetch?.cancel()
+        // A container's file being fetched: show it once it's here.
+        actionFetch = afterFetching(urls) { [weak self] in
+            guard let self, navigationRevision == revision,
+                  (!hadWindow || viewIfLoaded?.window?.isVisible == true),
+                  !Set(selectedURLs.map(Self.key)).isDisjoint(with: selectedKeys) else { return }
+            showPanel()
         }
     }
 
@@ -1478,9 +1534,9 @@ final class BrowserViewController: NSViewController {
             }
             // Inside an archive opened as a folder nothing is added; Finder is shown the archive itself.
             if isInsideArchive {
-                if directory.map(ContainerCopies.isStack) == true {
+                if directory.map(services.copies.containerCopies.isStack) == true {
                     addStackOpenItems()
-                } else if directory.map(ContainerCopies.engineFolder) == nil {
+                } else if directory.map(services.copies.containerCopies.engineFolder) == nil {
                     add(.openInTerminal)
                 }
                 if directory.map(ArchiveCache.contains) == true { add("Show Archive in Finder", #selector(showArchiveInFinder(_:)), "macwindow") }
@@ -1581,7 +1637,7 @@ final class BrowserViewController: NSViewController {
             add(.copy)
             if !inContainer { add(.addToShelf) }
             if containers.isEmpty {
-                if !selectedEntries.isEmpty, selectedEntries.allSatisfy({ ContainerCopies.isStack($0.url) }) {
+                if !selectedEntries.isEmpty, selectedEntries.allSatisfy({ services.copies.containerCopies.isStack($0.url) }) {
                     if !stackProjectFolders().isEmpty { menu.addItem(.separator()) }
                     addStackOpenItems()
                 } else {
@@ -1944,7 +2000,7 @@ extension BrowserViewController: NSMenuItemValidation {
             return canOpenTerminalInContainer == true
         case #selector(containerAction(_:)):
             guard let raw = item.representedObject as? String, let action = ContainerAction(rawValue: raw) else { return false }
-            return selectedContainers.contains { action.applies(to: $0.state) && ContainerStore.shared.busy[$0.id] == nil }
+            return selectedContainers.contains { action.applies(to: $0.state) && services.containerStore.busy[$0.id] == nil }
         case #selector(duplicate(_:)):
             return hasSelection && !isShowingTrash
         case #selector(editTags(_:)):

@@ -290,11 +290,20 @@ sheet's text before clicking a destructive button. Both builds share preferences
   unselected current folder), image dimensions, document summaries, and Rich/Quick Look previews. Skip symlinks and
   placeholders, refresh metadata, summaries and previews when `.containerFilesFetched` arrives for a fetched item in
   the owning provider, and commit any active comment edit before hiding Get Info.
-  `BrowserServices` owns its `Clipboard` and `CopyProviders` (`remoteCopies` and `clipboardRoot`) and passes them to
-  `TransferQueue`, `TransferJob`, `RemoteUploadJob`, `BrowserViewController` (server commands, deletion plans,
-  clipboard staging, `Copy Path`, archive checks, drag/drop) and every presentation (`FileOutlineView`, Icons,
-  Columns, Gallery, Disk Usage, Sidebar). Verify recursive placeholder absence after `prepareForCopying` and before
-  clipboard staging; use a `.data` file-promise type when dragging symlinks from a copy.
+  `BrowserServices` owns its `Clipboard`, `CopyProviders` (`remoteCopies`, `containerCopies` and `clipboardRoot`),
+  `ContainerFiles` and `ContainerStore`, and passes them to `TransferQueue`, `TransferJob`, `RemoteUploadJob`,
+  `BrowserViewController` (server and container commands, deletion plans, clipboard staging, `Copy Path`, archive
+  checks, drag/drop), `InspectorViewController`, `PathBar` and every presentation (`FileOutlineView`, Icons, Columns,
+  Gallery, Disk Usage, Sidebar). Verify recursive placeholder absence after `prepareForCopying` and before clipboard
+  staging; use a `.data` file-promise type when dragging symlinks from a copy. Scope `.containerCopyProblem`
+  notifications to their owning copy root.
+  Asynchronous browser and window actions (`browseArchive`, `openArchiveAsFolder`, `open(_:fileOpener:)`,
+  `open(_:withApplicationAt:opener:)`, `openQuickLook`, Connect to Server sheet's `onConnected`/`onServer`) keep their
+  originating pane and `BrowserViewController.navigationRevision`. Navigating away (including returning to the same
+  folder), entering a deeper column, showing results/messages or closing the pane cancels `actionFetch` and suppresses
+  stale completions; deferred Quick Look also verifies window visibility and selection membership. Closing a pane
+  (`stopBackgroundWork()`) stops active and cached presentation work in `ColumnBrowserViewController` and
+  `GalleryViewController` alongside directory watchers, git observation and deferred resort work.
 - `RemoteFiles` and its `CopyProvider` adapter use the same `RemoteCopyStore` for server lookup, paths, placeholders,
   download staging and removal. An injected backend must not fall back to the application's copy root. Test identical
   server IDs in independent roots, including refused cross-environment writes and scoped cleanup. Prepare and remove

@@ -51,10 +51,10 @@ extension BrowserViewController {
             return Self.present(alert, in: window) { _ in }
         }
         let key = folder.path
-        let startedIn = directory
+        let startedRevision = navigationRevision
         let show: (URL) -> Void = { [weak self] copy in
             // Only if you're still where you opened it: a slow archive mustn't pull you away from elsewhere.
-            guard let self, directory == startedIn else { return }
+            guard let self, navigationRevision == startedRevision else { return }
             delegate?.browser(self, showArchiveCopy: copy)
         }
         if OpeningArchives.waiters[key] != nil {
@@ -79,7 +79,7 @@ extension BrowserViewController {
                 guard response == .alertFirstButtonReturn else {
                     OpeningArchives.waiters[key] = nil
                     if let self {
-                        delegate?.browser(self, openingArchive: nil, stop: nil)
+                        if navigationRevision == startedRevision { delegate?.browser(self, openingArchive: nil, stop: nil) }
                         if response == .alertSecondButtonReturn { extractArchive(archive) }
                     }
                     return
@@ -89,11 +89,11 @@ extension BrowserViewController {
                 OpeningArchives.waiters[key] = nil
                 return
             }
-            unpackForBrowsing(archive, into: folder, key: key)
+            unpackForBrowsing(archive, into: folder, key: key, startedRevision: startedRevision)
         }
     }
 
-    private func unpackForBrowsing(_ archive: URL, into folder: URL, key: String) {
+    private func unpackForBrowsing(_ archive: URL, into folder: URL, key: String, startedRevision: Int) {
         let fm = FileManager.default
         let entry = folder.deletingLastPathComponent()
         let window = view.window
@@ -103,14 +103,16 @@ extension BrowserViewController {
             try fm.createDirectory(at: entry, withIntermediateDirectories: true)
         } catch {
             OpeningArchives.waiters[key] = nil
-            delegate?.browser(self, openingArchive: nil, stop: nil)
+            if navigationRevision == startedRevision { delegate?.browser(self, openingArchive: nil, stop: nil) }
             return Self.report([(archive, error)], .open, in: window)
         }
         let job = ArchiveJob(.browse(archive, at: folder), undo: nil)
-        delegate?.browser(self, openingArchive: archive) { job.cancel() }
+        if navigationRevision == startedRevision {
+            delegate?.browser(self, openingArchive: archive) { job.cancel() }
+        }
         job.onFinish = { [weak self] job in
             let waiters = OpeningArchives.waiters.removeValue(forKey: key) ?? []
-            if let self { delegate?.browser(self, openingArchive: nil, stop: nil) }
+            if let self, navigationRevision == startedRevision { delegate?.browser(self, openingArchive: nil, stop: nil) }
             guard job.state == .finished, (try? ArchiveCache.finish(folder, from: archive)) != nil else {
                 // Only this job's own copy goes: nothing else was making it.
                 ArchiveCache.remove(entry)
@@ -133,8 +135,13 @@ extension BrowserViewController {
     /// Context menu, when archives don't open as folders by default (or for kinds that open in their own apps).
     @objc func openArchiveAsFolder(_ sender: Any?) {
         guard let url = selectedURLs.first else { return }
+        let revision = navigationRevision
+        actionFetch?.cancel()
         // An archive in a container's files is read from the container first.
-        afterFetching([url]) { [weak self] in self?.browseArchive(url) }
+        actionFetch = afterFetching([url]) { [weak self] in
+            guard let self, navigationRevision == revision else { return }
+            browseArchive(url)
+        }
     }
 
     /// Shows the archive (not Strata's copy of it) in Finder.

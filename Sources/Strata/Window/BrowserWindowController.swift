@@ -23,7 +23,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     let services: BrowserServices
-    private var panes: [Pane]
+    private(set) var panes: [Pane]
     /// The pane with focus; navigation, search and the inspector act on it.
     private(set) var pane: Pane
     var onClose: (() -> Void)?
@@ -55,7 +55,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     init(location: URL, select: URL? = nil, secondPane: URL? = nil, services: BrowserServices = .shared) {
         self.services = services
-        pathBar = PathBar(visits: services.visits, preferences: services.preferences)
+        pathBar = PathBar(visits: services.visits, preferences: services.preferences, copies: services.copies)
         let first = Pane(location: location, services: services)
         panes = [first]
         pane = first
@@ -287,7 +287,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// The containers of the engine Strata found, as folders.
     func openContainers() {
-        guard let engine = ContainerStore.shared.engine, let folder = try? ContainerCopies.prepare(engine) else {
+        guard let engine = services.containerStore.engine, let folder = try? services.copies.containerCopies.prepare(engine) else {
             NSSound.beep()
             return
         }
@@ -303,11 +303,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// Async destinations keep their originating pane, even when the other pane gets focus while waiting.
     @discardableResult
-    func openFolder(notice: FolderOpenSession.Notice? = nil,
+    func openFolder(in originPane: Pane? = nil, notice: FolderOpenSession.Notice? = nil,
                     operation: @escaping @Sendable () async throws -> URL,
                     failed: @escaping (Error) -> Void) -> Task<Void, Never> {
         guard !isClosed else { return Task {} }
-        let origin = pane
+        if let originPane, !panes.contains(where: { $0 === originPane }) { return Task {} }
+        let origin = originPane ?? pane
         let work = origin.opening.open(notice: notice, operation: operation) { [weak self, weak origin] result in
             guard let self, !isClosed, let origin, panes.contains(where: { $0 === origin }) else { return }
             switch result {
@@ -317,7 +318,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                 failed(error)
             }
         }
-        refreshOpeningNotice()
+        if pane === origin { refreshOpeningNotice() }
         return work
     }
 
@@ -340,8 +341,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
 
     /// `countVisit: false` for folders only passed through (spring loading): they don't become frequent places.
-    private func go(_ target: Destination, in targetPane: Pane? = nil, select: URL? = nil, recordHistory: Bool = true,
-                    countVisit: Bool = true) {
+    func go(_ target: Destination, in targetPane: Pane? = nil, select: URL? = nil, recordHistory: Bool = true,
+            countVisit: Bool = true) {
         let p = targetPane ?? pane
         // A link or Finder alias to a folder shows that folder, by its own path (however it was reached: a click,
         // a restored window, a workspace, spring loading), so the folder and the items listed in it always agree.
@@ -378,7 +379,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             p.folderEntry = FileEntry(url: url)
             p.browser.load(url, select: select)
             // An archive's copy is temporary: it doesn't become a frequent place or where the next window opens.
-            if !ReadOnlyCopies.contains(url) && !services.copies.contains(url) {
+            if !ReadOnlyCopies.contains(url, copies: services.copies) && !services.copies.contains(url) {
                 if countVisit { services.visits.record(url) }
                 services.preferences.lastLocation = url
             }
@@ -402,7 +403,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             pathBar.url = url
             updateGitChrome()
             split.sidebar.highlight(.folder(url))
-            window?.title = Places.displayName(url)
+            window?.title = Places.displayName(url, copies: services.copies)
             // Not a container's copy: dragging the title's icon would hand out what isn't fully read yet.
             window?.representedURL = services.copies.contains(url) ? nil : url
             setSearchField("")
@@ -421,7 +422,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             }
             window?.title = Self.searchTitle(text)
             window?.representedURL = nil
-            split.scopeBar.configure(folderName: Places.displayName((scope ?? location)),
+            split.scopeBar.configure(folderName: Places.displayName((scope ?? location), copies: services.copies),
                                      everywhere: scope == nil, matchCase: IndexQuery.isCaseSensitive(text),
                                      caseApplies: Self.caseApplies(text))
             split.scopeBar.setSummary(pane.searchSummary)
@@ -492,7 +493,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                 return navigate(to: archive.deletingLastPathComponent(), select: archive)
             }
             // The Containers folder has nothing above it (a container's `/` goes up to it); nor has a server's `/`.
-            if ContainerCopies.engineFolder(current) != nil { return NSSound.beep() }
+            if services.copies.containerCopies.engineFolder(current) != nil { return NSSound.beep() }
             if let (_, top) = services.remote.copies.server(containing: current), top.standardizedFileURL == current.standardizedFileURL { return NSSound.beep() }
             navigate(to: current.deletingLastPathComponent(), select: current)
         } else {
@@ -950,7 +951,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     var snapshot: [String] {
         // A container's files are gone after quitting: such a pane comes back at home.
         // A server's folder is kept (opening the workspace connects to it again).
-        panes.map { $0.waiting?.path ?? (ContainerCopies.contains($0.location) ? Places.home.path : $0.location.path) }
+        let containerCopies = services.copies.containerCopies
+        return panes.map { $0.waiting?.path ?? (containerCopies.contains($0.location) ? Places.home.path : $0.location.path) }
     }
 
     /// Each pane's view, for workspaces (`BrowserViewMode` raw values, in `snapshot`'s order).
@@ -1055,9 +1057,9 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
     }
 
     func browser(_ browser: BrowserViewController, showArchiveCopy folder: URL) {
-        // Not if you've since moved to the other pane or another window: the copy stays cached for next time.
-        guard browser === pane.browser else { return }
-        navigate(to: folder)
+        // An archive opens in the pane that asked for it, even if the other pane was focused meanwhile.
+        guard !isClosed, let owner = panes.first(where: { $0.browser === browser }) else { return }
+        go(.folder(folder.standardizedFileURL), in: owner)
     }
 
     func browser(_ browser: BrowserViewController, openingArchive archive: URL?, stop: (() -> Void)?) {
@@ -1125,15 +1127,17 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
 
     /// Column view went deeper: show that folder in the path bar and title, without a new history entry.
     func browser(_ browser: BrowserViewController, columnLocationChanged url: URL) {
-        guard browser === pane.browser, case .folder = destination else { return }
-        if (pane.columnLocation ?? pane.location).fileViewKey != url.fileViewKey {
-            pane.opening.cancel()
-            refreshOpeningNotice()
+        guard let owner = panes.first(where: { $0.browser === browser }), case .folder = owner.destination else { return }
+        if (owner.columnLocation ?? owner.location).fileViewKey != url.fileViewKey {
+            owner.browser.noteNavigationContextChanged()
+            owner.opening.cancel()
+            if owner === pane { refreshOpeningNotice() }
         }
-        pane.columnLocation = url
+        owner.columnLocation = url
+        owner.folderEntry = FileEntry(url: url)
+        guard owner === pane else { return }
         pathBar.url = url
-        window?.title = Places.displayName(url)
-        pane.folderEntry = FileEntry(url: url)
+        window?.title = Places.displayName(url, copies: services.copies)
         refreshPanels()
     }
 }

@@ -6,12 +6,13 @@ import CoreServices
 enum ContainerControl {
     /// Does `action` to `containers` (those it applies to). Stopping, restarting or pausing several asks first; what
     /// fails is shown, with the engine's reason.
-    static func run(_ action: ContainerAction, on containers: [ContainerInfo], in window: NSWindow?) {
-        let targets = containers.filter { action.applies(to: $0.state) && ContainerStore.shared.busy[$0.id] == nil }
+    static func run(_ action: ContainerAction, on containers: [ContainerInfo], in window: NSWindow?,
+                    store: ContainerStore = .shared) {
+        let targets = containers.filter { action.applies(to: $0.state) && store.busy[$0.id] == nil }
         guard !targets.isEmpty else { return NSSound.beep() }
         let go = {
             Task {
-                let failures = await ContainerStore.shared.perform(action, on: targets)
+                let failures = await store.perform(action, on: targets)
                 guard !failures.isEmpty else { return }
                 let alert = NSAlert()
                 alert.messageText = failures.count == 1
@@ -110,10 +111,11 @@ enum ContainerControl {
 
 /// The folder on this Mac a Compose project was launched from.
 enum StackProjects {
-    static func workingDirectory(of url: URL) -> URL? {
-        guard ContainerCopies.isStack(url) else { return nil }
+    static func workingDirectory(of url: URL, copies: ContainerCopyStore = ContainerCopies.store,
+                                 store: ContainerStore = .shared) -> URL? {
+        guard copies.isStack(url) else { return nil }
         let name = url.lastPathComponent
-        guard let path = ContainerStore.shared.containers.lazy.compactMap({ container -> String? in
+        guard let path = store.containers.lazy.compactMap({ container -> String? in
             guard let compose = container.compose,
                   compose.project.compare(name, options: [.caseInsensitive]) == .orderedSame,
                   compose.workingDirectory?.hasPrefix("/") == true else { return nil }
@@ -123,8 +125,9 @@ enum StackProjects {
     }
 
     /// `workingDirectory` when that folder is still on this Mac.
-    static func existingFolder(of url: URL) -> URL? {
-        workingDirectory(of: url).flatMap(existing)
+    static func existingFolder(of url: URL, copies: ContainerCopyStore = ContainerCopies.store,
+                               store: ContainerStore = .shared) -> URL? {
+        workingDirectory(of: url, copies: copies, store: store).flatMap(existing)
     }
 
     /// `folder` when it's a folder on this Mac. The path comes from the containers' labels, which an image can set, so
