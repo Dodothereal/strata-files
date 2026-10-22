@@ -209,7 +209,7 @@ final class ContainerInspectorView: NSView {
             for action in ContainerControl.actions(for: shown.containers) {
                 row.add(ActionButton(ContainerControl.title(action), symbol: ContainerControl.symbol(action)) { [weak self] in
                     guard let self else { return }
-                    ContainerControl.run(action, on: shown.containers, in: window, store: store)
+                    ContainerControl.run(action, on: shown.containers, in: self.window, store: self.store)
                 })
             }
             column.addArrangedSubview(row)
@@ -267,13 +267,13 @@ final class ContainerInspectorView: NSView {
             row.spacing = 6
             return row
         }
+        let store = self.store
         var buttons: [NSView] = ContainerAction.allCases.filter { $0.applies(to: container.state) }.map { action in
             ActionButton(ContainerControl.title(action), symbol: ContainerControl.symbol(action)) { [weak self] in
                 guard let self else { return }
-                ContainerControl.run(action, on: [container], in: window, store: store)
+                ContainerControl.run(action, on: [container], in: self.window, store: store)
             }
         }
-        let store = self.store
         let terminal = ActionButton(String(localized: "Terminal", comment: "Inspector button: a shell in the container"), symbol: "terminal") {
             guard let engine = store.engine, ContainerControl.openTerminal(in: container, at: "/", engine: engine) else { return NSSound.beep() }
         }

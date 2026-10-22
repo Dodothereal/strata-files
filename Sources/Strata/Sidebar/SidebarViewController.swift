@@ -695,7 +695,7 @@ extension SidebarViewController: NSMenuDelegate {
         alert.addButton(withTitle: String(localized: "Cancel"))
         alert.beginSheetModal(for: window) { [remote = services.remote] response in
             guard response == .alertFirstButtonReturn else { return }
-            MainActor.assumeIsolated { remote.remove(server) }
+            MainActor.assumeIsolated { _ = remote.remove(server) }
         }
     }
 

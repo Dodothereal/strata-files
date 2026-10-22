@@ -400,7 +400,7 @@ struct RemoteConnectionTests {
         let environment = Environment([original])
         var sheet: ConnectToServerController? = ConnectToServerController(editing: original, settings: settings,
             connections: environment.connections, sshHosts: { ["fixture.invalid"] })
-        weak var weakSheet = sheet
+        weak let weakSheet = sheet
         var callbacks = 0
         sheet!.onServer = { _ in callbacks += 1 }
         let connect = try #require(views(sheet!.view, of: NSButton.self).first { $0.action == NSSelectorFromString("connect:") })
@@ -511,7 +511,7 @@ struct RemoteConnectionTests {
         let server = s3(), environment = Environment()
         var connections: RemoteConnections? = RemoteConnections(catalog: environment.store.catalog, sessions: environment.sessions,
             connector: environment.factory.connector, discard: { _ in }, disconnected: { _ in })
-        weak var weakConnections = connections
+        weak let weakConnections = connections
         let request = connections!.connect(server, secret: "Proposed")
         await environment.factory.waitForCalls(1)
         request.cancel()
@@ -634,7 +634,7 @@ struct RemoteConnectionTests {
         var connections: RemoteConnections? = RemoteConnections(catalog: environment.store.catalog, sessions: environment.sessions,
             connector: environment.factory.connector, discard: { await environment.copies.discard($0) },
             disconnected: { environment.copies.disconnected.append($0) })
-        weak var weakConnections = connections
+        weak let weakConnections = connections
         var proposed = server; proposed.host = "new.invalid"
         let request = connections!.connect(proposed, secret: "Proposed"), backend = Backend()
         await environment.factory.waitForCalls(1); await environment.factory.finish(0, backend)
