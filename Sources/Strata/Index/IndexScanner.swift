@@ -29,10 +29,11 @@ nonisolated package enum BulkDirectoryReader {
 
         while true {
             if shouldStop() { return ECANCELED }
-            let count = getattrlistbulk(fd, &request, buffer.baseAddress, buffer.count, 0)
+            guard let base = buffer.baseAddress else { return EINVAL }
+            let count = getattrlistbulk(fd, &request, base, buffer.count, 0)
             if count < 0 { return errno }
             if count == 0 { return 0 }
-            var entry = UnsafeRawPointer(buffer.baseAddress!)
+            var entry = UnsafeRawPointer(base)
             for _ in 0..<count {
                 let length = Int(entry.loadUnaligned(as: UInt32.self))
                 defer { entry += length }

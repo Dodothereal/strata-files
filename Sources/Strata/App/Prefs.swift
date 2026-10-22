@@ -137,7 +137,11 @@ final class Prefs {
     }
 
     var gridIconSize: Double {
-        get { defaults.object(forKey: Key.gridIconSize) == nil ? 72 : defaults.double(forKey: Key.gridIconSize) }
+        get {
+            guard defaults.object(forKey: Key.gridIconSize) != nil else { return 72 }
+            let value = defaults.double(forKey: Key.gridIconSize)
+            return value.isFinite ? min(max(value, 32), 256) : 72
+        }
         set {
             defaults.set(newValue, forKey: Key.gridIconSize)
             notifications.post(name: .viewOptionsChanged, object: nil)
@@ -190,13 +194,16 @@ final class Prefs {
 
     /// Row spacing in the list and columns: 0 compact, 1 regular, 2 spacious.
     var density: Int {
-        get { defaults.object(forKey: Key.density) as? Int ?? 1 }
+        get { min(max(defaults.object(forKey: Key.density) as? Int ?? 1, 0), 2) }
         set { defaults.set(newValue, forKey: Key.density); notifications.post(name: .appearanceChanged, object: nil) }
     }
 
     /// File names' text size in points (11–16).
     var nameTextSize: Double {
-        get { min(max(defaults.object(forKey: Key.nameTextSize) as? Double ?? 13, 11), 16) }
+        get {
+            let value = defaults.object(forKey: Key.nameTextSize) as? Double ?? 13
+            return value.isFinite ? min(max(value, 11), 16) : 13
+        }
         set { defaults.set(newValue, forKey: Key.nameTextSize); notifications.post(name: .appearanceChanged, object: nil) }
     }
 

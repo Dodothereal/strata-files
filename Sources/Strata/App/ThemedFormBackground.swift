@@ -23,7 +23,7 @@ package struct ThemedFormBackground: ViewModifier {
     private var colorsSurfaces: Bool { theme.colorsSurfaces && contrast != .increased }
 
     private var background: NSColor {
-        let appearance = NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)!
+        let appearance = NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua) ?? .currentDrawing()
         return theme.options.surfaceColor(in: appearance, reduceTransparency: true,
                                           highContrast: theme.highContrast || contrast == .increased, role: .content)
     }

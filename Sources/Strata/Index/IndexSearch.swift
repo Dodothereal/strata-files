@@ -210,10 +210,11 @@ nonisolated package struct IndexQuery: Sendable {
             ("tb", 1e12), ("gb", 1e9), ("mb", 1e6), ("kb", 1e3), ("t", 1e12), ("g", 1e9), ("m", 1e6), ("k", 1e3), ("b", 1),
         ]
         for (suffix, multiplier) in units where text.hasSuffix(suffix) {
-            guard let number = Double(text.dropLast(suffix.count)) else { return nil }
+            guard let number = Double(text.dropLast(suffix.count)), number.isFinite, number >= 0 else { return nil }
             return saturatingInt64(number * multiplier)
         }
-        return Double(text).flatMap(saturatingInt64)
+        guard let number = Double(text), number.isFinite, number >= 0 else { return nil }
+        return saturatingInt64(number)
     }
 
     private static func sizeRange(_ value: String) -> (Int64?, Int64?) {
@@ -274,8 +275,10 @@ nonisolated package struct IndexQuery: Sendable {
 
     private static func duration(_ text: String) -> Double? {
         let units: [(Character, Double)] = [("h", 3600), ("d", 86_400), ("w", 7 * 86_400), ("m", 30 * 86_400), ("y", 365 * 86_400)]
-        guard let last = text.last, let unit = units.first(where: { $0.0 == last }), let number = Double(text.dropLast()) else { return nil }
-        return number * unit.1
+        guard let last = text.last, let unit = units.first(where: { $0.0 == last }),
+              let number = Double(text.dropLast()), number.isFinite, number >= 0 else { return nil }
+        let seconds = number * unit.1
+        return seconds.isFinite ? seconds : nil
     }
 
     private static func day(_ text: String) -> Date? {

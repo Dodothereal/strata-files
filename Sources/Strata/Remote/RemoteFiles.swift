@@ -117,9 +117,10 @@ actor RemoteFiles {
                 // Only what everyone on the server may read comes by itself (a key or a .env waits until it's opened);
                 // a bucket's objects have no such permissions.
                 let everyone = server.kind == .s3 || entry.mode & 0o004 != 0
-                if everyone, entry.size <= Self.eagerFileSize, bytes + entry.size <= Self.eagerFolderBytes, eager.count < Self.eagerFolderCount,
+                let (nextBytes, overflow) = bytes.addingReportingOverflow(entry.size)
+                if everyone, entry.size >= 0, entry.size <= Self.eagerFileSize, !overflow, nextBytes <= Self.eagerFolderBytes, eager.count < Self.eagerFolderCount,
                    copies.isPlaceholder(url) {
-                    bytes += entry.size
+                    bytes = nextBytes
                     eager.append(url)
                 }
             }
@@ -180,9 +181,10 @@ actor RemoteFiles {
         var total: Int64 = 0
         var chosen: [URL] = []
         for url in urls where copies.isPlaceholder(url) {
-            let size = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
-            guard total + size <= limit else { break }
-            total += size
+            let size = max(0, Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0))
+            let (nextTotal, overflow) = total.addingReportingOverflow(size)
+            guard !overflow, nextTotal <= limit else { break }
+            total = nextTotal
             chosen.append(url)
         }
         try? await fetch(chosen)
@@ -410,15 +412,22 @@ actor RemoteFiles {
         }
         var parents: [(url: URL, server: RemoteServer, top: URL)] = []
         let normalized = Self.outermostTargets(removals)
-        for (url, destination) in normalized {
-            let (server, top, path) = destination
-            try ensureCurrent(server, top: top)
-            guard path != "/" else { continue }
-            let backend = try await serverBackends(server)
-            try ensureCurrent(server, top: top)
-            // What it is (a folder, or a link to one) is the server's to say: a link goes, what it points to stays.
-            try await backend.remove(path)
-            parents.append((url.deletingLastPathComponent().standardizedFileURL, server, top))
+        do {
+            for (url, destination) in normalized {
+                let (server, top, path) = destination
+                try ensureCurrent(server, top: top)
+                guard path != "/" else { continue }
+                let backend = try await serverBackends(server)
+                try ensureCurrent(server, top: top)
+                // What it is (a folder, or a link to one) is the server's to say: a link goes, what it points to stays.
+                try await backend.remove(path)
+                parents.append((url.deletingLastPathComponent().standardizedFileURL, server, top))
+            }
+        } catch {
+            for parent in Set(parents.filter { (try? ensureCurrent($0.server, top: $0.top)) != nil }.map { $0.url }) {
+                await relist(parent)
+            }
+            throw error
         }
         for parent in Set(parents.filter { (try? ensureCurrent($0.server, top: $0.top)) != nil }.map { $0.url }) {
             await relist(parent)
@@ -439,16 +448,23 @@ actor RemoteFiles {
         var parents: Set<URL> = [folder.standardizedFileURL]
         var moved: [URL] = []
         let normalized = Self.outermostTargets(sources)
-        for (url, source) in normalized {
-            try ensureCurrent(server, top: top)
-            let path = source.path
-            // Never the top, never into itself.
-            guard path != "/", destination != path, !destination.hasPrefix(path + "/") else { continue }
-            let newPath = RemotePath.join(destination, RemotePath.name(path))
-            guard newPath != path else { continue }
-            try await backend.rename(path, to: newPath)
-            parents.insert(url.deletingLastPathComponent().standardizedFileURL)
-            moved.append(folder.appending(path: RemotePath.name(path)))
+        do {
+            for (url, source) in normalized {
+                try ensureCurrent(server, top: top)
+                let path = source.path
+                // Never the top, never into itself.
+                guard path != "/", destination != path, !destination.hasPrefix(path + "/") else { continue }
+                let newPath = RemotePath.join(destination, RemotePath.name(path))
+                guard newPath != path else { continue }
+                try await backend.rename(path, to: newPath)
+                parents.insert(url.deletingLastPathComponent().standardizedFileURL)
+                moved.append(folder.appending(path: RemotePath.name(path)))
+            }
+        } catch {
+            if !moved.isEmpty, (try? ensureCurrent(server, top: top)) != nil {
+                for parent in parents { await relist(parent) }
+            }
+            throw error
         }
         if (try? ensureCurrent(server, top: top)) != nil {
             for parent in parents { await relist(parent) }
@@ -466,13 +482,18 @@ actor RemoteFiles {
         let backend = try await serverBackends(server)
         let sent = Counter()
         var placed: [URL] = []
-        for source in sources where !skipping.contains(source.lastPathComponent) {
-            if stop.isSet { throw SFTPError.stopped }
-            try ensureCurrent(server, top: top)
-            let name = source.lastPathComponent
-            guard ContainerCopies.isSafeName(name) else { continue }
-            try await send(source, to: RemotePath.join(path, name), server: server, top: top, backend: backend, stop: stop, sent: sent, progress: progress)
-            placed.append(folder.appending(path: name))
+        do {
+            for source in sources where !skipping.contains(source.lastPathComponent) {
+                if stop.isSet { throw SFTPError.stopped }
+                try ensureCurrent(server, top: top)
+                let name = source.lastPathComponent
+                guard ContainerCopies.isSafeName(name) else { continue }
+                try await send(source, to: RemotePath.join(path, name), server: server, top: top, backend: backend, stop: stop, sent: sent, progress: progress)
+                placed.append(folder.appending(path: name))
+            }
+        } catch {
+            if (try? ensureCurrent(server, top: top)) != nil { await relist(folder) }
+            throw error
         }
         if (try? ensureCurrent(server, top: top)) != nil { await relist(folder) }
         return placed

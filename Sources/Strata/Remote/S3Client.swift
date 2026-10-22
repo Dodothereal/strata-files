@@ -73,7 +73,7 @@ nonisolated enum S3Signer {
         signed["x-amz-content-sha256"] = payloadHash
         if let token = credentials.sessionToken { signed["x-amz-security-token"] = token }
         let names = signed.keys.sorted()
-        let canonicalHeaders = names.map { "\($0):\(signed[$0]!)\n" }.joined()
+        let canonicalHeaders = names.map { "\($0):\(signed[$0] ?? "")\n" }.joined()
         let signedHeaders = names.joined(separator: ";")
         let encodedQuery: [(name: String, value: String)] = query.map { pair in
             (encode(pair.0, keepSlash: false), encode(pair.1, keepSlash: false))
@@ -249,7 +249,8 @@ nonisolated final class S3Client: Sendable {
         var total: Int64 = 0
         for try await byte in bytes {
             buffer.append(byte)
-            if total + Int64(buffer.count) > limit { throw S3Error.changed }
+            let (currentTotal, overflow) = total.addingReportingOverflow(Int64(buffer.count))
+            if overflow || currentTotal > limit { throw S3Error.changed }
             if buffer.count >= 256 * 1024 {
                 try Task.checkCancellation()
                 if stop.isSet { throw CancellationError() }

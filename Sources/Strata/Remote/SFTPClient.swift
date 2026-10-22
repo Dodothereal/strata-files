@@ -306,7 +306,8 @@ nonisolated final class SFTPClient: @unchecked Sendable {
             var reader = Reader(reply.body)
             let data = try reader.bytes()
             guard next.offset == written else { continue } // past a short read: asked again below
-            guard Int64(clamping: written) + Int64(data.count) <= limit else { throw SFTPError.tooLarge }
+            let (nextWritten, overflow) = Int64(clamping: written).addingReportingOverflow(Int64(data.count))
+            guard !overflow, nextWritten <= limit else { throw SFTPError.tooLarge }
             try file.write(contentsOf: data)
             written += UInt64(data.count)
             progress(Int64(written))
@@ -539,7 +540,10 @@ nonisolated final class SFTPClient: @unchecked Sendable {
         var buffer = [UInt8](repeating: 0, count: count)
         var got = 0
         while got < count {
-            let n = buffer.withUnsafeMutableBytes { Darwin.read(fd, $0.baseAddress! + got, count - got) }
+            let n = buffer.withUnsafeMutableBytes { bytes -> Int in
+                guard let base = bytes.baseAddress else { return 0 }
+                return Darwin.read(fd, base + got, count - got)
+            }
             if n < 0, errno == EINTR { continue }
             guard n > 0 else { return nil }
             got += n

@@ -259,7 +259,12 @@ nonisolated package enum CodeLoader {
             return length > maxLineLength
         }) else { return nil }
         return text.split(separator: "\n", omittingEmptySubsequences: false)
-            .map { $0.utf16.count > maxLineLength ? $0.prefix(maxLineLength) + " …" : $0 }
+            .map { line -> String in
+                guard line.utf16.count > maxLineLength else { return String(line) }
+                let utf16Index = line.utf16.index(line.utf16.startIndex, offsetBy: maxLineLength)
+                let end = line.rangeOfComposedCharacterSequence(at: utf16Index).lowerBound
+                return line[..<end] + " …"
+            }
             .joined(separator: "\n")
     }
 

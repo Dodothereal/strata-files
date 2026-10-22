@@ -197,13 +197,13 @@ final class ShelfWell: NSView, NSDraggingSource {
 
     func transfer(move: Bool) {
         guard let controller = activeWindow(), case .folder = controller.destination,
-              let target = controller.browser.targetDirectory,
-              !ReadOnlyCopies.contains(target, copies: controller.services.copies), !Trash.isTrash(target) else { return }
+              let target = controller.browser.targetDirectory else { return }
         let urls = items
         // Onto a server: copied there through the server (what's on the Shelf stays).
         if controller.services.remote.copies.contains(target) {
             return controller.browser.copyToServer(urls, into: target, move: false)
         }
+        guard !ReadOnlyCopies.contains(target, copies: controller.services.copies), !Trash.isTrash(target) else { return }
         let job = controller.services.transfers.enqueue(urls, to: target, mode: move ? .move : .copy,
                                                undo: controller.window?.undoManager, conflicts: .sheet(for: controller.window))
         job.onFinish = { [weak self] job in

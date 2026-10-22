@@ -61,12 +61,32 @@ nonisolated package struct GridData: Sendable {
         if let sign = scalars.first, sign == "+" || sign == "-" { scalars = scalars.dropFirst() }
         if let currency = scalars.first, "$€£¥".unicodeScalars.contains(currency) { scalars = scalars.dropFirst() }
         if let percent = scalars.last, percent == "%" { scalars = scalars.dropLast() }
-        guard let first = scalars.first, ("0"..."9").contains(first) else { return false }
+        guard let first = scalars.first, ("0"..."9").contains(first),
+              let last = scalars.last, ("0"..."9").contains(last) else { return false }
         var exponent = false
+        var allowExponentSign = false
+        var dotCount = 0
         for scalar in scalars {
-            if ("0"..."9").contains(scalar) || ".,' _".unicodeScalars.contains(scalar) { continue }
-            if (scalar == "e" || scalar == "E"), !exponent { exponent = true; continue }
-            if (scalar == "+" || scalar == "-"), exponent { continue }
+            if ("0"..."9").contains(scalar) {
+                allowExponentSign = false
+                continue
+            }
+            if !exponent, ".,' _".unicodeScalars.contains(scalar) {
+                if scalar == "." {
+                    dotCount += 1
+                    if dotCount > 1 { return false }
+                }
+                continue
+            }
+            if (scalar == "e" || scalar == "E"), !exponent {
+                exponent = true
+                allowExponentSign = true
+                continue
+            }
+            if (scalar == "+" || scalar == "-"), allowExponentSign {
+                allowExponentSign = false
+                continue
+            }
             return false
         }
         return true

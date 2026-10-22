@@ -229,12 +229,12 @@ enum FileOps {
     /// History entry `entry` as `marksUndone` once it has worked. Returns where the items went.
     @discardableResult
     static func trash(_ urls: [URL], undo: UndoManager?, record: Bool = true, entry: UUID? = nil,
-                      marksUndone: Bool = true, copies: CopyProviders = .live) throws -> [Move] {
+                      marksUndone: Bool = true, copies: CopyProviders = .live, history: OperationLog = .shared) throws -> [Move] {
         var moved: [Move] = []
         let landed = LandedFiles()
         defer {
-            let logged = record ? OperationLog.shared.recordMove("Move to Trash", moved, landed: landed) : entry
-            registerMoveUndo(moved, "Move to Trash", undo, entry: logged, marksUndone: record ? true : marksUndone, landed: landed)
+            let logged = record ? history.recordMove("Move to Trash", moved, landed: landed) : entry
+            registerMoveUndo(moved, "Move to Trash", undo, entry: logged, copies: copies, marksUndone: record ? true : marksUndone, landed: landed, history: history)
         }
         for url in BrowserViewController.outermost(urls) where Self.canTrash(url, copies: copies) {
             var result: NSURL?
@@ -295,12 +295,12 @@ enum FileOps {
 
     /// Moves `urls` to the Trash off the main thread (a big selection or a slow disk would freeze the window), then
     /// records and registers undo like `trash`. Items on disks without a Trash come back in `NoTrash`.
-    static func trashInBackground(_ urls: [URL], undo: UndoManager?, copies: CopyProviders = .live) async throws {
+    static func trashInBackground(_ urls: [URL], undo: UndoManager?, copies: CopyProviders = .live, history: OperationLog = .shared) async throws {
         let (moved, identities, noTrash, failure) = await trashItems(urls, copies: copies)
         let landed = LandedFiles()
         for (move, identity) in zip(moved, identities) { landed.set(identity, at: move.to) }
-        let entry = OperationLog.shared.recordMove("Move to Trash", moved, landed: landed)
-        registerMoveUndo(moved, "Move to Trash", undo, entry: entry, landed: landed)
+        let entry = history.recordMove("Move to Trash", moved, landed: landed)
+        registerMoveUndo(moved, "Move to Trash", undo, entry: entry, copies: copies, landed: landed, history: history)
         if !moved.isEmpty {
             trashSound?.stop()
             trashSound?.play()
@@ -444,8 +444,8 @@ enum FileOps {
     /// moves have worked (the inverse flips it back). Containers made for the operation are recreated before Redo
     /// and removed after Undo only while their recorded identities still match and they are empty.
     static func registerMoveUndo(_ moves: [Move], _ actionName: String, _ undo: UndoManager?, entry: UUID? = nil,
-                                 marksUndone: Bool = true, containers: CreatedFolders.Change = .none, landed: LandedFiles? = nil,
-                                 history: OperationLog = .shared) {
+                                 copies: CopyProviders = .live, marksUndone: Bool = true, containers: CreatedFolders.Change = .none,
+                                 landed: LandedFiles? = nil, history: OperationLog = .shared) {
         guard !moves.isEmpty else { return }
         let landed = landed ?? LandedFiles(moves.map(\.to))
         register(actionName, undo) { undo in
@@ -455,7 +455,7 @@ enum FileOps {
                 guard !back.isEmpty else { return }
                 for pair in back { returned.expect(pair.from, at: pair.to) }
                 do {
-                    guard !back.contains(where: { ReadOnlyCopies.contains($0.from) || ReadOnlyCopies.contains($0.to) }) else {
+                    guard !back.contains(where: { ReadOnlyCopies.contains($0.from, copies: copies) || ReadOnlyCopies.contains($0.to, copies: copies) }) else {
                         throw insideArchiveError
                     }
                     try containers.prepare()
@@ -469,7 +469,7 @@ enum FileOps {
                     reportUndoFailure(actionName, error)
                 }
             }
-            registerMoveUndo(moves.reversed().map { (from: $0.to, to: $0.from) }, actionName, undo, entry: entry,
+            registerMoveUndo(moves.reversed().map { (from: $0.to, to: $0.from) }, actionName, undo, entry: entry, copies: copies,
                              marksUndone: !marksUndone, containers: containers.inverse, landed: returned, history: history)
         }
     }

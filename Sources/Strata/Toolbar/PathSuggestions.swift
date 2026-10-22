@@ -297,6 +297,7 @@ extension PathSuggestionList: NSTableViewDataSource, NSTableViewDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int { items.count }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard items.indices.contains(row) else { return nil }
         let id = NSUserInterfaceItemIdentifier("SuggestionCell")
         let cell = tableView.makeView(withIdentifier: id, owner: nil) as? SuggestionCell ?? {
             let cell = SuggestionCell()

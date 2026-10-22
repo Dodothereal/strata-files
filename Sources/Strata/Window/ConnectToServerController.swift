@@ -54,8 +54,9 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
     isolated deinit { mounts.cancel(); connection?.cancel(); connecting?.cancel() }
 
     override func loadView() {
-        let title = NSTextField(labelWithString: editing == nil ? String(localized: "Connect to Server")
-                                    : String(localized: "Edit “\(editing!.name)”", comment: "Sheet title: editing a saved server"))
+        let title = NSTextField(labelWithString: editing.map {
+            String(localized: "Edit “\($0.name)”", comment: "Sheet title: editing a saved server")
+        } ?? String(localized: "Connect to Server"))
         title.font = .systemFont(ofSize: 15, weight: .semibold)
 
         kindPicker.segmentCount = 3
@@ -161,7 +162,8 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
             s3Name.stringValue = server.name
             s3Bucket.stringValue = server.bucket ?? ""
             s3Region.stringValue = server.region ?? ""
-            s3Endpoint.stringValue = server.host == Self.awsEndpoint(server.region ?? "") ? "" : server.host + (server.port.map { ":\($0)" } ?? "")
+            let formattedHost = server.host.contains(":") && server.port != nil ? "[\(server.host)]" : server.host
+            s3Endpoint.stringValue = server.host == Self.awsEndpoint(server.region ?? "") ? "" : formattedHost + (server.port.map { ":\($0)" } ?? "")
             s3KeyID.stringValue = server.accessKeyID ?? ""
             s3PathStyle.state = server.pathStyle == true ? .on : .off
         }
@@ -296,7 +298,15 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         for prefix in ["https://", "http://"] where endpoint.lowercased().hasPrefix(prefix) { endpoint = String(endpoint.dropFirst(prefix.count)) }
         while endpoint.hasSuffix("/") { endpoint.removeLast() }
         var port: Int?
-        if let colon = endpoint.lastIndex(of: ":"), !endpoint.hasPrefix("[") {
+        if endpoint.hasPrefix("["), let close = endpoint.firstIndex(of: "]") {
+            let afterBracket = endpoint[endpoint.index(after: close)...]
+            if afterBracket.hasPrefix(":") {
+                port = Int(afterBracket.dropFirst()) ?? -1
+                endpoint = String(endpoint[endpoint.index(after: endpoint.startIndex)..<close])
+            } else if afterBracket.isEmpty {
+                endpoint = String(endpoint[endpoint.index(after: endpoint.startIndex)..<close])
+            }
+        } else if let colon = endpoint.lastIndex(of: ":"), endpoint.firstIndex(of: ":") == colon {
             port = Int(endpoint[endpoint.index(after: colon)...]) ?? -1
             endpoint = String(endpoint[..<colon])
         }

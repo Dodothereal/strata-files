@@ -213,8 +213,12 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
         guard let url, let app = sender.selectedItem?.representedObject as? URL else { return }
         // Picking the app it already opens with changes nothing (and mustn't pin this file to it).
         guard app != NSWorkspace.shared.urlForApplication(toOpen: url) else { return }
+        let targetURL = url
         NSWorkspace.shared.setDefaultApplication(at: app, toOpenFileAt: url) { [weak self] error in
-            DispatchQueue.main.async { self?.finish(error, in: self?.openWithMessage) }
+            DispatchQueue.main.async {
+                guard let self, self.url == targetURL else { return }
+                self.finish(error, in: self.openWithMessage)
+            }
         }
     }
 
@@ -228,10 +232,14 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
         alert.informativeText = String(localized: "This changes the app macOS uses for every document of this kind, in Finder too.")
         alert.addButton(withTitle: String(localized: "Change All", comment: "Alert button: open every document of this kind with the chosen app"))
         alert.addButton(withTitle: String(localized: "Cancel"))
+        let targetURL = url
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
             NSWorkspace.shared.setDefaultApplication(at: app, toOpenContentTypeOfFileAt: url) { error in
-                DispatchQueue.main.async { self?.finish(error, in: self?.openWithMessage) }
+                DispatchQueue.main.async {
+                    guard let self, self.url == targetURL else { return }
+                    self.finish(error, in: self.openWithMessage)
+                }
             }
         }
     }

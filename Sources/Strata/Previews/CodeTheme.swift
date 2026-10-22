@@ -56,8 +56,13 @@ nonisolated package enum CodeTheme {
     /// Colors `tokens` into `storage` (whose base attributes are already set). Keywords and diff headers are set in semibold.
     package static func apply(_ tokens: [Token], to storage: NSMutableAttributedString, offset: Int = 0, size: CGFloat = fontSize) {
         let bold = boldFont(size: size)
+        let length = storage.length
         for token in tokens {
-            let range = NSRange(location: token.location + offset, length: token.length)
+            guard token.location >= 0, token.length > 0, offset >= 0,
+                  let location = Optional(token.location.addingReportingOverflow(offset)), !location.overflow,
+                  let end = Optional(location.partialValue.addingReportingOverflow(token.length)), !end.overflow,
+                  end.partialValue <= length else { continue }
+            let range = NSRange(location: location.partialValue, length: token.length)
             storage.addAttribute(.foregroundColor, value: color(for: token.kind), range: range)
             if token.kind == .keyword || token.kind == .meta { storage.addAttribute(.font, value: bold, range: range) }
         }

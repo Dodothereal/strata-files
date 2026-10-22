@@ -159,7 +159,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// Adds a second pane (at `url`, or where the current one is), or closes the pane without focus.
     func toggleDualPane(at url: URL?) {
         if isDualPane {
-            let closing = panes.first { $0 !== pane }!
+            guard let closing = panes.first(where: { $0 !== pane }) else { return }
             closing.stopBackgroundWork()
             split.panes.remove(closing.host)
             panes.removeAll { $0 === closing }
@@ -209,12 +209,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     private func transferToOtherPane(move: Bool) {
         guard let other = panes.first(where: { $0 !== pane }), case .folder = other.destination,
-              let target = other.browser.targetDirectory,
-              !ReadOnlyCopies.contains(target, copies: services.copies), !Trash.isTrash(target) else { return }
+              let target = other.browser.targetDirectory else { return }
         let urls = browser.selectedURLs
         guard !urls.isEmpty else { return }
         // Onto a server: copied there (or moved within it), through the server.
         if services.remote.copies.contains(target) { return other.browser.copyToServer(urls, into: target, move: move) }
+        guard !ReadOnlyCopies.contains(target, copies: services.copies), !Trash.isTrash(target) else { return }
         let job = services.transfers.enqueue(urls, to: target, mode: move ? .move : .copy,
                                                undo: window?.undoManager, conflicts: .sheet(for: window))
         job.onFinish = { [weak self, weak other] job in
@@ -703,7 +703,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                 var structural = result.interpretation
                 structural?.nameContains = []
                 structural?.keywords = []
-                let contentHits = contentQuery.map { $0.count >= 3 } == true ? await StrataAI.index.search(contentQuery!, limit: 15) : []
+                let validContentQuery = contentQuery.flatMap { $0.count >= 3 ? $0 : nil }
+                let contentHits = validContentQuery != nil
+                    ? await StrataAI.index.search(validContentQuery ?? "", limit: 15) : []
                 guard generation == p.searchGeneration, p.destination == target else { return }
                 var entries = result.hits.map(FileEntry.init(hit:))
                 let known = Set(entries.map { $0.url.standardizedFileURL.path })
@@ -1266,7 +1268,8 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation, N
         case #selector(copyToOtherPane(_:)), #selector(moveToOtherPane(_:)):
             guard isDualPane, let other = panes.first(where: { $0 !== pane }), case .folder = other.destination,
                   let target = other.browser.targetDirectory,
-                  !ReadOnlyCopies.contains(target, copies: services.copies), !Trash.isTrash(target) else { return false }
+                  services.remote.copies.contains(target) || !ReadOnlyCopies.contains(target, copies: services.copies),
+                  !Trash.isTrash(target) else { return false }
             return !browser.selectedURLs.isEmpty
         case #selector(goToEnclosingFolder(_:)):
             if case .folder = destination { return location.path != "/" }

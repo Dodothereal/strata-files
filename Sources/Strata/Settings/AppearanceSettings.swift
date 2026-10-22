@@ -101,7 +101,7 @@ struct ThemePreview: View {
         let dark = colorScheme == .dark
         return NSAppearance(named: contrast == .increased
                             ? (dark ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
-                            : (dark ? .darkAqua : .aqua))!
+                            : (dark ? .darkAqua : .aqua)) ?? .currentDrawing()
     }
 
     var body: some View {

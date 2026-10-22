@@ -482,10 +482,16 @@ nonisolated package final class IndexStore: @unchecked Sendable {
         /// output beside the project file that produces it. Pure and lock-free (raw byte comparisons only).
         package static func ownNoise(_ items: [ScannedItem], nameBuffer: UnsafeRawBufferPointer) -> [Bool] {
             func bytes(_ item: ScannedItem) -> UnsafeRawBufferPointer {
-                UnsafeRawBufferPointer(rebasing: nameBuffer[item.nameOffset..<(item.nameOffset + item.nameLength)])
+                guard item.nameOffset >= 0, item.nameLength >= 0,
+                      let end = item.nameOffset.addingReportingOverflow(item.nameLength).partialValue as Int?,
+                      !item.nameOffset.addingReportingOverflow(item.nameLength).overflow,
+                      end <= nameBuffer.count else {
+                    return UnsafeRawBufferPointer(start: nil, count: 0)
+                }
+                return UnsafeRawBufferPointer(rebasing: nameBuffer[item.nameOffset..<end])
             }
             func equal(_ a: UnsafeRawBufferPointer, _ b: [UInt8]) -> Bool {
-                a.count == b.count && b.withUnsafeBytes { memcmp($0.baseAddress!, a.baseAddress!, a.count) == 0 }
+                a.elementsEqual(b)
             }
             var outputs: [[UInt8]] = []
             for item in items where !item.isDirectory {
@@ -521,7 +527,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
 
         package static func isNoiseFolder(_ name: UnsafeRawBufferPointer) -> Bool {
             noiseNames.contains { candidate in
-                candidate.count == name.count && candidate.withUnsafeBytes { memcmp($0.baseAddress!, name.baseAddress!, name.count) == 0 }
+                name.elementsEqual(candidate)
             }
         }
     }

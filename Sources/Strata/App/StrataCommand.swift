@@ -135,6 +135,6 @@ struct StrataCommand {
     }
 
     private static func function(_ key: Int) -> String {
-        String(Character(UnicodeScalar(UInt32(key))!))
+        UnicodeScalar(key).map { String(Character($0)) } ?? ""
     }
 }

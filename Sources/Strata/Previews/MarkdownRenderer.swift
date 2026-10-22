@@ -131,6 +131,7 @@ nonisolated package final class MarkdownRenderer {
     }
 
     private func list(ordered: Bool, start: Int, items: [MarkdownListItem], into output: NSMutableAttributedString, context: Context) {
+        let start = max(0, min(start, 999_999_999))
         let listStart = output.length
         let bullets = ["•", "◦", "▪"]
         let markerFont = NSFont.monospacedDigitSystemFont(ofSize: bodySize, weight: .regular)

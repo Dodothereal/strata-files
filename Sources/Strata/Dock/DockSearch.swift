@@ -283,6 +283,7 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     func numberOfRows(in tableView: NSTableView) -> Int { ranker.results.count }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard ranker.results.indices.contains(row) else { return nil }
         let id = NSUserInterfaceItemIdentifier("PaletteCell")
         let cell = tableView.makeView(withIdentifier: id, owner: nil) as? PaletteCell ?? {
             let cell = PaletteCell()

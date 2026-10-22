@@ -109,7 +109,8 @@ package final class NativeHeaderFillTint {
               container.mask == nil, container.filters == nil, container.compositingFilter == nil,
               let children = container.sublayers, children.count == 2 || children.count == 3 else { return nil }
         let active = children.count == 3
-        let fill = children[active ? 1 : 0], adaptive = children.last!
+        guard let adaptive = children.last else { return nil }
+        let fill = children[active ? 1 : 0]
         guard type(of: fill) == CALayer.self, fill.frame == container.bounds,
               fill.opacity == (active ? 0.8 : 1), !fill.isHidden,
               fill.mask == nil, fill.contents == nil, fill.sublayers?.isEmpty != false,

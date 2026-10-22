@@ -54,13 +54,18 @@ while !arguments.isEmpty {
     case "-i", "--in":
         guard !arguments.isEmpty else { writeError(usage); exit(2) }
         scope = arguments.removeFirst()
+    case "--":
+        paths.append(contentsOf: arguments)
+        arguments.removeAll()
     default:
         paths.append(argument)
     }
 }
 
 // A workspace opens on its own: it doesn't mix with a search or paths.
-if workspace != nil, query != nil || scope != nil || !paths.isEmpty {
+if (workspace != nil && (query != nil || scope != nil || !paths.isEmpty))
+    || (scope != nil && query == nil)
+    || (query != nil && !paths.isEmpty) {
     writeError(usage)
     exit(2)
 }
@@ -87,13 +92,15 @@ if let workspace {
     components.scheme = "strata"
     components.host = "workspace"
     components.queryItems = [URLQueryItem(name: "name", value: workspace)]
-    targets = [components.url!]
+    guard let url = components.url else { writeError(usage); exit(2) }
+    targets = [url]
 } else if let query {
     var components = URLComponents()
     components.scheme = "strata"
     components.host = "search"
     components.queryItems = [URLQueryItem(name: "q", value: query)] + (scope.map { [URLQueryItem(name: "in", value: absolute($0).path)] } ?? [])
-    targets = [components.url!]
+    guard let url = components.url else { writeError(usage); exit(2) }
+    targets = [url]
 } else {
     targets = (paths.isEmpty ? ["."] : paths).map(absolute)
     for url in targets where !FileManager.default.fileExists(atPath: url.path) {

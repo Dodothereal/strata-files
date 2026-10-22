@@ -166,7 +166,9 @@ nonisolated package enum ArchiveLister {
     /// `-rw-r--r--  3.0 unx     1053 tx      491 defN 20241011.193700 dir/file.txt`
     private static func parseZipInfo(_ line: Substring) -> (String, Bool, Int64, Date?)? {
         guard let (fields, name) = split(line, fields: 8), let size = Int64(fields[3]), Int64(fields[5]) != nil,
-              fields[7].count == 15 else { return nil }
+              fields[7].utf8.count == 15,
+              fields[7].utf8.enumerated().allSatisfy({ $0.offset == 8 ? $0.element == UInt8(ascii: ".") : (0x30...0x39).contains($0.element) })
+        else { return nil }
         let path = String(name)
         let digits = fields[7].utf8.map { Int($0) - 48 }
         func number(_ range: Range<Int>) -> Int { digits[range].reduce(0) { $0 * 10 + $1 } }

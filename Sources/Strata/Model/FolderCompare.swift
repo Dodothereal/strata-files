@@ -147,7 +147,7 @@ nonisolated enum FolderCompare {
             guard parentShared(key) else { continue }
             let l = leftItems[key], r = rightItems[key]
             guard let l, let r else {
-                let item = l ?? r!
+                guard let item = l ?? r else { continue }
                 result.differences.append(Difference(id: item.path, kind: l == nil ? .onlyRight : .onlyLeft, left: l, right: r))
                 continue
             }
@@ -222,6 +222,7 @@ nonisolated enum FolderCompare {
             let key = ignoringCase ? relative.lowercased() : relative
             if let other = scan.items[key], other.path != relative {
                 scan.unknown[key] = String(localized: "“\(other.path)” and “\(relative)” differ only in case; the other side can’t tell them apart")
+                if type == S_IFDIR { walker.skipDescendants() }
                 continue
             }
             // A folder that can't be read would look empty: what's inside is unknown, not missing.
@@ -243,16 +244,41 @@ nonisolated enum FolderCompare {
 
     /// Whether two files hold the same bytes, read side by side (stops at the first difference).
     static func sameBytes(_ a: URL, _ b: URL, control: Control) -> Bool {
-        guard let first = FileHandle(forReadingAtPath: a.path), let second = FileHandle(forReadingAtPath: b.path) else { return false }
+        func openRegular(_ url: URL) -> (FileHandle, Int64)? {
+            let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+            guard fd >= 0 else { return nil }
+            var info = stat()
+            guard fstat(fd, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else {
+                close(fd)
+                return nil
+            }
+            let flags = fcntl(fd, F_GETFL)
+            if flags != -1 { _ = fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) }
+            return (FileHandle(fileDescriptor: fd, closeOnDealloc: true), info.st_size)
+        }
+        func readChunk(_ handle: FileHandle, count: Int) throws -> Data {
+            var buffer = Data()
+            while buffer.count < count {
+                guard let piece = try handle.read(upToCount: count - buffer.count), !piece.isEmpty else { break }
+                buffer.append(piece)
+            }
+            return buffer
+        }
+        guard let (first, sizeA) = openRegular(a), let (second, sizeB) = openRegular(b) else { return false }
         defer {
             try? first.close()
             try? second.close()
         }
+        guard sizeA == sizeB else { return false }
         while !control.isCancelled {
-            let x = (try? first.read(upToCount: 1 << 20)) ?? Data()
-            let y = (try? second.read(upToCount: 1 << 20)) ?? Data()
-            if x != y { return false }
-            if x.isEmpty { return true }
+            do {
+                let x = try readChunk(first, count: 1 << 20)
+                let y = try readChunk(second, count: 1 << 20)
+                if x != y { return false }
+                if x.isEmpty { return true }
+            } catch {
+                return false
+            }
         }
         return false
     }

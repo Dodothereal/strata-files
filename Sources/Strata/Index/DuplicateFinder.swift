@@ -41,7 +41,7 @@ nonisolated package enum DuplicateFinder {
             var inodes: Set<[UInt64]> = []
             let distinct = group.filter { file in
                 var info = stat()
-                guard lstat(file.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else { return false }
+                guard lstat(file.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG, info.st_size == size else { return false }
                 return inodes.insert([UInt64(bitPattern: Int64(info.st_dev)), info.st_ino]).inserted
             }
             guard distinct.count > 1 else { continue }
@@ -58,7 +58,7 @@ nonisolated package enum DuplicateFinder {
                 var byFullHash: [Data: [String]] = [:]
                 for path in paths {
                     if isCancelled() { return [] }
-                    if let hash = fullHash(path) { byFullHash[hash, default: []].append(path) }
+                    if let hash = fullHash(path, expectedSize: size) { byFullHash[hash, default: []].append(path) }
                 }
                 for same in byFullHash.values where same.count > 1 {
                     groups.append(DuplicateGroup(size: size, paths: same.sorted()))
@@ -69,11 +69,11 @@ nonisolated package enum DuplicateFinder {
         return groups.sorted { $0.reclaimable > $1.reclaimable }
     }
 
-    private static func openRegularFile(_ path: String) -> FileHandle? {
+    private static func openRegularFile(_ path: String, expectedSize: Int64) -> FileHandle? {
         let fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
         guard fd >= 0 else { return nil }
         var info = stat()
-        guard fstat(fd, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else {
+        guard fstat(fd, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG, info.st_size == expectedSize else {
             close(fd)
             return nil
         }
@@ -83,21 +83,22 @@ nonisolated package enum DuplicateFinder {
     }
 
     private static func quickHash(_ path: String, size: Int64) -> Data? {
-        guard let handle = openRegularFile(path) else { return nil }
+        guard let handle = openRegularFile(path, expectedSize: size) else { return nil }
         defer { try? handle.close() }
         let chunk = 64 * 1024
         var hasher = SHA256()
-        guard let head = try? handle.read(upToCount: chunk) else { return nil }
+        guard let head = try? handle.read(upToCount: chunk), head.count == min(Int(clamping: size), chunk) else { return nil }
         hasher.update(data: head)
         if size > Int64(chunk) {
-            guard (try? handle.seek(toOffset: UInt64(size) - UInt64(chunk))) != nil, let tail = try? handle.read(upToCount: chunk) else { return nil }
+            guard (try? handle.seek(toOffset: UInt64(size) - UInt64(chunk))) != nil,
+                  let tail = try? handle.read(upToCount: chunk), tail.count == chunk else { return nil }
             hasher.update(data: tail)
         }
         return Data(hasher.finalize())
     }
 
-    private static func fullHash(_ path: String) -> Data? {
-        guard let handle = openRegularFile(path) else { return nil }
+    private static func fullHash(_ path: String, expectedSize: Int64) -> Data? {
+        guard let handle = openRegularFile(path, expectedSize: expectedSize) else { return nil }
         defer { try? handle.close() }
         var hasher = SHA256()
         do {

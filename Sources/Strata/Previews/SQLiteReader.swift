@@ -99,12 +99,26 @@ nonisolated package enum SQLiteReader {
     // MARK: - Helpers
 
     private static func open(_ url: URL) throws -> OpaquePointer? {
+        let fd = Darwin.open(url.path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)
+        guard fd >= 0 else {
+            throw PreviewError.message(String(localized: "This database couldn’t be opened."))
+        }
+        var info = stat()
+        let isRegular = fstat(fd, &info) == 0 && (info.st_mode & S_IFMT) == S_IFREG
+        Darwin.close(fd)
+        guard isRegular else {
+            throw PreviewError.message(String(localized: "This database couldn’t be opened."))
+        }
         var components = URLComponents()
         components.scheme = "file"
+        components.host = ""
         components.path = url.path
         components.queryItems = [URLQueryItem(name: "immutable", value: "1")]
+        guard let uri = components.string else {
+            throw PreviewError.message(String(localized: "This database couldn’t be opened."))
+        }
         var db: OpaquePointer?
-        let status = sqlite3_open_v2(components.string ?? url.path, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil)
+        let status = sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil)
         guard status == SQLITE_OK else {
             sqlite3_close_v2(db)
             throw PreviewError.message(String(localized: "This database couldn’t be opened."))

@@ -425,7 +425,7 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
                 // Extras go first, so nothing a copy writes can be trashed after it.
                 if !trash.isEmpty {
                     do {
-                        try await FileOps.trashInBackground(trash, undo: undo)
+                        try await FileOps.trashInBackground(trash, undo: undo, copies: transfers.copies, history: transfers.history)
                     } catch {
                         let failed = NSAlert(error: error)
                         failed.messageText = String(localized: "Some items couldn’t be moved to the Trash, so the sync stopped there.")

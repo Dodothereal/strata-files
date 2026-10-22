@@ -480,7 +480,7 @@ final class InspectorViewController: NSViewController {
         guard let url else { return }
         projectTask = Task { [weak self] in
             let info = await ProjectInfo.load(for: url) { partial in
-                guard let self, self.projectFolder == url else { return }
+                guard !Task.isCancelled, let self, self.projectFolder == url else { return }
                 self.showProject(partial)
             }
             guard let self, !Task.isCancelled, self.projectFolder == url else { return }

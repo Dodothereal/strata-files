@@ -330,4 +330,55 @@ struct EdgeCaseSafetyTests {
         #expect(store.tags(for: doc).isEmpty)
         #expect(tree.snapshot() == ["doc.txt"])
     }
+
+    @Test func codeLoaderShortensLongUTF16LinesAndGridRejectsMalformedNumbers() async throws {
+        let tree = try TestTree()
+        let codeURL = tree.root.appending(path: "long.json")
+        // 1,100 astral emoji characters = 2,200 UTF-16 code units (> maxLineLength 2,000), but < 2,000 Character count.
+        let longLine = "\"" + String(repeating: "😀", count: 1_100) + "\""
+        try Data(longLine.utf8).write(to: codeURL)
+        let doc = try await CodeLoader.load(codeURL, mode: .json)
+        #expect(doc.note != nil)
+        #expect(doc.storage.value.length <= CodeLoader.maxLineLength + 4)
+
+        var grid = GridData(
+            columns: [GridColumn(title: "version"), GridColumn(title: "badExp"), GridColumn(title: "good")],
+            rows: [
+                [.text("1.2.3"), .text("1e+"), .text("1.25e+3")],
+                [.text("2.0.1"), .text("1e1-2"), .text("-42.5%")],
+            ]
+        )
+        grid.detectNumericColumns()
+        #expect(!grid.columns[0].isNumeric)
+        #expect(!grid.columns[1].isNumeric)
+        #expect(grid.columns[2].isNumeric)
+        #expect(tree.snapshot() == ["long.json"])
+    }
+
+    @Test func duplicateFinderAndFolderCompareVerifyOnDiskRegularFilesAndSizes() throws {
+        let tree = try TestTree("a.txt", "b.txt", "link -> a.txt")
+        let a = tree.url("a.txt")
+        let b = tree.url("b.txt")
+        let link = tree.url("link")
+        try Data("same-prefix-0123456789".utf8).write(to: a)
+        try Data("same-prefix-0123456789-appended-later".utf8).write(to: b)
+
+        // If `b.txt` grew after indexing, DuplicateFinder must not group it with `a.txt` under the stale 22-byte size.
+        let staleCandidates: [[(path: String, size: Int64)]] = [[(a.path, 22), (b.path, 22)]]
+        let groups = DuplicateFinder.find(staleCandidates, progress: { _, _ in }, isCancelled: { false })
+        #expect(groups.isEmpty)
+
+        let control = FolderCompare.Control()
+        #expect(!FolderCompare.sameBytes(a, b, control: control))
+        #expect(!FolderCompare.sameBytes(a, link, control: control))
+        try Data("same-prefix-0123456789".utf8).write(to: b)
+        #expect(FolderCompare.sameBytes(a, b, control: control))
+
+        let q1 = IndexQuery.parse("size:<nanmb modified:<nand size:>-5mb")
+        #expect(q1.maxSize == nil)
+        #expect(q1.minSize == nil)
+        #expect(q1.modifiedAfter == nil)
+        #expect(q1.modifiedBefore == nil)
+        #expect(tree.snapshot() == ["a.txt", "b.txt", "link -> a.txt"])
+    }
 }

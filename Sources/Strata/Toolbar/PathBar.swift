@@ -386,11 +386,17 @@ final class PathBar: NSView, NSTextFieldDelegate {
         if matches.count == 1 {
             completed = first + "/"
         } else {
-            var common = first.lowercased()
-            for name in matches.dropFirst() {
-                common = String(common.commonPrefix(with: name.lowercased()))
+            var end = first.startIndex
+            while end < first.endIndex {
+                let next = first.index(after: end)
+                let candidateLower = first[..<next].lowercased()
+                if matches.dropFirst().allSatisfy({ $0.lowercased().hasPrefix(candidateLower) }) {
+                    end = next
+                } else {
+                    break
+                }
             }
-            completed = String(first.prefix(common.count))
+            completed = String(first[..<end])
             if completed.count == prefix.count { NSSound.beep() }
         }
         let newPath = (directory as NSString).appendingPathComponent(completed)

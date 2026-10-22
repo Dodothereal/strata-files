@@ -26,12 +26,14 @@ nonisolated enum DSStore {
         guard fd >= 0 else { return [:] }
         defer { close(fd) }
         var info = stat()
-        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size <= maxFileSize else { return [:] }
+        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size >= 0, info.st_size <= maxFileSize else { return [:] }
         var data = Data(count: Int(info.st_size))
         var total = 0
         let ok = data.withUnsafeMutableBytes { buffer -> Bool in
+            guard let base = buffer.baseAddress else { return true }
             while total < buffer.count {
-                let n = read(fd, buffer.baseAddress! + total, buffer.count - total)
+                let n = read(fd, base + total, buffer.count - total)
+                if n < 0, errno == EINTR { continue }
                 if n <= 0 { return n == 0 }
                 total += n
             }

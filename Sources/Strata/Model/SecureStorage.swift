@@ -245,10 +245,11 @@ nonisolated package enum SecureStorage {
         }
 
         package func write(_ bytes: UnsafeRawBufferPointer) {
+            guard let base = bytes.baseAddress else { return }
             var offset = 0
             while offset < bytes.count && !failed {
                 let take = min(chunkSize - buffer.count, bytes.count - offset)
-                buffer.append(bytes.baseAddress!.assumingMemoryBound(to: UInt8.self) + offset, count: take)
+                buffer.append(base.assumingMemoryBound(to: UInt8.self) + offset, count: take)
                 offset += take
                 if buffer.count == chunkSize { flush(final: false) }
             }
@@ -286,9 +287,11 @@ nonisolated package enum SecureStorage {
         }
 
         private func put(_ bytes: UnsafeRawBufferPointer) {
+            guard let base = bytes.baseAddress else { return }
             var offset = 0
             while offset < bytes.count && !failed {
-                let written = Darwin.write(fd, bytes.baseAddress! + offset, bytes.count - offset)
+                let written = Darwin.write(fd, base + offset, bytes.count - offset)
+                if written < 0, errno == EINTR { continue }
                 if written <= 0 { failed = true } else { offset += written }
             }
         }
@@ -315,7 +318,7 @@ nonisolated package enum SecureStorage {
             let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
             guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .ENOENT) }
             var info = stat()
-            guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
+            guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size >= 0 else {
                 close(fd)
                 throw Failure()
             }
@@ -342,12 +345,14 @@ nonisolated package enum SecureStorage {
 
         /// Fills `destination` completely, or throws.
         package func read(into destination: UnsafeMutableRawBufferPointer) throws {
+            guard let destBase = destination.baseAddress else { return }
             var filled = 0
             while filled < destination.count {
                 if position == chunk.count { try nextChunk() }
                 let take = min(chunk.count - position, destination.count - filled)
                 chunk.withUnsafeBytes { source in
-                    _ = memcpy(destination.baseAddress! + filled, source.baseAddress! + position, take)
+                    guard let srcBase = source.baseAddress else { return }
+                    _ = memcpy(destBase + filled, srcBase + position, take)
                 }
                 position += take
                 filled += take

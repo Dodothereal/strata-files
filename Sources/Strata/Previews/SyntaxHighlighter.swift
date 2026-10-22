@@ -175,7 +175,8 @@ nonisolated private struct Scanner {
     }
 
     func word(_ start: Int, _ end: Int) -> String {
-        String(utf16CodeUnits: u.baseAddress! + start, count: end - start)
+        guard end > start, let base = u.baseAddress else { return "" }
+        return String(utf16CodeUnits: base + start, count: end - start)
     }
 
     /// End of the text closed by `close`, honoring backslash escapes; stops at a newline unless `multiline`.
