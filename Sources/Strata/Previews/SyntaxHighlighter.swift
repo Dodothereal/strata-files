@@ -1,78 +1,78 @@
 import Foundation
 
 /// What a highlighted run of source is; `CodeTheme` gives each kind its color.
-nonisolated enum TokenKind: UInt8, Sendable {
+nonisolated package enum TokenKind: UInt8, Sendable {
     case comment, string, number, keyword, type, function, declaration, attribute, preprocessor, key, tag
     case inserted, deleted, meta
 }
 
 /// A highlighted run in UTF-16 offsets, so it maps straight onto `NSRange`.
-nonisolated struct Token: Sendable {
-    var location: Int
-    var length: Int
-    var kind: TokenKind
+nonisolated package struct Token: Sendable {
+    package var location: Int
+    package var length: Int
+    package var kind: TokenKind
 }
 
 /// A quoted literal: its delimiters, whether it may span lines and whether backslash escapes the next character.
-nonisolated struct StringRule: Sendable {
-    var open: String
-    var close: String
-    var multiline = false
-    var escapes = true
-    var kind = TokenKind.string
+nonisolated package struct StringRule: Sendable {
+    package var open: String
+    package var close: String
+    package var multiline = false
+    package var escapes = true
+    package var kind = TokenKind.string
 
-    static let double = StringRule(open: "\"", close: "\"")
-    static let single = StringRule(open: "'", close: "'")
-    static let backtick = StringRule(open: "`", close: "`", multiline: true)
-    static let tripleDouble = StringRule(open: "\"\"\"", close: "\"\"\"", multiline: true)
-    static let tripleSingle = StringRule(open: "'''", close: "'''", multiline: true)
+    package static let double = StringRule(open: "\"", close: "\"")
+    package static let single = StringRule(open: "'", close: "'")
+    package static let backtick = StringRule(open: "`", close: "`", multiline: true)
+    package static let tripleDouble = StringRule(open: "\"\"\"", close: "\"\"\"", multiline: true)
+    package static let tripleSingle = StringRule(open: "'''", close: "'''", multiline: true)
 }
 
 /// Lexical rules for the generic, C/script/config-style lexer. Every switch is off by default.
-nonisolated struct LexRules: Sendable {
-    var lineComments: [String] = []
-    var blockComments: [(open: String, close: String)] = []
-    var nestedComments = false
+nonisolated package struct LexRules: Sendable {
+    package var lineComments: [String] = []
+    package var blockComments: [(open: String, close: String)] = []
+    package var nestedComments = false
     /// `#`-style comments start only at the beginning of a line or after whitespace (shells, YAML values).
-    var commentNeedsBoundary = false
+    package var commentNeedsBoundary = false
     /// Longest delimiters first.
-    var strings: [StringRule] = [.double, .single]
+    package var strings: [StringRule] = [.double, .single]
     /// Identifiers that, directly followed by a quote, belong to the string (`f"…"`, `r#"…"`, `@"…"`).
-    var stringPrefixes: Set<String> = []
-    var keywords: Set<String> = []
+    package var stringPrefixes: Set<String> = []
+    package var keywords: Set<String> = []
     /// Keywords only when they are the first word on a line (Dockerfile instructions).
-    var lineStartKeywords: Set<String> = []
-    var types: Set<String> = []
+    package var lineStartKeywords: Set<String> = []
+    package var types: Set<String> = []
     /// Keywords after which the next identifier is being declared (`func name`, `class Name`).
-    var declarationKeywords: Set<String> = []
-    var caseInsensitive = false
-    var capitalizedTypes = false
-    var functionCalls = false
+    package var declarationKeywords: Set<String> = []
+    package var caseInsensitive = false
+    package var capitalizedTypes = false
+    package var functionCalls = false
     /// `ALL_CAPS` identifiers look like macros (C family).
-    var allCapsMacros = false
+    package var allCapsMacros = false
     /// `ALL_CAPS` identifiers are types (Swift's `URL`, `UUID`).
-    var allCapsTypes = false
-    var identifierExtras = ""
+    package var allCapsTypes = false
+    package var identifierExtras = ""
     /// `@name` is an attribute or decorator (or a keyword, when `@name` is in `keywords`).
-    var attributePrefix: Character?
+    package var attributePrefix: Character?
     /// `#name` is a preprocessor directive, at the start of a line unless `preprocessorAnywhere`.
-    var preprocessorPrefix: Character?
-    var preprocessorAnywhere = false
+    package var preprocessorPrefix: Character?
+    package var preprocessorAnywhere = false
     /// `$name`, `${…}` and `$1` are variables; `variableParens` also makes `$(…)` one.
-    var variablePrefix: Character?
-    var variableParens = false
+    package var variablePrefix: Character?
+    package var variableParens = false
     /// A leading identifier followed by one of these is a key (`key = value`, `KEY: value`, `target:`).
-    var keyAssignment = ""
+    package var keyAssignment = ""
     /// `[section]` lines (INI, TOML).
-    var sectionHeaders = false
+    package var sectionHeaders = false
     /// Rust: `name!` macros, `'a` lifetimes and `#[attributes]`.
-    var rustSyntax = false
+    package var rustSyntax = false
     /// Ruby/Elixir `:symbols`.
-    var symbols = false
+    package var symbols = false
 }
 
 /// How a language is tokenized.
-nonisolated enum Lexer: Sendable {
+nonisolated package enum Lexer: Sendable {
     case generic(LexRules)
     case markup
     case css(lineComments: Bool)
@@ -83,8 +83,8 @@ nonisolated enum Lexer: Sendable {
 }
 
 /// Fast, regex-free tokenizer for syntax highlighting. Works on UTF-16 so token ranges are `NSRange`-compatible.
-nonisolated enum SyntaxHighlighter {
-    static func tokens(in text: String, lexer: Lexer) -> [Token] {
+nonisolated package enum SyntaxHighlighter {
+    package static func tokens(in text: String, lexer: Lexer) -> [Token] {
         let units = Array(text.utf16)
         var tokens: [Token] = []
         tokens.reserveCapacity(units.count / 8)

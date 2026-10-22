@@ -1,13 +1,13 @@
 import AppKit
 
 /// Rendered Markdown: headings, lists, quotes, highlighted code blocks, tables and clickable links.
-final class MarkdownPreviewView: PreviewView, NSTextViewDelegate {
+package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate {
     private let scrollView = NSScrollView()
     // TextKit 1 draws NSTextBlock backgrounds and NSTextTable cells.
     private let textView = NSTextView(usingTextLayoutManager: false)
     private let layoutManager = MarkdownLayoutManager()
 
-    init(url: URL) {
+    package init(url: URL) {
         super.init(frame: .zero)
         configure()
         load({ try await MarkdownLoader.load(url) }) { [weak self] document in
@@ -15,7 +15,7 @@ final class MarkdownPreviewView: PreviewView, NSTextViewDelegate {
         }
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
     private func configure() {
         scrollView.drawsBackground = false
@@ -57,7 +57,7 @@ final class MarkdownPreviewView: PreviewView, NSTextViewDelegate {
 
     /// Markdown comes from untrusted files, so links never launch anything: web and mail links open, links to
     /// local files are revealed (not opened, so a link to a script can't run it), other schemes are ignored.
-    func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+    package func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
         let url = (link as? URL) ?? (link as? String).flatMap { URL(string: $0) }
         guard let url else { return true }
         switch url.scheme?.lowercased() {
@@ -72,15 +72,15 @@ final class MarkdownPreviewView: PreviewView, NSTextViewDelegate {
     }
 }
 
-nonisolated struct MarkdownDocument: Sendable {
-    let storage: Handoff<NSTextStorage>
-    let wordCount: Int
-    let isTruncated: Bool
+nonisolated package struct MarkdownDocument: Sendable {
+    package let storage: Handoff<NSTextStorage>
+    package let wordCount: Int
+    package let isTruncated: Bool
 }
 
-nonisolated enum MarkdownLoader {
+nonisolated package enum MarkdownLoader {
     @concurrent
-    static func load(_ url: URL) async throws -> MarkdownDocument {
+    package static func load(_ url: URL) async throws -> MarkdownDocument {
         let file = try TextFile.read(url)
         guard !file.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw PreviewError.empty }
         let blocks = MarkdownParser.parse(file.text)

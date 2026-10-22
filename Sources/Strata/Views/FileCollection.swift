@@ -177,9 +177,13 @@ enum FileDrop {
     /// Out of an archive opened as a folder, things are only copied: no move, no alias to a temporary copy, and no
     /// dropping on the Dock's Trash.
     static func sourceMask(_ mask: NSDragOperation, _ session: NSDraggingSession, copies: CopyProviders = .live) -> NSDragOperation {
-        let urls = urls(session.draggingPasteboard, copies: copies)
+        sourceMask(mask, session.draggingPasteboard, copies: copies)
+    }
+
+    static func sourceMask(_ mask: NSDragOperation, _ pasteboard: NSPasteboard, copies: CopyProviders = .live) -> NSDragOperation {
+        let urls = urls(pasteboard, copies: copies)
         // A server's items can also move within that server (a rename there); out of it, they're copied.
-        if !urls.isEmpty, urls.allSatisfy({ copies.remoteCopies.server(containing: $0) != nil || RemoteCopies.server(containing: $0) != nil }) {
+        if !urls.isEmpty, urls.allSatisfy({ copies.remoteCopies.server(containing: $0) != nil }) {
             return mask.intersection([.copy, .move])
         }
         return urls.contains(where: { ReadOnlyCopies.contains($0, copies: copies) }) ? mask.intersection(.copy) : mask
@@ -224,11 +228,10 @@ enum FileDrop {
         if isInside(urls, target) { return [] }
         let remoteCopies = copies.remoteCopies
         // Onto a server: copied there, or moved within that server.
-        if remoteCopies.contains(target) || RemoteCopies.contains(target) {
-            let store = remoteCopies.contains(target) ? remoteCopies : RemoteCopies.store
+        if remoteCopies.contains(target) {
             // Strata's Servers folder, or what a removed server left: nothing goes there.
-            guard let sameServer = store.server(containing: target)?.server.id else { return [] }
-            if urls.allSatisfy({ store.server(containing: $0)?.server.id == sameServer }) {
+            guard let sameServer = remoteCopies.server(containing: target)?.server.id else { return [] }
+            if urls.allSatisfy({ remoteCopies.server(containing: $0)?.server.id == sameServer }) {
                 // Within one server: a move there, or a copy with Option, as on this Mac.
                 if option { return .copy }
                 return urls.allSatisfy({ $0.deletingLastPathComponent().standardizedFileURL.path == targetPath }) ? [] : .move

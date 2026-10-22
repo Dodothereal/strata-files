@@ -2,18 +2,18 @@ import CryptoKit
 import Foundation
 
 /// A set of files with identical contents.
-nonisolated struct DuplicateGroup: Sendable {
-    let size: Int64
-    let paths: [String]
+nonisolated package struct DuplicateGroup: Sendable {
+    package let size: Int64
+    package let paths: [String]
 
     /// Space freed by keeping one copy.
-    var reclaimable: Int64 { size * Int64(paths.count - 1) }
+    package var reclaimable: Int64 { size * Int64(paths.count - 1) }
 }
 
 /// Finds duplicate files among indexed ones: same size first (free, from the index), then a hash of the first and
 /// last 64 KB, then a full SHA-256 only for files that still look identical.
-nonisolated enum DuplicateFinder {
-    static func candidates(in store: IndexStore, minSize: Int64) -> [[(path: String, size: Int64)]] {
+nonisolated package enum DuplicateFinder {
+    package static func candidates(in store: IndexStore, minSize: Int64) -> [[(path: String, size: Int64)]] {
         store.read { store in
             var bySize: [Int64: [Int32]] = [:]
             let skip = IndexStore.Flag.directory | IndexStore.Flag.noise | IndexStore.Flag.hidden | IndexStore.Flag.deleted
@@ -27,7 +27,7 @@ nonisolated enum DuplicateFinder {
     }
 
     /// Hashes candidates and returns real duplicate groups, largest savings first. `progress` gets (done, total).
-    static func find(_ candidates: [[(path: String, size: Int64)]], progress: @Sendable (Int, Int) -> Void,
+    package static func find(_ candidates: [[(path: String, size: Int64)]], progress: @Sendable (Int, Int) -> Void,
                      isCancelled: @Sendable () -> Bool) -> [DuplicateGroup] {
         var groups: [DuplicateGroup] = []
         let total = candidates.count

@@ -1,11 +1,11 @@
 import Foundation
 
 /// Calls `onChange` (debounced) when entries are added to, removed from, or renamed inside a directory.
-final class DirectoryWatcher {
+package final class DirectoryWatcher {
     private let source: DispatchSourceFileSystemObject
     private var debounce: DispatchWorkItem?
 
-    init?(url: URL, onChange: @escaping () -> Void) {
+    package init?(url: URL, onChange: @escaping () -> Void) {
         let fd = open(url.path, O_EVTONLY)
         guard fd >= 0 else { return nil }
         source = DispatchSource.makeFileSystemObjectSource(

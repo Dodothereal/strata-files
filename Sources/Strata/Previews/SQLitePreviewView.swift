@@ -1,14 +1,14 @@
 import AppKit
 
 /// A SQLite database: a pop-up of its tables and views (with row counts), and the first rows of the chosen one.
-final class SQLitePreviewView: PreviewView {
+package final class SQLitePreviewView: PreviewView {
     private let url: URL
     private let picker = NSPopUpButton(frame: .zero, pullsDown: false)
     private let summary = NSTextField(labelWithString: "")
     private let grid = GridView()
     private var tables: [SQLiteTable] = []
 
-    init(url: URL) {
+    package init(url: URL) {
         self.url = url
         super.init(frame: .zero)
         configure()
@@ -22,7 +22,7 @@ final class SQLitePreviewView: PreviewView {
         })
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
     private func configure() {
         picker.controlSize = .small
@@ -108,7 +108,7 @@ final class SQLitePreviewView: PreviewView {
     }
 }
 
-nonisolated struct SQLiteSnapshot: Sendable {
-    let tables: [SQLiteTable]
-    let rows: SQLiteRows
+nonisolated package struct SQLiteSnapshot: Sendable {
+    package let tables: [SQLiteTable]
+    package let rows: SQLiteRows
 }

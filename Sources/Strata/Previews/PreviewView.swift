@@ -1,30 +1,30 @@
 import AppKit
 
 /// Why a rich preview couldn't show a file.
-nonisolated enum PreviewError: Error {
+nonisolated package enum PreviewError: Error {
     /// The file isn't what its name suggests (binary data in a `.ts`, a `.db` that isn't SQLite); Quick Look should take over.
     case unsupported
     /// A calm, user-facing explanation, shown under an SF Symbol.
     case message(String, symbol: String = "exclamationmark.triangle")
 
-    static let empty = PreviewError.message(String(localized: "This file is empty."), symbol: "doc")
+    package static let empty = PreviewError.message(String(localized: "This file is empty."), symbol: "doc")
 }
 
 /// Base for the rich previews: runs one background load, shows a spinner if it takes a moment, then the content
 /// (added to `contentView` by subclasses) with a one-line footer, or a centered message on failure.
-class PreviewView: NSView {
+package class PreviewView: NSView {
     /// Called when the file turns out not to suit this preview. Without it, a "No Preview" message shows instead.
-    var fallback: (() -> Void)?
+    package var fallback: (() -> Void)?
     /// False once content or a message is showing.
-    private(set) var isLoading = false
+    package private(set) var isLoading = false
 
-    let contentView = NSView()
-    let footer = PreviewFooter()
+    package let contentView = NSView()
+    package let footer = PreviewFooter()
     private var spinner: NSProgressIndicator?
     private var message: PreviewMessageView?
     private var task: Task<Void, Never>?
 
-    override init(frame: NSRect) {
+    package override init(frame: NSRect) {
         super.init(frame: frame)
         contentView.translatesAutoresizingMaskIntoConstraints = false
         footer.translatesAutoresizingMaskIntoConstraints = false
@@ -42,12 +42,12 @@ class PreviewView: NSView {
         ])
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
     deinit { task?.cancel() }
 
     /// Runs `operation` off the main thread and hands its result to `apply`, unless the view is gone or a newer load started.
-    final func load<Value: Sendable>(_ operation: @escaping @concurrent @Sendable () async throws -> Value,
+    package final func load<Value: Sendable>(_ operation: @escaping @concurrent @Sendable () async throws -> Value,
                                apply: @escaping (Value) -> Void) {
         task?.cancel()
         isLoading = true
@@ -79,7 +79,7 @@ class PreviewView: NSView {
     }
 
     /// Replaces the content with a centered symbol and text.
-    func showMessage(symbol: String, _ text: String) {
+    package func showMessage(symbol: String, _ text: String) {
         contentView.subviews.forEach { $0.isHidden = true }
         footer.isHidden = true
         let view = PreviewMessageView(symbol: symbol, text: text)
@@ -135,14 +135,14 @@ class PreviewView: NSView {
 }
 
 /// The one-line caption under a preview: what it is on the left, a note (such as truncation) on the right.
-final class PreviewFooter: NSView {
+package final class PreviewFooter: NSView {
     private let leading = NSTextField(labelWithString: "")
     private let trailing = NSTextField(labelWithString: "")
     private let separator = NSBox()
     private lazy var leadingWidth = slack(for: leading, priority: .defaultHigh + 1)
     private lazy var trailingWidth = slack(for: trailing, priority: .defaultLow + 2)
 
-    override init(frame: NSRect) {
+    package override init(frame: NSRect) {
         super.init(frame: frame)
         separator.boxType = .separator
         for label in [leading, trailing] {
@@ -175,11 +175,11 @@ final class PreviewFooter: NSView {
         ])
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
     /// Shows the footer with `parts` joined by middots, and an optional right-aligned `note` (such as truncation).
     /// A `warning` takes the note's place, in secondary text behind a yellow triangle.
-    func show(_ parts: [String], note: String? = nil, warning: String? = nil) {
+    package func show(_ parts: [String], note: String? = nil, warning: String? = nil) {
         leading.stringValue = parts.joined(separator: " · ")
         if let warning {
             let symbol = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: String(localized: "Warning", comment: "Accessibility: a warning symbol"))?
@@ -242,6 +242,7 @@ final class PreviewMessageView: NSView {
 
 /// Moves a non-Sendable value built on a background task (an attributed string, a text storage) to the main actor.
 /// Only safe when the producer drops every other reference, which is how the loaders use it.
-nonisolated struct Handoff<Value>: @unchecked Sendable {
-    let value: Value
+nonisolated package struct Handoff<Value>: @unchecked Sendable {
+    package let value: Value
+    package init(value: Value) { self.value = value }
 }

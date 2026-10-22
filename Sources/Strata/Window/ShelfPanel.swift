@@ -51,8 +51,11 @@ final class ShelfPanel: NSPanel {
     }
 }
 
-private final class ShelfWell: NSView, NSDraggingSource {
-    private var items: [URL] = []
+final class ShelfWell: NSView, NSDraggingSource {
+    private(set) var items: [URL] = []
+    var activeWindow: () -> BrowserWindowController? = {
+        NSApp.orderedWindows.compactMap({ $0.windowController as? BrowserWindowController }).first
+    }
     private let iconView = NSImageView()
     private let label = NSTextField(labelWithString: "")
     private let buttons = NSStackView()
@@ -148,26 +151,41 @@ private final class ShelfWell: NSView, NSDraggingSource {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         highlighted = false
-        let urls = FileDrop.urls(sender)
+        return acceptDrop(sender.draggingPasteboard)
+    }
+
+    func acceptDrop(_ pasteboard: NSPasteboard) -> Bool {
+        let copies = activeWindow()?.services.copies ?? .live
+        let urls = FileDrop.urls(pasteboard, copies: copies)
         add(urls)
         return !urls.isEmpty
     }
 
     // MARK: Drag out
 
+    func pasteboardWriters() -> [any NSPasteboardWriting] {
+        let copies = activeWindow()?.services.copies ?? .live
+        return items.map { ContainerDragItem.writer(for: $0, copies: copies) }
+    }
+
     override func mouseDragged(with event: NSEvent) {
         guard !items.isEmpty else { return }
-        let draggingItems = items.enumerated().map { index, url -> NSDraggingItem in
-            let item = NSDraggingItem(pasteboardWriter: ContainerDragItem.writer(for: url))
+        let draggingItems = zip(items.indices, zip(items, pasteboardWriters())).map { index, pair -> NSDraggingItem in
+            let item = NSDraggingItem(pasteboardWriter: pair.1)
             let offset = CGFloat(min(index, 4)) * 4
-            item.setDraggingFrame(iconView.frame.offsetBy(dx: offset, dy: -offset), contents: NSWorkspace.shared.icon(forFile: url.path))
+            item.setDraggingFrame(iconView.frame.offsetBy(dx: offset, dy: -offset), contents: NSWorkspace.shared.icon(forFile: pair.0.path))
             return item
         }
         beginDraggingSession(with: draggingItems, event: event, source: self)
     }
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        FileDrop.sourceMask([.copy, .move, .generic], session)
+        sourceMask(session.draggingPasteboard)
+    }
+
+    func sourceMask(_ pasteboard: NSPasteboard) -> NSDragOperation {
+        let copies = activeWindow()?.services.copies ?? .live
+        return FileDrop.sourceMask([.copy, .move, .generic], pasteboard, copies: copies)
     }
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
@@ -177,11 +195,13 @@ private final class ShelfWell: NSView, NSDraggingSource {
 
     // MARK: Actions
 
-    private func transfer(move: Bool) {
-        guard let controller = NSApp.orderedWindows.compactMap({ $0.windowController as? BrowserWindowController }).first else { return }
+    func transfer(move: Bool) {
+        guard let controller = activeWindow() else { return }
         let urls = items
         // Onto a server: copied there through the server (what's on the Shelf stays).
-        if RemoteCopies.contains(controller.location) { return controller.browser.copyToServer(urls, into: controller.location, move: false) }
+        if controller.services.remote.copies.contains(controller.location) {
+            return controller.browser.copyToServer(urls, into: controller.location, move: false)
+        }
         let job = controller.services.transfers.enqueue(urls, to: controller.location, mode: move ? .move : .copy,
                                                undo: controller.window?.undoManager, conflicts: .sheet(for: controller.window))
         job.onFinish = { [weak self] _ in

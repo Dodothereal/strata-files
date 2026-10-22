@@ -1730,7 +1730,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
                 cell.identifier = .groupCell
                 return cell
             }()
-            cell.configure(title: title, detail: node.groupDetail ?? "", icon: IconCache.shared.icon(for: node.entry))
+            cell.configure(title: title, detail: node.groupDetail ?? "", icon: services.thumbnails.icon(for: node.entry))
             return cell
         }
         guard let column = tableColumn else { return nil }
@@ -1743,7 +1743,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
                 cell.identifier = .nameCell
                 return cell
             }()
-            cell.configure(name: entry.displayName, icon: IconCache.shared.icon(for: entry), matches: node.matchIndices, dimmed: dimmed,
+            cell.configure(name: entry.displayName, icon: services.thumbnails.icon(for: entry), matches: node.matchIndices, dimmed: dimmed,
                            git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
                            cloud: CloudStore.shared.status(for: entry.url), thumbnail: preferences.showIconPreviews ? entry : nil,
                            thumbnails: services.thumbnails, scale: outlineView.window?.backingScaleFactor ?? 2,
@@ -2083,6 +2083,6 @@ extension BrowserViewController: QLPreviewPanelDataSource, QLPreviewPanelDelegat
         let scale = view.window?.backingScaleFactor ?? 2
         if preferences.showIconPreviews, services.thumbnails.canThumbnail(entry),
            let thumbnail = services.thumbnails.cached(entry, size: NameCellView.iconSide, scale: scale) { return thumbnail.image }
-        return IconCache.shared.icon(for: entry)
+        return services.thumbnails.icon(for: entry)
     }
 }

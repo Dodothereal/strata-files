@@ -1,7 +1,7 @@
 import Foundation
 
 /// `value` as Int64, clamped to its range (a typed "size:9e30" or "1e20 days" must not trap); nil for NaN.
-nonisolated func saturatingInt64(_ value: Double) -> Int64? {
+nonisolated package func saturatingInt64(_ value: Double) -> Int64? {
     guard !value.isNaN else { return nil }
     if value >= 9.2e18 { return .max }
     if value <= -9.2e18 { return .min }
@@ -9,13 +9,13 @@ nonisolated func saturatingInt64(_ value: Double) -> Int64? {
 }
 
 /// A count of days, weeks… from a query, kept to a sane range (date arithmetic overflows on absurd values).
-nonisolated func boundedCount(_ value: Double) -> Int {
+nonisolated package func boundedCount(_ value: Double) -> Int {
     guard value.isFinite else { return 0 }
     return Int(max(-1_000_000, min(1_000_000, value)))
 }
 
 /// Seconds since 1970 as the index's 32-bit timestamp, clamped.
-nonisolated func indexStamp(_ date: Date) -> UInt32 {
+nonisolated package func indexStamp(_ date: Date) -> UInt32 {
     UInt32(clamping: saturatingInt64(date.timeIntervalSince1970) ?? 0)
 }
 
@@ -23,54 +23,56 @@ nonisolated func indexStamp(_ date: Date) -> UInt32 {
 /// `ext:pdf;png`, `*.pdf`, `kind:image|video|audio|doc|code|archive|app|folder|file`, `size:>100mb`, `size:1mb..1gb`,
 /// `modified:today|yesterday|<7d|>30d|2026`, `in:~/Documents` or `in:github` (any enclosing folder name),
 /// `!word` to exclude, `"exact phrase"`, and `a/b` to match a folder named like `a` above a name like `b`.
-nonisolated struct IndexQuery: Sendable {
-    enum Kind: String, Sendable {
+nonisolated package struct IndexQuery: Sendable {
+    package enum Kind: String, Sendable {
         case folder, file, image, video, audio, document, code, archive, app
     }
 
-    var terms: [[UInt8]] = []
-    var excludedTerms: [[UInt8]] = []
+    package var terms: [[UInt8]] = []
+    package var excludedTerms: [[UInt8]] = []
     /// `a/b` terms: ancestors must match the leading parts, the name the last.
-    var pathTerms: [[[UInt8]]] = []
-    var extensions: Set<String> = []
-    var kind: Kind?
-    var minSize: Int64?
-    var maxSize: Int64?
-    var modifiedAfter: UInt32?
-    var modifiedBefore: UInt32?
-    var scopePath: String?
-    var scopeNames: [[UInt8]] = []
-    var includeNoise = false
-    var includeHidden = false
+    package var pathTerms: [[[UInt8]]] = []
+    package var extensions: Set<String> = []
+    package var kind: Kind?
+    package var minSize: Int64?
+    package var maxSize: Int64?
+    package var modifiedAfter: UInt32?
+    package var modifiedBefore: UInt32?
+    package var scopePath: String?
+    package var scopeNames: [[UInt8]] = []
+    package var includeNoise = false
+    package var includeHidden = false
     /// `regex:pattern`: names must match it (ignoring case unless `case:` is on). An invalid pattern matches nothing.
-    var regex: NameRegex?
-    var invalidRegex = false
+    package var regex: NameRegex?
+    package var invalidRegex = false
     /// `case:` (the scope bar's Match Case): name words and the pattern compare letters exactly, case and accents.
-    var caseSensitive = false
+    package var caseSensitive = false
+
+    package init() {}
 
     /// Anything beyond plain name words (extensions, kind, size, dates, exclusions, folder parts, a pattern).
-    var hasFilters: Bool {
+    package var hasFilters: Bool {
         !extensions.isEmpty || kind != nil || minSize != nil || maxSize != nil || modifiedAfter != nil
             || modifiedBefore != nil || !excludedTerms.isEmpty || !scopeNames.isEmpty || !pathTerms.isEmpty
             || regex != nil || invalidRegex || caseSensitive
     }
 
-    var isEmpty: Bool {
+    package var isEmpty: Bool {
         terms.isEmpty && pathTerms.isEmpty && extensions.isEmpty && kind == nil && minSize == nil && maxSize == nil
             && modifiedAfter == nil && modifiedBefore == nil && scopeNames.isEmpty && regex == nil && !invalidRegex
     }
 
-    static let caseWords: Set<String> = ["case:", "case:yes", "case:on", "case:match", "case:sensitive"]
+    package static let caseWords: Set<String> = ["case:", "case:yes", "case:on", "case:match", "case:sensitive"]
     /// Spelled out, the default: they're understood and set nothing.
-    static let noCaseWords: Set<String> = ["case:off", "case:no", "case:ignore"]
+    package static let noCaseWords: Set<String> = ["case:off", "case:no", "case:ignore"]
 
     /// Whether `text` asks for exact case (`case:`).
-    static func isCaseSensitive(_ text: String) -> Bool {
+    package static func isCaseSensitive(_ text: String) -> Bool {
         tokenize(text).contains { caseWords.contains($0.lowercased()) }
     }
 
     /// `text` with `case:` added or taken out (the scope bar's Match Case), everything else as typed.
-    static func settingCase(_ on: Bool, in text: String) -> String {
+    package static func settingCase(_ on: Bool, in text: String) -> String {
         let words = text.split(separator: " ", omittingEmptySubsequences: true).filter {
             !caseWords.contains($0.lowercased()) && !noCaseWords.contains($0.lowercased())
         }
@@ -79,11 +81,11 @@ nonisolated struct IndexQuery: Sendable {
 
     /// How names and terms are compared: composed Unicode, without case or accents ("Café", "cafe" and a decomposed
     /// "Cafe\u{301}" from Foundation all match).
-    static func foldText(_ text: String) -> String {
+    package static func foldText(_ text: String) -> String {
         text.precomposedStringWithCanonicalMapping.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
     }
 
-    static func parse(_ text: String, now: Date = .now) -> IndexQuery {
+    package static func parse(_ text: String, now: Date = .now) -> IndexQuery {
         var query = IndexQuery()
         let tokens = tokenize(text)
         query.caseSensitive = tokens.contains { caseWords.contains($0.lowercased()) }
@@ -160,7 +162,7 @@ nonisolated struct IndexQuery: Sendable {
     private static let noiseWords: Set<String> = ["library", "node_modules", "caches", "deriveddata", "pods", ".git"]
     private static let buildFolderWords: Set<String> = ["target", "dist", "build", "bin", "obj", "out", "coverage"]
 
-    static func tokenize(_ text: String) -> [String] {
+    package static func tokenize(_ text: String) -> [String] {
         var tokens: [String] = []
         var current = ""
         var quoted = false
@@ -200,7 +202,7 @@ nonisolated struct IndexQuery: Sendable {
         }
     }
 
-    static func bytes(_ text: String) -> Int64? {
+    package static func bytes(_ text: String) -> Int64? {
         let units: [(String, Double)] = [
             ("tib", 1_099_511_627_776), ("gib", 1_073_741_824), ("mib", 1_048_576), ("kib", 1024),
             ("tb", 1e12), ("gb", 1e9), ("mb", 1e6), ("kb", 1e3), ("t", 1e12), ("g", 1e9), ("m", 1e6), ("k", 1e3), ("b", 1),
@@ -283,17 +285,17 @@ nonisolated struct IndexQuery: Sendable {
 }
 
 /// One search result, read out of the index under its lock.
-nonisolated struct IndexHit: Sendable {
-    let path: String
-    let isDirectory: Bool
-    let isPackage: Bool
-    let size: Int64
-    let files: UInt32
-    let mtime: UInt32
-    let score: Int
+nonisolated package struct IndexHit: Sendable {
+    package let path: String
+    package let isDirectory: Bool
+    package let isPackage: Bool
+    package let size: Int64
+    package let files: UInt32
+    package let mtime: UInt32
+    package let score: Int
 
     /// The same hit with another score (results merged from several stores).
-    func scored(_ score: Int) -> IndexHit {
+    package func scored(_ score: Int) -> IndexHit {
         IndexHit(path: path, isDirectory: isDirectory, isPackage: isPackage, size: size, files: files, mtime: mtime, score: score)
     }
 }
@@ -314,7 +316,7 @@ nonisolated private final class Partials: @unchecked Sendable {
     var all: [(id: Int32, score: Int32)] { chunks.flatMap { $0 } }
 }
 
-nonisolated enum IndexSearch {
+nonisolated package enum IndexSearch {
     private static let extensionsByKind: [IndexQuery.Kind: Set<String>] = [
         .image: ["jpg", "jpeg", "png", "gif", "heic", "heif", "webp", "tif", "tiff", "bmp", "svg", "raw", "cr2", "cr3", "nef", "arw", "dng", "psd", "ico", "icns", "avif"],
         .video: ["mp4", "mov", "m4v", "avi", "mkv", "webm", "wmv", "flv", "mpg", "mpeg", "3gp"],
@@ -324,7 +326,7 @@ nonisolated enum IndexSearch {
         .archive: ["zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "dmg", "pkg", "iso", "zst"],
     ]
 
-    static func extensions(for kind: IndexQuery.Kind) -> Set<String> {
+    package static func extensions(for kind: IndexQuery.Kind) -> Set<String> {
         extensionsByKind[kind] ?? []
     }
 
@@ -333,7 +335,7 @@ nonisolated enum IndexSearch {
     /// Only matching holds the store's read lock. Ranking happens outside it, because a folder search's scanner waits
     /// on that lock and "e" can match a million entries; the lock is taken again just to build the `limit` hits. Ids stay
     /// valid in between: a store only grows (compaction makes a new one).
-    static func run(_ query: IndexQuery, in store: IndexStore, limit: Int) -> (hits: [IndexHit], total: Int) {
+    package static func run(_ query: IndexQuery, in store: IndexStore, limit: Int) -> (hits: [IndexHit], total: Int) {
         let matched = matches(query, in: store)
         let best = top(matched, limit)
         let hits = store.read { store in
@@ -350,7 +352,7 @@ nonisolated enum IndexSearch {
     /// The best `limit` of `all`, by score then id (ties in id order stay put while a folder search's store grows, so
     /// live results don't reshuffle). Beyond a few thousand it doesn't sort everything: it counts scores to find the one
     /// that cuts at `limit` and sorts only what's above it.
-    static func top(_ all: [(id: Int32, score: Int32)], _ limit: Int) -> [(id: Int32, score: Int32)] {
+    package static func top(_ all: [(id: Int32, score: Int32)], _ limit: Int) -> [(id: Int32, score: Int32)] {
         let ordered: ((id: Int32, score: Int32), (id: Int32, score: Int32)) -> Bool = {
             $0.score != $1.score ? $0.score > $1.score : $0.id < $1.id
         }
@@ -425,7 +427,7 @@ nonisolated enum IndexSearch {
     }
 
     /// Files changed recently, newest first, skipping folders, hidden items and noise such as caches.
-    static func recent(in store: IndexStore, since: UInt32, limit: Int) -> [IndexHit] {
+    package static func recent(in store: IndexStore, since: UInt32, limit: Int) -> [IndexHit] {
         store.read { store in
             var found: [(id: Int32, mtime: UInt32)] = []
             let skip = IndexStore.Flag.directory | IndexStore.Flag.noise | IndexStore.Flag.hidden | IndexStore.Flag.deleted
@@ -622,8 +624,8 @@ nonisolated enum IndexSearch {
 /// A `regex:` pattern, compiled once and shared by the threads searching. Some patterns take exponentially long on
 /// some names: a name gets a moment, then counts as not matching (and is counted, so the summary can say so); a
 /// search's total time on the pattern is limited too.
-nonisolated final class NameRegex: @unchecked Sendable {
-    let pattern: String
+nonisolated package final class NameRegex: @unchecked Sendable {
+    package let pattern: String
     private let expression: NSRegularExpression
     private let deadline: Date
     private static let perName: TimeInterval = 0.02
@@ -631,9 +633,9 @@ nonisolated final class NameRegex: @unchecked Sendable {
     /// Names a pattern gave up on, since launch (the search summary compares before and after).
     private static let lock = NSLock()
     nonisolated(unsafe) private static var givenUp = 0
-    static var namesGivenUp: Int { lock.withLock { givenUp } }
+    package static var namesGivenUp: Int { lock.withLock { givenUp } }
 
-    init?(_ pattern: String, caseSensitive: Bool, budget: TimeInterval = 4) {
+    package init?(_ pattern: String, caseSensitive: Bool, budget: TimeInterval = 4) {
         // Composed like the names it's matched against ("é" typed or pasted either way).
         let composed = pattern.precomposedStringWithCanonicalMapping
         guard composed.count <= 500,
@@ -644,7 +646,7 @@ nonisolated final class NameRegex: @unchecked Sendable {
         deadline = Date().addingTimeInterval(budget)
     }
 
-    func matches(_ name: String) -> Bool {
+    package func matches(_ name: String) -> Bool {
         let start = Date()
         guard start <= deadline else {
             Self.lock.withLock { Self.givenUp += 1 }

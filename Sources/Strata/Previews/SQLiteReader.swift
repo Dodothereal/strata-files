@@ -1,31 +1,31 @@
 import Foundation
 import SQLite3
 
-nonisolated struct SQLiteTable: Sendable {
-    let name: String
-    let isView: Bool
+nonisolated package struct SQLiteTable: Sendable {
+    package let name: String
+    package let isView: Bool
     /// nil when counting took too long (or for views, which aren't counted).
-    let rowCount: Int?
+    package let rowCount: Int?
 }
 
-nonisolated struct SQLiteRows: Sendable {
-    let data: GridData
+nonisolated package struct SQLiteRows: Sendable {
+    package let data: GridData
     /// Why the rows couldn't be read (a virtual table from a missing module, say); the grid stays empty.
-    let error: String?
+    package let error: String?
 }
 
 /// Read-only access to SQLite files. Every call opens its own immutable, read-only connection, so nothing is
 /// shared between threads and the file (or its -wal/-shm siblings) is never written or locked.
-nonisolated enum SQLiteReader {
-    static let rowLimit = 200
+nonisolated package enum SQLiteReader {
+    package static let rowLimit = 200
 
-    static func isSQLite(_ url: URL) throws -> Bool {
+    package static func isSQLite(_ url: URL) throws -> Bool {
         let (head, _) = try TextFile.readPrefix(url, limit: 16)
         return head == Data("SQLite format 3\0".utf8)
     }
 
     /// Tables and views, with row counts that each get a small time budget.
-    static func tables(_ url: URL) throws -> [SQLiteTable] {
+    package static func tables(_ url: URL) throws -> [SQLiteTable] {
         let db = try open(url)
         defer { sqlite3_close_v2(db) }
         let sql = "SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY type, name COLLATE NOCASE"
@@ -44,7 +44,7 @@ nonisolated enum SQLiteReader {
     }
 
     /// The first `rowLimit` rows of `table`. A view is the file's own SQL, so reading gets a time budget.
-    static func rows(_ url: URL, table: String) throws -> SQLiteRows {
+    package static func rows(_ url: URL, table: String) throws -> SQLiteRows {
         let db = try open(url)
         defer { sqlite3_close_v2(db) }
         return withBudget(db, 3) { readRows(db, table: table) }

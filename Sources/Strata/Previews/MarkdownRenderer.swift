@@ -1,8 +1,9 @@
 import AppKit
+import StrataTheme
 
 /// Turns parsed Markdown blocks into an attributed string for a TextKit 1 text view: text blocks draw code
 /// backgrounds, quote bars, heading rules and tables; `AttributedString(markdown:)` handles inline runs.
-nonisolated final class MarkdownRenderer {
+nonisolated package final class MarkdownRenderer {
     private let baseURL: URL
     private var imageBudget = 12
 
@@ -12,11 +13,11 @@ nonisolated final class MarkdownRenderer {
     private let maxImageSize = NSSize(width: 320, height: 240)
 
     /// `baseURL` resolves relative links and images (the Markdown file's folder).
-    init(baseURL: URL) {
+    package init(baseURL: URL) {
         self.baseURL = baseURL
     }
 
-    func render(_ blocks: [MarkdownBlock]) -> NSMutableAttributedString {
+    package func render(_ blocks: [MarkdownBlock]) -> NSMutableAttributedString {
         let output = NSMutableAttributedString()
         render(blocks, into: output, context: Context())
         if output.string.hasSuffix("\n") { output.deleteCharacters(in: NSRange(location: output.length - 1, length: 1)) }
@@ -376,17 +377,17 @@ nonisolated final class MarkdownRenderer {
     }
 }
 
-nonisolated enum MarkdownColors {
+nonisolated package enum MarkdownColors {
     // Stronger with Increase Contrast, so code stands apart from prose.
-    static let inlineCode = NSColor(name: nil) { appearance in
+    package static let inlineCode = NSColor(name: nil) { appearance in
         let alpha: CGFloat = appearance.isHighContrast ? 0.22 : appearance.isDark ? 0.1 : 0.06
         return NSColor(white: appearance.isDark ? 1 : 0, alpha: alpha)
     }
-    static let codeBlock = NSColor(name: nil) { appearance in
+    package static let codeBlock = NSColor(name: nil) { appearance in
         let alpha: CGFloat = appearance.isHighContrast ? 0.15 : appearance.isDark ? 0.06 : 0.04
         return NSColor(white: appearance.isDark ? 1 : 0, alpha: alpha)
     }
-    static let tableHeader = codeBlock
+    package static let tableHeader = codeBlock
 }
 
 /// Rounded background behind a fenced code block.

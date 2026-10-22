@@ -3743,5 +3743,40 @@
     ],
     "rule": "Shared operation safety cross-disk move deletes a replaced source inode with identical size and time",
     "tests": "TransferTests/crossDiskMoveKeepsOriginalWhenDestinationOrSourceIdentityIsReplaced"
+  },
+  {
+    "file": "Strata/Views/FileThumbnails.swift",
+    "find": "IconCache.shared.icon(for: entry, containerCopies: copies.containerCopies, containerStore: containerStore)",
+    "replace": "IconCache.shared.icon(for: entry)",
+    "rule": "Module and provider boundaries container icon marks read the global container store",
+    "tests": "AsyncActionContextTests/containerStoresAndProblemNoticesStayScopedToTheirOwningBrowserServices"
+  },
+  {
+    "file": "Strata/Views/FileThumbnails.swift",
+    "find": "if entry.isDirectory, let (source, top) = copies.containerCopies.copy(containing: entry.url),",
+    "replace": "if entry.isDirectory, let (source, top) = ContainerCopies.store.copy(containing: entry.url),",
+    "rule": "Module and provider boundaries container status text reads the global container copy store",
+    "tests": "AsyncActionContextTests/containerStoresAndProblemNoticesStayScopedToTheirOwningBrowserServices"
+  },
+  {
+    "file": "Strata/Containers/ContainerDrag.swift",
+    "find": ".map { URL(fileURLWithPath: $0) }.filter { copies.contains($0) }",
+    "replace": ".map { URL(fileURLWithPath: $0) }",
+    "rule": "Module and provider boundaries dragged container items bypass the active copy provider",
+    "tests": "AsyncActionContextTests/containerStoresAndProblemNoticesStayScopedToTheirOwningBrowserServices"
+  },
+  {
+    "file": "Strata/Window/ShelfPanel.swift",
+    "find": "if controller.services.remote.copies.contains(controller.location) {",
+    "replace": "if RemoteCopies.contains(controller.location) {",
+    "rule": "Module and provider boundaries Shelf transfers check the global remote copy store",
+    "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
+  },
+  {
+    "file": "Strata/Toolbar/PathSuggestions.swift",
+    "find": "let showHidden = preferences.showHidden || prefix.hasPrefix(\".\")",
+    "replace": "let showHidden = Prefs.shared.showHidden || prefix.hasPrefix(\".\")",
+    "rule": "Module and provider boundaries path suggestions read hidden files from global preferences",
+    "tests": "PathQueryTests/pathSuggestionsFollowInjectedHiddenFilesPreference"
   }
 ]

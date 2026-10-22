@@ -1,7 +1,7 @@
 import AppKit
 
 /// A zero-height accessory follows the title bar when AppKit moves it to the full-screen toolbar window.
-final class ToolbarThemeController: NSTitlebarAccessoryViewController {
+package final class ToolbarThemeController: NSTitlebarAccessoryViewController {
     private static let navigation = NSMapTable<NSToolbarItem, NavigationItemTheme>.weakToStrongObjects()
     private weak var browserWindow: NSWindow?
     private var toolbarHost: ToolbarThemeHost?
@@ -11,7 +11,7 @@ final class ToolbarThemeController: NSTitlebarAccessoryViewController {
     private var departing: [ToolbarThemeHost] = []
     private let backdrops = ToolbarBackdropTint()
 
-    init(window: NSWindow) {
+    package init(window: NSWindow) {
         browserWindow = window
         super.init(nibName: nil, bundle: nil)
         automaticallyAdjustsSize = false
@@ -23,14 +23,14 @@ final class ToolbarThemeController: NSTitlebarAccessoryViewController {
         for name in [NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(didChangeFullScreen), name: name, object: window)
         }
-        if let split = window.contentViewController as? MainSplitViewController {
+        if let split = window.contentViewController as? any ThemeSplitWindowContent {
             NotificationCenter.default.addObserver(self, selector: #selector(resized), name: NSSplitView.didResizeSubviewsNotification, object: split.splitView)
         }
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
-    override func viewDidAppear() {
+    package override func viewDidAppear() {
         super.viewDidAppear()
         scheduleRefresh()
     }
@@ -45,7 +45,7 @@ final class ToolbarThemeController: NSTitlebarAccessoryViewController {
 
     @objc private func didChangeFullScreen() { finishFullScreenTransition() }
 
-    func finishFullScreenTransition() {
+    package func finishFullScreenTransition() {
         changingFullScreen = false
         refresh()
         discardDepartures()
@@ -55,7 +55,7 @@ final class ToolbarThemeController: NSTitlebarAccessoryViewController {
         }
     }
 
-    override func loadView() {
+    package override func loadView() {
         let probe = ToolbarThemeProbe(frame: .zero)
         probe.onMove = { [weak self] in self?.scheduleRefresh() }
         probe.onWindow = { [weak self] host in
@@ -72,7 +72,7 @@ final class ToolbarThemeController: NSTitlebarAccessoryViewController {
         return browserWindow.toolbar?.items.compactMap { $0.view?.window }.first { $0 !== browserWindow }
     }
 
-    static func apply(to window: NSWindow) {
+    package static func apply(to window: NSWindow) {
         guard window.styleMask.contains(.titled) else { return }
         for item in window.toolbar?.items ?? [] where item.itemIdentifier == .back || item.itemIdentifier == .forward {
             applyNavigation(to: item)
@@ -88,7 +88,7 @@ final class ToolbarThemeController: NSTitlebarAccessoryViewController {
         else { controller.finishFullScreenTransition() }
     }
 
-    static func applyNavigation(to item: NSToolbarItem) {
+    package static func applyNavigation(to item: NSToolbarItem) {
         if navigation.object(forKey: item) == nil { navigation.setObject(NavigationItemTheme(item), forKey: item) }
         navigation.object(forKey: item)?.apply(to: item)
     }
@@ -103,7 +103,7 @@ final class ToolbarThemeController: NSTitlebarAccessoryViewController {
         }
     }
 
-    func refresh() {
+    package func refresh() {
         guard let browserWindow else { return }
         if ThemeStyle.colorsSurfaces { backdrops.prepare(in: browserWindow) }
         else { backdrops.restore() }
@@ -113,7 +113,7 @@ final class ToolbarThemeController: NSTitlebarAccessoryViewController {
         else if accessory != nil || !changingFullScreen { refreshToolbarWindow(nil) }
     }
 
-    func refreshToolbarWindow(_ host: NSWindow?) {
+    package func refreshToolbarWindow(_ host: NSWindow?) {
         guard let browserWindow, !refreshing else { return }
         refreshing = true
         defer { refreshing = false }
@@ -160,7 +160,7 @@ final class ToolbarThemeController: NSTitlebarAccessoryViewController {
 
     /// Refresh only title-bar materials. Native controls and the browser’s content keep their own drawing and actions.
     /// Leave AppKit's header above the colored content; an opaque backing here creates a seam when focus changes.
-    static func refreshHeader(of window: NSWindow, excluding content: NSView?, restoring: Bool = false, withinWindow: Bool = false) {
+    package static func refreshHeader(of window: NSWindow, excluding content: NSView?, restoring: Bool = false, withinWindow: Bool = false) {
         guard let root = window.contentView?.superview ?? window.contentView else { return }
         func visit(_ view: NSView) {
             guard view !== content else { return }

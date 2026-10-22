@@ -500,5 +500,55 @@ struct AsyncActionContextTests {
         windowB.containerCopyProblem(problem)
         #expect(!windowA.split.noticeBar.isHidden)
         #expect(windowB.split.noticeBar.isHidden)
+
+        // Container icons and status text use each service's own container copies and store.
+        let stackEntryA = try #require(FileEntry(url: stackFolderA))
+        let webEntryA = try #require(FileEntry(url: webFolderA))
+        let dbEntryB = try #require(FileEntry(url: dbFolderB))
+        let runningContainerIcon = IconCache.shared.markedIcon(ContainerIconMark.running.containerSymbol, .running)
+        let stoppedContainerIcon = IconCache.shared.markedIcon(ContainerIconMark.stopped.containerSymbol, .stopped)
+        let runningStackIcon = IconCache.shared.markedIcon(ContainerIconMark.running.stackSymbol, .running)
+        let plainFolderIcon = IconCache.shared.icon(forPath: webFolderA.path)
+
+        #expect(first.services.thumbnails.icon(for: webEntryA) === runningContainerIcon)
+        #expect(second.services.thumbnails.icon(for: webEntryA) === plainFolderIcon)
+        #expect(first.services.thumbnails.icon(for: stackEntryA) === runningStackIcon)
+        #expect(second.services.thumbnails.icon(for: stackEntryA) === IconCache.shared.icon(forPath: stackFolderA.path))
+        #expect(second.services.thumbnails.icon(for: dbEntryB) === stoppedContainerIcon)
+        #expect(first.services.thumbnails.icon(for: dbEntryB) === IconCache.shared.icon(forPath: dbFolderB.path))
+
+        #expect(first.services.itemInfo.immediate(webEntryA, showHidden: false) == String(localized: "Running", comment: "Container state"))
+        #expect(second.services.itemInfo.immediate(webEntryA, showHidden: false) == nil)
+        #expect(second.services.itemInfo.immediate(dbEntryB, showHidden: false) == String(localized: "Not Running", comment: "Container state: stopped, exited or created"))
+        #expect(first.services.itemInfo.immediate(dbEntryB, showHidden: false) == nil)
+
+        // FileDrop sourceMask, containerItems, and ShelfWell follow the active window's CopyProviders without global fallbacks.
+        let placeholderA = webFolderA.appending(path: "app.bin")
+        FileManager.default.createFile(atPath: placeholderA.path, contents: nil, attributes: [.posixPermissions: 0])
+        let dragBoard = NSPasteboard.withUniqueName()
+        defer { dragBoard.releaseGlobally() }
+        dragBoard.clearContents()
+        let itemWriterA = ContainerDragItem.writer(for: placeholderA, copies: first.copies)
+        #expect(itemWriterA is ContainerDragItem)
+        dragBoard.writeObjects([itemWriterA])
+        #expect(FileDrop.containerItems(dragBoard, copies: first.copies).map(\.standardizedFileURL) == [placeholderA.standardizedFileURL])
+        #expect(FileDrop.containerItems(dragBoard, copies: second.copies).isEmpty)
+        #expect(FileDrop.sourceMask([.copy, .move], dragBoard, copies: first.copies) == .copy)
+        #expect(FileDrop.sourceMask([.copy, .move], dragBoard, copies: second.copies) == [.copy, .move])
+
+        let well = ShelfWell(frame: NSRect(x: 0, y: 0, width: 200, height: 180))
+        well.activeWindow = { windowB }
+        #expect(!well.acceptDrop(dragBoard))
+        #expect(well.items.isEmpty)
+
+        well.activeWindow = { windowA }
+        #expect(well.acceptDrop(dragBoard))
+        #expect(well.items.map(\.standardizedFileURL) == [placeholderA.standardizedFileURL])
+        #expect((well.pasteboardWriters().first as? ContainerDragItem)?.source.standardizedFileURL == placeholderA.standardizedFileURL)
+        #expect(well.sourceMask(dragBoard) == .copy)
+
+        well.activeWindow = { windowB }
+        #expect(well.pasteboardWriters().first is NSURL)
+        #expect(well.sourceMask(dragBoard) == [.copy, .move, .generic])
     }
 }

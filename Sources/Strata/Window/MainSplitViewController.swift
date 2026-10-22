@@ -1,7 +1,7 @@
 import AppKit
 
 /// Sidebar | one or two panes (with the status bar under them) | inspector.
-final class MainSplitViewController: NSSplitViewController {
+final class MainSplitViewController: NSSplitViewController, ThemeSplitWindowContent {
     let sidebar: SidebarViewController
     let panes: PaneContainerViewController
     let inspector: InspectorViewController

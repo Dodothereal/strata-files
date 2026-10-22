@@ -2,16 +2,16 @@ import AppKit
 import UniformTypeIdentifiers
 
 /// Native previews for formats Quick Look handles poorly. Returns nil to fall back to Quick Look.
-enum RichPreview {
+package enum RichPreview {
     /// Decided from the name and type alone, without touching the file.
-    static func canPreview(_ url: URL, contentType: UTType?) -> Bool {
+    package static func canPreview(_ url: URL, contentType: UTType?) -> Bool {
         PreviewFormat(url: url, contentType: contentType) != nil
     }
 
     /// A view that loads its content off the main thread and fills whatever frame it's given.
     /// `fallback` runs if the file turns out not to suit a rich preview after all (a `.ts` video, a `.db` that isn't
     /// SQLite, binary data under a text extension); show Quick Look then. Without it, the view says "No Preview Available".
-    static func makeView(for url: URL, contentType: UTType?, fallback: (() -> Void)? = nil) -> NSView? {
+    package static func makeView(for url: URL, contentType: UTType?, fallback: (() -> Void)? = nil) -> NSView? {
         guard let format = PreviewFormat(url: url, contentType: contentType) else { return nil }
         let view: PreviewView = switch format {
         case .code(let language): CodePreviewView(url: url, mode: .source(language))
@@ -27,7 +27,7 @@ enum RichPreview {
 }
 
 /// Which rich preview suits a file, judged by its name and type.
-nonisolated enum PreviewFormat: Sendable {
+nonisolated package enum PreviewFormat: Sendable {
     case code(Language)
     case json
     case markdown
@@ -36,7 +36,7 @@ nonisolated enum PreviewFormat: Sendable {
     case sqlite
     case archive(ArchiveKind)
 
-    init?(url: URL, contentType: UTType?) {
+    package init?(url: URL, contentType: UTType?) {
         if let contentType, contentType.conforms(to: .directory) || contentType.conforms(to: .package) { return nil }
         let name = url.lastPathComponent.lowercased()
         let ext = url.pathExtension.lowercased()

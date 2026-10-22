@@ -54,8 +54,8 @@ final class BrowserServices {
         }
         self.directories = directories ?? DirectoryReader(copies: self.copies)
         self.mediaReader = mediaReader
-        self.thumbnails = thumbnails ?? FileThumbnails(copies: self.copies)
-        self.itemInfo = itemInfo ?? ItemInfoLoader(copies: self.copies, mediaReader: mediaReader)
+        self.thumbnails = thumbnails ?? FileThumbnails(copies: self.copies, containerStore: containerStore)
+        self.itemInfo = itemInfo ?? ItemInfoLoader(copies: self.copies, containerStore: containerStore, mediaReader: mediaReader)
         self.availableCapacity = availableCapacity
         self.windows = windows
     }

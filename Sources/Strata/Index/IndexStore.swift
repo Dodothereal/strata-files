@@ -1,18 +1,32 @@
 import Foundation
 
 /// One directory entry as read by the scanner, before it gets an id.
-nonisolated struct ScannedItem: Sendable {
-    var nameOffset: Int
-    var nameLength: Int
-    var isDirectory: Bool
-    var isPackage: Bool
-    var isSymlink: Bool
-    var isHidden: Bool
-    var isMountPoint: Bool
-    var size: Int64
-    var mtime: UInt32
+nonisolated package struct ScannedItem: Sendable {
+    package var nameOffset: Int
+    package var nameLength: Int
+    package var isDirectory: Bool
+    package var isPackage: Bool
+    package var isSymlink: Bool
+    package var isHidden: Bool
+    package var isMountPoint: Bool
+    package var size: Int64
+    package var mtime: UInt32
     /// The file system's ID for the item, folded to 32 bits: tells a folder apart from another swapped into its name.
-    var fileKey: UInt32 = 0
+    package var fileKey: UInt32 = 0
+
+    package init(nameOffset: Int, nameLength: Int, isDirectory: Bool, isPackage: Bool, isSymlink: Bool,
+                 isHidden: Bool, isMountPoint: Bool, size: Int64, mtime: UInt32, fileKey: UInt32 = 0) {
+        self.nameOffset = nameOffset
+        self.nameLength = nameLength
+        self.isDirectory = isDirectory
+        self.isPackage = isPackage
+        self.isSymlink = isSymlink
+        self.isHidden = isHidden
+        self.isMountPoint = isMountPoint
+        self.size = size
+        self.mtime = mtime
+        self.fileKey = fileKey
+    }
 }
 
 /// Every file and folder under the indexed roots, stored column by column so millions of entries stay compact
@@ -21,23 +35,23 @@ nonisolated struct ScannedItem: Sendable {
 /// Children always get larger ids than their parent, which lets folder sizes be summed in one reverse pass.
 /// Deleted entries are flagged rather than removed; ids stay stable until the next full rebuild.
 /// Columns are private to a readers–writer lock. Read scopes borrow storage; write scopes alone may mutate it.
-nonisolated final class IndexStore: @unchecked Sendable {
-    enum Flag {
-        static let directory: UInt8 = 1 << 0
-        static let package: UInt8 = 1 << 1
-        static let symlink: UInt8 = 1 << 2
-        static let hidden: UInt8 = 1 << 3
+nonisolated package final class IndexStore: @unchecked Sendable {
+    package enum Flag {
+        package static let directory: UInt8 = 1 << 0
+        package static let package: UInt8 = 1 << 1
+        package static let symlink: UInt8 = 1 << 2
+        package static let hidden: UInt8 = 1 << 3
         /// Inside build output, caches, VCS internals or ~/Library: indexed for sizes, kept out of search by default.
-        static let noise: UInt8 = 1 << 4
-        static let deleted: UInt8 = 1 << 5
+        package static let noise: UInt8 = 1 << 4
+        package static let deleted: UInt8 = 1 << 5
         /// The name has non-ASCII bytes, so search also compares it Unicode-aware (accents, NFC/NFD, non-Latin case).
-        static let unicodeName: UInt8 = 1 << 6
+        package static let unicodeName: UInt8 = 1 << 6
     }
 
     private var storage: Storage
     private let lock = UnsafeMutablePointer<pthread_rwlock_t>.allocate(capacity: 1)
 
-    init() {
+    package init() {
         storage = Storage()
         pthread_rwlock_init(lock, nil)
     }
@@ -52,49 +66,49 @@ nonisolated final class IndexStore: @unchecked Sendable {
         lock.deallocate()
     }
 
-    func read<T>(_ body: (borrowing Storage) throws -> T) rethrows -> T {
+    package func read<T>(_ body: (borrowing Storage) throws -> T) rethrows -> T {
         pthread_rwlock_rdlock(lock)
         defer { pthread_rwlock_unlock(lock) }
         return try body(storage)
     }
 
-    func write<T>(_ body: (inout Storage) throws -> T) rethrows -> T {
+    package func write<T>(_ body: (inout Storage) throws -> T) rethrows -> T {
         pthread_rwlock_wrlock(lock)
         defer { pthread_rwlock_unlock(lock) }
         return try body(&storage)
     }
 
-    static func estimatedEntries(under paths: [String]) -> Int { Storage.estimatedEntries(under: paths) }
-    static func ownNoise(_ items: [ScannedItem], nameBuffer: UnsafeRawBufferPointer) -> [Bool] {
+    package static func estimatedEntries(under paths: [String]) -> Int { Storage.estimatedEntries(under: paths) }
+    package static func ownNoise(_ items: [ScannedItem], nameBuffer: UnsafeRawBufferPointer) -> [Bool] {
         Storage.ownNoise(items, nameBuffer: nameBuffer)
     }
-    typealias Columns = Storage.Columns
+    package typealias Columns = Storage.Columns
 
     /// The store never hands out its storage by value. Returning an individual column makes an explicit, safe
     /// copy-on-write snapshot; ordinary reads and writes borrow the original buffers without retaining a snapshot.
-    struct Storage: ~Copyable {
-        var parent = ContiguousArray<Int32>()
-        var firstChild = ContiguousArray<Int32>()
-        var nextSibling = ContiguousArray<Int32>()
-        var nameStart = ContiguousArray<UInt32>()
-        var nameLength = ContiguousArray<UInt16>()
+    package struct Storage: ~Copyable {
+        package var parent = ContiguousArray<Int32>()
+        package var firstChild = ContiguousArray<Int32>()
+        package var nextSibling = ContiguousArray<Int32>()
+        package var nameStart = ContiguousArray<UInt32>()
+        package var nameLength = ContiguousArray<UInt16>()
         /// Files: logical size. Folders: total of everything inside (after `aggregate`).
-        var size = ContiguousArray<Int64>()
+        package var size = ContiguousArray<Int64>()
         /// Files: 1. Folders: number of files inside.
-        var fileCount = ContiguousArray<UInt32>()
-        var mtime = ContiguousArray<UInt32>()
+        package var fileCount = ContiguousArray<UInt32>()
+        package var mtime = ContiguousArray<UInt32>()
         /// `ScannedItem.fileKey` (0 for roots and unknown).
-        var fileKey = ContiguousArray<UInt32>()
-        var flags = ContiguousArray<UInt8>()
-        var names = ContiguousArray<UInt8>()
+        package var fileKey = ContiguousArray<UInt32>()
+        package var flags = ContiguousArray<UInt8>()
+        package var names = ContiguousArray<UInt8>()
         /// Root entries and their absolute paths.
-        var roots: [(id: Int32, path: String)] = []
+        package var roots: [(id: Int32, path: String)] = []
 
-        var count: Int { parent.count }
+        package var count: Int { parent.count }
 
         // MARK: - Building (inside a write scope)
 
-        mutating func addRoot(path: String, mtime: UInt32) -> Int32 {
+        package mutating func addRoot(path: String, mtime: UInt32) -> Int32 {
             let id = Int32(parent.count)
             let bytes = Array(path.utf8)
             append(parent: -1, name: bytes[...], flags: Flag.directory, size: 0, files: 0, mtime: mtime)
@@ -105,7 +119,7 @@ nonisolated final class IndexStore: @unchecked Sendable {
         /// Appends `items` (names read from `nameBuffer`) as children of `parentID`; returns their ids in order.
         /// `ownNoise` (from `ownNoise(_:nameBuffer:)`, computed before taking the lock) marks build/cache folders.
         @discardableResult
-        mutating func appendChildren(_ items: [ScannedItem], nameBuffer: UnsafeRawBufferPointer, of parentID: Int32,
+        package mutating func appendChildren(_ items: [ScannedItem], nameBuffer: UnsafeRawBufferPointer, of parentID: Int32,
                                      ownNoise: [Bool]? = nil) -> Range<Int32> {
             let first = Int32(parent.count)
             let noise = ownNoise ?? Self.ownNoise(items, nameBuffer: nameBuffer)
@@ -152,7 +166,7 @@ nonisolated final class IndexStore: @unchecked Sendable {
         }
 
         /// Sums file sizes and counts into every folder. Run once after a full scan.
-        mutating func aggregate() {
+        package mutating func aggregate() {
             for i in stride(from: parent.count - 1, through: 0, by: -1) {
                 let p = parent[i]
                 guard p >= 0, flags[i] & Flag.deleted == 0 else { continue }
@@ -163,7 +177,7 @@ nonisolated final class IndexStore: @unchecked Sendable {
 
         /// Folds entries appended since `first` (a refreshed folder's new children and their scanned subtrees) into their
         /// folders' totals, and those totals into every older ancestor.
-        mutating func integrateNew(from first: Int32) {
+        package mutating func integrateNew(from first: Int32) {
             guard Int(first) < parent.count else { return }
             for i in stride(from: parent.count - 1, through: Int(first), by: -1) where flags[i] & Flag.deleted == 0 {
                 let p = parent[i]
@@ -178,7 +192,7 @@ nonisolated final class IndexStore: @unchecked Sendable {
 
         /// Reserves room for `entries` up front. Untouched reserved pages cost no memory, while growing by doubling
         /// would leave every outgrown copy behind in the allocator.
-        mutating func reserve(entries: Int) {
+        package mutating func reserve(entries: Int) {
             parent.reserveCapacity(entries)
             firstChild.reserveCapacity(entries)
             nextSibling.reserveCapacity(entries)
@@ -193,7 +207,7 @@ nonisolated final class IndexStore: @unchecked Sendable {
         }
 
         /// Files and folders in use on the volumes holding `paths`: an upper bound for how many entries a scan adds.
-        static func estimatedEntries(under paths: [String]) -> Int {
+        package static func estimatedEntries(under paths: [String]) -> Int {
             var volumes: [Int32: Int] = [:]
             for path in paths {
                 var info = statfs()
@@ -204,7 +218,7 @@ nonisolated final class IndexStore: @unchecked Sendable {
         }
 
         /// Adds a size/count change to every ancestor of `id` (not to `id` itself).
-        mutating func propagate(from id: Int32, bytes: Int64, files: Int64) {
+        package mutating func propagate(from id: Int32, bytes: Int64, files: Int64) {
             guard bytes != 0 || files != 0 else { return }
             var p = parent[Int(id)]
             while p >= 0 {
@@ -215,7 +229,7 @@ nonisolated final class IndexStore: @unchecked Sendable {
         }
 
         /// Flags `id` and everything under it as deleted, unlinks it, and subtracts its totals from its ancestors.
-        mutating func remove(_ id: Int32) {
+        package mutating func remove(_ id: Int32) {
             guard flags[Int(id)] & Flag.deleted == 0 else { return }
             propagate(from: id, bytes: -size[Int(id)], files: -Int64(fileCount[Int(id)]))
             unlink(id)
@@ -231,12 +245,12 @@ nonisolated final class IndexStore: @unchecked Sendable {
         }
 
         /// Entries flagged deleted (they stay until `compacted()`).
-        func deletedCount() -> Int {
+        package func deletedCount() -> Int {
             flags.withUnsafeBufferPointer { flags in flags.reduce(0) { $0 + ($1 & Flag.deleted != 0 ? 1 : 0) } }
         }
 
         /// A copy without deleted entries (ids change; parents still precede children). Callers hold the read lock.
-        func compacted() -> IndexStore {
+        package func compacted() -> IndexStore {
             var fresh = Storage()
             var map = [Int32](repeating: -1, count: count)
             let live = flags.indices.filter { flags[$0] & Flag.deleted == 0 }
@@ -276,7 +290,7 @@ nonisolated final class IndexStore: @unchecked Sendable {
 
         /// Removes several children of one folder with a single pass over its child list (removing them one by one
         /// walks the list each time: deleting 60k files in one folder took over a second under the write lock).
-        mutating func removeChildren(_ ids: [Int32], of parentID: Int32) {
+        package mutating func removeChildren(_ ids: [Int32], of parentID: Int32) {
             let gone = Set(ids.filter { flags[Int($0)] & Flag.deleted == 0 && parent[Int($0)] == parentID })
             guard !gone.isEmpty else { return }
             for id in gone {
@@ -325,16 +339,16 @@ nonisolated final class IndexStore: @unchecked Sendable {
 
         // MARK: - Reading (inside a read or write scope)
 
-        func isLive(_ id: Int32) -> Bool { flags[Int(id)] & Flag.deleted == 0 }
-        func isDirectory(_ id: Int32) -> Bool { flags[Int(id)] & Flag.directory != 0 }
+        package func isLive(_ id: Int32) -> Bool { flags[Int(id)] & Flag.deleted == 0 }
+        package func isDirectory(_ id: Int32) -> Bool { flags[Int(id)] & Flag.directory != 0 }
 
-        func name(_ id: Int32) -> String {
+        package func name(_ id: Int32) -> String {
             let start = Int(nameStart[Int(id)])
             let length = Int(nameLength[Int(id)])
             return names.withUnsafeBufferPointer { String(decoding: UnsafeBufferPointer(rebasing: $0[start..<(start + length)]), as: UTF8.self) }
         }
 
-        func path(of id: Int32) -> String {
+        package func path(of id: Int32) -> String {
             var chain: [Int32] = []
             var current = id
             while current >= 0 {
@@ -350,7 +364,7 @@ nonisolated final class IndexStore: @unchecked Sendable {
             return path
         }
 
-        func children(of id: Int32) -> [Int32] {
+        package func children(of id: Int32) -> [Int32] {
             var result: [Int32] = []
             var child = firstChild[Int(id)]
             while child >= 0 {
@@ -361,7 +375,7 @@ nonisolated final class IndexStore: @unchecked Sendable {
         }
 
         /// The live entry at an absolute path, walking down from the root that contains it.
-        func lookup(_ path: String) -> Int32? {
+        package func lookup(_ path: String) -> Int32? {
             guard let root = roots.first(where: { path == $0.path || path.hasPrefix($0.path == "/" ? "/" : $0.path + "/") }) else { return nil }
             var current = root.id
             guard isLive(current) else { return nil }
@@ -397,7 +411,7 @@ nonisolated final class IndexStore: @unchecked Sendable {
             return nil
         }
 
-        func nameEquals(_ id: Int32, _ bytes: [UInt8]) -> Bool {
+        package func nameEquals(_ id: Int32, _ bytes: [UInt8]) -> Bool {
             let length = Int(nameLength[Int(id)])
             guard length == bytes.count else { return false }
             let start = Int(nameStart[Int(id)])
@@ -409,23 +423,23 @@ nonisolated final class IndexStore: @unchecked Sendable {
         }
 
         /// Raw views of the columns for hot loops; valid only inside `body` while the caller holds the lock.
-        struct Columns: @unchecked Sendable {
-            let parent: UnsafeBufferPointer<Int32>
-            let nameStart: UnsafeBufferPointer<UInt32>
-            let nameLength: UnsafeBufferPointer<UInt16>
-            let size: UnsafeBufferPointer<Int64>
-            let mtime: UnsafeBufferPointer<UInt32>
-            let flags: UnsafeBufferPointer<UInt8>
-            let names: UnsafeBufferPointer<UInt8>
+        package struct Columns: @unchecked Sendable {
+            package let parent: UnsafeBufferPointer<Int32>
+            package let nameStart: UnsafeBufferPointer<UInt32>
+            package let nameLength: UnsafeBufferPointer<UInt16>
+            package let size: UnsafeBufferPointer<Int64>
+            package let mtime: UnsafeBufferPointer<UInt32>
+            package let flags: UnsafeBufferPointer<UInt8>
+            package let names: UnsafeBufferPointer<UInt8>
 
             @inline(__always)
-            func name(_ i: Int) -> UnsafeBufferPointer<UInt8> {
+            package func name(_ i: Int) -> UnsafeBufferPointer<UInt8> {
                 let start = Int(nameStart[i])
                 return UnsafeBufferPointer(rebasing: names[start..<(start + Int(nameLength[i]))])
             }
         }
 
-        func withColumns<T>(_ body: (Columns) throws -> T) rethrows -> T {
+        package func withColumns<T>(_ body: (Columns) throws -> T) rethrows -> T {
             try parent.withUnsafeBufferPointer { parent in
                 try nameStart.withUnsafeBufferPointer { nameStart in
                     try nameLength.withUnsafeBufferPointer { nameLength in
@@ -462,7 +476,7 @@ nonisolated final class IndexStore: @unchecked Sendable {
 
         /// Which of `items` are folders that are noise in their own right: caches and VCS internals by name, or build
         /// output beside the project file that produces it. Pure and lock-free (raw byte comparisons only).
-        static func ownNoise(_ items: [ScannedItem], nameBuffer: UnsafeRawBufferPointer) -> [Bool] {
+        package static func ownNoise(_ items: [ScannedItem], nameBuffer: UnsafeRawBufferPointer) -> [Bool] {
             func bytes(_ item: ScannedItem) -> UnsafeRawBufferPointer {
                 UnsafeRawBufferPointer(rebasing: nameBuffer[item.nameOffset..<(item.nameOffset + item.nameLength)])
             }
@@ -494,14 +508,14 @@ nonisolated final class IndexStore: @unchecked Sendable {
             "numbers", "key", "dsym", "xcarchive", "wdgt", "systemextension", "driver",
         ]
 
-        func isOpaquePackage(_ id: Int32) -> Bool {
+        package func isOpaquePackage(_ id: Int32) -> Bool {
             guard flags[Int(id)] & Flag.package != 0 else { return false }
             let name = self.name(id)
             guard let dot = name.lastIndex(of: ".") else { return false }
             return Self.opaquePackageExtensions.contains(name[name.index(after: dot)...].lowercased())
         }
 
-        static func isNoiseFolder(_ name: UnsafeRawBufferPointer) -> Bool {
+        package static func isNoiseFolder(_ name: UnsafeRawBufferPointer) -> Bool {
             noiseNames.contains { candidate in
                 candidate.count == name.count && candidate.withUnsafeBytes { memcmp($0.baseAddress!, name.baseAddress!, name.count) == 0 }
             }

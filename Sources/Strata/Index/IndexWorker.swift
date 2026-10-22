@@ -2,17 +2,24 @@ import Foundation
 import os
 
 /// What to index. Changing exclusions only rescans the affected folders.
-nonisolated struct IndexConfig: Sendable, Equatable {
-    var roots: [String]
-    var excluded: Set<String>
-    var noise: Set<String>
-    var file: URL
+nonisolated package struct IndexConfig: Sendable, Equatable {
+    package var roots: [String]
+    package var excluded: Set<String>
+    package var noise: Set<String>
+    package var file: URL
+
+    package init(roots: [String], excluded: Set<String>, noise: Set<String>, file: URL) {
+        self.roots = roots
+        self.excluded = excluded
+        self.noise = noise
+        self.file = file
+    }
 }
 
 /// Owns the index on a private serial queue: loads or builds it, applies FSEvents changes, saves it.
-nonisolated final class IndexWorker: @unchecked Sendable {
+nonisolated package final class IndexWorker: @unchecked Sendable {
     private let log = Logger(subsystem: "dev.strata.app", category: "index")
-    enum Phase: Sendable, Equatable {
+    package enum Phase: Sendable, Equatable {
         case loading
         case scanning(items: Int)
         case ready
@@ -39,13 +46,13 @@ nonisolated final class IndexWorker: @unchecked Sendable {
     private let watchesChanges: Bool
 
     /// Called with each new store (after loading or a full rebuild) and every phase change.
-    var onStore: (@Sendable (IndexStore) -> Void)?
-    var onPhase: (@Sendable (Phase) -> Void)?
+    package var onStore: (@Sendable (IndexStore) -> Void)?
+    package var onPhase: (@Sendable (Phase) -> Void)?
     /// Called after changes were applied (sizes or entries).
-    var onChange: (@Sendable () -> Void)?
+    package var onChange: (@Sendable () -> Void)?
 
     /// Recorded batches can be applied without a live stream changing their order in headless tests.
-    init(watchesChanges: Bool = true) {
+    package init(watchesChanges: Bool = true) {
         self.watchesChanges = watchesChanges
         events.handler = { [weak self] events in self?.receive(events) }
     }
@@ -54,18 +61,18 @@ nonisolated final class IndexWorker: @unchecked Sendable {
         readBuffer.deallocate()
     }
 
-    func start(_ config: IndexConfig, completion: @escaping @Sendable () -> Void = {}) {
+    package func start(_ config: IndexConfig, completion: @escaping @Sendable () -> Void = {}) {
         queue.async {
             self.boot(config)
             completion()
         }
     }
 
-    func update(_ config: IndexConfig) {
+    package func update(_ config: IndexConfig) {
         queue.async { self.reconfigure(config) }
     }
 
-    func rebuildNow() {
+    package func rebuildNow() {
         queue.async { self.rebuild() }
     }
 
@@ -73,7 +80,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
     /// the index on disk (or the next launch's scan) covers it. Never waits much past quit's deadline: work in progress
     /// stops by then, and if the queue is still busy (a disk slow to answer), the next launch catches up from the last
     /// save (saves are atomic, so one cut short by quitting leaves the previous file).
-    func saveNow() {
+    package func saveNow() {
         guard !scanning.withLock({ $0 }) else { return }
         quitDeadline.withLock { $0 = DispatchTime.now().uptimeNanoseconds + 2_000_000_000 }
         let saved = DispatchSemaphore(value: 0)
@@ -189,7 +196,7 @@ nonisolated final class IndexWorker: @unchecked Sendable {
 
     // MARK: - Live updates
 
-    func receive(_ batch: [FSEventsStream.Event]) {
+    package func receive(_ batch: [FSEventsStream.Event]) {
         queue.async {
             for event in batch {
                 self.lastEventID = max(self.lastEventID, event.id)

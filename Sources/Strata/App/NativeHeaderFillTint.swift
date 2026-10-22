@@ -2,7 +2,7 @@ import AppKit
 
 /// A deliberately narrow adapter for the titlebar material structure observed in macOS 26.
 /// Unknown layer arrangements keep native drawing; never search arbitrary layers for a gray color.
-final class NativeHeaderFillTint {
+package final class NativeHeaderFillTint {
     private weak var material: NSVisualEffectView?
     private weak var fill: CALayer?
     private var nativeColor: CGColor?
@@ -15,9 +15,9 @@ final class NativeHeaderFillTint {
     private var applying = false
     private var pending = false
 
-    init(_ material: NSVisualEffectView) { self.material = material }
+    package init(_ material: NSVisualEffectView) { self.material = material }
 
-    func apply(enabled: Bool) {
+    package func apply(enabled: Bool) {
         self.enabled = enabled
         guard enabled else { restore(); return }
         if layerObservation == nil, let material {
@@ -72,7 +72,7 @@ final class NativeHeaderFillTint {
         }
     }
 
-    func restore() {
+    package func restore() {
         enabled = false
         layerObservation = nil
         observations.removeAll()
@@ -100,8 +100,8 @@ final class NativeHeaderFillTint {
 
     /// Match the whole active or inactive material signature, not an OS version. A later macOS can
     /// retain this structure; any changed structure falls back to native drawing without private calls.
-    static func recognizedFill(in material: NSVisualEffectView, previous: CALayer? = nil,
-                               originalColor: CGColor? = nil) -> CALayer? {
+    package static func recognizedFill(in material: NSVisualEffectView, previous: CALayer? = nil,
+                                       originalColor: CGColor? = nil) -> CALayer? {
         guard material.material == .titlebar, material.blendingMode == .withinWindow,
               material.subviews.isEmpty, let root = material.layer, root.sublayers?.count == 1,
               let container = root.sublayers?.first, type(of: container) == CALayer.self,

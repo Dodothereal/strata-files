@@ -21,7 +21,7 @@ Path(sys.argv[1]).write_text(source.replace(old, 'isTestRun ? SymmetricKey(data:
 PY
   memory_benchmark_secure_source="$memory_benchmark_dir/SecureStorage.swift"
 fi
-xcrun swiftc -O -D DEBUG -D MEMORY_BENCHMARK -swift-version 6 -parse-as-library \
+xcrun swiftc -O -D DEBUG -D MEMORY_BENCHMARK -swift-version 6 -parse-as-library -package-name Strata \
   -default-isolation MainActor -enable-upcoming-feature NonisolatedNonsendingByDefault \
   -Xllvm -sil-disable-pass=optimize-hop-to-executor \
   -module-cache-path "$memory_benchmark_dir/modules" \

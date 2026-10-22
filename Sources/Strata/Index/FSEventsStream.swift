@@ -2,24 +2,30 @@ import CoreServices
 import Foundation
 
 /// A folder-level FSEvents subscription. Events arrive on a private serial queue, batched by `latency`.
-nonisolated final class FSEventsStream: @unchecked Sendable {
-    struct Event: Sendable {
-        let path: String
-        let flags: FSEventStreamEventFlags
-        let id: FSEventStreamEventId
+nonisolated package final class FSEventsStream: @unchecked Sendable {
+    package struct Event: Sendable {
+        package let path: String
+        package let flags: FSEventStreamEventFlags
+        package let id: FSEventStreamEventId
+
+        package init(path: String, flags: FSEventStreamEventFlags, id: FSEventStreamEventId) {
+            self.path = path
+            self.flags = flags
+            self.id = id
+        }
 
         /// Changes under `path` weren't itemized (too many, or events were dropped): re-check the whole subtree.
-        var mustScanSubdirectories: Bool {
+        package var mustScanSubdirectories: Bool {
             let flags = kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagKernelDropped | kFSEventStreamEventFlagUserDropped
             return self.flags & FSEventStreamEventFlags(flags) != 0
         }
 
         /// The journal can't be trusted any more (a watched root moved, or event ids wrapped): rebuild.
-        var invalidatesIndex: Bool {
+        package var invalidatesIndex: Bool {
             flags & FSEventStreamEventFlags(kFSEventStreamEventFlagRootChanged | kFSEventStreamEventFlagEventIdsWrapped) != 0
         }
 
-        var isHistoryDone: Bool {
+        package var isHistoryDone: Bool {
             flags & FSEventStreamEventFlags(kFSEventStreamEventFlagHistoryDone) != 0
         }
     }
@@ -27,10 +33,12 @@ nonisolated final class FSEventsStream: @unchecked Sendable {
     private var stream: FSEventStreamRef?
     private let queue = DispatchQueue(label: "dev.strata.fsevents", qos: .utility)
     /// Receives each batch of events. Set before `start`.
-    var handler: (@Sendable ([Event]) -> Void)?
+    package var handler: (@Sendable ([Event]) -> Void)?
+
+    package init() {}
 
     /// Starts watching `paths`, replaying everything since `since` (or only new changes when `nil`).
-    func start(paths: [String], since: FSEventStreamEventId?, latency: TimeInterval = 0.4) {
+    package func start(paths: [String], since: FSEventStreamEventId?, latency: TimeInterval = 0.4) {
         stop()
         var context = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(),
                                            retain: nil, release: nil, copyDescription: nil)
@@ -53,7 +61,7 @@ nonisolated final class FSEventsStream: @unchecked Sendable {
         self.stream = stream
     }
 
-    func stop() {
+    package func stop() {
         guard let stream else { return }
         FSEventStreamStop(stream)
         FSEventStreamInvalidate(stream)
@@ -65,5 +73,5 @@ nonisolated final class FSEventsStream: @unchecked Sendable {
         stop()
     }
 
-    static var currentEventID: FSEventStreamEventId { FSEventsGetCurrentEventId() }
+    package static var currentEventID: FSEventStreamEventId { FSEventsGetCurrentEventId() }
 }

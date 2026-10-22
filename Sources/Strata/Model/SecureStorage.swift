@@ -9,14 +9,14 @@ import os
 /// you read it without ever asking. So every store is encrypted (AES-GCM) with a key kept in your login keychain, which
 /// only Strata can read without asking you, in a folder private to your account. Files are written to a fresh
 /// temporary name (never following a planted symlink) and swapped in atomically.
-nonisolated enum SecureStorage {
+nonisolated package enum SecureStorage {
     private static let log = Logger(subsystem: "dev.strata.app", category: "storage")
 
     private static let selected = Mutex<Context?>(nil)
 
     /// The executable opts into the user's stores before creating any services. Importing the module, including in
     /// optimized tests, instead gets a private temporary context. Once resolved, the process context never changes.
-    static func useApplicationStorage() {
+    package static func useApplicationStorage() {
         selected.withLock { context in
             precondition(context == nil, "Configure storage before creating app services")
             context = Context(directory: URL.applicationSupportDirectory.appending(path: "Strata", directoryHint: .isDirectory),
@@ -25,7 +25,7 @@ nonisolated enum SecureStorage {
         }
     }
 
-    static var current: Context {
+    package static var current: Context {
         selected.withLock { context in
             if let context { return context }
             let directory = FileManager.default.temporaryDirectory
@@ -38,24 +38,24 @@ nonisolated enum SecureStorage {
         }
     }
 
-    static var isTestRun: Bool { current.temporary }
-    static var directory: URL { current.directory }
-    static var caches: URL { current.caches }
-    static func url(_ relative: String, isDirectory: Bool = false) -> URL {
+    package static var isTestRun: Bool { current.temporary }
+    package static var directory: URL { current.directory }
+    package static var caches: URL { current.caches }
+    package static func url(_ relative: String, isDirectory: Bool = false) -> URL {
         current.url(relative, isDirectory: isDirectory)
     }
 
     /// An immutable storage dependency. Separate contexts can coexist without changing the process defaults or
     /// each other's keys. The key provider is evaluated once, on first use, even when readers run concurrently.
-    final class Context: Sendable {
-        let directory: URL
-        let caches: URL
+    package final class Context: Sendable {
+        package let directory: URL
+        package let caches: URL
         fileprivate let temporary: Bool
         private enum KeyState { case pending, resolved(SymmetricKey?) }
         private let keyState = Mutex<KeyState>(.pending)
         private let keyProvider: @Sendable () -> SymmetricKey?
 
-        init(directory: URL, caches: URL, keyProvider: @escaping @Sendable () -> SymmetricKey?) {
+        package init(directory: URL, caches: URL, keyProvider: @escaping @Sendable () -> SymmetricKey?) {
             self.directory = directory
             self.caches = caches
             self.keyProvider = keyProvider
@@ -63,7 +63,7 @@ nonisolated enum SecureStorage {
             Self.prepare(directory)
         }
 
-        init(directory: URL, caches: URL, key: SymmetricKey?, temporary: Bool = false) {
+        package init(directory: URL, caches: URL, key: SymmetricKey?, temporary: Bool = false) {
             self.directory = directory
             self.caches = caches
             keyProvider = { key }
@@ -87,27 +87,27 @@ nonisolated enum SecureStorage {
         }
 
         /// A file or folder inside this context. Subfolders are created owner-only.
-        func url(_ relative: String, isDirectory: Bool = false) -> URL {
+        package func url(_ relative: String, isDirectory: Bool = false) -> URL {
             let url = directory.appending(path: relative, directoryHint: isDirectory ? .isDirectory : .notDirectory)
             let folder = isDirectory ? url : url.deletingLastPathComponent()
             if folder.standardizedFileURL != directory.standardizedFileURL { Self.prepare(folder) }
             return url
         }
 
-        func write(_ data: Data, to url: URL) throws {
+        package func write(_ data: Data, to url: URL) throws {
             let writer = try Writer(url: url, storage: self)
             data.withUnsafeBytes { writer.write($0) }
             try writer.commit()
         }
 
-        func read(_ url: URL) -> Data? {
+        package func read(_ url: URL) -> Data? {
             guard let reader = try? Reader(url: url, storage: self) else { return nil }
             return try? reader.readToEnd()
         }
     }
 
     /// Deletes a store left over from before encryption (and its stray temporary file).
-    static func removeLegacy(_ url: URL) {
+    package static func removeLegacy(_ url: URL) {
         for path in [url.path, url.path + ".tmp"] where FileManager.default.fileExists(atPath: path) {
             unlink(path)
         }
@@ -150,8 +150,8 @@ nonisolated enum SecureStorage {
 
     // MARK: Whole files
 
-    static func write(_ data: Data, to url: URL) throws { try current.write(data, to: url) }
-    static func read(_ url: URL) -> Data? { current.read(url) }
+    package static func write(_ data: Data, to url: URL) throws { try current.write(data, to: url) }
+    package static func read(_ url: URL) -> Data? { current.read(url) }
 
     // MARK: Streams
 
@@ -164,7 +164,9 @@ nonisolated enum SecureStorage {
     private static let chunkSize = 1 << 20
     private static let boxOverhead = 12 + 16
 
-    struct Failure: Error {}
+    package struct Failure: Error {
+        package init() {}
+    }
 
     /// The store's identity: its path inside `directory` ("semantic/index.sealed"), else its full path. Paths are used
     /// as given: standardizing would drop a "/private" prefix only once the file exists, so writer and reader differ.
@@ -206,7 +208,7 @@ nonisolated enum SecureStorage {
     }
 
     /// Streams sealed chunks to a fresh temporary file; `commit()` swaps it into place.
-    final class Writer {
+    package final class Writer {
         private let url: URL
         private let temporary: String
         private let key: SymmetricKey
@@ -217,7 +219,7 @@ nonisolated enum SecureStorage {
         private let salt: Data
         private let name: Data
 
-        init(url: URL, storage: Context = SecureStorage.current) throws {
+        package init(url: URL, storage: Context = SecureStorage.current) throws {
             guard let key = storage.key else { throw Failure() }
             self.url = url
             self.key = key
@@ -242,7 +244,7 @@ nonisolated enum SecureStorage {
             }
         }
 
-        func write(_ bytes: UnsafeRawBufferPointer) {
+        package func write(_ bytes: UnsafeRawBufferPointer) {
             var offset = 0
             while offset < bytes.count && !failed {
                 let take = min(chunkSize - buffer.count, bytes.count - offset)
@@ -252,7 +254,7 @@ nonisolated enum SecureStorage {
             }
         }
 
-        func commit() throws {
+        package func commit() throws {
             flush(final: true)
             let closed = close(fd)
             fd = -1
@@ -293,7 +295,7 @@ nonisolated enum SecureStorage {
     }
 
     /// Reads and authenticates a sealed file one chunk at a time.
-    final class Reader {
+    package final class Reader {
         private let handle: FileHandle
         private let key: SymmetricKey
         private var chunk = Data()
@@ -306,9 +308,9 @@ nonisolated enum SecureStorage {
         /// upgrade keeps history and the content index; they're rewritten in the current format at the next save.
         private let isLegacy: Bool
         /// Upper bound on the plaintext, for sanity-checking lengths before allocating.
-        let maximumLength: Int
+        package let maximumLength: Int
 
-        init(url: URL, storage: Context = SecureStorage.current) throws {
+        package init(url: URL, storage: Context = SecureStorage.current) throws {
             guard let key = storage.key else { throw Failure() }
             let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
             guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .ENOENT) }
@@ -339,7 +341,7 @@ nonisolated enum SecureStorage {
         }
 
         /// Fills `destination` completely, or throws.
-        func read(into destination: UnsafeMutableRawBufferPointer) throws {
+        package func read(into destination: UnsafeMutableRawBufferPointer) throws {
             var filled = 0
             while filled < destination.count {
                 if position == chunk.count { try nextChunk() }
@@ -352,7 +354,7 @@ nonisolated enum SecureStorage {
             }
         }
 
-        func readToEnd() throws -> Data {
+        package func readToEnd() throws -> Data {
             var data = Data()
             while true {
                 if position < chunk.count {
@@ -367,7 +369,7 @@ nonisolated enum SecureStorage {
         }
 
         /// Confirms everything was consumed, through the final chunk (which is empty when the data filled the last one).
-        func finish() throws {
+        package func finish() throws {
             if position == chunk.count && !sawFinal { try nextChunk() }
             guard sawFinal, position == chunk.count, try handle.read(upToCount: 1)?.isEmpty ?? true else { throw Failure() }
         }

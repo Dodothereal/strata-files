@@ -1,10 +1,10 @@
 import AppKit
 
 /// Color the native accessory's padding as well as its content, without changing AppKit's spacing or controls.
-final class ThemeAccessoryView: NSView, ColorThemeUpdating {
+package final class ThemeAccessoryView: NSView, ColorThemeUpdating {
     private let paddingCanvas = ThemeSurfaceView()
 
-    init(role: ThemeSurfaceRole = .content) {
+    package init(role: ThemeSurfaceRole = .content) {
         super.init(frame: .zero)
         paddingCanvas.role = role
         paddingCanvas.ignoresMouse = true
@@ -13,14 +13,14 @@ final class ThemeAccessoryView: NSView, ColorThemeUpdating {
         updateColorTheme()
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
-    func updateColorTheme() {
+    package func updateColorTheme() {
         paddingCanvas.isHidden = !ThemeStyle.colorsSurfaces
         paddingCanvas.needsDisplay = true
     }
 
-    override func viewDidMoveToSuperview() {
+    package override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
         paddingCanvas.removeFromSuperview()
         guard let parent = superview else { return }

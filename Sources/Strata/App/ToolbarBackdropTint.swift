@@ -2,12 +2,14 @@ import AppKit
 
 /// Full-screen titlebar sections have opaque backing layers above the window's canvas.
 /// Color those existing backings, leaving AppKit's material masks and control layout intact.
-final class ToolbarBackdropTint {
+package final class ToolbarBackdropTint {
     private let bindings = NSMapTable<NSView, ToolbarBackdropBinding>.weakToStrongObjects()
+
+    package init() {}
 
     /// Prepare hidden sections before AppKit can snapshot them for the full-screen transition.
     /// Prepare only the observed macOS 26 header sections, including ones whose material isn't built yet.
-    func prepare(in window: NSWindow) {
+    package func prepare(in window: NSWindow) {
         guard ThemeStyle.colorsSurfaces, !window.effectiveAppearance.isHighContrast,
               window.styleMask.contains(.fullSizeContentView), let root = window.contentView else { return }
         let top = root.convert(root.bounds, to: nil).maxY
@@ -40,7 +42,7 @@ final class ToolbarBackdropTint {
         binding.apply()
     }
 
-    func apply(in window: NSWindow) {
+    package func apply(in window: NSWindow) {
         guard ThemeStyle.colorsSurfaces, !window.effectiveAppearance.isHighContrast else {
             restore()
             return
@@ -76,7 +78,7 @@ final class ToolbarBackdropTint {
         visit(root)
     }
 
-    func restore() {
+    package func restore() {
         for binding in bindings.objectEnumerator()?.allObjects as? [ToolbarBackdropBinding] ?? [] { binding.restore() }
         bindings.removeAllObjects()
     }

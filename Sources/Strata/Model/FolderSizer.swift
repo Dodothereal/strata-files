@@ -1,27 +1,32 @@
 import Foundation
 
-nonisolated struct FolderSize: Sendable {
-    let bytes: Int64
-    let files: Int
+nonisolated package struct FolderSize: Sendable {
+    package let bytes: Int64
+    package let files: Int
+
+    package init(bytes: Int64, files: Int) {
+        self.bytes = bytes
+        self.files = files
+    }
 }
 
 /// Computes folder sizes in the background. Results are shared by every window; each browser owns
 /// its own queue so leaving a folder cancels only that browser's pending walks.
-final class FolderSizer {
+package final class FolderSizer {
     private static var cache: [URL: FolderSize] = [:]
 
-    var onUpdate: ((URL) -> Void)?
+    package var onUpdate: ((URL) -> Void)?
     private let queue = OperationQueue()
     private var pending: Set<URL> = []
 
-    init() {
+    package init() {
         queue.maxConcurrentOperationCount = 4
         queue.qualityOfService = .utility
     }
 
-    func cached(_ url: URL) -> FolderSize? { Self.cache[url] }
+    package func cached(_ url: URL) -> FolderSize? { Self.cache[url] }
 
-    func request(_ url: URL) {
+    package func request(_ url: URL) {
         guard Self.cache[url] == nil, pending.insert(url).inserted else { return }
         let op = SizeOperation(path: url.path)
         op.completionBlock = { [unowned op, weak self] in
@@ -31,13 +36,13 @@ final class FolderSizer {
         queue.addOperation(op)
     }
 
-    func cancelPending() {
+    package func cancelPending() {
         queue.cancelAllOperations()
         pending.removeAll()
     }
 
     /// Drops cached sizes for `url` and every folder above it, since a change inside changes all of them.
-    static func invalidate(_ url: URL) {
+    package static func invalidate(_ url: URL) {
         var current = url.standardizedFileURL
         while current.path != "/" {
             cache[current] = nil
@@ -52,7 +57,7 @@ final class FolderSizer {
         onUpdate?(url)
     }
 
-    nonisolated static func measure(_ path: String, isCancelled: () -> Bool) -> FolderSize? {
+    nonisolated package static func measure(_ path: String, isCancelled: () -> Bool) -> FolderSize? {
         guard let cpath = strdup(path) else { return nil }
         defer { free(cpath) }
         var paths: [UnsafeMutablePointer<CChar>?] = [cpath, nil]

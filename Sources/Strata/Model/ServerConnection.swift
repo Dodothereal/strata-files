@@ -3,16 +3,20 @@ import NetFS
 
 /// Go ▸ Connect to Server…: mounts an SMB, AFP, NFS or WebDAV share the way Finder does. macOS asks for the name and
 /// password itself (and can keep them in the Keychain); Strata never sees them unless they're typed into the address.
-nonisolated enum ServerConnection {
-    static let schemes: Set<String> = ["smb", "cifs", "afp", "nfs", "https", "http"]
+nonisolated package enum ServerConnection {
+    package static let schemes: Set<String> = ["smb", "cifs", "afp", "nfs", "https", "http"]
 
-    struct Problem: Error, Equatable {
-        let message: String
+    package struct Problem: Error, Equatable {
+        package let message: String
+
+        package init(message: String) {
+            self.message = message
+        }
     }
 
     /// The address as a URL to mount: "server" alone (or "server/share") means SMB, like Finder; anything but the
     /// supported kinds of server is refused.
-    static func url(from text: String) -> Result<URL, Problem> {
+    package static func url(from text: String) -> Result<URL, Problem> {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .failure(Problem(message: String(localized: "Type a server address, like smb://server/share."))) }
         guard !trimmed.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
@@ -35,7 +39,7 @@ nonisolated enum ServerConnection {
     }
 
     /// The address as it's kept in the recent list: never with a password.
-    static func displayString(_ url: URL) -> String {
+    package static func displayString(_ url: URL) -> String {
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url.absoluteString }
         components.password = nil
         return components.string ?? url.absoluteString
@@ -43,13 +47,15 @@ nonisolated enum ServerConnection {
 
     /// A mount in progress, which can be stopped. It finishes exactly once: with what NetFS reports, or (cancelled)
     /// with nil, since NetFS doesn't call back after a cancel.
-    final class Request: @unchecked Sendable {
+    package final class Request: @unchecked Sendable {
         private let lock = NSLock()
         private var id: AsyncRequestID?
         private var cancelled = false
         private var continuation: CheckedContinuation<Result<URL, Problem>?, Never>?
 
-        func cancel() {
+        package init() {}
+
+        package func cancel() {
             let (id, waiting) = lock.withLock { () -> (AsyncRequestID?, CheckedContinuation<Result<URL, Problem>?, Never>?) in
                 cancelled = true
                 defer { continuation = nil }
@@ -87,7 +93,7 @@ nonisolated enum ServerConnection {
 
     /// Mounts `url` (or finds it already mounted), letting macOS ask for a name and password. Returns where it's
     /// mounted; nil when you cancelled.
-    static func mount(_ url: URL, request: Request) async -> Result<URL, Problem>? {
+    package static func mount(_ url: URL, request: Request) async -> Result<URL, Problem>? {
         await withCheckedContinuation { continuation in
             guard request.attach(continuation) else { return continuation.resume(returning: nil) }
             let open = NSMutableDictionary()
@@ -112,7 +118,7 @@ nonisolated enum ServerConnection {
     }
 
     /// Where `url`'s share is mounted already, by the address each mounted volume remounts from.
-    static func mounted(_ url: URL) -> URL? {
+    package static func mounted(_ url: URL) -> URL? {
         func key(_ url: URL) -> String? {
             guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false), let host = components.host?.lowercased() else { return nil }
             let scheme = components.scheme?.lowercased() == "cifs" ? "smb" : components.scheme?.lowercased() ?? ""
@@ -127,7 +133,7 @@ nonisolated enum ServerConnection {
     }
 
     /// What a mount error means, in words; nil when you cancelled.
-    static func problem(_ code: Int32) -> Problem? {
+    package static func problem(_ code: Int32) -> Problem? {
         switch code {
         // Cancelled, in the system's login window or here.
         case ECANCELED, -128: return nil

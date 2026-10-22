@@ -1,15 +1,15 @@
 import Foundation
 
 /// The start of a text file, decoded, with line endings normalized to `\n`.
-nonisolated struct TextFile: Sendable {
-    static let limit = 512 * 1024
+nonisolated package struct TextFile: Sendable {
+    package static let limit = 512 * 1024
 
-    let text: String
+    package let text: String
     /// True when the file is longer than what was read.
-    let isTruncated: Bool
+    package let isTruncated: Bool
 
     /// Reads at most `limit` bytes of `url`, cut at a line boundary. Throws `PreviewError.unsupported` for binary data.
-    static func read(_ url: URL, limit: Int = TextFile.limit) throws -> TextFile {
+    package static func read(_ url: URL, limit: Int = TextFile.limit) throws -> TextFile {
         let (data, truncated) = try readPrefix(url, limit: limit)
         var bytes = data
         if truncated, let lastNewline = bytes.lastIndex(of: 0x0A) { bytes = bytes[..<lastNewline] }
@@ -18,7 +18,7 @@ nonisolated struct TextFile: Sendable {
     }
 
     /// Up to `limit` bytes from the start of `url`, and whether there was more.
-    static func readPrefix(_ url: URL, limit: Int) throws -> (Data, Bool) {
+    package static func readPrefix(_ url: URL, limit: Int) throws -> (Data, Bool) {
         guard limit >= 0, limit < Int.max else { throw PreviewError.unsupported }
         // A name ending in .txt can still be a FIFO or a device. Open without waiting for a writer and
         // inspect that descriptor, so a path replacement cannot bypass the regular-file check.
@@ -33,7 +33,7 @@ nonisolated struct TextFile: Sendable {
     }
 
     /// Decodes UTF-8 (with or without BOM), UTF-16 with a BOM, or falls back to Windows Latin 1. Nil for binary data.
-    static func decode(_ data: Data) -> String? {
+    package static func decode(_ data: Data) -> String? {
         if data.starts(with: [0xFF, 0xFE]) { return String(data: data.dropFirst(2), encoding: .utf16LittleEndian) }
         if data.starts(with: [0xFE, 0xFF]) { return String(data: data.dropFirst(2), encoding: .utf16BigEndian) }
         let sample = data.prefix(8192)
@@ -49,13 +49,13 @@ nonisolated struct TextFile: Sendable {
         return String(data: body, encoding: .windowsCP1252)
     }
 
-    static func normalizeNewlines(_ text: String) -> String {
+    package static func normalizeNewlines(_ text: String) -> String {
         guard text.contains("\r") else { return text }
         return text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
     }
 
     /// "512 KB" style size for truncation notes.
-    static var limitDescription: String {
+    package static var limitDescription: String {
         ByteCountFormatter.string(fromByteCount: Int64(limit), countStyle: .binary)
     }
 }

@@ -2,27 +2,31 @@ import Foundation
 
 /// NetFS still owns mounting and its login dialogs. Supplying the mount operation lets headless sheets exercise
 /// cancellation without contacting a server or presenting authentication UI.
-nonisolated struct ServerMounter: Sendable {
-    typealias Result = Swift.Result<URL, ServerConnection.Problem>?
-    let mount: @Sendable (URL, ServerConnection.Request) async -> Result
+nonisolated package struct ServerMounter: Sendable {
+    package typealias Result = Swift.Result<URL, ServerConnection.Problem>?
+    package let mount: @Sendable (URL, ServerConnection.Request) async -> Result
 
-    static let live = ServerMounter { await ServerConnection.mount($0, request: $1) }
+    package init(mount: @escaping @Sendable (URL, ServerConnection.Request) async -> Result) {
+        self.mount = mount
+    }
+
+    package static let live = ServerMounter { await ServerConnection.mount($0, request: $1) }
 }
 
 /// A sheet owns one mount at a time. Cancelling or replacing it detaches the old result before asking NetFS to stop;
 /// a late success, failure or cancellation cannot update a newer attempt's controls or recent addresses.
-final class ServerMountSession {
+package final class ServerMountSession {
     private let mounter: ServerMounter
     private var request: ServerConnection.Request?
-    private(set) var task: Task<Void, Never>?
-    var isConnecting: Bool { request != nil }
+    package private(set) var task: Task<Void, Never>?
+    package var isConnecting: Bool { request != nil }
 
-    init(mounter: ServerMounter = .live) { self.mounter = mounter }
+    package init(mounter: ServerMounter = .live) { self.mounter = mounter }
 
     isolated deinit { cancel() }
 
     @discardableResult
-    func connect(_ url: URL, receive: @escaping (ServerMounter.Result) -> Void) -> Task<Void, Never> {
+    package func connect(_ url: URL, receive: @escaping (ServerMounter.Result) -> Void) -> Task<Void, Never> {
         cancel()
         let request = ServerConnection.Request(), mounter = mounter
         self.request = request
@@ -41,7 +45,7 @@ final class ServerMountSession {
         return work
     }
 
-    func cancel() {
+    package func cancel() {
         let task = task
         request = nil
         self.task = nil

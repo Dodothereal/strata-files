@@ -2,7 +2,7 @@ import Foundation
 
 /// Reads directories with `getattrlistbulk`, which returns names, types, sizes and dates for a whole batch of entries
 /// in one system call: several times faster than `readdir` + `lstat` per file.
-nonisolated enum BulkDirectoryReader {
+nonisolated package enum BulkDirectoryReader {
     private static let packageExtensions: Set<String> = [
         "app", "bundle", "framework", "plugin", "kext", "appex", "xpc", "qlgenerator", "mdimporter", "prefPane",
         "xcodeproj", "xcworkspace", "playground", "photoslibrary", "musiclibrary", "tvlibrary", "rtfd", "pages",
@@ -13,7 +13,7 @@ nonisolated enum BulkDirectoryReader {
     /// Lists `path`, appending entries to `items` and their names to `names`. Returns `errno` on failure, and
     /// `ECANCELED` when `shouldStop` says so between batches (a folder with a huge number of entries, or a slow disk,
     /// mustn't hold up quitting).
-    static func read(_ path: String, items: inout [ScannedItem], names: inout [UInt8], buffer: UnsafeMutableRawBufferPointer,
+    package static func read(_ path: String, items: inout [ScannedItem], names: inout [UInt8], buffer: UnsafeMutableRawBufferPointer,
                      shouldStop: () -> Bool = { false }) -> Int32 {
         let fd = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
         guard fd >= 0 else { return errno }
@@ -112,7 +112,7 @@ nonisolated enum BulkDirectoryReader {
 }
 
 /// Walks directory trees in parallel and records everything in an `IndexStore`.
-nonisolated final class IndexScanner: @unchecked Sendable {
+nonisolated package final class IndexScanner: @unchecked Sendable {
     private struct Job {
         let id: Int32
         let path: String
@@ -128,7 +128,7 @@ nonisolated final class IndexScanner: @unchecked Sendable {
     private var scanned = 0
 
     /// Items scanned so far (read from the progress timer on another thread, so under the lock).
-    var scannedCount: Int {
+    package var scannedCount: Int {
         condition.lock()
         defer { condition.unlock() }
         return scanned
@@ -137,27 +137,27 @@ nonisolated final class IndexScanner: @unchecked Sendable {
     /// - Parameters:
     ///   - excluded: absolute paths not to descend into (they still appear as entries).
     ///   - noiseFolders: absolute paths whose subtree is kept out of default search results.
-    init(store: IndexStore, excluded: Set<String>, noiseFolders: Set<String>) {
+    package init(store: IndexStore, excluded: Set<String>, noiseFolders: Set<String>) {
         self.store = store
         self.excluded = excluded
         self.noiseFolders = noiseFolders
     }
 
-    func cancel() {
+    package func cancel() {
         condition.lock()
         cancelled = true
         condition.broadcast()
         condition.unlock()
     }
 
-    var isCancelled: Bool {
+    package var isCancelled: Bool {
         condition.lock()
         defer { condition.unlock() }
         return cancelled
     }
 
     /// Scans each folder's subtree (the folder itself must already be in the store). Blocks until done.
-    func scan(_ folders: [(id: Int32, path: String)], threads: Int = IndexScanner.performanceCores) {
+    package func scan(_ folders: [(id: Int32, path: String)], threads: Int = IndexScanner.performanceCores) {
         condition.lock()
         jobs.append(contentsOf: folders.map { Job(id: $0.id, path: $0.path) })
         condition.unlock()
@@ -167,14 +167,14 @@ nonisolated final class IndexScanner: @unchecked Sendable {
     /// How many threads should read `path`'s volume. Measured on a 10+4-core Mac: a writable volume peaked at one
     /// thread per performance core (402k items/s with 10 threads, 357k with 16, where they mostly wait on each other in
     /// the kernel's path lookups); the sealed, read-only system volume peaked at 3 (252k items/s, against 48k with 16).
-    static func threadCount(for path: String) -> Int {
+    package static func threadCount(for path: String) -> Int {
         var info = statfs()
         if statfs(path, &info) == 0, info.f_flags & UInt32(MNT_RDONLY) != 0 { return min(3, performanceCores) }
         return performanceCores
     }
 
     /// Performance cores (all cores on Macs that don't tell them apart).
-    static let performanceCores: Int = {
+    package static let performanceCores: Int = {
         var count: Int32 = 0
         var size = MemoryLayout<Int32>.size
         if sysctlbyname("hw.perflevel0.physicalcpu", &count, &size, nil, 0) == 0, count > 0 { return Int(count) }

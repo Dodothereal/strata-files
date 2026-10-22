@@ -1,6 +1,6 @@
 import Foundation
 
-nonisolated extension Sequence where Element == Int64 {
+nonisolated package extension Sequence where Element == Int64 {
     /// The total, stopping at Int64.max rather than overflowing (sizes reported by another machine can be absurd).
     var saturatingSum: Int64 {
         reduce(0) { total, next in
@@ -10,7 +10,7 @@ nonisolated extension Sequence where Element == Int64 {
     }
 }
 
-enum Format {
+package enum Format {
     private static let byteFormatter: ByteCountFormatter = {
         let f = ByteCountFormatter()
         f.countStyle = .file
@@ -34,16 +34,16 @@ enum Format {
         return f
     }()
 
-    static func bytes(_ n: Int64) -> String { byteFormatter.string(fromByteCount: n) }
-    static func date(_ d: Date?) -> String { d.map(shortDate.string(from:)) ?? "—" }
-    static func longDate(_ d: Date?) -> String { d.map(longDate.string(from:)) ?? "—" }
+    package static func bytes(_ n: Int64) -> String { byteFormatter.string(fromByteCount: n) }
+    package static func date(_ d: Date?) -> String { d.map(shortDate.string(from:)) ?? "—" }
+    package static func longDate(_ d: Date?) -> String { d.map(longDate.string(from:)) ?? "—" }
 
-    static func count(_ n: Int, _ singular: String, _ plural: String) -> String {
+    package static func count(_ n: Int, _ singular: String, _ plural: String) -> String {
         "\(n.formatted()) \(n == 1 ? singular : plural)"
     }
 
     /// Path with the home folder shortened to `~`.
-    static func tildePath(_ url: URL) -> String {
+    package static func tildePath(_ url: URL) -> String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let path = url.path
         if path == home { return "~" }

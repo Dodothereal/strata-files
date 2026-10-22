@@ -1,22 +1,25 @@
 import Foundation
+#if canImport(StrataModel)
+import StrataModel
+#endif
 
 /// Saves the index as raw columns so the next launch can load millions of entries in well under a second
 /// and then catch up from the FSEvents journal instead of rescanning.
-nonisolated enum IndexPersistence {
+nonisolated package enum IndexPersistence {
     private static let magic: UInt32 = 0x5354_5258 // "STRX"
     // 5: only app-like packages' contents are noise, plus build output beside its project file; 6: file IDs (a full
     // rescan picks that up).
     private static let version: UInt32 = 6
 
-    struct Header {
-        var eventID: UInt64
-        var roots: [(id: Int32, path: String)]
-        var excluded: [String]
+    package struct Header {
+        package var eventID: UInt64
+        package var roots: [(id: Int32, path: String)]
+        package var excluded: [String]
     }
 
     /// Streams the columns, encrypted, straight to disk (no in-memory copy of the whole file), then swaps the file in
     /// atomically.
-    static func save(_ store: IndexStore, eventID: UInt64, excluded: [String], to url: URL) throws {
+    package static func save(_ store: IndexStore, eventID: UInt64, excluded: [String], to url: URL) throws {
         let writer = try SecureStorage.Writer(url: url)
         func put(_ bytes: UnsafeRawBufferPointer) { writer.write(bytes) }
         func put<T>(_ value: T) { withUnsafeBytes(of: value) { put($0) } }
@@ -56,7 +59,7 @@ nonisolated enum IndexPersistence {
         try writer.commit()
     }
 
-    static func load(from url: URL) throws -> (IndexStore, Header) {
+    package static func load(from url: URL) throws -> (IndexStore, Header) {
         let reader = try SecureStorage.Reader(url: url)
         struct Corrupt: Error {}
         func get<T>(_: T.Type) throws -> T {

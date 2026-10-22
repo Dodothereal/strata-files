@@ -457,7 +457,7 @@ final class GridItem: NSCollectionViewItem {
             itemView.setImage(cached.image, animated: false, upscale: !cached.exact)
             if cached.exact { return }
         } else if !canThumbnail || !(keepCurrent && itemView.imageView.image != nil) {
-            itemView.setImage(IconCache.shared.icon(for: entry), animated: false)
+            itemView.setImage(thumbnails.icon(for: entry), animated: false)
         }
         guard canThumbnail, !thumbnails.hasFailed(entry, size: size, scale: scale) else { return }
         thumbnailTicket = thumbnails.request(entry, size: size, scale: scale) { [weak self] image in

@@ -1,23 +1,23 @@
 import AppKit
 
 /// Restore AppKit’s original named color and material settings, not a custom color resolving to the same RGB values.
-final class ThemeWindowBinding: NSObject {
+package final class ThemeWindowBinding: NSObject {
     private let background: NSColor
     private let transparent: Bool
     private let adjustsSafeArea: Bool?
     private var toolbarDetached = false
 
-    init(_ window: NSWindow) {
+    package init(_ window: NSWindow) {
         background = window.backgroundColor
         transparent = window.titlebarAppearsTransparent
-        adjustsSafeArea = (window.contentViewController as? MainSplitViewController)?.splitViewItems[1].automaticallyAdjustsSafeAreaInsets
+        adjustsSafeArea = (window.contentViewController as? any ThemeSplitWindowContent)?.splitViewItems[1].automaticallyAdjustsSafeAreaInsets
         super.init()
     }
 
-    func apply(to window: NSWindow) {
+    package func apply(to window: NSWindow) {
         window.backgroundColor = ThemeStyle.colorsSurfaces ? ThemeStyle.surface(.content) : background
         updateTitlebar(in: window, detached: toolbarDetached)
-        if let split = window.contentViewController as? MainSplitViewController, let adjustsSafeArea {
+        if let split = window.contentViewController as? any ThemeSplitWindowContent, let adjustsSafeArea {
             let item = split.splitViewItems[1]
             let extend = ThemeStyle.colorsSurfaces || adjustsSafeArea
             if item.automaticallyAdjustsSafeAreaInsets != extend {
@@ -28,7 +28,7 @@ final class ThemeWindowBinding: NSObject {
         }
     }
 
-    func updateTitlebar(in window: NSWindow, detached: Bool) {
+    package func updateTitlebar(in window: NSWindow, detached: Bool) {
         toolbarDetached = detached
         // In full screen AppKit supplies the sidebar's rounded header in a separate titlebar section.
         // Hiding that background leaves the square sidebar content exposed at the top.
@@ -40,8 +40,8 @@ final class ThemeWindowBinding: NSObject {
 
 /// Remembers each owned surface’s native drawing so System restores it exactly.
 /// The map holds views weakly; an appearance change never retains a closed window or a discarded column.
-final class ThemeSurfaceBinding: NSObject {
-    let role: ThemeSurfaceRole
+package final class ThemeSurfaceBinding: NSObject {
+    package let role: ThemeSurfaceRole
     private let background: NSColor?
     private let border: NSColor?
     private let drawsBackground: Bool?
@@ -51,7 +51,7 @@ final class ThemeSurfaceBinding: NSObject {
     private let fieldBezeled: Bool?
     private let fieldBordered: Bool?
 
-    init(view: NSView, role: ThemeSurfaceRole) {
+    package init(view: NSView, role: ThemeSurfaceRole) {
         self.role = role
         fieldBezel = (view as? NSTextField)?.bezelStyle
         fieldBezeled = (view as? NSTextField)?.isBezeled
@@ -91,7 +91,7 @@ final class ThemeSurfaceBinding: NSObject {
         super.init()
     }
 
-    func apply(to view: NSView) {
+    package func apply(to view: NSView) {
         let colored = ThemeStyle.colorsSurfaces
         if let field = view as? NSTextField {
             // The native bezel paints an opaque fill. AppKit's bordered style honors backgroundColor.
@@ -125,15 +125,15 @@ final class ThemeSurfaceBinding: NSObject {
 }
 
 /// A custom background is a surface, not vibrant foreground artwork. Keep the native header and its drawing.
-final class ThemeHeaderAppearanceBinding: NSObject {
+package final class ThemeHeaderAppearanceBinding: NSObject {
     private let native: NSAppearance?
 
-    init(_ header: NSTableHeaderView) {
+    package init(_ header: NSTableHeaderView) {
         native = header.appearance
         super.init()
     }
 
-    func apply(to header: NSTableHeaderView, in table: NSTableView) {
+    package func apply(to header: NSTableHeaderView, in table: NSTableView) {
         let appearance = table.effectiveAppearance
         let colored = ThemeStyle.colorsSurfaces && !appearance.isHighContrast
         let chosen = colored ? NSAppearance(named: appearance.isDark ? .darkAqua : .aqua) : native
@@ -141,16 +141,16 @@ final class ThemeHeaderAppearanceBinding: NSObject {
     }
 }
 
-final class ThemeHeaderBinding: NSObject {
+package final class ThemeHeaderBinding: NSObject {
     private let native: NSTableHeaderCell
     private var colored: NSTableHeaderCell?
 
-    init(_ column: NSTableColumn) {
+    package init(_ column: NSTableColumn) {
         native = column.headerCell
         super.init()
     }
 
-    func apply(to column: NSTableColumn) {
+    package func apply(to column: NSTableColumn) {
         let tint = ThemeStyle.colorsSurfaces && column.tableView?.effectiveAppearance.isHighContrast != true
         if tint && colored == nil { colored = ThemeHeaderCell.copying(native) }
         let cell = tint ? colored ?? native : native
@@ -162,8 +162,8 @@ final class ThemeHeaderBinding: NSObject {
 }
 
 /// Tint only the background inside AppKit's complete header drawing pass, including sorting and tracking.
-final class ThemeHeaderCell: NSTableHeaderCell {
-    static func copying(_ original: NSTableHeaderCell) -> NSTableHeaderCell {
+package final class ThemeHeaderCell: NSTableHeaderCell {
+    package static func copying(_ original: NSTableHeaderCell) -> NSTableHeaderCell {
         // AppKit's factory cell carries header ink, truncation and other state that init(textCell:) doesn't.
         // These bytes come only from that cell, in memory; NSTableHeaderCell doesn't adopt NSSecureCoding.
         guard let data = try? NSKeyedArchiver.archivedData(withRootObject: original, requiringSecureCoding: false),
@@ -175,7 +175,7 @@ final class ThemeHeaderCell: NSTableHeaderCell {
         return decoder.decodeObject(forKey: NSKeyedArchiveRootObjectKey) as? ThemeHeaderCell ?? original
     }
 
-    override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
+    package override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
         if ThemeStyle.colorsSurfaces && !controlView.effectiveAppearance.isHighContrast {
             ThemeStyle.surface(.content).setFill()
             cellFrame.fill()

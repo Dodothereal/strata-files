@@ -1,15 +1,20 @@
 import Foundation
 
 /// A language the code preview can highlight.
-nonisolated struct Language: Sendable {
-    let name: String
-    let lexer: Lexer
+nonisolated package struct Language: Sendable {
+    package let name: String
+    package let lexer: Lexer
+
+    package init(name: String, lexer: Lexer) {
+        self.name = name
+        self.lexer = lexer
+    }
 }
 
 /// Language definitions, and detection from a file name.
-nonisolated enum Languages {
+nonisolated package enum Languages {
     /// The language for `fileName` (matched on exact names such as `Dockerfile` first, then the extension).
-    static func detect(fileName: String) -> Language? {
+    package static func detect(fileName: String) -> Language? {
         let name = fileName.lowercased()
         if let language = byName[name] { return language }
         if name.hasPrefix(".env") || name.hasSuffix(".env") { return dotenv }
@@ -21,7 +26,7 @@ nonisolated enum Languages {
     }
 
     /// Language for a fenced Markdown code block's info string (`swift`, `ts`, `shell`…).
-    static func detect(fenceInfo: String) -> Language? {
+    package static func detect(fenceInfo: String) -> Language? {
         let tag = fenceInfo.lowercased().split(whereSeparator: { $0 == " " || $0 == "{" || $0 == "," }).first.map(String.init) ?? ""
         guard !tag.isEmpty else { return nil }
         return fenceAliases[tag] ?? byExtension[tag] ?? byName[tag]
@@ -29,14 +34,14 @@ nonisolated enum Languages {
 
     // MARK: C family
 
-    static let c = Language(name: "C", lexer: .generic(cRules(cKeywords, types: cTypes)))
-    static let cHeader = Language(name: "C Header", lexer: .generic(cRules(cKeywords.union(objcKeywords), types: cTypes, objc: true)))
-    static let cpp = Language(name: "C++", lexer: .generic(cRules(cKeywords.union(cppKeywords), types: cTypes, capitalized: true)))
-    static let objc = Language(name: "Objective-C", lexer: .generic(cRules(cKeywords.union(objcKeywords), types: cTypes, objc: true)))
-    static let objcpp = Language(name: "Objective-C++", lexer: .generic(cRules(cKeywords.union(cppKeywords).union(objcKeywords), types: cTypes, objc: true)))
-    static let shader = Language(name: "Shader", lexer: .generic(cRules(cKeywords.union(cppKeywords).union(shaderKeywords), types: cTypes.union(shaderTypes), capitalized: true)))
+    package static let c = Language(name: "C", lexer: .generic(cRules(cKeywords, types: cTypes)))
+    package static let cHeader = Language(name: "C Header", lexer: .generic(cRules(cKeywords.union(objcKeywords), types: cTypes, objc: true)))
+    package static let cpp = Language(name: "C++", lexer: .generic(cRules(cKeywords.union(cppKeywords), types: cTypes, capitalized: true)))
+    package static let objc = Language(name: "Objective-C", lexer: .generic(cRules(cKeywords.union(objcKeywords), types: cTypes, objc: true)))
+    package static let objcpp = Language(name: "Objective-C++", lexer: .generic(cRules(cKeywords.union(cppKeywords).union(objcKeywords), types: cTypes, objc: true)))
+    package static let shader = Language(name: "Shader", lexer: .generic(cRules(cKeywords.union(cppKeywords).union(shaderKeywords), types: cTypes.union(shaderTypes), capitalized: true)))
 
-    static let swift = Language(name: "Swift", lexer: .generic(LexRules(
+    package static let swift = Language(name: "Swift", lexer: .generic(LexRules(
         lineComments: ["//"], blockComments: [("/*", "*/")], nestedComments: true,
         strings: [.tripleDouble, .double],
         keywords: words("""
@@ -50,7 +55,7 @@ nonisolated enum Languages {
         capitalizedTypes: true, functionCalls: true, allCapsTypes: true, attributePrefix: "@", preprocessorPrefix: "#",
         preprocessorAnywhere: true)))
 
-    static let rust = Language(name: "Rust", lexer: .generic(LexRules(
+    package static let rust = Language(name: "Rust", lexer: .generic(LexRules(
         lineComments: ["//"], blockComments: [("/*", "*/")], nestedComments: true,
         strings: [.double], stringPrefixes: ["r", "b", "br", "r#", "c"],
         keywords: words("""
@@ -61,10 +66,10 @@ nonisolated enum Languages {
         declarationKeywords: words("fn struct enum trait type mod union let const static"),
         capitalizedTypes: true, functionCalls: true, rustSyntax: true)))
 
-    static let javaScript = Language(name: "JavaScript", lexer: .generic(jsRules(typeScript: false)))
-    static let typeScript = Language(name: "TypeScript", lexer: .generic(jsRules(typeScript: true)))
+    package static let javaScript = Language(name: "JavaScript", lexer: .generic(jsRules(typeScript: false)))
+    package static let typeScript = Language(name: "TypeScript", lexer: .generic(jsRules(typeScript: true)))
 
-    static let python = Language(name: "Python", lexer: .generic(LexRules(
+    package static let python = Language(name: "Python", lexer: .generic(LexRules(
         lineComments: ["#"],
         strings: [.tripleDouble, .tripleSingle, .double, .single],
         stringPrefixes: ["f", "r", "b", "u", "rb", "br", "fr", "rf"],
@@ -76,7 +81,7 @@ nonisolated enum Languages {
         declarationKeywords: words("def class"),
         capitalizedTypes: true, functionCalls: true, attributePrefix: "@")))
 
-    static let go = Language(name: "Go", lexer: .generic(LexRules(
+    package static let go = Language(name: "Go", lexer: .generic(LexRules(
         lineComments: ["//"], blockComments: [("/*", "*/")],
         strings: [.double, .single, StringRule(open: "`", close: "`", multiline: true, escapes: false)],
         keywords: words("""
@@ -90,7 +95,7 @@ nonisolated enum Languages {
         declarationKeywords: words("func type var const"),
         functionCalls: true)))
 
-    static let csharp = Language(name: "C#", lexer: .generic(LexRules(
+    package static let csharp = Language(name: "C#", lexer: .generic(LexRules(
         lineComments: ["//"], blockComments: [("/*", "*/")],
         strings: [.tripleDouble, .double, .single], stringPrefixes: ["@", "$", "$@", "@$"],
         keywords: words("""
@@ -104,7 +109,7 @@ nonisolated enum Languages {
         declarationKeywords: words("class struct interface enum record namespace"),
         capitalizedTypes: true, functionCalls: true, preprocessorPrefix: "#")))
 
-    static let java = Language(name: "Java", lexer: .generic(LexRules(
+    package static let java = Language(name: "Java", lexer: .generic(LexRules(
         lineComments: ["//"], blockComments: [("/*", "*/")],
         strings: [.tripleDouble, .double, .single],
         keywords: words("""
@@ -116,7 +121,7 @@ nonisolated enum Languages {
         declarationKeywords: words("class interface enum record"),
         capitalizedTypes: true, functionCalls: true, attributePrefix: "@")))
 
-    static let kotlin = Language(name: "Kotlin", lexer: .generic(LexRules(
+    package static let kotlin = Language(name: "Kotlin", lexer: .generic(LexRules(
         lineComments: ["//"], blockComments: [("/*", "*/")], nestedComments: true,
         strings: [.tripleDouble, .double, .single],
         keywords: words("""
@@ -129,7 +134,7 @@ nonisolated enum Languages {
         declarationKeywords: words("class interface object fun val var typealias"),
         capitalizedTypes: true, functionCalls: true, attributePrefix: "@")))
 
-    static let scala = Language(name: "Scala", lexer: .generic(LexRules(
+    package static let scala = Language(name: "Scala", lexer: .generic(LexRules(
         lineComments: ["//"], blockComments: [("/*", "*/")], nestedComments: true,
         strings: [.tripleDouble, .double, .single], stringPrefixes: ["s", "f", "raw"],
         keywords: words("""
@@ -140,7 +145,7 @@ nonisolated enum Languages {
         declarationKeywords: words("class object trait def val var type enum"),
         capitalizedTypes: true, functionCalls: true, attributePrefix: "@")))
 
-    static let groovy = Language(name: "Groovy", lexer: .generic(LexRules(
+    package static let groovy = Language(name: "Groovy", lexer: .generic(LexRules(
         lineComments: ["//"], blockComments: [("/*", "*/")],
         strings: [.tripleDouble, .tripleSingle, .double, .single],
         keywords: words("""
@@ -151,9 +156,9 @@ nonisolated enum Languages {
         declarationKeywords: words("def class interface enum trait"),
         capitalizedTypes: true, functionCalls: true, attributePrefix: "@")))
 
-    static let gradle = Language(name: "Gradle", lexer: groovy.lexer)
+    package static let gradle = Language(name: "Gradle", lexer: groovy.lexer)
 
-    static let dart = Language(name: "Dart", lexer: .generic(LexRules(
+    package static let dart = Language(name: "Dart", lexer: .generic(LexRules(
         lineComments: ["//"], blockComments: [("/*", "*/")], nestedComments: true,
         strings: [.tripleDouble, .tripleSingle, .double, .single], stringPrefixes: ["r"],
         keywords: words("""
@@ -166,7 +171,7 @@ nonisolated enum Languages {
         declarationKeywords: words("class enum mixin extension typedef"),
         capitalizedTypes: true, functionCalls: true, attributePrefix: "@")))
 
-    static let ruby = Language(name: "Ruby", lexer: .generic(LexRules(
+    package static let ruby = Language(name: "Ruby", lexer: .generic(LexRules(
         lineComments: ["#"], blockComments: [("=begin", "=end")], commentNeedsBoundary: true,
         strings: [.double, .single, .backtick],
         keywords: words("""
@@ -177,7 +182,7 @@ nonisolated enum Languages {
         declarationKeywords: words("def class module"),
         capitalizedTypes: true, identifierExtras: "?!", attributePrefix: "@", variablePrefix: "$", symbols: true)))
 
-    static let php = Language(name: "PHP", lexer: .generic(LexRules(
+    package static let php = Language(name: "PHP", lexer: .generic(LexRules(
         lineComments: ["//", "#"], blockComments: [("/*", "*/")],
         strings: [.double, .single, .backtick],
         keywords: words("""
@@ -190,9 +195,9 @@ nonisolated enum Languages {
         declarationKeywords: words("function class interface trait enum"),
         capitalizedTypes: true, functionCalls: true, variablePrefix: "$")))
 
-    static let shell = Language(name: "Shell", lexer: .generic(shellRules))
-    static let fish = Language(name: "Fish", lexer: .generic(shellRules))
-    static let powershell = Language(name: "PowerShell", lexer: .generic(LexRules(
+    package static let shell = Language(name: "Shell", lexer: .generic(shellRules))
+    package static let fish = Language(name: "Fish", lexer: .generic(shellRules))
+    package static let powershell = Language(name: "PowerShell", lexer: .generic(LexRules(
         lineComments: ["#"], blockComments: [("<#", "#>")],
         strings: [.double, .single],
         keywords: words("""
@@ -202,7 +207,7 @@ nonisolated enum Languages {
         declarationKeywords: words("function class filter"),
         caseInsensitive: true, identifierExtras: "-", variablePrefix: "$")))
 
-    static let sql = Language(name: "SQL", lexer: .generic(LexRules(
+    package static let sql = Language(name: "SQL", lexer: .generic(LexRules(
         lineComments: ["--", "#"], blockComments: [("/*", "*/")], commentNeedsBoundary: true,
         strings: [.single, StringRule(open: "\"", close: "\"", escapes: false, kind: .key), StringRule(open: "`", close: "`", escapes: false, kind: .key)],
         keywords: words("""
@@ -219,14 +224,14 @@ nonisolated enum Languages {
             """),
         caseInsensitive: true, functionCalls: true)))
 
-    static let lua = Language(name: "Lua", lexer: .generic(LexRules(
+    package static let lua = Language(name: "Lua", lexer: .generic(LexRules(
         lineComments: ["--"], blockComments: [("--[[", "]]"), ("--[==[", "]==]")],
         strings: [StringRule(open: "[[", close: "]]", multiline: true, escapes: false), .double, .single],
         keywords: words("and break do else elseif end false for function goto if in local nil not or repeat return then true until while self"),
         declarationKeywords: words("function local"),
         functionCalls: true)))
 
-    static let gdscript = Language(name: "GDScript", lexer: .generic(LexRules(
+    package static let gdscript = Language(name: "GDScript", lexer: .generic(LexRules(
         lineComments: ["#"],
         strings: [.tripleDouble, .double, .single], stringPrefixes: ["&", "^", "r"],
         keywords: words("""
@@ -237,7 +242,7 @@ nonisolated enum Languages {
         declarationKeywords: words("func class_name class signal var const enum"),
         capitalizedTypes: true, functionCalls: true, attributePrefix: "@", variablePrefix: "$")))
 
-    static let elixir = Language(name: "Elixir", lexer: .generic(LexRules(
+    package static let elixir = Language(name: "Elixir", lexer: .generic(LexRules(
         lineComments: ["#"], strings: [.tripleDouble, .double, .single],
         keywords: words("""
             def defp defmodule defmacro defstruct defprotocol defimpl do end fn if else unless case cond with when true false nil \
@@ -246,7 +251,7 @@ nonisolated enum Languages {
         declarationKeywords: words("def defp defmodule defmacro"),
         capitalizedTypes: true, identifierExtras: "?!", attributePrefix: "@", symbols: true)))
 
-    static let haskell = Language(name: "Haskell", lexer: .generic(LexRules(
+    package static let haskell = Language(name: "Haskell", lexer: .generic(LexRules(
         lineComments: ["--"], blockComments: [("{-", "-}")], nestedComments: true,
         strings: [.double],
         keywords: words("""
@@ -255,24 +260,24 @@ nonisolated enum Languages {
             """),
         capitalizedTypes: true, identifierExtras: "'")))
 
-    static let lisp = Language(name: "Lisp", lexer: .generic(LexRules(
+    package static let lisp = Language(name: "Lisp", lexer: .generic(LexRules(
         lineComments: [";"], strings: [.double],
         keywords: words("def defn defn- defmacro defun defvar defparameter let let* fn lambda if do loop recur cond when unless ns require import quote"),
         declarationKeywords: words("def defn defn- defmacro defun defvar"),
         identifierExtras: "-?!*<>=/+.", symbols: true)))
 
-    static let r = Language(name: "R", lexer: .generic(LexRules(
+    package static let r = Language(name: "R", lexer: .generic(LexRules(
         lineComments: ["#"], strings: [.double, .single],
         keywords: words("if else repeat while function for in next break TRUE FALSE NULL Inf NaN NA library require return"),
         functionCalls: true, identifierExtras: ".")))
 
-    static let perl = Language(name: "Perl", lexer: .generic(LexRules(
+    package static let perl = Language(name: "Perl", lexer: .generic(LexRules(
         lineComments: ["#"], commentNeedsBoundary: true, strings: [.double, .single],
         keywords: words("my our local sub use package if elsif else unless while until for foreach return last next redo require no and or not eq ne lt gt le ge"),
         declarationKeywords: words("sub package"),
         variablePrefix: "$")))
 
-    static let zig = Language(name: "Zig", lexer: .generic(LexRules(
+    package static let zig = Language(name: "Zig", lexer: .generic(LexRules(
         lineComments: ["//"], strings: [.double, .single],
         keywords: words("""
             const var fn pub return if else while for switch struct enum union error try catch defer errdefer comptime test \
@@ -282,41 +287,41 @@ nonisolated enum Languages {
         declarationKeywords: words("fn const var"),
         capitalizedTypes: true, functionCalls: true, attributePrefix: "@")))
 
-    static let julia = Language(name: "Julia", lexer: .generic(LexRules(
+    package static let julia = Language(name: "Julia", lexer: .generic(LexRules(
         lineComments: ["#"], blockComments: [("#=", "=#")], strings: [.tripleDouble, .double],
         keywords: words("function end if else elseif for while return module using import export struct mutable abstract type begin let do try catch finally true false nothing const local global macro quote"),
         declarationKeywords: words("function struct module macro"),
         capitalizedTypes: true, functionCalls: true, attributePrefix: "@")))
 
-    static let protobuf = Language(name: "Protocol Buffers", lexer: .generic(LexRules(
+    package static let protobuf = Language(name: "Protocol Buffers", lexer: .generic(LexRules(
         lineComments: ["//"], blockComments: [("/*", "*/")], strings: [.double, .single],
         keywords: words("syntax package import option message enum service rpc returns repeated optional required oneof map reserved extensions extend stream to max true false public weak edition"),
         types: words("double float int32 int64 uint32 uint64 sint32 sint64 fixed32 fixed64 sfixed32 sfixed64 bool string bytes"),
         declarationKeywords: words("message enum service rpc"),
         capitalizedTypes: true)))
 
-    static let graphql = Language(name: "GraphQL", lexer: .generic(LexRules(
+    package static let graphql = Language(name: "GraphQL", lexer: .generic(LexRules(
         lineComments: ["#"], strings: [.tripleDouble, .double],
         keywords: words("query mutation subscription fragment on type interface union enum input scalar schema extend implements directive true false null"),
         declarationKeywords: words("query mutation subscription fragment type interface union enum input scalar"),
         capitalizedTypes: true, attributePrefix: "@", variablePrefix: "$")))
 
-    static let hcl = Language(name: "HCL", lexer: .generic(LexRules(
+    package static let hcl = Language(name: "HCL", lexer: .generic(LexRules(
         lineComments: ["#", "//"], blockComments: [("/*", "*/")], strings: [.double],
         keywords: words("resource data variable output module provider locals terraform true false null for in if each count"),
         functionCalls: true, identifierExtras: "-", keyAssignment: "=")))
 
-    static let cmake = Language(name: "CMake", lexer: .generic(LexRules(
+    package static let cmake = Language(name: "CMake", lexer: .generic(LexRules(
         lineComments: ["#"], strings: [.double],
         keywords: words("if else elseif endif foreach endforeach while endwhile function endfunction macro endmacro return"),
         caseInsensitive: true, functionCalls: true, variablePrefix: "$")))
 
-    static let makefile = Language(name: "Makefile", lexer: .generic(LexRules(
+    package static let makefile = Language(name: "Makefile", lexer: .generic(LexRules(
         lineComments: ["#"], commentNeedsBoundary: true, strings: [.double, .single],
         keywords: words("include -include sinclude ifeq ifneq ifdef ifndef else endif define endef export unexport override vpath"),
         identifierExtras: "-./%", variablePrefix: "$", variableParens: true, keyAssignment: "=:")))
 
-    static let dockerfile = Language(name: "Dockerfile", lexer: .generic(LexRules(
+    package static let dockerfile = Language(name: "Dockerfile", lexer: .generic(LexRules(
         lineComments: ["#"], commentNeedsBoundary: true, strings: [.double, .single],
         keywords: ["as"],
         lineStartKeywords: words("from run cmd label maintainer expose env add copy entrypoint volume user workdir arg onbuild stopsignal healthcheck shell"),
@@ -324,31 +329,31 @@ nonisolated enum Languages {
 
     // MARK: Data and config
 
-    static let json = Language(name: "JSON", lexer: .json)
-    static let jsonLines = Language(name: "JSON Lines", lexer: .json)
-    static let yaml = Language(name: "YAML", lexer: .yaml)
-    static let toml = Language(name: "TOML", lexer: .generic(configRules(comments: ["#"], tripleQuotes: true)))
-    static let ini = Language(name: "INI", lexer: .generic(configRules(comments: ["#", ";"])))
-    static let properties = Language(name: "Properties", lexer: .generic(configRules(comments: ["#", "!"], assignment: "=:")))
-    static let dotenv = Language(name: "Environment", lexer: .generic(configRules(comments: ["#"], keywords: ["export"], variables: true)))
-    static let xcconfig = Language(name: "Xcode Config", lexer: .generic(configRules(comments: ["//"], variables: true)))
-    static let godotResource = Language(name: "Godot Resource", lexer: .generic(configRules(comments: [";"], functions: true)))
-    static let ignoreList = Language(name: "Ignore List", lexer: .generic(LexRules(lineComments: ["#"], strings: [])))
-    static let pbxproj = Language(name: "Xcode Project", lexer: .generic(LexRules(
+    package static let json = Language(name: "JSON", lexer: .json)
+    package static let jsonLines = Language(name: "JSON Lines", lexer: .json)
+    package static let yaml = Language(name: "YAML", lexer: .yaml)
+    package static let toml = Language(name: "TOML", lexer: .generic(configRules(comments: ["#"], tripleQuotes: true)))
+    package static let ini = Language(name: "INI", lexer: .generic(configRules(comments: ["#", ";"])))
+    package static let properties = Language(name: "Properties", lexer: .generic(configRules(comments: ["#", "!"], assignment: "=:")))
+    package static let dotenv = Language(name: "Environment", lexer: .generic(configRules(comments: ["#"], keywords: ["export"], variables: true)))
+    package static let xcconfig = Language(name: "Xcode Config", lexer: .generic(configRules(comments: ["//"], variables: true)))
+    package static let godotResource = Language(name: "Godot Resource", lexer: .generic(configRules(comments: [";"], functions: true)))
+    package static let ignoreList = Language(name: "Ignore List", lexer: .generic(LexRules(lineComments: ["#"], strings: [])))
+    package static let pbxproj = Language(name: "Xcode Project", lexer: .generic(LexRules(
         lineComments: ["//"], blockComments: [("/*", "*/")], strings: [.double], identifierExtras: ".", keyAssignment: "=")))
-    static let stringsFile = Language(name: "Strings", lexer: .generic(LexRules(
+    package static let stringsFile = Language(name: "Strings", lexer: .generic(LexRules(
         lineComments: ["//"], blockComments: [("/*", "*/")], strings: [.double])))
 
-    static let html = Language(name: "HTML", lexer: .markup)
-    static let xml = Language(name: "XML", lexer: .markup)
-    static let plist = Language(name: "Property List", lexer: .markup)
-    static let css = Language(name: "CSS", lexer: .css(lineComments: false))
-    static let scss = Language(name: "SCSS", lexer: .css(lineComments: true))
-    static let less = Language(name: "Less", lexer: .css(lineComments: true))
-    static let diff = Language(name: "Diff", lexer: .diff)
+    package static let html = Language(name: "HTML", lexer: .markup)
+    package static let xml = Language(name: "XML", lexer: .markup)
+    package static let plist = Language(name: "Property List", lexer: .markup)
+    package static let css = Language(name: "CSS", lexer: .css(lineComments: false))
+    package static let scss = Language(name: "SCSS", lexer: .css(lineComments: true))
+    package static let less = Language(name: "Less", lexer: .css(lineComments: true))
+    package static let diff = Language(name: "Diff", lexer: .diff)
 
     /// Values on the right of a YAML key.
-    static let yamlValueRules = LexRules(
+    package static let yamlValueRules = LexRules(
         lineComments: ["#"], commentNeedsBoundary: true, strings: [.double, StringRule(open: "'", close: "'", escapes: false)],
         keywords: words("true false null yes no on off True False Null TRUE FALSE NULL Yes No ~"),
         identifierExtras: "-./")

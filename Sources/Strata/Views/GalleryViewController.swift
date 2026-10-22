@@ -346,7 +346,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
     private func schedulePreview(now: Bool = false, force: Bool = false) {
         let entry = lead.flatMap { $0 < entries.count ? entries[$0] : nil } ?? selectedEntries.first
         let canThumbnail = entry.map { thumbnails.canThumbnail($0) } ?? false
-        let fallback = entry.map { IconCache.shared.icon(for: $0) }
+        let fallback = entry.map { thumbnails.icon(for: $0) }
         let stalePlaceholder = !canThumbnail && (!preview.isHidden || iconView.image !== fallback)
         let staleThumbnail = canThumbnail && preview.isHidden && iconView.image === fallback
         guard force || entry != previewed || stalePlaceholder || staleThumbnail else { return }
@@ -806,7 +806,7 @@ final class GalleryThumbnailItem: NSCollectionViewItem {
         view.toolTip = entry.displayName
         let canThumbnail = thumbnails.canThumbnail(entry)
         let cached = canThumbnail ? thumbnails.cached(entry, size: size, scale: scale) : nil
-        thumbnail.image = cached?.image ?? IconCache.shared.icon(for: entry)
+        thumbnail.image = cached?.image ?? thumbnails.icon(for: entry)
         guard canThumbnail, cached?.exact != true, !thumbnails.hasFailed(entry, size: size, scale: scale) else { return }
         ticket = thumbnails.request(entry, size: size, scale: scale) { [weak self] image in
             guard let self, self.entry == entry else { return }

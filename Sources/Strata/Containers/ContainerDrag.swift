@@ -80,6 +80,6 @@ extension FileDrop {
     /// Items of containers' files dragged within Strata (see `ContainerDragItem`).
     static func containerItems(_ pasteboard: NSPasteboard, copies: CopyProviders = .live) -> [URL] {
         (pasteboard.pasteboardItems ?? []).compactMap { $0.string(forType: .strataContainerItem) }
-            .map { URL(fileURLWithPath: $0) }.filter { copies.contains($0) || LazyCopies.contains($0) }
+            .map { URL(fileURLWithPath: $0) }.filter { copies.contains($0) }
     }
 }

@@ -33,6 +33,7 @@ final class FileThumbnails {
 
     private let cache: ThumbnailCache
     let copies: CopyProviders
+    let containerStore: ContainerStore
     private let generate: Generate
     private let cancelGeneration: (QLThumbnailGenerator.Request) -> Void
     private var pending: [String: Pending] = [:]
@@ -41,7 +42,7 @@ final class FileThumbnails {
     private var keysByPath: [String: Set<String>] = [:]
     private var nextID = 0
 
-    init(cache: ThumbnailCache = ThumbnailCache(), copies: CopyProviders = .live, generate: @escaping Generate = { request, completion in
+    init(cache: ThumbnailCache = ThumbnailCache(), copies: CopyProviders = .live, containerStore: ContainerStore = .shared, generate: @escaping Generate = { request, completion in
         QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, error in
             let cancelled = (error as? CocoaError)?.code == .userCancelled || (error as NSError?)?.code == NSUserCancelledError
             completion(representation?.cgImage, cancelled)
@@ -49,8 +50,13 @@ final class FileThumbnails {
     }, cancel: @escaping (QLThumbnailGenerator.Request) -> Void = { QLThumbnailGenerator.shared.cancel($0) }) {
         self.cache = cache
         self.copies = copies
+        self.containerStore = containerStore
         self.generate = generate
         cancelGeneration = cancel
+    }
+
+    func icon(for entry: FileEntry) -> NSImage {
+        IconCache.shared.icon(for: entry, containerCopies: copies.containerCopies, containerStore: containerStore)
     }
 
     func canThumbnail(_ entry: FileEntry) -> Bool {
@@ -241,10 +247,12 @@ final class ItemInfoLoader {
     private var generations: [String: Int] = [:]
     private var nextID = 0
     let copies: CopyProviders
+    let containerStore: ContainerStore
     private let mediaReader: MediaInfoLoader.Reader
 
-    init(copies: CopyProviders = .live, mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read) {
+    init(copies: CopyProviders = .live, containerStore: ContainerStore = .shared, mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read) {
         self.copies = copies
+        self.containerStore = containerStore
         self.mediaReader = mediaReader
     }
 
@@ -262,9 +270,9 @@ final class ItemInfoLoader {
     /// The text to show right away: a file's size, or a cached count/dimension. Nil means "ask `request`".
     func immediate(_ entry: FileEntry, showHidden: Bool) -> String? {
         // A container says whether it runs (its folder only holds what's been browsed, so no count).
-        if entry.isDirectory, let (source, top) = ContainerCopies.copy(containing: entry.url),
+        if entry.isDirectory, let (source, top) = copies.containerCopies.copy(containing: entry.url),
            top.standardizedFileURL == entry.url.standardizedFileURL {
-            return switch ContainerStore.shared.container(id: source.id)?.state {
+            return switch containerStore.container(id: source.id)?.state {
             case .running?: String(localized: "Running", comment: "Container state")
             case .paused?: String(localized: "Paused", comment: "Container state")
             case .restarting?: String(localized: "Restarting", comment: "Container state")
@@ -389,5 +397,44 @@ final class ItemInfoLoader {
             return String(localized: "\(count) items", comment: "plural")
         }
         return await mediaReader(entry).dimensions
+    }
+}
+
+extension IconCache {
+    func icon(for entry: FileEntry, containerCopies: ContainerCopyStore = ContainerCopies.store, containerStore: ContainerStore = .shared) -> NSImage {
+        // A container is a box, a Compose stack is a stack of boxes. Filled and green while it runs, an outline in
+        // grey while it's stopped, orange while it's paused or only partly running.
+        if entry.isDirectory, let (source, top) = containerCopies.copy(containing: entry.url),
+           top.standardizedFileURL == entry.url.standardizedFileURL {
+            let mark = ContainerIconMark.container(state: containerStore.container(id: source.id)?.state, busy: containerStore.busy[source.id] != nil)
+            return markedIcon(mark.containerSymbol, mark)
+        }
+        if entry.isDirectory, containerCopies.isStack(entry.url) {
+            let name = entry.url.lastPathComponent
+            let members = containerStore.containers.filter {
+                $0.compose?.project.compare(name, options: [.caseInsensitive]) == .orderedSame
+            }
+            let mark = ContainerIconMark.stack(states: members.map(\.state), anyBusy: members.contains { containerStore.busy[$0.id] != nil })
+            return markedIcon(mark.stackSymbol, mark)
+        }
+        if !entry.isDirectory, !entry.isSymlink, let type = entry.contentType {
+            return icon(forType: type)
+        }
+        return icon(forPath: entry.url.path)
+    }
+}
+
+extension ContainerIconMark {
+    static func container(state: ContainerInfo.State?, busy: Bool) -> ContainerIconMark {
+        if busy || state == .paused || state == .restarting { return .changing }
+        return state == .running ? .running : .stopped
+    }
+
+    /// Green only when every container is running and none is being changed. Grey when nothing is running.
+    static func stack(states: [ContainerInfo.State], anyBusy: Bool) -> ContainerIconMark {
+        let running = states.filter { $0 == .running }.count
+        if running == states.count && running > 0 && !anyBusy { return .running }
+        if running == 0 && !anyBusy && !states.contains(where: { $0 == .paused || $0 == .restarting }) { return .stopped }
+        return .changing
     }
 }

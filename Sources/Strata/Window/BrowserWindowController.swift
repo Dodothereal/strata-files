@@ -1,8 +1,6 @@
 import AppKit
 
 extension NSToolbarItem.Identifier {
-    static let back = Self("back")
-    static let forward = Self("forward")
     static let pathBar = Self("pathBar")
     static let search = Self("search")
     static let viewMode = Self("viewMode")

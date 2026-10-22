@@ -33,7 +33,7 @@ extension BrowserWindowController {
             let isFolder = entry.isFolder
             let matches = entry.nameMatch(query.split(separator: " ").first.map(String.init) ?? query)?.indices ?? []
             return PaletteItem(title: entry.displayName, subtitle: Format.tildePath(entry.url.deletingLastPathComponent()),
-                               icon: isFolder ? folderIcon : IconCache.shared.icon(for: entry), kind: isFolder ? .folder : .match,
+                               icon: isFolder ? folderIcon : services.thumbnails.icon(for: entry), kind: isFolder ? .folder : .match,
                                fixedScore: max(0, hit.score - 1000) / 2 + 8, titleMatches: matches, url: entry.url) { [weak self] in
                 if isFolder { self?.navigate(to: entry.url) } else { self?.navigate(to: entry.url.deletingLastPathComponent(), select: entry.url) }
             }
@@ -61,7 +61,7 @@ extension BrowserWindowController {
 
         // Here first: what's in this folder is the most likely target.
         for entry in browser.topLevelEntries {
-            items.append(PaletteItem(title: entry.displayName, subtitle: entry.kind, icon: IconCache.shared.icon(for: entry),
+            items.append(PaletteItem(title: entry.displayName, subtitle: entry.kind, icon: services.thumbnails.icon(for: entry),
                                      kind: .file, boost: 6, url: entry.url) { [weak self] in
                 guard let self else { return }
                 if entry.isFolder { navigate(to: entry.url) } else { NSWorkspace.shared.open(entry.url); browser.select([entry.url]) }

@@ -1,11 +1,11 @@
 import AppKit
 
 /// CSV and TSV as a grid: the first row is the header, then up to `DelimitedLoader.rowLimit` rows.
-final class DelimitedPreviewView: PreviewView {
+package final class DelimitedPreviewView: PreviewView {
     private let grid = GridView()
 
     /// `separator` nil means detect it from the content.
-    init(url: URL, separator: UInt8?) {
+    package init(url: URL, separator: UInt8?) {
         super.init(frame: .zero)
         grid.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(grid)
@@ -20,7 +20,7 @@ final class DelimitedPreviewView: PreviewView {
         }
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
     private func show(_ table: DelimitedTable) {
         grid.show(table.data)
@@ -33,21 +33,21 @@ final class DelimitedPreviewView: PreviewView {
     }
 }
 
-nonisolated struct DelimitedTable: Sendable {
-    var data: GridData
+nonisolated package struct DelimitedTable: Sendable {
+    package var data: GridData
     /// Data rows in the whole file (header excluded); nil when the file is too large to count.
-    var totalRows: Int?
+    package var totalRows: Int?
 }
 
-nonisolated enum DelimitedLoader {
-    static let rowLimit = 2000
+nonisolated package enum DelimitedLoader {
+    package static let rowLimit = 2000
     /// Beyond this, columns are dropped: thousands of table columns make scrolling sluggish.
-    static let columnLimit = 300
+    package static let columnLimit = 300
     /// Files larger than this aren't scanned to the end for a row count.
-    static let countLimit = 256 << 20
+    package static let countLimit = 256 << 20
 
     @concurrent
-    static func load(_ url: URL, separator: UInt8?) async throws -> DelimitedTable {
+    package static func load(_ url: URL, separator: UInt8?) async throws -> DelimitedTable {
         let data = try Data(contentsOf: url, options: .alwaysMapped)
         guard !data.isEmpty else { throw PreviewError.empty }
         let sample = data.prefix(64 * 1024)

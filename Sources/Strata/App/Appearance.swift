@@ -1,6 +1,6 @@
 import AppKit
 
-nonisolated extension NSAppearance {
+nonisolated package extension NSAppearance {
     /// Increase Contrast is on (System Settings ▸ Accessibility ▸ Display).
     var isHighContrast: Bool {
         let match = bestMatch(from: [.accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua, .aqua, .darkAqua])
@@ -13,7 +13,7 @@ nonisolated extension NSAppearance {
     }
 }
 
-nonisolated extension NSColor {
+nonisolated package extension NSColor {
     /// White in Dark Mode, black in Light Mode, at `alpha`, and fully opaque with Increase Contrast.
     static func ink(light: CGFloat, dark: CGFloat) -> NSColor {
         NSColor(name: nil) { appearance in

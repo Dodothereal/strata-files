@@ -2,8 +2,8 @@ import AppKit
 
 /// Syntax-highlighted source with a line-number gutter. Lines don't wrap; the text scrolls sideways and is selectable.
 /// JSON is pretty-printed (or shown as written, with the error line marked, when invalid).
-final class CodePreviewView: PreviewView {
-    nonisolated enum Mode: Sendable {
+package final class CodePreviewView: PreviewView {
+    nonisolated package enum Mode: Sendable {
         case source(Language)
         case json
     }
@@ -16,7 +16,7 @@ final class CodePreviewView: PreviewView {
     // TextKit 1: non-contiguous layout keeps half-megabyte files fast, and line fragments map 1:1 to lines.
     private let textView = NSTextView(usingTextLayoutManager: false)
 
-    init(url: URL, mode: Mode) {
+    package init(url: URL, mode: Mode) {
         super.init(frame: .zero)
         configure()
         load({ try await CodeLoader.load(url, mode: mode) }) { [weak self] document in
@@ -24,7 +24,7 @@ final class CodePreviewView: PreviewView {
         }
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
     private func configure() {
         scrollView.drawsBackground = false
@@ -84,7 +84,7 @@ final class CodePreviewView: PreviewView {
         }
     }
 
-    override func layout() {
+    package override func layout() {
         super.layout()
         keepTextClearOfRuler()
         // Centering a line needs the final size, so it waits for the first real layout.
@@ -180,21 +180,21 @@ final class LineNumberRuler: NSRulerView {
 }
 
 /// A highlighted document, ready for a text view.
-nonisolated struct CodeDocument: Sendable {
-    let storage: Handoff<NSTextStorage>
+nonisolated package struct CodeDocument: Sendable {
+    package let storage: Handoff<NSTextStorage>
     /// UTF-16 offset where each line starts.
-    let lineStarts: [Int]
+    package let lineStarts: [Int]
     /// The longest line, in columns with tabs expanded.
-    let maxColumns: Int
-    let languageName: String
-    let isTruncated: Bool
-    let note: String?
-    let errorLine: Int?
+    package let maxColumns: Int
+    package let languageName: String
+    package let isTruncated: Bool
+    package let note: String?
+    package let errorLine: Int?
 }
 
-nonisolated enum CodeLoader {
+nonisolated package enum CodeLoader {
     @concurrent
-    static func load(_ url: URL, mode: CodePreviewView.Mode) async throws -> CodeDocument {
+    package static func load(_ url: URL, mode: CodePreviewView.Mode) async throws -> CodeDocument {
         var language = Languages.json
         var text: String
         var truncated = false
@@ -249,7 +249,7 @@ nonisolated enum CodeLoader {
     }
 
     /// Lines longer than this are cut: one enormous line (minified code) would take TextKit seconds to lay out.
-    static let maxLineLength = 2_000
+    package static let maxLineLength = 2_000
 
     /// `text` with over-long lines cut short and marked with an ellipsis, or nil when every line fits.
     private static func shortenLongLines(_ text: String) -> String? {

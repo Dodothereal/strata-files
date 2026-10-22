@@ -963,7 +963,7 @@ final class ColumnCellView: NSTableCellView, ColorThemeUpdating {
                    cloud: CloudStatus? = nil, scale: CGFloat = 2, preferences: Prefs = .shared,
                    thumbnails: FileThumbnails = .shared) {
         isFolder = entry.isFolder
-        nameCell.configure(name: entry.displayName, icon: IconCache.shared.icon(for: entry), matches: matches, dimmed: dimmed, git: git,
+        nameCell.configure(name: entry.displayName, icon: thumbnails.icon(for: entry), matches: matches, dimmed: dimmed, git: git,
                            tags: tags, cloud: cloud, thumbnail: preferences.showIconPreviews ? entry : nil,
                            thumbnails: thumbnails, scale: scale, typography: FileViewTypography(preferences: preferences))
         applyTruncation()

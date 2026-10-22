@@ -454,6 +454,21 @@ struct BrowserCopyProviderTests {
         for job in env.queue.jobs { await job.finished() }
         #expect(await env.backend.uploadedPaths.contains("/source.txt"))
         #expect(FileManager.default.fileExists(atPath: top.appending(path: "source.txt").path))
+
+        // ShelfWell.transfer routes server drops through the active window's remote copy store and keeps shelf items intact.
+        let shelfSource = tree.url("local/shelf.txt")
+        try Data("from shelf".utf8).write(to: shelfSource)
+        let well = ShelfWell(frame: NSRect(x: 0, y: 0, width: 200, height: 180))
+        well.activeWindow = { window }
+        well.add([shelfSource])
+        window.focusOtherPane(nil)
+        #expect(window.location == top)
+        well.transfer(move: true)
+        await window.browser.commandWork?.value
+        for job in env.queue.jobs { await job.finished() }
+        #expect(await env.backend.uploadedPaths.contains("/shelf.txt"))
+        #expect(FileManager.default.fileExists(atPath: shelfSource.path))
+        #expect(well.items == [shelfSource])
         withExtendedLifetime((tree, env, window)) {}
     }
 

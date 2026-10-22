@@ -315,7 +315,7 @@ final class InspectorViewController: NSViewController {
                 preview.clear()
                 preview.isHidden = true
                 iconView.isHidden = false
-                iconView.image = Self.stackedIcons(items)
+                iconView.image = stackedIcons(items)
             }
         }
     }
@@ -406,7 +406,7 @@ final class InspectorViewController: NSViewController {
         removeRichPreview()
         preview.clear()
         previewingContent = canPreview(entry)
-        iconView.image = IconCache.shared.icon(for: entry)
+        iconView.image = services.thumbnails.icon(for: entry)
         iconView.isHidden = false
         preview.isHidden = true
         guard previewingContent else { return }
@@ -521,8 +521,8 @@ final class InspectorViewController: NSViewController {
     }
 
     /// Up to three icons fanned out, like a stack of the selected files.
-    private static func stackedIcons(_ items: [FileEntry]) -> NSImage {
-        let icons = items.prefix(3).map { IconCache.shared.icon(for: $0) }
+    private func stackedIcons(_ items: [FileEntry]) -> NSImage {
+        let icons = items.prefix(3).map { services.thumbnails.icon(for: $0) }
         let size = NSSize(width: 160, height: 160)
         return NSImage(size: size, flipped: false) { _ in
             let angles: [CGFloat] = icons.count == 1 ? [0] : icons.count == 2 ? [-7, 6] : [-10, 0, 9]

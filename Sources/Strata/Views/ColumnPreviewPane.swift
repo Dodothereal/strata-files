@@ -120,7 +120,7 @@ final class ColumnPreviewPane: NSView {
         nameLabel.stringValue = entry.displayName
         subtitle.stringValue = [entry.kind, entry.size.map(Format.bytes)].compactMap { $0 }.joined(separator: " · ")
         setAccessibilityLabel(String(localized: "Preview of \(entry.displayName)", comment: "Accessibility; the placeholder is a file name"))
-        setImage(IconCache.shared.icon(for: entry), animated: false)
+        setImage(thumbnails.icon(for: entry), animated: false)
         requestThumbnail(entry, side: imageSide.constant)
 
         var rows: [(String, String)] = [

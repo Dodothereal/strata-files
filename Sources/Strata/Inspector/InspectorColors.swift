@@ -1,9 +1,7 @@
 import AppKit
-import Synchronization
 
 /// Attributed Git counts and script labels retain these colors, so recoloring never rebuilds their cards.
 nonisolated enum InspectorColors {
-    private static let state = Mutex((options: ColorThemeOptions(), tinted: false))
     static let primary = color(native: .labelColor, light: 0.92, dark: 1)
     static let secondary = color(native: .secondaryLabelColor, light: 0.75, dark: 0.98)
     static let tertiary = color(native: .tertiaryLabelColor, light: 0.68, dark: 0.95)
@@ -15,12 +13,12 @@ nonisolated enum InspectorColors {
     @MainActor static let conflict = semantic(GitColors.conflicted)
 
     static func update(options: ColorThemeOptions, tinted: Bool) {
-        state.withLock { $0 = (options, tinted) }
+        ThemeStyle.inspectorState.withLock { $0 = (options, tinted) }
     }
 
     private static func color(native: NSColor, light: CGFloat, dark: CGFloat) -> NSColor {
         NSColor(name: nil) { appearance in
-            guard state.withLock({ $0.tinted }), !appearance.isHighContrast else { return native }
+            guard ThemeStyle.inspectorState.withLock({ $0.tinted }), !appearance.isHighContrast else { return native }
             return NSColor(white: appearance.isDark ? 1 : 0, alpha: appearance.isDark ? dark : light)
         }
     }
@@ -28,7 +26,7 @@ nonisolated enum InspectorColors {
     /// Keep semantic hues, moving toward readable ink only as far as the panel's contrast requires.
     private static func semantic(_ native: NSColor) -> NSColor {
         NSColor(name: nil) { appearance in
-            let state = state.withLock { $0 }
+            let state = ThemeStyle.inspectorState.withLock { $0 }
             guard state.tinted, !appearance.isHighContrast else { return native }
             var foreground: NSColor?
             appearance.performAsCurrentDrawingAppearance { foreground = native.usingColorSpace(.sRGB) }

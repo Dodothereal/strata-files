@@ -2,8 +2,8 @@ import AppKit
 import UniformTypeIdentifiers
 
 /// Finder icons, cached per file type for documents and per path for folders and packages (which can have their own).
-final class IconCache {
-    static let shared = IconCache()
+package final class IconCache {
+    package static let shared = IconCache()
 
     private var byType: [String: NSImage] = [:]
     private let byPath = NSCache<NSString, NSImage>()
@@ -12,31 +12,11 @@ final class IconCache {
         byPath.countLimit = 4000
     }
 
-    func icon(for entry: FileEntry) -> NSImage {
-        // A container is a box, a Compose stack is a stack of boxes. Filled and green while it runs, an outline in
-        // grey while it's stopped, orange while it's paused or only partly running.
-        if entry.isDirectory, let (source, top) = ContainerCopies.copy(containing: entry.url),
-           top.standardizedFileURL == entry.url.standardizedFileURL {
-            let store = ContainerStore.shared
-            let mark = ContainerIconMark.container(state: store.container(id: source.id)?.state, busy: store.busy[source.id] != nil)
-            return markedIcon(mark.containerSymbol, mark)
-        }
-        if entry.isDirectory, ContainerCopies.isStack(entry.url) {
-            let name = entry.url.lastPathComponent
-            let store = ContainerStore.shared
-            let members = store.containers.filter {
-                $0.compose?.project.compare(name, options: [.caseInsensitive]) == .orderedSame
-            }
-            let mark = ContainerIconMark.stack(states: members.map(\.state), anyBusy: members.contains { store.busy[$0.id] != nil })
-            return markedIcon(mark.stackSymbol, mark)
-        }
-        if !entry.isDirectory, !entry.isSymlink, let type = entry.contentType {
-            if let cached = byType[type.identifier] { return cached }
-            let image = NSWorkspace.shared.icon(for: type)
-            byType[type.identifier] = image
-            return image
-        }
-        return icon(forPath: entry.url.path)
+    package func icon(forType type: UTType) -> NSImage {
+        if let cached = byType[type.identifier] { return cached }
+        let image = NSWorkspace.shared.icon(for: type)
+        byType[type.identifier] = image
+        return image
     }
 
     private enum BadgeColor: Hashable {
@@ -56,7 +36,7 @@ final class IconCache {
     /// A box for a container, a stack of boxes for a Compose project. Filled and green while it runs, outline and grey
     /// while it's stopped, orange while it's paused or only partly running. The symbol is the whole icon: a badge on a
     /// folder shrinks to a dot at list size.
-    private func markedIcon(_ symbol: String, _ mark: ContainerIconMark) -> NSImage {
+    package func markedIcon(_ symbol: String, _ mark: ContainerIconMark) -> NSImage {
         let badgeColor: BadgeColor = switch mark {
         case .running: .green
         case .changing: .orange
@@ -78,7 +58,7 @@ final class IconCache {
         return image
     }
 
-    func icon(forPath path: String) -> NSImage {
+    package func icon(forPath path: String) -> NSImage {
         if let cached = byPath.object(forKey: path as NSString) { return cached }
         let image = NSWorkspace.shared.icon(forFile: path)
         byPath.setObject(image, forKey: path as NSString)
@@ -87,24 +67,11 @@ final class IconCache {
 }
 
 /// Whether a container or a Compose stack is drawn as running, in between, or stopped.
-enum ContainerIconMark: Equatable {
+package enum ContainerIconMark: Equatable {
     case running, changing, stopped
 
     /// A filled box while it runs or is changing; an outline box while it's stopped.
-    var containerSymbol: String { self == .stopped ? "shippingbox" : "shippingbox.fill" }
+    package var containerSymbol: String { self == .stopped ? "shippingbox" : "shippingbox.fill" }
     /// A filled stack while any of it runs or is changing; an outline stack while all of it is stopped.
-    var stackSymbol: String { self == .stopped ? "square.stack.3d.up" : "square.stack.3d.up.fill" }
-
-    static func container(state: ContainerInfo.State?, busy: Bool) -> ContainerIconMark {
-        if busy || state == .paused || state == .restarting { return .changing }
-        return state == .running ? .running : .stopped
-    }
-
-    /// Green only when every container is running and none is being changed. Grey when nothing is running.
-    static func stack(states: [ContainerInfo.State], anyBusy: Bool) -> ContainerIconMark {
-        let running = states.filter { $0 == .running }.count
-        if running == states.count && running > 0 && !anyBusy { return .running }
-        if running == 0 && !anyBusy && !states.contains(where: { $0 == .paused || $0 == .restarting }) { return .stopped }
-        return .changing
-    }
+    package var stackSymbol: String { self == .stopped ? "square.stack.3d.up" : "square.stack.3d.up.fill" }
 }

@@ -11,6 +11,78 @@ let compilerWorkarounds: [SwiftSetting] = [.unsafeFlags(["-Xllvm", "-sil-disable
 let compilerWorkarounds: [SwiftSetting] = []
 #endif
 
+let strataSwiftSettings: [SwiftSetting] = [
+    .defaultIsolation(MainActor.self),
+    .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+    .enableUpcomingFeature("InferIsolatedConformances"),
+] + compilerWorkarounds
+
+let appOnlySources = [
+    "AppDelegate+Trash.swift",
+    "AppDelegate.swift",
+    "MainMenu.swift",
+    "Prefs.swift",
+    "ShortcutStore.swift",
+    "StrataCommand.swift",
+    "Updates.swift",
+]
+
+let themeSources = [
+    "Appearance.swift",
+    "ColorTheme.swift",
+    "HeaderMaterialTint.swift",
+    "NativeHeaderFillTint.swift",
+    "NavigationItemTheme.swift",
+    "ThemeAccessoryView.swift",
+    "ThemedFormBackground.swift",
+    "ThemeSurfaces.swift",
+    "ToolbarBackdropTint.swift",
+    "ToolbarThemeController.swift",
+]
+
+let appModelSources = [
+    "ApplicationsFolders.swift",
+    "ArchiveCache.swift",
+    "CloudStatus.swift",
+    "CreatedFolders.swift",
+    "DSStore.swift",
+    "FileEntry.swift",
+    "FileOps.swift",
+    "FolderCompare.swift",
+    "Frecency.swift",
+    "LandedFiles.swift",
+    "OperationLog.swift",
+    "Places.swift",
+    "Privacy.swift",
+    "SavedSearches.swift",
+    "ServerConnectionSettings.swift",
+    "TagStore.swift",
+    "Trash.swift",
+    "Workspace.swift",
+]
+
+let modelSources = [
+    "FileIdentity.swift",
+    "FileInfoEditing.swift",
+    "FolderSizer.swift",
+    "MediaInfo.swift",
+    "PipeRead.swift",
+    "SecureStorage.swift",
+    "ServerConnection.swift",
+    "ServerMountSession.swift",
+]
+
+let indexSources = [
+    "DuplicateFinder.swift",
+    "FSEventsStream.swift",
+    "IndexPersistence.swift",
+    "IndexScanner.swift",
+    "IndexSearch.swift",
+    "IndexStore.swift",
+    "IndexWorker.swift",
+    "SpotlightSearch.swift",
+]
+
 let package = Package(
     name: "Strata",
     platforms: [.macOS(.v26)],
@@ -19,15 +91,56 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
     ],
     targets: [
+        .target(
+            name: "StrataSupport",
+            path: "Sources/Strata/Support",
+            swiftSettings: strataSwiftSettings
+        ),
+        .target(
+            name: "StrataTheme",
+            path: "Sources/Strata/App",
+            exclude: appOnlySources,
+            sources: themeSources,
+            swiftSettings: strataSwiftSettings
+        ),
+        .target(
+            name: "StrataModel",
+            dependencies: ["StrataSupport"],
+            path: "Sources/Strata/Model",
+            exclude: appModelSources,
+            sources: modelSources,
+            swiftSettings: strataSwiftSettings
+        ),
+        .target(
+            name: "StrataPreviews",
+            dependencies: ["StrataSupport", "StrataTheme"],
+            path: "Sources/Strata/Previews",
+            swiftSettings: strataSwiftSettings
+        ),
+        .target(
+            name: "StrataIndex",
+            dependencies: ["StrataSupport", "StrataModel"],
+            path: "Sources/Strata/Index",
+            exclude: ["FileIndex.swift", "FolderSearch.swift", "NaturalQuery.swift"],
+            sources: indexSources,
+            swiftSettings: strataSwiftSettings
+        ),
         .executableTarget(
             name: "Strata",
-            dependencies: [.product(name: "Sparkle", package: "Sparkle")],
+            dependencies: [
+                .product(name: "Sparkle", package: "Sparkle"),
+                "StrataSupport",
+                "StrataTheme",
+                "StrataModel",
+                "StrataPreviews",
+                "StrataIndex",
+            ],
             path: "Sources/Strata",
-            swiftSettings: [
-                .defaultIsolation(MainActor.self),
-                .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
-                .enableUpcomingFeature("InferIsolatedConformances"),
-            ] + compilerWorkarounds,
+            exclude: ["Support", "Previews"]
+                + themeSources.map { "App/\($0)" }
+                + modelSources.map { "Model/\($0)" }
+                + indexSources.map { "Index/\($0)" },
+            swiftSettings: strataSwiftSettings,
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("NetFS"),
@@ -43,7 +156,14 @@ let package = Package(
         ),
         .testTarget(
             name: "StrataTests",
-            dependencies: ["Strata"],
+            dependencies: [
+                "Strata",
+                "StrataSupport",
+                "StrataTheme",
+                "StrataModel",
+                "StrataPreviews",
+                "StrataIndex",
+            ],
             path: "Tests/StrataTests",
             swiftSettings: [.defaultIsolation(MainActor.self)]
         ),

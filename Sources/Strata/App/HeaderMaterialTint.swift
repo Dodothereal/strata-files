@@ -1,7 +1,7 @@
 import AppKit
 
 /// Use glass's public tint rather than painting subviews over AppKit's material and its private masks.
-final class HeaderMaterialTint: NSObject {
+package final class HeaderMaterialTint: NSObject {
     private let nativeTint: NSColor?
     private var nativeBlending: NSVisualEffectView.BlendingMode?
     private var nativeMaterial: NSVisualEffectView.Material?
@@ -12,7 +12,7 @@ final class HeaderMaterialTint: NSObject {
     private var applying = false
     private var withinWindow = false
 
-    init(_ view: NSView) {
+    package init(_ view: NSView) {
         nativeTint = (view as? NSGlassEffectView)?.tintColor
         nativeBlending = (view as? NSVisualEffectView)?.blendingMode
         nativeMaterial = (view as? NSVisualEffectView)?.material
@@ -38,7 +38,7 @@ final class HeaderMaterialTint: NSObject {
         }
     }
 
-    func apply(to view: NSView, withinWindow: Bool = false) {
+    package func apply(to view: NSView, withinWindow: Bool = false) {
         guard !applying else { return }
         applying = true
         defer { applying = false }
@@ -69,7 +69,7 @@ final class HeaderMaterialTint: NSObject {
         }
     }
 
-    func restore(in view: NSView) {
+    package func restore(in view: NSView) {
         applying = true
         defer { applying = false }
         withinWindow = false

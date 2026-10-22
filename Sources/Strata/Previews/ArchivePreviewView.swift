@@ -1,8 +1,9 @@
 import AppKit
+import StrataSupport
 import UniformTypeIdentifiers
 
 /// The contents of a zip or tar archive as an expandable tree, without extracting anything.
-final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NSOutlineViewDelegate {
+package final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     private let scrollView = NSScrollView()
     private let outlineView = NSOutlineView()
     private var root = ArchiveNode(name: "", isDirectory: true)
@@ -11,7 +12,7 @@ final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NSOutlineV
     private let sizeColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("size"))
     private let dateColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("date"))
 
-    init(url: URL, kind: ArchiveKind) {
+    package init(url: URL, kind: ArchiveKind) {
         super.init(frame: .zero)
         configure()
         load({ try await ArchiveLister.list(url, kind: kind) }) { [weak self] listing in
@@ -19,7 +20,7 @@ final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NSOutlineV
         }
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
     private func configure() {
         nameColumn.minWidth = 120
@@ -65,7 +66,7 @@ final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NSOutlineV
         ])
     }
 
-    override func layout() {
+    package override func layout() {
         super.layout()
         // Names take whatever the size (and, when there's room, date) columns leave.
         dateColumn.isHidden = bounds.width < 440
@@ -96,19 +97,19 @@ final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NSOutlineV
 
     // MARK: - Data source
 
-    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+    package func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         ((item as? ArchiveNode) ?? root).children.count
     }
 
-    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+    package func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
         ((item as? ArchiveNode) ?? root).children[index]
     }
 
-    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+    package func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         (item as? ArchiveNode)?.isDirectory == true && !((item as? ArchiveNode)?.children.isEmpty ?? true)
     }
 
-    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+    package func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? ArchiveNode, let tableColumn else { return nil }
         switch tableColumn.identifier.rawValue {
         case "name":

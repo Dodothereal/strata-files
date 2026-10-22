@@ -1,15 +1,15 @@
 import Foundation
 
 /// Validates and pretty-prints JSON while keeping key order and number spelling exactly as written.
-nonisolated enum JSONFormatter {
-    enum Validity: Equatable {
+nonisolated package enum JSONFormatter {
+    package enum Validity: Equatable {
         case valid
         /// Valid only with JSON5 extensions (comments, trailing commas), as in `tsconfig.json`; shown as written.
         case extended
         case invalid(line: Int?)
     }
 
-    static func validate(_ text: String) -> Validity {
+    package static func validate(_ text: String) -> Validity {
         let data = Data(text.utf8)
         if (try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)) != nil { return .valid }
         do {
@@ -22,7 +22,7 @@ nonisolated enum JSONFormatter {
 
     /// Re-indents `text` with two spaces. Lenient: unbalanced or truncated input still formats as far as it goes.
     /// Short arrays of plain values stay on one line.
-    static func format(_ text: String) -> String {
+    package static func format(_ text: String) -> String {
         let input = Array(text.utf16)
         // Indentation can multiply even a short document's size. Keep the original text when formatting
         // would make the preview too large, including incomplete files that bypass JSON validation.

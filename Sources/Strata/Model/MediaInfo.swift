@@ -4,19 +4,25 @@ import ImageIO
 import UniformTypeIdentifiers
 
 /// Dimensions in display orientation, and a movie or audio file's playing time.
-nonisolated struct MediaInfo: Equatable, Sendable {
-    var width: Int?
-    var height: Int?
-    var duration: Double?
+nonisolated package struct MediaInfo: Equatable, Sendable {
+    package var width: Int?
+    package var height: Int?
+    package var duration: Double?
 
-    var dimensions: String? {
+    package init(width: Int? = nil, height: Int? = nil, duration: Double? = nil) {
+        self.width = width
+        self.height = height
+        self.duration = duration
+    }
+
+    package var dimensions: String? {
         guard let width, let height, width > 0, height > 0 else { return nil }
         return "\(width) × \(height)"
     }
 
-    var pixels: Double { Double(width ?? 0) * Double(height ?? 0) }
+    package var pixels: Double { Double(width ?? 0) * Double(height ?? 0) }
 
-    var durationText: String? {
+    package var durationText: String? {
         guard let duration, duration.isFinite, duration >= 0, duration < Double(Int.max / 2) else { return nil }
         let seconds = Int(duration.rounded())
         if seconds >= 3600 { return "\(seconds / 3600):" + String(format: "%02d:%02d", seconds / 60 % 60, seconds % 60) }
@@ -24,7 +30,7 @@ nonisolated struct MediaInfo: Equatable, Sendable {
     }
 
     @concurrent
-    static func read(_ url: URL, contentType: UTType?) async -> Self {
+    package static func read(_ url: URL, contentType: UTType?) async -> Self {
         guard !Task.isCancelled else { return Self() }
         if contentType?.conforms(to: .image) == true {
             guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),

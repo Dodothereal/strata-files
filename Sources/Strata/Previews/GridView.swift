@@ -1,27 +1,32 @@
 import AppKit
 
 /// One cell of a data grid.
-nonisolated enum GridValue: Sendable {
+nonisolated package enum GridValue: Sendable {
     case text(String)
     case null
     case blob(bytes: Int)
 }
 
-nonisolated struct GridColumn: Sendable {
-    var title: String
+nonisolated package struct GridColumn: Sendable {
+    package var title: String
     /// Numbers align right in tabular digits.
-    var isNumeric = false
+    package var isNumeric = false
     /// Fitted by `GridData.measureColumns()`, off the main thread.
-    var width: CGFloat = 80
+    package var width: CGFloat = 80
 }
 
 /// Rows and columns for `GridView`.
-nonisolated struct GridData: Sendable {
-    var columns: [GridColumn]
-    var rows: [[GridValue]]
+nonisolated package struct GridData: Sendable {
+    package var columns: [GridColumn]
+    package var rows: [[GridValue]]
+
+    package init(columns: [GridColumn], rows: [[GridValue]]) {
+        self.columns = columns
+        self.rows = rows
+    }
 
     /// Marks columns numeric when nearly all their non-empty sample values parse as numbers.
-    mutating func detectNumericColumns(sample: Int = 200) {
+    package mutating func detectNumericColumns(sample: Int = 200) {
         for index in columns.indices {
             var numbers = 0, filled = 0
             for row in rows.prefix(sample) where index < row.count {
@@ -34,7 +39,7 @@ nonisolated struct GridData: Sendable {
     }
 
     /// Fits each column to its header and first hundred values, capped so one long column can't push the rest out of view.
-    mutating func measureColumns() {
+    package mutating func measureColumns() {
         let header = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
         let text = NSFont.systemFont(ofSize: 12)
         let digits = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
@@ -69,12 +74,12 @@ nonisolated struct GridData: Sendable {
 }
 
 /// A read-only table with a header row: no zebra stripes, columns sized to their content, sideways scrolling.
-final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate {
+package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private let scrollView = NSScrollView()
     private let tableView = NSTableView()
     private var data = GridData(columns: [], rows: [])
 
-    override init(frame: NSRect) {
+    package override init(frame: NSRect) {
         super.init(frame: frame)
         tableView.style = .plain
         tableView.rowHeight = 22
@@ -102,9 +107,9 @@ final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         ])
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
-    func show(_ data: GridData) {
+    package func show(_ data: GridData) {
         self.data = data
         for column in tableView.tableColumns.reversed() { tableView.removeTableColumn(column) }
         for (index, column) in data.columns.enumerated() {
@@ -127,9 +132,9 @@ final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         scrollView.reflectScrolledClipView(clip)
     }
 
-    nonisolated static let maxColumnWidth: CGFloat = 260
+    nonisolated package static let maxColumnWidth: CGFloat = 260
 
-    nonisolated static func display(_ value: GridValue) -> String {
+    nonisolated package static func display(_ value: GridValue) -> String {
         switch value {
         case .text(let text): text
         case .null: "NULL"
@@ -137,9 +142,9 @@ final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         }
     }
 
-    func numberOfRows(in tableView: NSTableView) -> Int { data.rows.count }
+    package func numberOfRows(in tableView: NSTableView) -> Int { data.rows.count }
 
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+    package func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let tableColumn, let column = Int(tableColumn.identifier.rawValue) else { return nil }
         let identifier = NSUserInterfaceItemIdentifier("GridCell")
         let cell = tableView.makeView(withIdentifier: identifier, owner: nil) as? GridCellView ?? GridCellView()

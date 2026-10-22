@@ -2,7 +2,7 @@ import AppKit
 
 /// Block structure of a Markdown document (CommonMark plus GitHub tables, task lists and front matter).
 /// Inline markup is left as source text for `AttributedString(markdown:)`.
-nonisolated indirect enum MarkdownBlock {
+nonisolated package indirect enum MarkdownBlock {
     case heading(level: Int, text: String)
     case paragraph(String)
     case code(language: String, text: String)
@@ -13,14 +13,14 @@ nonisolated indirect enum MarkdownBlock {
     case html(String)
 }
 
-nonisolated struct MarkdownListItem {
+nonisolated package struct MarkdownListItem {
     /// nil for plain items, otherwise whether the task box is checked.
-    var checked: Bool?
-    var blocks: [MarkdownBlock]
+    package var checked: Bool?
+    package var blocks: [MarkdownBlock]
 }
 
-nonisolated enum MarkdownParser {
-    static func parse(_ text: String) -> [MarkdownBlock] {
+nonisolated package enum MarkdownParser {
+    package static func parse(_ text: String) -> [MarkdownBlock] {
         var lines = text.replacingOccurrences(of: "\t", with: "    ").components(separatedBy: "\n")
         var blocks: [MarkdownBlock] = []
         // YAML front matter shows as a code block.
@@ -38,7 +38,7 @@ nonisolated enum MarkdownParser {
     private static let maxTableColumns = 20
     private static let maxTableRows = 200
 
-    static func parse(lines: [String], depth: Int = 0) -> [MarkdownBlock] {
+    package static func parse(lines: [String], depth: Int = 0) -> [MarkdownBlock] {
         guard depth < maxDepth else { return lines.isEmpty ? [] : [.code(language: "", text: lines.joined(separator: "\n"))] }
         var blocks: [MarkdownBlock] = []
         var paragraph: [String] = []

@@ -5,34 +5,34 @@ import Foundation
 /// `author:Ana`, `artist:"Miles Davis"`; with them, `kind:` (image, video, audio, pdf), other words (by name) and `ext:`
 /// narrow it down, as in a normal search. A few plain-English forms read the same way ("photos taken with iPhone",
 /// "videos longer than 10 minutes").
-nonisolated struct SpotlightQuery: Equatable, Sendable {
-    var tags: [String] = []
-    var words: [String] = []
-    var extensions: [String] = []
-    var conditions: [Condition] = []
+nonisolated package struct SpotlightQuery: Equatable, Sendable {
+    package var tags: [String] = []
+    package var words: [String] = []
+    package var extensions: [String] = []
+    package var conditions: [Condition] = []
 
     /// One metadata test: text found in any of `attributes`, or a number compared with `value`.
-    struct Condition: Equatable, Sendable {
-        enum Test: Equatable, Sendable {
+    package struct Condition: Equatable, Sendable {
+        package enum Test: Equatable, Sendable {
             case contains(String)
             case equals(String)
             case compare(Comparison, Double)
         }
 
-        enum Comparison: String, Sendable {
+        package enum Comparison: String, Sendable {
             case greater = ">", greaterOrEqual = ">=", less = "<", lessOrEqual = "<=", equal = "=="
         }
 
-        let attributes: [String]
-        let test: Test
+        package let attributes: [String]
+        package let test: Test
         /// "camera “iPhone”", "longer than 10 min", for the results summary.
-        let label: String
+        package let label: String
         /// `kind:` only narrows a metadata search; on its own it's the index's job.
-        var isKind = false
+        package var isKind = false
     }
 
     /// Nil when nothing in `text` needs Spotlight.
-    static func parse(_ text: String) -> SpotlightQuery? {
+    package static func parse(_ text: String) -> SpotlightQuery? {
         var query = SpotlightQuery()
         for token in tokens(naturalForm(text) ?? text) {
             let lower = token.lowercased()
@@ -187,7 +187,7 @@ nonisolated struct SpotlightQuery: Equatable, Sendable {
 
     /// Plain-English searches that mean metadata ("photos taken with iPhone", "videos longer than 10 minutes", "pdfs
     /// with more than 20 pages", "songs by Miles Davis") as the same search in syntax; nil for anything else.
-    static func naturalForm(_ text: String) -> String? {
+    package static func naturalForm(_ text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         let quote = { (raw: String) in
             let value = raw.count > 1 && raw.hasPrefix("\"") && raw.hasSuffix("\"") ? String(raw.dropFirst().dropLast()) : raw
@@ -229,7 +229,7 @@ nonisolated struct SpotlightQuery: Equatable, Sendable {
     }
 
     /// Every condition at once. Values are passed as arguments, never pasted into the format.
-    var predicate: NSPredicate {
+    package var predicate: NSPredicate {
         var parts = tags.map { NSPredicate(format: "%K ==[c] %@", "kMDItemUserTags", $0) }
         parts += words.map { NSPredicate(format: "%K CONTAINS[cd] %@", NSMetadataItemFSNameKey, $0) }
         if !extensions.isEmpty {
@@ -258,7 +258,7 @@ nonisolated struct SpotlightQuery: Equatable, Sendable {
     }
 
     /// "Tagged “Red” · images · camera “iPhone” · named “report” · .pdf", for the results summary.
-    var summary: String {
+    package var summary: String {
         var parts: [String] = []
         if !tags.isEmpty {
             let list = ListFormatter.localizedString(byJoining: tags.map { "“\($0)”" })
@@ -276,7 +276,7 @@ nonisolated struct SpotlightQuery: Equatable, Sendable {
     }
 
     /// A tag as a query term, quoted and escaped so any name round-trips (`tag:"Client \"A\""`).
-    static func term(forTag name: String) -> String {
+    package static func term(forTag name: String) -> String {
         "tag:\"" + name.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
     }
 
@@ -307,15 +307,15 @@ nonisolated struct SpotlightQuery: Equatable, Sendable {
 }
 
 /// Runs a Spotlight query to completion (or a time limit) and returns what it found.
-enum SpotlightSearch {
-    struct Result {
-        var urls: [URL]
-        var total: Int
-        var timedOut: Bool
+package enum SpotlightSearch {
+    package struct Result {
+        package var urls: [URL]
+        package var total: Int
+        package var timedOut: Bool
     }
 
     /// Searches `scope`, or the whole Mac when nil. Returns at most `limit` items, with the total found.
-    static func run(_ predicate: NSPredicate, scope: URL?, limit: Int = 1000, timeout: TimeInterval = 15) async -> Result {
+    package static func run(_ predicate: NSPredicate, scope: URL?, limit: Int = 1000, timeout: TimeInterval = 15) async -> Result {
         let query = NSMetadataQuery()
         query.predicate = predicate
         query.searchScopes = scope.map { [$0] } ?? [NSMetadataQueryLocalComputerScope]

@@ -61,6 +61,37 @@ final class PathQueryTests {
         #expect(!PathQuery.isPathQuery("/Applications"))
         #expect(PathQuery.isPathQuery("github/atlas"))
     }
+
+    @Test func pathSuggestionsFollowInjectedHiddenFilesPreference() async throws {
+        let hiddenDir = github.appending(path: ".secret-repo", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: hiddenDir, withIntermediateDirectories: true)
+
+        let domainA = "StrataPathSuggestionsTests.A.\(UUID().uuidString)"
+        let domainB = "StrataPathSuggestionsTests.B.\(UUID().uuidString)"
+        let defaultsA = try #require(UserDefaults(suiteName: domainA))
+        let defaultsB = try #require(UserDefaults(suiteName: domainB))
+        defer {
+            defaultsA.removePersistentDomain(forName: domainA)
+            defaultsB.removePersistentDomain(forName: domainB)
+        }
+        let prefsHiddenOff = Prefs(defaults: defaultsA, domainName: domainA, notifications: NotificationCenter())
+        let prefsHiddenOn = Prefs(defaults: defaultsB, domainName: domainB, notifications: NotificationCenter())
+        prefsHiddenOff.showHidden = false
+        prefsHiddenOn.showHidden = true
+
+        let suggestOff = PathSuggestions(visits: Frecency(preferences: defaultsA), preferences: prefsHiddenOff)
+        let suggestOn = PathSuggestions(visits: Frecency(preferences: defaultsB), preferences: prefsHiddenOn)
+
+        let offNames = await suggestOff.suggestions(for: github.path + "/", in: github).map(\.url.lastPathComponent)
+        let onNames = await suggestOn.suggestions(for: github.path + "/", in: github).map(\.url.lastPathComponent)
+        #expect(offNames == ["atlas", "harbor", "strata"])
+        #expect(onNames == [".secret-repo", "atlas", "harbor", "strata"])
+
+        // Typing a leading dot still reveals hidden folders even when showHidden is off.
+        let dotNames = await suggestOff.suggestions(for: github.path + "/.s", in: github).map(\.url.lastPathComponent)
+        #expect(dotNames == [".secret-repo"])
+        withExtendedLifetime((defaultsA, defaultsB, prefsHiddenOff, prefsHiddenOn)) {}
+    }
 }
 
 struct FuzzyTests {

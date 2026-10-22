@@ -2,11 +2,11 @@ import Foundation
 
 /// How an archive is listed: Info-ZIP's `zipinfo` for the zip family (exact dates, compressed sizes),
 /// libarchive's `bsdtar` for tarballs and the other formats it reads.
-nonisolated enum ArchiveKind: Sendable {
+nonisolated package enum ArchiveKind: Sendable {
     case zip
     case tar
 
-    init?(fileName: String) {
+    package init?(fileName: String) {
         let name = fileName.lowercased()
         let ext = (name as NSString).pathExtension
         if Self.zipExtensions.contains(ext) {
@@ -24,16 +24,16 @@ nonisolated enum ArchiveKind: Sendable {
 }
 
 /// One file or folder inside an archive. Folders implied by deeper paths are created too.
-nonisolated final class ArchiveNode {
-    let name: String
-    let isDirectory: Bool
-    var size: Int64
-    var modified: Date?
-    var children: [ArchiveNode] = []
+nonisolated package final class ArchiveNode {
+    package let name: String
+    package let isDirectory: Bool
+    package var size: Int64
+    package var modified: Date?
+    package var children: [ArchiveNode] = []
     /// Subfolders by name, only while the tree is being built.
     fileprivate var folders: [Substring: ArchiveNode] = [:]
 
-    init(name: String, isDirectory: Bool, size: Int64 = 0, modified: Date? = nil) {
+    package init(name: String, isDirectory: Bool, size: Int64 = 0, modified: Date? = nil) {
         self.name = name
         self.isDirectory = isDirectory
         self.size = size
@@ -51,24 +51,24 @@ nonisolated final class ArchiveNode {
     }
 }
 
-nonisolated struct ArchiveListing: Sendable {
-    let root: Handoff<ArchiveNode>
-    let files: Int
-    let folders: Int
-    let uncompressed: Int64
-    let compressed: Int64?
+nonisolated package struct ArchiveListing: Sendable {
+    package let root: Handoff<ArchiveNode>
+    package let files: Int
+    package let folders: Int
+    package let uncompressed: Int64
+    package let compressed: Int64?
     /// Why the listing is incomplete, if it is.
-    let note: String?
+    package let note: String?
 }
 
-nonisolated enum ArchiveLister {
-    static let timeout: TimeInterval = 10
-    static let entryLimit = 50_000
+nonisolated package enum ArchiveLister {
+    package static let timeout: TimeInterval = 10
+    package static let entryLimit = 50_000
     private static let pathDepthLimit = 128
     private static let nodeLimit = 100_000
 
     @concurrent
-    static func list(_ url: URL, kind: ArchiveKind) async throws -> ArchiveListing {
+    package static func list(_ url: URL, kind: ArchiveKind) async throws -> ArchiveListing {
         let (executable, arguments) = switch kind {
         case .zip: ("/usr/bin/zipinfo", ["-l", "-T", url.path])
         case .tar: ("/usr/bin/tar", ["-tvf", url.path])
@@ -78,7 +78,7 @@ nonisolated enum ArchiveLister {
         return try parse(run, kind: kind)
     }
 
-    static func parse(_ run: ProcessRunner.Result, kind: ArchiveKind, now: Date = Date()) throws -> ArchiveListing {
+    package static func parse(_ run: ProcessRunner.Result, kind: ArchiveKind, now: Date = Date()) throws -> ArchiveListing {
         let output = String(decoding: run.output, as: UTF8.self)
 
         var entries: [(path: String, isDirectory: Bool, size: Int64, date: Date?)] = []
@@ -233,17 +233,24 @@ nonisolated enum ArchiveLister {
 
 /// Runs a command-line tool off the main thread, collecting its output, with a timeout and an output cap,
 /// and terminating it if the calling task is cancelled.
-nonisolated enum ProcessRunner {
-    struct Result: Sendable {
-        var output: Data
-        var status: Int32
-        var timedOut: Bool
-        var truncated: Bool
+nonisolated package enum ProcessRunner {
+    package struct Result: Sendable {
+        package var output: Data
+        package var status: Int32
+        package var timedOut: Bool
+        package var truncated: Bool
+
+        package init(output: Data, status: Int32, timedOut: Bool, truncated: Bool) {
+            self.output = output
+            self.status = status
+            self.timedOut = timedOut
+            self.truncated = truncated
+        }
     }
 
-    static let outputLimit = 64 << 20
+    package static let outputLimit = 64 << 20
 
-    static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval) async throws -> Result {
+    package static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval) async throws -> Result {
         let box = ProcessBox()
         return try await withTaskCancellationHandler {
             try box.run(executable, arguments, timeout: timeout)

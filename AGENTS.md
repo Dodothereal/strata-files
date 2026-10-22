@@ -9,7 +9,10 @@ destructive actions below before changing anything that touches files.
 - `Sources/Strata/` — the app, one folder per area: `Browser` (the file list and its commands), `Views` (Icons,
   Columns, Gallery, Disk Usage), `Window` (windows, panes, sidebar wiring, Compare & Sync), `Transfers` (copy/move
   jobs, conflicts, archives), `Model` (FileOps, Trash, History in `OperationLog`, SecureStorage), `AI` (Ask Strata
-  plans), `Remote` (SFTP and S3), `Containers`, `Dev` (git, project cleanup), `Index`, `Sidebar`, `Settings`, `App`.
+  plans), `Remote` (SFTP and S3), `Containers`, `Dev` (git, project cleanup), `Index`, `Sidebar`, `Settings`, `App`,
+  `Support`, `Previews`. `Package.swift` compiles the lower-level layers as internal library targets (`StrataSupport`,
+  `StrataTheme`, `StrataModel`, `StrataPreviews`, `StrataIndex`) imported by `Strata` so module boundaries and
+  `IndexStore`'s private storage are enforced by the compiler.
 - `Sources/StrataCLI/` — the `strata` command.
 - `Tests/StrataTests/` — Swift Testing; shared helpers in `Support/` (`TestTree`).
 - `Localization/*.json` — one file per language; `en.json` is generated from the code.
@@ -399,6 +402,11 @@ sheet's text before clicking a destructive button. Both builds share preferences
 - Pass captured `LandedFiles` into History registration after asynchronous work or callbacks. Converting to saved
   identities must still match that ownership; a failed match gets an explicit refusing key, never an absent key
   that would enable legacy existence-only Undo. Cover saving, reopening and a replacement arriving before logging.
+- Keep `StrataSupport`, `StrataTheme`, `StrataModel`, `StrataPreviews` and `StrataIndex` free of upward dependencies on
+  `Browser`, `Window`, `Transfers`, `Remote` or `Containers`. `FileThumbnails` and `ItemInfoLoader` resolve container
+  and Compose stack icon marks and status text from their injected `CopyProviders` and `ContainerStore`; `FileDrop`
+  and `ShelfWell` use their injected or active window's `CopyProviders` without falling back to global copy stores;
+  and `PathSuggestions` reads `showHidden` from its injected `Prefs`.
 
 ## Commits and releases
 
