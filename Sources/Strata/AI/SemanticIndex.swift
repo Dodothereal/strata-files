@@ -548,6 +548,7 @@ actor SemanticIndex {
             let contextLength = context.utf16.count
             guard file.size >= 0, file.modified.isFinite,
                   file.chunks.allSatisfy({ $0.isValid(contextLength: contextLength) }) else { continue }
+            if files[file.path] != nil { remove(file.path) }
             var chunks: [IndexedFile.Chunk] = []
             for chunk in file.chunks {
                 let row = allocateRow()
@@ -951,6 +952,7 @@ nonisolated final class Embedder: @unchecked Sendable {
 /// Float ⇄ IEEE half conversion via vImage (works on every architecture, unlike `Float16`).
 nonisolated enum Half {
     static func encode(_ floats: [Float]) -> [UInt16] {
+        guard !floats.isEmpty else { return [] }
         var halves = [UInt16](repeating: 0, count: floats.count)
         floats.withUnsafeBufferPointer { source in
             halves.withUnsafeMutableBufferPointer { destination in

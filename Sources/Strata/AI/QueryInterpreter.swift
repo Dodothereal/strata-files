@@ -141,7 +141,7 @@ nonisolated enum QueryInterpreter {
         case "before": range = (nil, content["end"]?.meaningfulString.flatMap(dates.isoDay))
         case "between":
             range = (content["start"]?.meaningfulString.flatMap(dates.isoDay),
-                     content["end"]?.meaningfulString.flatMap(dates.isoDay).map { calendar.date(byAdding: .day, value: 1, to: $0)! })
+                     content["end"]?.meaningfulString.flatMap(dates.isoDay).flatMap { calendar.date(byAdding: .day, value: 1, to: $0) })
         default: break
         }
         (filter.modifiedAfter, filter.modifiedBefore) = range
@@ -171,8 +171,9 @@ nonisolated struct Dates {
         return (previous.start, current.start)
     }
     func ago(_ count: Int, _ unit: Calendar.Component) -> Date? {
-        if unit == .weekOfYear { return calendar.date(byAdding: .day, value: -7 * count, to: now) }
-        return calendar.date(byAdding: unit, value: -count, to: now)
+        let bounded = boundedCount(Double(count))
+        if unit == .weekOfYear { return calendar.date(byAdding: .day, value: -7 * bounded, to: now) }
+        return calendar.date(byAdding: unit, value: -bounded, to: now)
     }
     /// The whole calendar unit that contained "N units ago" ("3 days ago" = that day).
     func unit(containing count: Int, _ unit: Calendar.Component) -> (Date?, Date?) {
@@ -182,7 +183,9 @@ nonisolated struct Dates {
         return (interval.start, interval.end)
     }
     func year(_ year: Int) -> (Date?, Date?) {
-        (calendar.date(from: DateComponents(year: year, month: 1, day: 1)), calendar.date(from: DateComponents(year: year + 1, month: 1, day: 1)))
+        let y = min(max(year, 1), 99_999)
+        return (calendar.date(from: DateComponents(year: y, month: 1, day: 1)),
+                calendar.date(from: DateComponents(year: y + 1, month: 1, day: 1)))
     }
     /// A month without a year means the latest one that has started.
     func month(_ month: Int, year: Int?) -> (Date?, Date?) {
@@ -209,7 +212,8 @@ nonisolated struct Dates {
             if calendar.component(.weekday, from: date) == weekday, !(strictlyBefore && calendar.isDate(date, inSameDayAs: now)) {
                 return (date, calendar.date(byAdding: .day, value: 1, to: date))
             }
-            date = calendar.date(byAdding: .day, value: -1, to: date)!
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: date) else { break }
+            date = previous
         }
         return (nil, nil)
     }
@@ -277,8 +281,8 @@ private nonisolated final class Parser {
             return true
         }
         consume("\\b(?:modified|changed|edited|updated|date|mtime)\\s*:\\s*(>=|<=|>|<)\\s*(\\d+)\\s*(mo|h|d|w|m|y)\\b") { m in
-            guard let count = Int(m[2] ?? ""), let unit = Self.timeComponent(m[3] ?? "") else { return false }
-            let date = self.dates.ago(count, unit)
+            guard let count = Double(m[2] ?? ""), let unit = Self.timeComponent(m[3] ?? "") else { return false }
+            let date = self.dates.ago(boundedCount(count), unit)
             if m[1]?.hasPrefix("<") == true { self.filter.modifiedAfter = date } else { self.filter.modifiedBefore = date }
             return true
         }

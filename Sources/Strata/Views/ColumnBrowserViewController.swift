@@ -35,6 +35,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     private var renameField: InlineRenameField?
     private var pendingRename: URL?
     private weak var renameWhenLoaded: ColumnPane?
+    private var selectWhenLoaded: (pane: ColumnPane, urls: [URL], scroll: Bool)?
 
     init(scrollView: NSScrollView = NSScrollView(), directoryReader: DirectoryReader = .live, preferences: Prefs = .shared,
          thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared, copies: CopyProviders = .live,
@@ -144,9 +145,25 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     var selectedEntries: [FileEntry] { activePane?.selectedEntries ?? [] }
 
-    /// Selects children of the first column; a single deeper URL is revealed column by column.
+    /// Selects children of the first column, or of an already-open deeper column; a single unopened deeper URL is
+    /// revealed column by column.
     func select(_ urls: [URL], scroll: Bool = true) {
         guard let rootPane = panes.first else { return }
+        if let first = urls.first {
+            let parentKey = first.deletingLastPathComponent().standardizedFileURL.fileViewKey
+            if urls.allSatisfy({ $0.deletingLastPathComponent().standardizedFileURL.fileViewKey == parentKey }),
+               let index = panes.indices.dropFirst().last(where: { panes[$0].folder.standardizedFileURL.fileViewKey == parentKey }) {
+                let pane = panes[index]
+                activeIndex = index
+                if urls.allSatisfy({ pane.row(for: $0) != nil }) {
+                    pane.select(urls, scroll: scroll)
+                } else {
+                    selectWhenLoaded = (pane, urls, scroll)
+                    pane.reload()
+                }
+                return
+            }
+        }
         let rootKey = root?.fileViewKey
         // An item the first column lists selects there, however its path is spelled (a folder reached through a
         // symlink lists its items under the resolved path); anything else is opened down to.
@@ -299,6 +316,10 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
             }
             continueReveal()
         }
+        if let pending = selectWhenLoaded, pending.pane === pane {
+            selectWhenLoaded = nil
+            pane.select(pending.urls, scroll: pending.scroll)
+        }
         if renameWhenLoaded === pane, let url = pendingRename, pane.row(for: url) != nil {
             cancelPendingRename()
             pane.select([url], scroll: true)
@@ -443,15 +464,21 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     func cancelPendingRename() {
         pendingRename = nil
         renameWhenLoaded = nil
+        selectWhenLoaded = nil
     }
 
     @discardableResult
     func beginRename(_ url: URL) -> Bool {
+        if let existing = renameField {
+            let previousPane = panes.first { $0.tableView === existing.superview }
+            existing.removeFromSuperview()
+            renameField = nil
+            previousPane?.applyDeferred()
+        }
         guard let pane = panes.last(where: { $0.row(for: url) != nil }), let row = pane.row(for: url) else { return false }
         let entry = pane.entries[row]
         pane.tableView.scrollRowToVisible(row)
         guard let cell = pane.tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? ColumnCellView else { return false }
-        renameField?.removeFromSuperview()
         let font = FileViewTypography(preferences: preferences).font
         let field = InlineRenameField(name: entry.name, isFolder: entry.isFolder, centered: false, font: font)
         let labelFrame = cell.nameCell.convert(cell.nameCell.textField?.frame ?? cell.bounds, to: pane.tableView)
@@ -729,7 +756,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     }
 
     func selectRow(_ row: Int) {
-        guard row < entries.count else { return }
+        guard entries.indices.contains(row) else { return }
         tableView.selectRowIndexes([row], byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
     }
@@ -792,7 +819,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     // Drag and drop
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        row < entries.count ? ContainerDragItem.writer(for: entries[row].url, copies: controller?.copies ?? .live) : nil
+        entries.indices.contains(row) ? ContainerDragItem.writer(for: entries[row].url, copies: controller?.copies ?? .live) : nil
     }
 
     func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
@@ -840,7 +867,7 @@ final class ColumnTableView: NSTableView {
 
     override func mouseDown(with event: NSEvent) {
         let url = ClickToRename.nameRow(in: self, column: 0, for: event).flatMap { row in
-            pane.flatMap { row < $0.entries.count ? $0.entries[row].url : nil }
+            pane.flatMap { $0.entries.indices.contains(row) ? $0.entries[row].url : nil }
         }
         super.mouseDown(with: event)
         clickToRename.clicked(event, armed: url != nil, in: self) { [weak self] in

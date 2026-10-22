@@ -418,12 +418,19 @@ final class GridViewController: NSViewController, FileCollectionController {
 
     @discardableResult
     func beginRename(_ url: URL) -> Bool {
+        if let existing = renameField {
+            existing.removeFromSuperview()
+            renameField = nil
+            if let (entries, matches) = deferredEntries {
+                deferredEntries = nil
+                setEntries(entries, matches: matches)
+            }
+        }
         guard let index = indexByKey[url.fileViewKey] else { return false }
         let entry = entries[index]
         select([url], scroll: true)
         collectionView.layoutSubtreeIfNeeded()
         guard let item = collectionView.item(at: IndexPath(item: index, section: 0)) as? GridItem else { return false }
-        renameField?.removeFromSuperview()
         let field = InlineRenameField(name: entry.name, isFolder: entry.isFolder, centered: true, font: layout.metrics.typography.font)
         let area = item.itemView.nameAreaRect
         let width = area.width + 10
@@ -489,7 +496,7 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
     }
 
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
-        guard indexPath.item < entries.count else { return nil }
+        guard indexPath.count == 2, entries.indices.contains(indexPath.item) else { return nil }
         return ContainerDragItem.writer(for: entries[indexPath.item].url, copies: copies)
     }
 
@@ -499,13 +506,14 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
                         proposedIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
                         dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>) -> NSDragOperation {
         let urls = FileDrop.urls(draggingInfo, copies: copies)
-        let index = (proposedIndexPath.pointee as IndexPath).item
+        let proposed = proposedIndexPath.pointee as IndexPath
+        let index = proposed.count == 2 ? proposed.item : -1
         // A folder the drag rests on springs open (never one of the dragged items or inside one).
-        let resting = !urls.isEmpty && dropOperation.pointee == .on && index < entries.count && entries[index].isFolder
+        let resting = !urls.isEmpty && dropOperation.pointee == .on && entries.indices.contains(index) && entries[index].isFolder
             && !FileDrop.isInside(urls, entries[index].url) && fileDelegate?.fileView(self, canSpringLoad: entries[index].url) == true
         springLoader.hover(resting ? entries[index].url : nil, drag: draggingInfo.draggingSequenceNumber)
         guard !urls.isEmpty else { return hideDropHighlight() }
-        if dropOperation.pointee == .on, index < entries.count, entries[index].isFolder,
+        if dropOperation.pointee == .on, entries.indices.contains(index), entries[index].isFolder,
            !urls.contains(entries[index].url) {
             let operation = FileDrop.operation(urls, into: entries[index].url, info: draggingInfo, copies: copies)
             if !operation.isEmpty {
@@ -532,8 +540,9 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
         dropHighlight.isHidden = true
         springLoader.cancel()
         let urls = FileDrop.urls(draggingInfo, copies: copies)
-        let folder: URL? = dropOperation == .on && indexPath.item < entries.count && entries[indexPath.item].isFolder
-            ? entries[indexPath.item].url : nil
+        let index = indexPath.count == 2 ? indexPath.item : -1
+        let folder: URL? = dropOperation == .on && entries.indices.contains(index) && entries[index].isFolder
+            ? entries[index].url : nil
         guard let target = folder ?? directory else { return false }
         let operation = FileDrop.operation(urls, into: target, info: draggingInfo, copies: copies)
         guard !operation.isEmpty else { return false }

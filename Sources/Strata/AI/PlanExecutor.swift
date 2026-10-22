@@ -15,19 +15,20 @@ enum PlanExecutor {
 
     /// `actionName` is the English name History records (and translates when it shows it); the Edit menu shows
     /// `undoName` when given ("Rename 3 Items"), else that translation.
-    static func apply(_ plan: Plan, actionName: String, undoName: String? = nil, undo: UndoManager?) async -> Outcome {
+    static func apply(_ plan: Plan, actionName: String, undoName: String? = nil, undo: UndoManager?,
+                      copies: CopyProviders = .live, history: OperationLog = .shared) async -> Outcome {
         // Nothing inside an archive opened as a folder changes (a temporary copy).
         let touched = plan.steps.flatMap { [$0.source, $0.destination].compactMap { $0 } }
-        guard !touched.contains(where: ReadOnlyCopies.contains) else {
+        guard !touched.contains(where: { ReadOnlyCopies.contains($0, copies: copies) }) else {
             return Outcome(failures: [FileOps.insideArchiveError.localizedDescription])
         }
         let transaction = PlanTransaction(plan: plan)
         let outcome = await transaction.perform()
         // One History entry for the whole plan, named like its undo action.
-        let entry = transaction.hasChanges ? transaction.record(actionName) : nil
+        let entry = transaction.hasChanges ? transaction.record(actionName, history: history) : nil
         if let undo, transaction.hasChanges {
             transaction.registerUndo(undo, actionName: undoName ?? OperationLog.displayName(actionName))
-            if let entry { FileOps.registerLogMark(entry, undone: true, undo) }
+            if let entry { FileOps.registerLogMark(entry, undone: true, undo, history: history) }
         }
         return outcome
     }

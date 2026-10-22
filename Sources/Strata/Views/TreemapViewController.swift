@@ -276,6 +276,11 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
         return CGFloat(eased)
     }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil, link != nil { finishAnimation() }
+    }
+
     private func startLink() {
         guard link == nil else { return }
         let link = displayLink(target: self, selector: #selector(tick(_:)))

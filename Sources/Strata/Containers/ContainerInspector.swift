@@ -553,9 +553,7 @@ final class ComposeInspectorView: NSView {
 
     /// The keys under `services:` in a compose file: enough YAML for the usual layouts (block style, any indent).
     static func serviceNames(in file: URL) -> [String] {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return [] }
-        defer { try? handle.close() }
-        guard let data = try? handle.read(upToCount: 1 << 20) else { return [] }
+        guard let (data, _) = try? TextFile.readPrefix(file, limit: 1 << 20) else { return [] }
         return serviceNames(String(decoding: data, as: UTF8.self))
     }
 

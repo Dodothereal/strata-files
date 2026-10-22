@@ -85,7 +85,9 @@ final class FileThumbnails {
 
     private func key(_ entry: FileEntry, _ bucket: CGFloat, _ scale: CGFloat) -> String {
         let stamp = entry.modified?.timeIntervalSinceReferenceDate ?? 0
-        return "\(entry.url.path)|\(stamp)|\(entry.size ?? -1)|\(Int(bucket * scale))"
+        let product = Double(bucket * scale)
+        let pixels = product.isFinite ? (saturatingInt64(product).map(Int.init(clamping:)) ?? 0) : 0
+        return "\(entry.url.path)|\(stamp)|\(entry.size ?? -1)|\(pixels)"
     }
 
     private func invalidate(_ entry: FileEntry) {

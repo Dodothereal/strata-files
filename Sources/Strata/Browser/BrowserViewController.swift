@@ -427,7 +427,7 @@ final class BrowserViewController: NSViewController {
         if fromTop { scrollToTop() }
         for node in expanded where self.node(for: node.url) === node {
             outlineView.expandItem(node)
-            loadChildren(of: node)
+            loadChildren(of: node, selecting: selection.filter { $0.path.hasPrefix(node.url.path + "/") })
         }
         // Icons, columns and disk usage get the new rows first: selecting or renaming before that looked in the
         // previous folder's items, so a revealed file or a new folder came up unselected outside the list.
@@ -443,13 +443,28 @@ final class BrowserViewController: NSViewController {
         delegate?.browserSelectionDidChange(self)
     }
 
-    private func loadChildren(of node: FileNode) {
+    private func loadChildren(of node: FileNode, selecting: [URL] = []) {
         loading.loadChildren(of: node, showHidden: preferences.showHidden, applications: applicationFolders) { [weak self, weak node] entries in
             guard let self, let node, self.node(for: node.url) === node else { return }
             TagStore.shared.load(entries, in: node.url)
             CloudStore.shared.load(entries.map(\.url), in: node.url)
             listing.replaceChildren(of: node, with: entries, sort: sort)
             outlineView.reloadItem(node, reloadChildren: true)
+            if !selecting.isEmpty, activeView == nil {
+                let rows = IndexSet(selecting.compactMap { url in
+                    self.node(for: url).flatMap { row in
+                        let index = outlineView.row(forItem: row)
+                        return index >= 0 ? index : nil
+                    }
+                })
+                if !rows.isEmpty {
+                    outlineView.selectRowIndexes(rows, byExtendingSelection: !outlineView.selectedRowIndexes.isEmpty)
+                }
+            }
+            if let rename = pendingRename, self.node(for: rename) != nil {
+                pendingRename = nil
+                beginRename(rename)
+            }
         }
     }
 
@@ -1002,9 +1017,10 @@ final class BrowserViewController: NSViewController {
     /// Rename N Items…: a rule for all of them, previewed live, applied as one undoable step.
     func renameItems() {
         let urls = selectedURLs
-        guard urls.count > 1, !isInsideArchive, !isLoadingFolder else { return }
+        guard urls.count > 1, !isInsideArchive, !isOnServer, !isLoadingFolder else { return }
         let base = targetDirectory ?? directory ?? urls[0].deletingLastPathComponent()
-        let controller = BatchRenameController(urls: urls, baseFolder: base, undo: undoManager)
+        let controller = BatchRenameController(urls: urls, baseFolder: base, undo: undoManager,
+                                               copies: services.copies, history: services.transfers.history)
         controller.onApplied = { [weak self] results in
             if !results.isEmpty { self?.selectWhenShown(results) }
         }
@@ -1358,10 +1374,11 @@ final class BrowserViewController: NSViewController {
                           String(localized: "These names are reserved for the system, and the item would be hidden. Please choose another name."))
             return
         }
-        let commit = { [self] in
-            if services.remote.copies.contains(url) { return renameOnServer(url, to: newName) }
+        let commit: (String) -> Void = { [self] targetName in
+            guard !targetName.isEmpty, targetName != oldName else { return }
+            if services.remote.copies.contains(url) { return renameOnServer(url, to: targetName) }
             performAsync { [self] in
-                let renamed = try await FileOps.rename(url, to: newName, undo: undoManager, copies: services.copies)
+                let renamed = try await FileOps.rename(url, to: targetName, undo: undoManager, copies: services.copies)
                 pendingSelection = [renamed]
                 refresh()
             }
@@ -1370,7 +1387,7 @@ final class BrowserViewController: NSViewController {
         let isFolder = values?.isDirectory == true && values?.isPackage != true
         let (oldExtension, newExtension) = ((oldName as NSString).pathExtension, (newName as NSString).pathExtension)
         guard !isFolder, oldExtension.lowercased() != newExtension.lowercased(), let window = view.window else {
-            commit()
+            commit(newName)
             return
         }
         let alert = NSAlert()
@@ -1387,7 +1404,13 @@ final class BrowserViewController: NSViewController {
         alert.addButton(withTitle: newExtension.isEmpty ? String(localized: "Remove", comment: "Alert button: remove the file extension")
                                                         : String(localized: "Use .\(newExtension)", comment: "Alert button: use the new file extension (“Use .md”)"))
         alert.beginSheetModal(for: window) { response in
-            if response == .alertSecondButtonReturn { commit() }
+            if response == .alertSecondButtonReturn {
+                commit(newName)
+            } else if response == .alertFirstButtonReturn {
+                let stem = newExtension.isEmpty ? newName : (newName as NSString).deletingPathExtension
+                let kept = oldExtension.isEmpty ? stem : "\(stem).\(oldExtension)"
+                commit(kept)
+            }
         }
     }
 
@@ -2061,7 +2084,8 @@ extension BrowserViewController: QLPreviewPanelDataSource, QLPreviewPanelDelegat
     }
 
     func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
-        selectedURLs[index] as NSURL
+        let urls = selectedURLs
+        return urls.indices.contains(index) ? (urls[index] as NSURL) : nil
     }
 
     func previewPanel(_ panel: QLPreviewPanel!, handle event: NSEvent!) -> Bool {

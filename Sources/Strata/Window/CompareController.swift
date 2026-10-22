@@ -279,7 +279,7 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
     func numberOfRows(in tableView: NSTableView) -> Int { shown.count }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard let column = tableColumn?.identifier.rawValue, row < shown.count else { return nil }
+        guard let column = tableColumn?.identifier.rawValue, shown.indices.contains(row) else { return nil }
         let difference = shown[row]
         switch column {
         case "status":
@@ -359,7 +359,7 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
     }
 
     private func set(_ action: FolderCompare.Action, rows: IndexSet) {
-        for index in rows where index < shown.count {
+        for index in rows where shown.indices.contains(index) {
             let difference = shown[index]
             if FolderCompare.actions(for: difference.kind).contains(action) { actions[difference.id] = action }
         }
@@ -450,7 +450,7 @@ extension CompareController: NSMenuDelegate {
         menu.removeAllItems()
         let clicked = table.clickedRow
         let rows = clicked >= 0 && !table.selectedRowIndexes.contains(clicked) ? IndexSet(integer: clicked) : table.selectedRowIndexes
-        let kinds = Set(rows.compactMap { $0 < shown.count ? shown[$0].kind : nil })
+        let kinds = Set(rows.compactMap { shown.indices.contains($0) ? shown[$0].kind : nil })
         let possible = FolderCompare.Action.allCases.filter { action in kinds.contains { FolderCompare.actions(for: $0).contains(action) } }
         for action in possible {
             let item = NSMenuItem(title: action.title, action: #selector(menuAction(_:)), keyEquivalent: "")

@@ -45,10 +45,11 @@ nonisolated package enum DelimitedLoader {
     package static let columnLimit = 300
     /// Files larger than this aren't scanned to the end for a row count.
     package static let countLimit = 256 << 20
+    package static let fieldLimit = 64 * 1024
 
     @concurrent
     package static func load(_ url: URL, separator: UInt8?) async throws -> DelimitedTable {
-        let data = try Data(contentsOf: url, options: .alwaysMapped)
+        let (data, truncated) = try TextFile.readPrefix(url, limit: countLimit)
         guard !data.isEmpty else { throw PreviewError.empty }
         let sample = data.prefix(64 * 1024)
         if sample.prefix(8192).contains(0) { throw PreviewError.unsupported }
@@ -69,8 +70,8 @@ nonisolated package enum DelimitedLoader {
             guard let header = records.first else { throw PreviewError.empty }
             let rows = records.dropFirst()
             var total: Int? = rows.count
-            if !parser.isAtEnd {
-                total = bytes.count <= countLimit ? try rows.count + parser.countRemainingRecords() : nil
+            if !parser.isAtEnd || truncated {
+                total = !truncated ? try rows.count + parser.countRemainingRecords() : nil
             }
             let width = min(columnLimit, max(header.count, rows.map(\.count).max() ?? 0))
             let columns = (0..<width).map { index in
@@ -139,26 +140,27 @@ nonisolated package enum DelimitedLoader {
                     let byte = bytes[position]
                     if byte == 0x22 {
                         if position + 1 < bytes.count, bytes[position + 1] == 0x22 {
-                            field.append(0x22)
+                            if field.count < fieldLimit { field.append(0x22) }
                             position += 2
                             continue
                         }
                         position += 1
                         break
                     }
-                    field.append(byte)
+                    if field.count < fieldLimit { field.append(byte) }
                     position += 1
                 }
                 // Anything between the closing quote and the separator is kept, as spreadsheets do.
                 while position < bytes.count, !isTerminator(bytes[position]) {
-                    field.append(bytes[position])
+                    if field.count < fieldLimit { field.append(bytes[position]) }
                     position += 1
                 }
                 return field.withUnsafeBufferPointer { decode($0) }
             }
             let start = position
             while position < bytes.count, !isTerminator(bytes[position]) { position += 1 }
-            return decode(UnsafeBufferPointer(rebasing: bytes[start..<position]))
+            let end = min(position, start + fieldLimit)
+            return decode(UnsafeBufferPointer(rebasing: bytes[start..<end]))
         }
 
         private func isTerminator(_ byte: UInt8) -> Bool {

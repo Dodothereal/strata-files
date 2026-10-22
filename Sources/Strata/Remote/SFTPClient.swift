@@ -357,7 +357,8 @@ nonisolated final class SFTPClient: @unchecked Sendable {
         closed = true
         try expectOK(request(.close) { $0.bytes(handle) })
         if let modificationDate {
-            let seconds = UInt32(clamping: Int64(modificationDate.timeIntervalSince1970))
+            let raw = modificationDate.timeIntervalSince1970
+            let seconds = raw.isFinite ? UInt32(clamping: Int64(min(max(raw, 0), Double(UInt32.max)))) : 0
             try? setTimes(path, access: seconds, modification: seconds)
         }
     }

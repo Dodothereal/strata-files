@@ -312,9 +312,14 @@ nonisolated enum ProjectDetector {
     }
 
     private static func readJSON(_ url: URL) -> (object: [String: Any]?, text: String) {
-        guard let data = try? Data(contentsOf: url) else { return (nil, "") }
+        guard let (data, truncated) = try? TextFile.readPrefix(url, limit: 1 << 20), !truncated else { return (nil, "") }
         let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         return (object, String(decoding: data, as: UTF8.self))
+    }
+
+    private static func readText(_ url: URL) -> String? {
+        guard let (data, _) = try? TextFile.readPrefix(url, limit: 1 << 20) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 
     /// `scripts` in the order they're written (JSONSerialization loses it; authors order them on purpose).
@@ -340,7 +345,7 @@ nonisolated enum ProjectDetector {
     /// Targets from a Makefile: `name:` rules, skipping special (.PHONY), pattern (%.o) and variable-built targets.
     /// The command shown is the `## help` text if present, else the first recipe line.
     static func makeTargets(_ url: URL, directory: URL, source: String) -> [ProjectScript] {
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        guard let text = readText(url) else { return [] }
         var results: [(name: String, command: String, summary: String)] = []
         var pending: [Int] = []
         for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
@@ -374,7 +379,7 @@ nonisolated enum ProjectDetector {
     /// Public recipes from a justfile. Skips settings, aliases, assignments, `_private` and `[private]` recipes.
     /// The command shown is the doc comment above the recipe, else its first line.
     static func justRecipes(_ url: URL, directory: URL, source: String) -> [ProjectScript] {
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        guard let text = readText(url) else { return [] }
         var results: [(name: String, command: String, summary: String)] = []
         var comment = ""
         var isPrivate = false
@@ -436,7 +441,7 @@ nonisolated enum ProjectDetector {
     static func cargoAliases(_ folder: URL) -> [ProjectScript] {
         let candidates = [".cargo/config.toml", ".cargo/config"].map { folder.appending(path: $0) }
         guard let url = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }),
-              let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+              let text = readText(url) else { return [] }
         var inAlias = false
         var results: [ProjectScript] = []
         for rawLine in text.split(separator: "\n") {

@@ -42,7 +42,8 @@ func runAskpass(prompt: String, environment: [String: String]) -> Never {
         alert.addButton(withTitle: text("CONNECT", "Connect"))
         alert.addButton(withTitle: text("CANCEL", "Cancel"))
         guard alert.runModal() == .alertFirstButtonReturn else { exit(1) }
-        FileHandle.standardOutput.write(Data("yes\n".utf8))
+        _ = fcntl(STDOUT_FILENO, F_SETNOSIGPIPE, 1)
+        try? FileHandle.standardOutput.write(contentsOf: Data("yes\n".utf8))
         exit(0)
     }
 
@@ -53,6 +54,7 @@ func runAskpass(prompt: String, environment: [String: String]) -> Never {
     alert.addButton(withTitle: text("LOGIN", "Log In"))
     alert.addButton(withTitle: text("CANCEL", "Cancel"))
     guard alert.runModal() == .alertFirstButtonReturn else { exit(1) }
-    FileHandle.standardOutput.write(Data((field.stringValue + "\n").utf8))
+    _ = fcntl(STDOUT_FILENO, F_SETNOSIGPIPE, 1)
+    try? FileHandle.standardOutput.write(contentsOf: Data((field.stringValue + "\n").utf8))
     exit(0)
 }

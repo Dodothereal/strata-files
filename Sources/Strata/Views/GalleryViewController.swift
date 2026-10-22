@@ -272,13 +272,20 @@ final class GalleryViewController: NSViewController, FileCollectionController {
 
     @discardableResult
     func beginRename(_ url: URL) -> Bool {
+        if let existing = renameField {
+            existing.removeFromSuperview()
+            renameField = nil
+            if let deferred = deferredEntries {
+                deferredEntries = nil
+                setEntries(deferred)
+            }
+        }
         guard let index = indexByKey[url.fileViewKey] else { return false }
         let entry = entries[index]
         select([url], scroll: true)
         schedulePreview(now: true)
-        renameField?.removeFromSuperview()
-        let field = InlineRenameField(name: entry.name, isFolder: entry.isFolder, centered: true)
-        field.font = nameLabel.font
+        let field = InlineRenameField(name: entry.name, isFolder: entry.isFolder, centered: true, wraps: false,
+                                      font: nameLabel.font ?? FileViewStyle.nameFont)
         view.layoutSubtreeIfNeeded()
         let frame = nameLabel.frame
         let width = min(max(frame.width * 0.6, 240), frame.width)
@@ -526,7 +533,7 @@ extension GalleryViewController: NSCollectionViewDataSource, NSCollectionViewDel
 
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
         let item = collectionView.makeItem(withIdentifier: GalleryThumbnailItem.identifier, for: indexPath)
-        if let item = item as? GalleryThumbnailItem, indexPath.item < entries.count {
+        if let item = item as? GalleryThumbnailItem, indexPath.count == 2, entries.indices.contains(indexPath.item) {
             configure(item, with: entries[indexPath.item])
         }
         return item
@@ -548,15 +555,17 @@ extension GalleryViewController: NSCollectionViewDataSource, NSCollectionViewDel
     }
 
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
-        indexPath.item < entries.count ? ContainerDragItem.writer(for: entries[indexPath.item].url, copies: copies) : nil
+        indexPath.count == 2 && entries.indices.contains(indexPath.item)
+            ? ContainerDragItem.writer(for: entries[indexPath.item].url, copies: copies) : nil
     }
 
     func collectionView(_ collectionView: NSCollectionView, validateDrop draggingInfo: NSDraggingInfo,
                         proposedIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
                         dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>) -> NSDragOperation {
         let urls = FileDrop.urls(draggingInfo, copies: copies)
-        let index = (proposedIndexPath.pointee as IndexPath).item
-        let onFolder = !urls.isEmpty && dropOperation.pointee == .on && index < entries.count && entries[index].isFolder
+        let proposed = proposedIndexPath.pointee as IndexPath
+        let index = proposed.count == 2 ? proposed.item : -1
+        let onFolder = !urls.isEmpty && dropOperation.pointee == .on && entries.indices.contains(index) && entries[index].isFolder
             && !FileDrop.isInside(urls, entries[index].url)
         // A folder the drag rests on springs open.
         let springs = onFolder && fileDelegate?.fileView(self, canSpringLoad: entries[index].url) == true
@@ -581,8 +590,9 @@ extension GalleryViewController: NSCollectionViewDataSource, NSCollectionViewDel
                         indexPath: IndexPath, dropOperation: NSCollectionView.DropOperation) -> Bool {
         dragEnded()
         let urls = FileDrop.urls(draggingInfo, copies: copies)
-        let folder: URL? = dropOperation == .on && indexPath.item < entries.count && entries[indexPath.item].isFolder
-            ? entries[indexPath.item].url : nil
+        let index = indexPath.count == 2 ? indexPath.item : -1
+        let folder: URL? = dropOperation == .on && entries.indices.contains(index) && entries[index].isFolder
+            ? entries[index].url : nil
         guard let target = folder ?? directory else { return false }
         let operation = FileDrop.operation(urls, into: target, info: draggingInfo, copies: copies)
         guard !operation.isEmpty else { return false }

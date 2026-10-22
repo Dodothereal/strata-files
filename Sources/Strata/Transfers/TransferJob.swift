@@ -256,7 +256,7 @@ final class TransferJob {
         let retrySources = entries.values.flatMap { $0 }.filter { $0.stage != .removeSource }.map(\.source)
         let control = control
         let sizes = await worker.run { retrySources.map { TransferEngine.scan($0, control: control) } }
-        totalBytes += sizes.reduce(0) { $0 + ($1?.bytes ?? 0) }
+        totalBytes = totalBytes.saturatingAdd(sizes.map { $0?.bytes ?? 0 }.saturatingSum)
         totalFiles += sizes.reduce(0) { $0 + ($1?.files ?? 0) }
 
         if !control.isCancelled, let problem = spaceProblem() {
@@ -370,7 +370,7 @@ final class TransferJob {
             items[index].bytes = size?.bytes ?? 0
             items[index].files = max(1, size?.files ?? 1)
         }
-        totalBytes += indices.reduce(0) { $0 + items[$1].bytes }
+        totalBytes = totalBytes.saturatingAdd(indices.map { items[$0].bytes }.saturatingSum)
         totalFiles += indices.reduce(0) { $0 + items[$1].files }
         measured = true
         changed()
@@ -404,7 +404,7 @@ final class TransferJob {
         let sizes = await worker.run { steps.map { TransferEngine.scan($0.source, control: control) } }
         // The folder is already there: the item itself is done; its contents follow as their own items.
         items[index].outcome = .done
-        totalBytes -= item.bytes
+        totalBytes = max(0, totalBytes.saturatingAdd(-item.bytes))
         totalFiles -= item.files
         for (step, size) in zip(steps, sizes) {
             var sub = TransferItem(source: step.source, destination: step.destination, operation: .copy)
@@ -412,7 +412,7 @@ final class TransferJob {
             sub.bytes = size?.bytes ?? 0
             sub.files = max(1, size?.files ?? 1)
             items.append(sub)
-            totalBytes += sub.bytes
+            totalBytes = totalBytes.saturatingAdd(sub.bytes)
             totalFiles += sub.files
         }
         changed()
@@ -451,7 +451,7 @@ final class TransferJob {
             items[index].decision = .skip
             items[index].outcome = .skipped
             skippedCount += 1
-            totalBytes -= item.bytes
+            totalBytes = max(0, totalBytes.saturatingAdd(-item.bytes))
             totalFiles -= item.files
         case .stop:
             cancel()
@@ -502,7 +502,7 @@ final class TransferJob {
         let clones = options.clone && (values?.volumeSupportsFileCloning ?? false)
         let needed = items.filter { $0.outcome == .pending && $0.operation != .rename }
             .filter { !(clones && TransferEngine.device($0.source) == disk) }
-            .reduce(Int64(0)) { $0 + $1.bytes }
+            .map(\.bytes).saturatingSum
         guard needed > available else { return nil }
         let need = Format.bytes(needed), have = Format.bytes(available)
         guard let volume = values?.volumeName else {

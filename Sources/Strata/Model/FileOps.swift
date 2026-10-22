@@ -20,6 +20,10 @@ enum FileOps {
         guard !name.isEmpty, name != ".", name != "..", !name.contains("/") else {
             throw CocoaError(.fileWriteInvalidFileName, userInfo: [NSFilePathErrorKey: name])
         }
+        guard !name.contains(":"), name.utf8.count <= 255,
+              !name.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) else {
+            throw CocoaError(.fileWriteInvalidFileName, userInfo: [NSFilePathErrorKey: name])
+        }
         let destination = url.deletingLastPathComponent().appending(path: name)
         if TransferEngine.exists(destination), destination.path.lowercased() != url.path.lowercased() {
             throw CocoaError(.fileWriteFileExists, userInfo: [

@@ -1,12 +1,21 @@
 import Foundation
 
+nonisolated package extension Int64 {
+    func saturatingAdd(_ other: Int64) -> Int64 {
+        let (sum, overflow) = addingReportingOverflow(other)
+        return overflow ? (other < 0 ? .min : .max) : sum
+    }
+
+    func saturatingMultiply(_ other: Int64) -> Int64 {
+        let (product, overflow) = multipliedReportingOverflow(by: other)
+        return overflow ? ((self < 0) == (other < 0) ? .max : .min) : product
+    }
+}
+
 nonisolated package extension Sequence where Element == Int64 {
     /// The total, stopping at Int64.max rather than overflowing (sizes reported by another machine can be absurd).
     var saturatingSum: Int64 {
-        reduce(0) { total, next in
-            let (sum, overflow) = total.addingReportingOverflow(next)
-            return overflow ? (next < 0 ? Int64.min : Int64.max) : sum
-        }
+        reduce(0) { $0.saturatingAdd($1) }
     }
 }
 

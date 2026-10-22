@@ -34,6 +34,11 @@ var scope: String?
 var workspace: String?
 var paths: [String] = []
 
+func writeError(_ message: String) {
+    _ = fcntl(STDERR_FILENO, F_SETNOSIGPIPE, 1)
+    try? FileHandle.standardError.write(contentsOf: Data(message.utf8))
+}
+
 while !arguments.isEmpty {
     let argument = arguments.removeFirst()
     switch argument {
@@ -41,13 +46,13 @@ while !arguments.isEmpty {
         print(usage)
         exit(0)
     case "-s", "--search":
-        guard !arguments.isEmpty else { FileHandle.standardError.write(Data(usage.utf8)); exit(2) }
+        guard !arguments.isEmpty else { writeError(usage); exit(2) }
         query = arguments.removeFirst()
     case "-w", "--workspace":
-        guard !arguments.isEmpty else { FileHandle.standardError.write(Data(usage.utf8)); exit(2) }
+        guard !arguments.isEmpty else { writeError(usage); exit(2) }
         workspace = arguments.removeFirst()
     case "-i", "--in":
-        guard !arguments.isEmpty else { FileHandle.standardError.write(Data(usage.utf8)); exit(2) }
+        guard !arguments.isEmpty else { writeError(usage); exit(2) }
         scope = arguments.removeFirst()
     default:
         paths.append(argument)
@@ -56,17 +61,22 @@ while !arguments.isEmpty {
 
 // A workspace opens on its own: it doesn't mix with a search or paths.
 if workspace != nil, query != nil || scope != nil || !paths.isEmpty {
-    FileHandle.standardError.write(Data(usage.utf8))
+    writeError(usage)
     exit(2)
 }
 
 let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
 func absolute(_ path: String) -> URL {
-    URL(fileURLWithPath: (path as NSString).expandingTildeInPath, relativeTo: cwd).standardizedFileURL
+    let expanded = (path as NSString).expandingTildeInPath
+    guard !expanded.isEmpty else {
+        writeError("strata: : no such file or directory\n")
+        exit(1)
+    }
+    return URL(fileURLWithPath: expanded, relativeTo: cwd).standardizedFileURL
 }
 
 guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
-    FileHandle.standardError.write(Data("strata: Strata.app isn't installed\n".utf8))
+    writeError("strata: Strata.app isn't installed\n")
     exit(1)
 }
 
@@ -86,7 +96,7 @@ if let workspace {
 } else {
     targets = (paths.isEmpty ? ["."] : paths).map(absolute)
     for url in targets where !FileManager.default.fileExists(atPath: url.path) {
-        FileHandle.standardError.write(Data("strata: \(url.path): no such file or directory\n".utf8))
+        writeError("strata: \(url.path): no such file or directory\n")
         exit(1)
     }
 }
@@ -95,7 +105,7 @@ let configuration = NSWorkspace.OpenConfiguration()
 configuration.activates = true
 NSWorkspace.shared.open(targets, withApplicationAt: app, configuration: configuration) { _, error in
     if let error {
-        FileHandle.standardError.write(Data("strata: \(error.localizedDescription)\n".utf8))
+        writeError("strata: \(error.localizedDescription)\n")
         exit(1)
     }
     exit(0)

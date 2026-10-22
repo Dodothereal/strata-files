@@ -408,7 +408,8 @@ final class InlineRenameField: NSTextField, NSTextFieldDelegate {
     private var cancelled = false
     private var finished = false
 
-    init(name: String, isFolder: Bool, centered: Bool, font: NSFont = FileViewStyle.nameFont) {
+    init(name: String, isFolder: Bool, centered: Bool, wraps: Bool? = nil, font: NSFont = FileViewStyle.nameFont) {
+        let multiline = wraps ?? centered
         super.init(frame: .zero)
         stringValue = name
         self.font = font
@@ -419,11 +420,11 @@ final class InlineRenameField: NSTextField, NSTextFieldDelegate {
         textColor = .textColor
         focusRingType = .exterior
         alignment = centered ? .center : .natural
-        usesSingleLineMode = !centered
-        cell?.wraps = centered
-        cell?.isScrollable = !centered
-        lineBreakMode = centered ? .byCharWrapping : .byClipping
-        maximumNumberOfLines = centered ? 0 : 1
+        usesSingleLineMode = !multiline
+        cell?.wraps = multiline
+        cell?.isScrollable = !multiline
+        lineBreakMode = multiline ? .byCharWrapping : .byClipping
+        maximumNumberOfLines = multiline ? 0 : 1
         delegate = self
         let base = isFolder ? name as NSString : (name as NSString).deletingPathExtension as NSString
         baseLength = base.length
@@ -461,6 +462,6 @@ final class InlineRenameField: NSTextField, NSTextFieldDelegate {
         let end = onEnd
         removeFromSuperview()
         end?()
-        if !cancelled, !name.isEmpty, !name.contains("/") { commit?(name) }
+        if !cancelled, !name.isEmpty { commit?(name) }
     }
 }

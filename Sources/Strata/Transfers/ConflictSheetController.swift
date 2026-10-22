@@ -268,7 +268,7 @@ nonisolated struct ItemFacts: Sendable {
 
     @concurrent
     static func load(_ url: URL) async -> ItemFacts {
-        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey, .fileSizeKey,
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey, .isPackageKey, .fileSizeKey,
                                                         .contentModificationDateKey, .localizedTypeDescriptionKey,
                                                         .contentTypeKey])
         let isFolder = values?.isDirectory == true
@@ -280,7 +280,8 @@ nonisolated struct ItemFacts: Sendable {
         }
         var text: String?
         var digest: Data?
-        if !isFolder, let size = bytes, size <= 8_000_000, let data = try? Data(contentsOf: url) {
+        if !isFolder, values?.isRegularFile == true, let size = bytes, size <= 8_000_000,
+           let (data, truncated) = try? TextFile.readPrefix(url, limit: 8_000_000), !truncated {
             digest = Data(SHA256.hash(data: data))
             if size <= Int64(textLimit), isText(data, type: values?.contentType) {
                 text = String(decoding: data, as: UTF8.self)

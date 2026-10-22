@@ -1,4 +1,5 @@
 import Foundation
+import StrataSupport
 
 /// One directory entry as read by the scanner, before it gets an id.
 nonisolated package struct ScannedItem: Sendable {
@@ -170,8 +171,8 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             for i in stride(from: parent.count - 1, through: 0, by: -1) {
                 let p = parent[i]
                 guard p >= 0, flags[i] & Flag.deleted == 0 else { continue }
-                size[Int(p)] += size[i]
-                fileCount[Int(p)] += fileCount[i]
+                size[Int(p)] = size[Int(p)].saturatingAdd(size[i])
+                fileCount[Int(p)] = UInt32(clamping: UInt64(fileCount[Int(p)]) + UInt64(fileCount[i]))
             }
         }
 
@@ -182,8 +183,8 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             for i in stride(from: parent.count - 1, through: Int(first), by: -1) where flags[i] & Flag.deleted == 0 {
                 let p = parent[i]
                 if p >= first {
-                    size[Int(p)] += size[i]
-                    fileCount[Int(p)] += fileCount[i]
+                    size[Int(p)] = size[Int(p)].saturatingAdd(size[i])
+                    fileCount[Int(p)] = UInt32(clamping: UInt64(fileCount[Int(p)]) + UInt64(fileCount[i]))
                 } else {
                     propagate(from: Int32(i), bytes: size[i], files: Int64(fileCount[i]))
                 }
@@ -222,7 +223,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             guard bytes != 0 || files != 0 else { return }
             var p = parent[Int(id)]
             while p >= 0 {
-                size[Int(p)] += bytes
+                size[Int(p)] = size[Int(p)].saturatingAdd(bytes)
                 fileCount[Int(p)] = UInt32(clamping: Int64(fileCount[Int(p)]) + files)
                 p = parent[Int(p)]
             }

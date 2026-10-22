@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import StrataSupport
 
 /// A set of files with identical contents.
 nonisolated package struct DuplicateGroup: Sendable {
@@ -7,7 +8,7 @@ nonisolated package struct DuplicateGroup: Sendable {
     package let paths: [String]
 
     /// Space freed by keeping one copy.
-    package var reclaimable: Int64 { size * Int64(paths.count - 1) }
+    package var reclaimable: Int64 { max(0, size).saturatingMultiply(Int64(max(0, paths.count - 1))) }
 }
 
 /// Finds duplicate files among indexed ones: same size first (free, from the index), then a hash of the first and

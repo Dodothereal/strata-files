@@ -217,7 +217,8 @@ enum Trash {
     /// The names in an open folder.
     nonisolated private static func entries(_ fd: Int32) -> [String] {
         let copy = dup(fd)
-        guard copy >= 0, let dir = fdopendir(copy) else { return [] }
+        guard copy >= 0 else { return [] }
+        guard let dir = fdopendir(copy) else { close(copy); return [] }
         defer { closedir(dir) }
         var names: [String] = []
         while let entry = readdir(dir) {

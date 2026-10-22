@@ -10,14 +10,16 @@ package final class ThemeWindowBinding: NSObject {
     package init(_ window: NSWindow) {
         background = window.backgroundColor
         transparent = window.titlebarAppearsTransparent
-        adjustsSafeArea = (window.contentViewController as? any ThemeSplitWindowContent)?.splitViewItems[1].automaticallyAdjustsSafeAreaInsets
+        let items = (window.contentViewController as? any ThemeSplitWindowContent)?.splitViewItems
+        adjustsSafeArea = items.flatMap { $0.indices.contains(1) ? $0[1].automaticallyAdjustsSafeAreaInsets : nil }
         super.init()
     }
 
     package func apply(to window: NSWindow) {
         window.backgroundColor = ThemeStyle.colorsSurfaces ? ThemeStyle.surface(.content) : background
         updateTitlebar(in: window, detached: toolbarDetached)
-        if let split = window.contentViewController as? any ThemeSplitWindowContent, let adjustsSafeArea {
+        if let split = window.contentViewController as? any ThemeSplitWindowContent,
+           split.splitViewItems.indices.contains(1), let adjustsSafeArea {
             let item = split.splitViewItems[1]
             let extend = ThemeStyle.colorsSurfaces || adjustsSafeArea
             if item.automaticallyAdjustsSafeAreaInsets != extend {

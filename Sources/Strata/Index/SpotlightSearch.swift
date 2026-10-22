@@ -78,10 +78,11 @@ nonisolated package struct SpotlightQuery: Equatable, Sendable {
             return Condition(attributes: ["kMDItemAuthors", "kMDItemComposer"], test: .contains(value),
                              label: String(localized: "artist “\(value)”", comment: "Search summary: music by an artist"))
         case "width", "height", "pages":
-            guard let (comparison, number) = comparison(value, units: [:]) else { return nil }
+            guard let (comparison, number) = comparison(value, units: [:]),
+                  let count = saturatingInt64(number).map(Int.init(clamping:)) else { return nil }
             let attribute = key == "width" ? "kMDItemPixelWidth" : key == "height" ? "kMDItemPixelHeight" : "kMDItemNumberOfPages"
             return Condition(attributes: [attribute], test: .compare(comparison, number),
-                             label: describe(comparison, Int(number), key))
+                             label: describe(comparison, count, key))
         case "duration", "length":
             let units: [String: Double] = ["s": 1, "sec": 1, "secs": 1, "second": 1, "seconds": 1, "m": 60, "min": 60, "mins": 60,
                                            "minute": 60, "minutes": 60, "h": 3600, "hr": 3600, "hour": 3600, "hours": 3600]
@@ -151,7 +152,7 @@ nonisolated package struct SpotlightQuery: Equatable, Sendable {
         guard let number = Double(plain), number.isFinite, number >= 0 else { return nil }
         let unit = rest.dropFirst(digits.count).trimmingCharacters(in: .whitespaces)
         if unit.isEmpty || unit == "px" { return (comparison, number) }
-        guard let factor = units[unit] else { return nil }
+        guard let factor = units[unit], (number * factor).isFinite else { return nil }
         return (comparison, number * factor)
     }
 
@@ -161,7 +162,10 @@ nonisolated package struct SpotlightQuery: Equatable, Sendable {
         formatter.unitsStyle = .short
         formatter.allowedUnits = [.hour, .minute, .second]
         formatter.maximumUnitCount = 2
-        return formatter.string(from: seconds) ?? "\(Int(seconds)) s"
+        if seconds.isFinite, seconds <= Double(Int.max), let formatted = formatter.string(from: seconds) {
+            return formatted
+        }
+        return "\(saturatingInt64(seconds) ?? 0) s"
     }
 
     /// "over 20 pages", "at most 1000 px wide": `key` is pages, width or height.

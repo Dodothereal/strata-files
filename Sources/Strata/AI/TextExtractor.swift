@@ -71,13 +71,19 @@ nonisolated enum TextExtractor {
     static func extract(_ url: URL, options: Options = Options()) async -> ExtractedText? {
         let ext = url.pathExtension.lowercased()
         let type = UTType(filenameExtension: ext)
-        if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, Int64(size) > options.maxFileBytes { return nil }
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
+        if let size = values?.fileSize, Int64(size) > options.maxFileBytes { return nil }
+        if values?.isDirectory == true,
+           let size = FolderSizer.measure(url.path, isCancelled: { Task.isCancelled }),
+           size.bytes > options.maxFileBytes {
+            return nil
+        }
 
         var result: ExtractedText?
         if ext == "pdf" || type?.conforms(to: .pdf) == true {
             result = await pdf(url, options: options)
         } else if let docType = richTextTypes[ext] ?? (type?.conforms(to: .rtf) == true ? .rtf : nil) {
-            result = rich(url, type: docType)
+            result = rich(url, type: docType, maxBytes: Int(clamping: options.maxFileBytes))
         } else if htmlExtensions.contains(ext) || type?.conforms(to: .html) == true {
             result = readPlain(url, limit: options.maxCharacters * 2).map { html($0) }
         } else if plainTextExtensions.contains(ext) || type?.conforms(to: .plainText) == true || type?.conforms(to: .sourceCode) == true {
@@ -111,9 +117,7 @@ nonisolated enum TextExtractor {
 
     /// Reads up to `limit` bytes and decodes them, refusing binary files.
     static func readPlain(_ url: URL, limit: Int) -> String? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        guard let data = try? handle.read(upToCount: limit), !data.isEmpty else { return nil }
+        guard let (data, _) = try? TextFile.readPrefix(url, limit: limit), !data.isEmpty else { return nil }
         if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) {
             return String(data: data, encoding: .utf16)
         }
@@ -126,10 +130,20 @@ nonisolated enum TextExtractor {
         return String(data: data, encoding: .windowsCP1252)
     }
 
-    static func rich(_ url: URL, type: NSAttributedString.DocumentType) -> ExtractedText? {
+    static func rich(_ url: URL, type: NSAttributedString.DocumentType, maxBytes: Int = 50 << 20) -> ExtractedText? {
         var attributes: NSDictionary?
-        guard let string = try? NSAttributedString(url: url, options: [.documentType: type], documentAttributes: &attributes) else {
-            return nil
+        let string: NSAttributedString
+        if type == .rtfd {
+            guard let loaded = try? NSAttributedString(url: url, options: [.documentType: type], documentAttributes: &attributes) else {
+                return nil
+            }
+            string = loaded
+        } else {
+            guard let (data, truncated) = try? TextFile.readPrefix(url, limit: maxBytes), !truncated,
+                  let loaded = try? NSAttributedString(data: data, options: [.documentType: type], documentAttributes: &attributes) else {
+                return nil
+            }
+            string = loaded
         }
         let title = (attributes?[NSAttributedString.DocumentAttributeKey.title] as? String)
         // Attachments show up as U+FFFC.

@@ -62,7 +62,8 @@ nonisolated struct GitRepository: Sendable, Hashable {
 
     /// `.git` files contain `gitdir: <path>`, relative to the folder holding the file.
     private static func resolveGitFile(_ file: String, relativeTo folder: String) -> URL? {
-        guard let text = try? String(contentsOfFile: file, encoding: .utf8),
+        guard let (data, _) = try? TextFile.readPrefix(URL(fileURLWithPath: file), limit: 64 * 1024),
+              let text = String(data: data, encoding: .utf8),
               let line = text.split(whereSeparator: \.isNewline).first, line.hasPrefix("gitdir:") else { return nil }
         let target = line.dropFirst("gitdir:".count).trimmingCharacters(in: .whitespaces)
         let absolute = target.hasPrefix("/") ? target : (folder as NSString).appendingPathComponent(target)
@@ -73,7 +74,8 @@ nonisolated struct GitRepository: Sendable, Hashable {
     /// The branch HEAD names, read straight from the file: instant, so the branch pill can appear before status
     /// finishes. Nil when HEAD is detached or unreadable.
     func currentBranchName() -> String? {
-        guard let head = try? String(contentsOf: gitDirectory.appending(path: "HEAD"), encoding: .utf8) else { return nil }
+        guard let (data, _) = try? TextFile.readPrefix(gitDirectory.appending(path: "HEAD"), limit: 64 * 1024),
+              let head = String(data: data, encoding: .utf8) else { return nil }
         let line = head.trimmingCharacters(in: .whitespacesAndNewlines)
         guard line.hasPrefix("ref: refs/heads/") else { return nil }
         return String(line.dropFirst("ref: refs/heads/".count))
@@ -84,8 +86,9 @@ nonisolated struct GitRepository: Sendable, Hashable {
         let fm = FileManager.default
         func exists(_ name: String) -> Bool { fm.fileExists(atPath: gitDirectory.appending(path: name).path) }
         func number(_ name: String) -> Int? {
-            (try? String(contentsOf: gitDirectory.appending(path: name), encoding: .utf8))
-                .flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            guard let (data, _) = try? TextFile.readPrefix(gitDirectory.appending(path: name), limit: 1024),
+                  let text = String(data: data, encoding: .utf8) else { return nil }
+            return Int(text.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         if exists("rebase-merge") { return .rebasing(step: number("rebase-merge/msgnum"), total: number("rebase-merge/end")) }
         if exists("rebase-apply") {
@@ -102,7 +105,8 @@ nonisolated struct GitRepository: Sendable, Hashable {
     /// During a rebase HEAD is detached; the branch being rebased is recorded separately.
     func rebasingBranchName() -> String? {
         for file in ["rebase-merge/head-name", "rebase-apply/head-name"] {
-            if let text = try? String(contentsOf: gitDirectory.appending(path: file), encoding: .utf8) {
+            if let (data, _) = try? TextFile.readPrefix(gitDirectory.appending(path: file), limit: 64 * 1024),
+               let text = String(data: data, encoding: .utf8) {
                 let name = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 return name.hasPrefix("refs/heads/") ? String(name.dropFirst("refs/heads/".count)) : name
             }
@@ -267,6 +271,7 @@ nonisolated enum GitRunner {
 
 /// Accumulates one pipe's output on a background queue until EOF.
 nonisolated final class PipeCollector: @unchecked Sendable {
+    static let limit = 64 << 20
     let pipe = Pipe()
     private let lock = NSLock()
     private var buffer = Data()
@@ -294,7 +299,13 @@ nonisolated final class PipeCollector: @unchecked Sendable {
         if chunk.isEmpty {
             finishReading()
         } else {
-            lock.withLock { buffer.append(chunk) }
+            lock.withLock {
+                if buffer.count + chunk.count <= Self.limit {
+                    buffer.append(chunk)
+                } else {
+                    failure = "git output exceeded limit"
+                }
+            }
         }
     }
 

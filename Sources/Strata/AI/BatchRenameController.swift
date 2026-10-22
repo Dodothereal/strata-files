@@ -6,6 +6,8 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
     private let urls: [URL]
     private let baseFolder: URL
     private weak var undo: UndoManager?
+    private let copies: CopyProviders
+    private let history: OperationLog
     private var items: [PlanItem] = []
     private var rules = RenameRules()
     private var plan: Plan?
@@ -35,10 +37,12 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
     private let cancelButton = NSButton(title: String(localized: "Cancel"), target: nil, action: nil)
 
     /// `urls` in the order the window shows them, which is the order they're numbered in.
-    init(urls: [URL], baseFolder: URL, undo: UndoManager?) {
+    init(urls: [URL], baseFolder: URL, undo: UndoManager?, copies: CopyProviders = .live, history: OperationLog = .shared) {
         self.urls = urls
         self.baseFolder = baseFolder
         self.undo = undo
+        self.copies = copies
+        self.history = history
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -335,7 +339,7 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
             guard let self else { return }
             // History records the English "Rename" (its pencil icon, translated when shown); the Edit menu says how many.
             let outcome = await PlanExecutor.apply(plan, actionName: "Rename", undoName: String(localized: "Rename \(count) Items", comment: "plural"),
-                                                   undo: undo)
+                                                   undo: undo, copies: copies, history: history)
             let window = view.window?.sheetParent
             dismiss(nil)
             onApplied?(outcome.results)

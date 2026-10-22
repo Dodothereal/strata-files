@@ -98,7 +98,7 @@ final class ColumnPreviewPane: NSView {
             if let entry { requestThumbnail(entry, side: side) }
         }
         // Labels right-aligned to a shared axis a little left of center, values to its right.
-        let labelWidth = ((bounds.width - 36) * 0.4).rounded()
+        let labelWidth = max(40, ((bounds.width - 36) * 0.4).rounded())
         if labelWidth != labelColumnWidth, grid.numberOfColumns == 2 {
             labelColumnWidth = labelWidth
             grid.column(at: 0).width = labelWidth

@@ -140,6 +140,7 @@ extension HistoryWindowController: NSTableViewDataSource, NSTableViewDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int { entries.count }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard entries.indices.contains(row) else { return nil }
         let id = NSUserInterfaceItemIdentifier("HistoryCell")
         let cell = tableView.makeView(withIdentifier: id, owner: nil) as? HistoryCell ?? {
             let cell = HistoryCell()

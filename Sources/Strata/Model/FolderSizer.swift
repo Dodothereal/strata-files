@@ -1,4 +1,5 @@
 import Foundation
+import StrataSupport
 
 nonisolated package struct FolderSize: Sendable {
     package let bytes: Int64
@@ -71,7 +72,7 @@ package final class FolderSizer {
             if visited & 2047 == 0, isCancelled() { return nil }
             switch Int32(entry.pointee.fts_info) {
             case FTS_F, FTS_SL, FTS_SLNONE, FTS_DEFAULT:
-                if let stat = entry.pointee.fts_statp { bytes += Int64(stat.pointee.st_size) }
+                if let stat = entry.pointee.fts_statp { bytes = bytes.saturatingAdd(max(0, Int64(stat.pointee.st_size))) }
                 files += 1
             default:
                 break

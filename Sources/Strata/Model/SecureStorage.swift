@@ -312,7 +312,7 @@ nonisolated package enum SecureStorage {
 
         package init(url: URL, storage: Context = SecureStorage.current) throws {
             guard let key = storage.key else { throw Failure() }
-            let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+            let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
             guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .ENOENT) }
             var info = stat()
             guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {

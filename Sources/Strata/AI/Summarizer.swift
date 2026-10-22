@@ -173,6 +173,8 @@ nonisolated enum Summarizer {
     /// Splits on paragraph boundaries into parts of at most `size` characters; keeps the first, last and evenly spaced
     /// middle parts when there are more than `limit`.
     static func sections(_ text: String, size: Int, limit: Int) -> (kept: [String], total: Int) {
+        // Non-positive sizes or limits keep no sections.
+        guard size > 0, limit > 0 else { return ([], 0) }
         var parts: [String] = []
         var current = ""
         for paragraph in text.components(separatedBy: "\n") {
@@ -193,6 +195,7 @@ nonisolated enum Summarizer {
         }
         if !current.isEmpty { parts.append(current) }
         guard parts.count > limit else { return (parts, parts.count) }
+        guard limit > 1 else { return ([parts[0]], parts.count) }
         // First, last and evenly spaced parts in between, each once and in order.
         let step: Double = Double(parts.count - 1) / Double(limit - 1)
         var seen = Set<Int>()

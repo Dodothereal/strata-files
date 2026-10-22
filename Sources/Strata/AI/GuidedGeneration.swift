@@ -71,7 +71,11 @@ nonisolated extension GeneratedContent {
         return nil
     }
 
-    var integer: Int? { number.map { Int($0.rounded()) } }
+    var integer: Int? {
+        guard let rounded = number?.rounded(), rounded.isFinite,
+              rounded >= Double(Int.min), rounded < Double(Int.max) else { return nil }
+        return Int(rounded)
+    }
 
     var array: [GeneratedContent] {
         if case let .array(values) = kind { return values }

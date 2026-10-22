@@ -144,7 +144,7 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
                 offsets.append(utf16Offset)
                 utf16Offset += c.utf16.count
             }
-            for i in matches where i < characters.count {
+            for i in matches where characters.indices.contains(i) {
                 let range = NSRange(location: offsets[i], length: characters[i].utf16.count)
                 text.addAttributes([.font: bold, .foregroundColor: highlight], range: range)
             }

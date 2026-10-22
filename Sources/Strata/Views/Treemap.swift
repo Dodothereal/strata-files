@@ -46,7 +46,7 @@ nonisolated enum Treemap {
     static func tiles(_ items: [TreemapItem], in rect: CGRect, minArea: CGFloat = 34 * 26, maxTiles: Int = 300) -> [TreemapTile] {
         let measured = items.filter { ($0.bytes ?? 0) > 0 }.sorted { $0.bytes! > $1.bytes! }
         let total = measured.map { $0.bytes! }.saturatingSum
-        guard total > 0, rect.width > 4, rect.height > 4 else { return [] }
+        guard total > 0, rect.width.isFinite, rect.height.isFinite, rect.width > 4, rect.height > 4 else { return [] }
         let area = Double(rect.width * rect.height)
         var kept: [TreemapItem] = []
         var otherBytes: Int64 = 0
@@ -81,8 +81,11 @@ nonisolated enum Treemap {
     /// rect per value, tiling `rect` exactly, in a top-left-origin (flipped) coordinate space.
     static func squarify(_ values: [Double], in rect: CGRect) -> [CGRect] {
         guard !values.isEmpty else { return [] }
+        guard rect.width.isFinite, rect.height.isFinite, rect.width > 0, rect.height > 0 else {
+            return values.map { _ in .zero }
+        }
         let total = values.reduce(0, +)
-        guard total > 0 else { return values.map { _ in .zero } }
+        guard total > 0, total.isFinite else { return values.map { _ in .zero } }
         let scale = Double(rect.width * rect.height) / total
         let areas = values.map { $0 * scale }
         var result = [CGRect](repeating: .zero, count: values.count)
@@ -95,6 +98,11 @@ nonisolated enum Treemap {
         }
 
         while i < areas.count {
+            guard remaining.width > 0, remaining.height > 0 else {
+                let edge = CGRect(x: remaining.minX, y: remaining.minY, width: 0, height: 0)
+                for k in i..<areas.count { result[k] = edge }
+                break
+            }
             let side = Double(min(remaining.width, remaining.height))
             var sum = areas[i], lo = areas[i], hi = areas[i]
             var current = worst(sum, lo, hi, side)
@@ -112,10 +120,10 @@ nonisolated enum Treemap {
             let isLast = j >= areas.count
             if remaining.width >= remaining.height {
                 // A column along the left edge.
-                let width = isLast ? Double(remaining.width) : sum / Double(remaining.height)
+                let width = isLast ? Double(remaining.width) : min(Double(remaining.width), sum / Double(remaining.height))
                 var y = Double(remaining.minY)
                 for k in i..<j {
-                    let height = k == j - 1 ? Double(remaining.maxY) - y : areas[k] / width
+                    let height = k == j - 1 ? max(0, Double(remaining.maxY) - y) : (width > 0 ? min(max(0, Double(remaining.maxY) - y), areas[k] / width) : 0)
                     result[k] = CGRect(x: Double(remaining.minX), y: y, width: width, height: height)
                     y += height
                 }
@@ -123,10 +131,10 @@ nonisolated enum Treemap {
                                    width: max(remaining.width - CGFloat(width), 0), height: remaining.height)
             } else {
                 // A row along the top edge.
-                let height = isLast ? Double(remaining.height) : sum / Double(remaining.width)
+                let height = isLast ? Double(remaining.height) : min(Double(remaining.height), sum / Double(remaining.width))
                 var x = Double(remaining.minX)
                 for k in i..<j {
-                    let width = k == j - 1 ? Double(remaining.maxX) - x : areas[k] / height
+                    let width = k == j - 1 ? max(0, Double(remaining.maxX) - x) : (height > 0 ? min(max(0, Double(remaining.maxX) - x), areas[k] / height) : 0)
                     result[k] = CGRect(x: x, y: Double(remaining.minY), width: width, height: height)
                     x += width
                 }

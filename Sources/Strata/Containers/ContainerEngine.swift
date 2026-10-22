@@ -79,9 +79,7 @@ nonisolated enum EngineDiscovery {
 
     /// Small JSON files only (a config file isn't megabytes).
     private static func readJSON(_ url: URL) -> Any? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        guard let data = try? handle.read(upToCount: 1 << 20), data.count < 1 << 20 else { return nil }
+        guard let (data, truncated) = try? TextFile.readPrefix(url, limit: 1 << 20), !truncated else { return nil }
         return try? JSONSerialization.jsonObject(with: data)
     }
 
@@ -448,6 +446,8 @@ nonisolated struct StreamDemux {
         while pending.count >= 8 {
             let header = [UInt8](pending.prefix(8))
             let size = Int(header[4]) << 24 | Int(header[5]) << 16 | Int(header[6]) << 8 | Int(header[7])
+            let frameLimit = header[0] == 1 ? outputLimit - output.count : max(outputLimit, errorLimit, 1 << 20)
+            guard size >= 0, size <= frameLimit else { throw UnixHTTP.Failure.tooLarge }
             guard pending.count >= 8 + size else { break }
             let payload = pending.subdata(in: pending.startIndex + 8 ..< pending.startIndex + 8 + size)
             pending.removeSubrange(pending.startIndex ..< pending.startIndex + 8 + size)
