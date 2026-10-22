@@ -40,13 +40,13 @@ final class RemoteServerStore {
     var all: [RemoteServer] {
         guard let data = preferences.defaults.data(forKey: key),
               let saved = try? JSONDecoder().decode([RemoteServer].self, from: data) else { return [] }
-        return saved.filter { $0.validate() == nil && UUID(uuidString: $0.id) != nil }
+        return saved.filter { $0.validate() == nil && RemoteServer.isValidID($0.id) }
     }
 
     func server(id: String) -> RemoteServer? { all.first { $0.id == id } }
 
     func save(_ server: RemoteServer, secret: String? = nil) throws {
-        guard UUID(uuidString: server.id) != nil else { throw RemoteError.unknownServer }
+        guard RemoteServer.isValidID(server.id) else { throw RemoteError.unknownServer }
         if let problem = server.validate() { throw RemoteError.refused(problem.message) }
         if server.kind == .s3, let secret, !credentials.setSecret(secret, for: server) {
             throw RemoteError.refused(String(localized: "The secret key couldn’t be saved in your keychain."))
@@ -65,7 +65,7 @@ final class RemoteServerStore {
     @discardableResult
     func forget(_ server: RemoteServer) -> Bool {
         guard self.server(id: server.id) == server else { return false }
-        credentials.delete(server)
+        guard credentials.delete(server) else { return false }
         persist(all.filter { $0.id != server.id })
         return true
     }

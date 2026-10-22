@@ -134,15 +134,25 @@ struct RemoteCopyOwnershipTests {
 
     @Test func preparingCopiesRefusesInvalidIDsAndReplacementLinks() throws {
         let tree = try TestTree("cache/", "outside/keep.txt")
-        let id = UUID().uuidString
+        let id = "A" + UUID().uuidString.dropFirst()
         let copies = RemoteCopyStore(root: tree.url("cache"), server: { _ in nil })
         let before = tree.snapshot()
-        for id in ["", ".", "..", "../outside", "not-a-uuid", "nested/child"] {
-            let invalid = RemoteServer(id: id, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        for invalidID in ["", ".", "..", "../outside", "not-a-uuid", "nested/child", id.lowercased(), id + " "] {
+            let invalid = RemoteServer(id: invalidID, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+            #expect(!RemoteServer.isValidID(invalidID))
             #expect(throws: RemoteError.unknownServer) { try copies.prepare(invalid) }
             #expect(tree.snapshot() == before)
         }
         let server = RemoteServer(id: id, kind: .sftp, name: "Fixture", host: "fixture.invalid")
+        if !CopyWriter.isCaseSensitive {
+            let lowerFolder = copies.root.appending(path: id.lowercased(), directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: lowerFolder, withIntermediateDirectories: false)
+            try Data("keep".utf8).write(to: lowerFolder.appending(path: "keep.txt"))
+            let withLower = tree.snapshot()
+            #expect(throws: (any Error).self) { try copies.prepare(server) }
+            #expect(tree.snapshot() == withLower)
+            try FileManager.default.removeItem(at: lowerFolder)
+        }
         let folder = try copies.prepare(server)
         #expect(try copies.prepare(server) == folder)
         let permissions = try FileManager.default.attributesOfItem(atPath: folder.path)[.posixPermissions] as? NSNumber
@@ -161,15 +171,22 @@ struct RemoteCopyOwnershipTests {
     }
 
     @Test func removingCopiesNeverFollowsAReplacedRootOrAChildLink() throws {
-        let chosen = UUID().uuidString, other = UUID().uuidString
+        let chosen = "A" + UUID().uuidString.dropFirst(), other = "B" + UUID().uuidString.dropFirst()
         let tree = try TestTree("cache/\(chosen)/nested/file", "cache/\(chosen)/link -> ../../outside", "cache/\(other)/keep",
                                 "outside/\(chosen)/keep", "outside/keep", "cache-old/keep", "cache/invalid/keep")
         let copies = RemoteCopyStore(root: tree.url("cache"), server: { _ in nil })
         let before = tree.snapshot()
-        for id in ["", ".", "..", "../outside", "invalid"] { copies.remove(id) }
+        for id in ["", ".", "..", "../outside", "invalid", chosen.lowercased(), other.lowercased()] { copies.remove(id) }
         #expect(tree.snapshot() == before)
         copies.remove(chosen)
         #expect(tree.snapshot() == before.filter { !$0.hasPrefix("cache/" + chosen + "/") })
+        let lowerChosen = copies.root.appending(path: chosen.lowercased(), directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: lowerChosen, withIntermediateDirectories: false)
+        try Data("keep".utf8).write(to: lowerChosen.appending(path: "keep"))
+        let withLower = tree.snapshot()
+        copies.remove(chosen)
+        #expect(tree.snapshot() == withLower)
+        try FileManager.default.removeItem(at: lowerChosen)
         let parked = tree.url("parked")
         try FileManager.default.moveItem(at: copies.root, to: parked)
         try FileManager.default.createSymbolicLink(at: copies.root, withDestinationURL: tree.url("outside"))
@@ -194,7 +211,7 @@ struct RemoteCopyOwnershipTests {
         try #require(parent >= 0)
         defer { close(parent) }
         let before = tree.snapshot()
-        for name in ["", ".", "..", "../outside", "chosen/file", "nul\0name"] { Archiver.removeTree(name, in: parent) }
+        for name in ["", ".", "..", "../outside", "chosen/file", "nul\0name", "CHOSEN"] { Archiver.removeTree(name, in: parent) }
         #expect(tree.snapshot() == before)
         try FileManager.default.moveItem(at: tree.url("cache"), to: tree.url("parked"))
         try FileManager.default.createSymbolicLink(at: tree.url("cache"), withDestinationURL: tree.url("outside"))
@@ -203,5 +220,114 @@ struct RemoteCopyOwnershipTests {
         #expect(tree.snapshot() == redirected.filter { !$0.hasPrefix("parked/chosen/") })
         #expect(tree.text("outside/chosen/keep") == "outside/chosen/keep")
         #expect(tree.snapshot().contains("parked/"))
+    }
+
+    @Test func serverOperationsStayBoundToTheirInitialDefinitionAndNormalizeNestedTargets() async throws {
+        let id = "A" + UUID().uuidString.dropFirst()
+        let tree = try TestTree("cache/\(id)/folder/child.txt", "cache/\(id)/folder/keep.txt", "cache/\(id)/dest/",
+                                "local/sub/file.txt")
+        let original = RemoteServer(id: id, kind: .sftp, name: "Original", host: "original.invalid")
+        let edited = RemoteServer(id: id, kind: .sftp, name: "Edited", host: "edited.invalid")
+        nonisolated final class RegistryBox: @unchecked Sendable {
+            private let lock = NSLock()
+            private var value: RemoteServer?
+            init(_ initial: RemoteServer?) { value = initial }
+            var current: RemoteServer? {
+                get { lock.withLock { value } }
+                set { lock.withLock { value = newValue } }
+            }
+        }
+        let box = RegistryBox(original)
+        let copies = RemoteCopyStore(root: tree.url("cache"), server: { $0 == id ? box.current : nil })
+        let backend = Backend("original bytes"), editedBackend = Backend("edited bytes")
+        let sessions = RemoteSessions(server: { $0 == id ? box.current : nil },
+                                      connect: { $0 == original ? backend : editedBackend },
+                                      changed: { _, _ in })
+        let files = RemoteFiles(sessions: sessions, copies: copies)
+        let top = copies.top(of: id)
+        let folder = top.appending(path: "folder"), child = folder.appending(path: "child.txt")
+        let destination = top.appending(path: "dest")
+
+        // Nested and duplicate selections in either order are deleted and moved only once at the outermost path.
+        try await files.delete([folder, child, folder, child])
+        try await files.delete([child, folder])
+        #expect(backend.changes == ["remove /folder", "remove /folder"])
+        _ = try await files.move([folder, child, folder], into: destination)
+        _ = try await files.move([child, folder], into: destination)
+        #expect(backend.changes.suffix(2) == ["rename /folder /dest/folder", "rename /folder /dest/folder"])
+
+        // Once the server definition under the same ID is edited, operations bound to `original` refuse to use `edited`.
+        _ = try await sessions.backend(for: original)
+        box.current = edited
+        await #expect(throws: CancellationError.self) { _ = try await sessions.backend(for: original) }
+        let browsing = RemoteBrowsing(sessions: sessions, files: files)
+        await #expect(throws: CancellationError.self) {
+            _ = try await browsing.open(original)
+        }
+        let copyProviders = CopyProviders(servers: files, containers: ContainerFiles())
+        let upload = RemoteUploadJob([tree.url("local/sub")], into: destination, expected: original,
+                                     files: files, copies: copyProviders)
+        let queue = TransferQueue()
+        queue.add(upload)
+        await upload.finished()
+        #expect(upload.state == .cancelled && editedBackend.changes.isEmpty)
+        await sessions.disconnect(id)
+    }
+
+    @Test func placeholderPlacementChecksIdentityModeParentAndServerContinuity() async throws {
+        let tree = try TestTree("copy/", "temp/", "parked/", "outside/")
+        let target = tree.url("copy/item.txt"), temporary = tree.url("temp")
+        func makePlaceholder(_ url: URL, mode: Int = 0) {
+            FileManager.default.createFile(atPath: url.path, contents: Data("placeholder".utf8),
+                                           attributes: [.posixPermissions: mode])
+        }
+
+        // Already-fetched regular files (non-placeholder mode) are never overwritten.
+        makePlaceholder(target, mode: 0o444)
+        var downloads = 0
+        try await RemoteWriter.fetch("/item.txt", into: target, mode: 0o644, temporary: temporary) { temp, _ in
+            downloads += 1
+            try Data("new".utf8).write(to: temp)
+        }
+        #expect(downloads == 0 && tree.text("copy/item.txt") == "placeholder")
+        try FileManager.default.removeItem(at: target)
+
+        // Replacing the placeholder with a different placeholder inode during download leaves the replacement untouched.
+        makePlaceholder(target, mode: 0)
+        try await RemoteWriter.fetch("/item.txt", into: target, mode: 0o644, temporary: temporary) { temp, _ in
+            try Data("downloaded".utf8).write(to: temp)
+            try FileManager.default.moveItem(at: target, to: tree.url("parked/original-placeholder"))
+            makePlaceholder(target, mode: 0)
+        }
+        let modeAfterSwap = try FileManager.default.attributesOfItem(atPath: target.path)[.posixPermissions] as? Int
+        #expect(modeAfterSwap == 0)
+        try FileManager.default.removeItem(at: target)
+
+        // Replacing the parent folder during download leaves the new parent's placeholder untouched, even when the original placeholder inode is moved into it.
+        makePlaceholder(target, mode: 0)
+        let originalParent = tree.url("parked/original-parent")
+        try await RemoteWriter.fetch("/item.txt", into: target, mode: 0o644, temporary: temporary) { temp, _ in
+            try Data("downloaded".utf8).write(to: temp)
+            try FileManager.default.moveItem(at: tree.url("copy"), to: originalParent)
+            try FileManager.default.createDirectory(at: tree.url("copy"), withIntermediateDirectories: false)
+            try FileManager.default.moveItem(at: originalParent.appending(path: "item.txt"), to: target)
+        }
+        let parentModeAfterSwap = try FileManager.default.attributesOfItem(atPath: target.path)[.posixPermissions] as? Int
+        #expect(parentModeAfterSwap == 0)
+
+        // If `shouldPlace` turns false (e.g., server definition changed while downloading), the placeholder stays untouched.
+        try await RemoteWriter.fetch("/item.txt", into: target, mode: 0o644, temporary: temporary,
+                                     shouldPlace: { false }) { temp, _ in
+            try Data("downloaded".utf8).write(to: temp)
+        }
+        let modeAfterRefusal = try FileManager.default.attributesOfItem(atPath: target.path)[.posixPermissions] as? Int
+        #expect(modeAfterRefusal == 0)
+
+        // When parent, placeholder identity, mode and server continuity all hold, the downloaded file is placed.
+        try await RemoteWriter.fetch("/item.txt", into: target, mode: 0o644, temporary: temporary) { temp, _ in
+            try Data("verified".utf8).write(to: temp)
+        }
+        #expect(tree.text("copy/item.txt") == "verified")
+        withExtendedLifetime(tree) {}
     }
 }

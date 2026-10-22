@@ -84,7 +84,7 @@ final class RemoteConnections {
         let proposedSecret = server.kind == .s3 ? secret : nil
         let previousSecret: String?
         do {
-            guard UUID(uuidString: server.id) != nil else { throw RemoteError.unknownServer }
+            guard RemoteServer.isValidID(server.id) else { throw RemoteError.unknownServer }
             if let problem = server.validate() { throw RemoteError.refused(problem.message) }
             previousSecret = server.kind == .s3 ? catalog.secret(server) : nil
             if server.kind == .s3, proposedSecret == nil && previousSecret == nil { throw RemoteError.noSecret }
@@ -127,6 +127,10 @@ final class RemoteConnections {
     func disconnect(_ server: RemoteServer) -> Task<Bool, Never>? {
         guard savedServers.first(where: { $0.id == server.id }) == server else { return nil }
         cancel(server.id)
+        return startRetirement(for: server)
+    }
+
+    private func startRetirement(for server: RemoteServer) -> Task<Bool, Never> {
         let preceding = handoffs[server.id]?.task
         let handoffID = UUID(), progress = HandoffProgress()
         let task = Task<Bool, Error> { [self] in

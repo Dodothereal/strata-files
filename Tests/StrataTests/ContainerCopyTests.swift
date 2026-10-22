@@ -8,11 +8,46 @@ import Testing
 extension ContainerTests {
     private static let id = String(repeating: "ab", count: 32)
 
-    private static func archive(_ stream: [UInt8]) throws -> ContainerEngine {
+    private static func archive(_ stream: [UInt8], beforeReply: (@Sendable () -> Void)? = nil) throws -> ContainerEngine {
         let body = stream + [UInt8](repeating: 0, count: 1024)
         let head = "HTTP/1.1 200 OK\r\nContent-Type: application/x-tar\r\nContent-Length: \(body.count)\r\n\r\n"
-        let server = try serve(Array(head.utf8) + body)
-        return ContainerEngine(socket: server.path, name: "Docker", apiVersion: "1.41")
+        let response = Array(head.utf8) + body
+        guard let beforeReply else {
+            let server = try serve(response)
+            return ContainerEngine(socket: server.path, name: "Docker", apiVersion: "1.41")
+        }
+        let path = "/tmp/strata-test-\(UUID().uuidString.prefix(8)).sock"
+        let server = socket(AF_UNIX, SOCK_STREAM, 0)
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        withUnsafeMutableBytes(of: &address.sun_path) { raw in
+            let bytes = Array(path.utf8)
+            raw.copyBytes(from: bytes)
+            raw[bytes.count] = 0
+        }
+        let bound = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(server, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        }
+        #expect(bound == 0)
+        listen(server, 1)
+        Thread.detachNewThread {
+            let client = accept(server, nil, nil)
+            var on: Int32 = 1
+            setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+            var request = Data()
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            while !request.contains(Data("\r\n\r\n".utf8)) {
+                let count = recv(client, &buffer, buffer.count, 0)
+                if count <= 0 { break }
+                request.append(contentsOf: buffer[0..<count])
+            }
+            beforeReply()
+            _ = response.withUnsafeBytes { send(client, $0.baseAddress, $0.count, 0) }
+            close(client)
+            close(server)
+            unlink(path)
+        }
+        return ContainerEngine(socket: path, name: "Docker", apiVersion: "1.41")
     }
 
     @Test func aContainersFolderIsWrittenOnlyIntoItsCopy() throws {
@@ -75,20 +110,28 @@ extension ContainerTests {
 
     @Test func aFetchThatIsntAFileOrFindsSomethingElseChangesNothing() throws {
         let tree = try TestTree("copy/", "copy/now a folder/", "copy/now a folder/inside.txt", "copy/now a link -> ../outside/secret.txt",
-                                "outside/", "outside/secret.txt")
+                                "copy/already.txt", "outside/", "outside/secret.txt")
         placeholder(tree.url("copy/hosts"))
         // The container sends a link (or a folder) where a file was listed: nothing is written.
         let link = Self.tarHeader("hosts", type: UInt8(ascii: "2"), link: "/etc/passwd")
         #expect(throws: (any Error).self) {
             try CopyWriter.fetchFile(try Self.archive(link), id: Self.id, containerPath: "/etc/hosts", to: tree.url("copy/hosts"), stop: StopFlag())
         }
-        // Listed again meanwhile, the placeholder is a folder now: the fetched file doesn't replace it.
-        for name in ["now a folder", "now a link"] {
+        // Listed again meanwhile, the placeholder is a folder, link, already-fetched file, or a new placeholder now: the fetched file doesn't replace it.
+        for name in ["now a folder", "now a link", "already.txt"] {
             try CopyWriter.fetchFile(try Self.archive(Self.tarFile(name, "x")), id: Self.id, containerPath: "/x",
                                      to: tree.url("copy/" + name), stop: StopFlag())
         }
-        #expect(tree.snapshot() == ["copy/", "copy/hosts", "copy/now a folder/", "copy/now a folder/inside.txt",
-                                    "copy/now a link -> ../outside/secret.txt", "outside/", "outside/secret.txt"])
+        let hosts = tree.url("copy/hosts"), parked = tree.url("outside/parked-hosts")
+        try CopyWriter.fetchFile(try Self.archive(Self.tarFile("hosts", "overwritten")) {
+            try? FileManager.default.moveItem(at: hosts, to: parked)
+            FileManager.default.createFile(atPath: hosts.path, contents: nil, attributes: [.posixPermissions: 0])
+        }, id: Self.id, containerPath: "/etc/hosts", to: hosts, stop: StopFlag())
+        let modeAfterSwap = try FileManager.default.attributesOfItem(atPath: hosts.path)[.posixPermissions] as? Int
+        #expect(modeAfterSwap == 0)
+        #expect(tree.text("copy/already.txt") == "copy/already.txt")
+        #expect(tree.snapshot() == ["copy/", "copy/already.txt", "copy/hosts", "copy/now a folder/", "copy/now a folder/inside.txt",
+                                    "copy/now a link -> ../outside/secret.txt", "outside/", "outside/parked-hosts", "outside/secret.txt"])
         #expect(tree.text("outside/secret.txt") == "outside/secret.txt")
         #expect(TestTree.listing(of: tree.url("copy")).allSatisfy { !$0.hasPrefix(".strata-") })
     }

@@ -773,6 +773,10 @@ nonisolated enum CopyWriter {
 
     /// The same, into the folder open at `fd`.
     private static func fetchFile(_ engine: ContainerEngine, id: String, containerPath: String, into fd: Int32, name: String, stop: StopFlag) throws {
+        var placeholder = stat()
+        let expectedPlaceholder = (fstatat(fd, name, &placeholder, AT_SYMLINK_NOFOLLOW) == 0
+            && placeholder.st_mode & S_IFMT == S_IFREG
+            && ContainerCopies.isPlaceholderMode(placeholder.st_mode)) ? FileIdentity.from(placeholder) : nil
         let temp = tempPrefix + UUID().uuidString
         var out: Int32 = -1
         var reader = TarReader()
@@ -813,7 +817,9 @@ nonisolated enum CopyWriter {
         out = -1
         // Only over the placeholder: if the folder was listed again meanwhile and it's something else now, leave that.
         var info = stat()
-        guard fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFREG,
+        guard let expectedPlaceholder,
+              fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFREG,
+              ContainerCopies.isPlaceholderMode(info.st_mode), FileIdentity.from(info) == expectedPlaceholder,
               renameat(fd, temp, fd, name) == 0 else {
             done = false
             return

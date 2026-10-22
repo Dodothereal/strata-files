@@ -90,6 +90,7 @@ extension BrowserViewController {
         let copies = services.remote.copies
         let urls = Self.serverDeletionTargets(urls, copies: copies)
         guard !urls.isEmpty, let window = view.window else { return NSSound.beep() }
+        let expected = Dictionary(uniqueKeysWithValues: urls.compactMap { copies.server(containing: $0).map { ($0.server.id, $0.server) } })
         let serverName = copies.server(containing: urls[0])?.server.name ?? serverName
         let alert = NSAlert()
         alert.messageText = urls.count == 1
@@ -104,9 +105,14 @@ extension BrowserViewController {
             guard response == .alertFirstButtonReturn else { return }
             MainActor.assumeIsolated {
                 guard let self else { return }
+                let currentCopies = self.services.remote.copies
+                guard urls.allSatisfy({ url in
+                    guard let (server, _) = currentCopies.server(containing: url) else { return false }
+                    return expected[server.id] == server
+                }) else { return }
                 let files = self.services.remote.files
                 self.runOnServer(in: urls[0].deletingLastPathComponent()) { [weak self] in
-                    try await files.delete(urls)
+                    try await files.delete(urls, expected: expected)
                     self?.refresh()
                 }
             }
@@ -121,18 +127,19 @@ extension BrowserViewController {
         guard !urls.isEmpty else { return }
         let copies = services.remote.copies
         let files = services.remote.files
-        let server = copies.server(containing: folder)?.server.id
+        let expected = copies.server(containing: folder)?.server
+        let server = expected?.id
         if move, let server, urls.allSatisfy({ copies.server(containing: $0)?.server.id == server }) {
             return runOnServer(in: folder) { [weak self] in
-                let moved = try await files.move(urls, into: folder)
+                let moved = try await files.move(urls, into: folder, expected: expected)
                 guard let self else { return }
                 if folder.standardizedFileURL == self.directory?.standardizedFileURL, !moved.isEmpty { self.pendingSelection = moved }
                 self.refresh()
             }
         }
         runOnServer(in: folder) { [weak self] in
-            let existing = try await files.names(in: folder)
-            self?.askAndUpload(urls, into: folder, clashing: urls.map(\.lastPathComponent).filter(existing.contains))
+            let existing = try await files.names(in: folder, expected: expected)
+            self?.askAndUpload(urls, into: folder, expected: expected, clashing: urls.map(\.lastPathComponent).filter(existing.contains))
         }
     }
 
@@ -149,9 +156,12 @@ extension BrowserViewController {
         return canAsk ? .ask : .upload(skipping: Set(clashing))
     }
 
-    private func askAndUpload(_ urls: [URL], into folder: URL, clashing: [String]) {
+    private func askAndUpload(_ urls: [URL], into folder: URL, expected: RemoteServer?, clashing: [String]) {
+        if let expected, services.remote.copies.server(containing: folder)?.server != expected { return }
         let upload = { [weak self, services] (skipping: Set<String>) in
-            let job = RemoteUploadJob(urls, into: folder, skipping: skipping, files: services.remote.files, copies: services.copies)
+            if let expected, services.remote.copies.server(containing: folder)?.server != expected { return }
+            let job = RemoteUploadJob(urls, into: folder, skipping: skipping, expected: expected,
+                                      files: services.remote.files, copies: services.copies)
             job.onFinish = { job in
                 guard let self else { return }
                 if folder.standardizedFileURL == self.directory?.standardizedFileURL, !job.createdItems.isEmpty {
@@ -199,9 +209,14 @@ extension BrowserViewController {
 
     /// Runs a change on the server; what went wrong is said in a sheet, and the folder is shown as the server has it.
     private func runOnServer(in folder: URL? = nil, _ body: @escaping () async throws -> Void) {
-        let serverName = (folder ?? targetDirectory).flatMap { services.remote.copies.server(containing: $0)?.server.name } ?? ""
+        let target = folder ?? targetDirectory
+        let expected = target.flatMap { services.remote.copies.server(containing: $0)?.server }
+        let serverName = expected?.name ?? ""
         commandWork = Task { [weak self] in
             do {
+                if let target, let expected, self?.services.remote.copies.server(containing: target)?.server != expected {
+                    return
+                }
                 try await body()
             } catch is CancellationError {
                 return

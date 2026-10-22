@@ -200,15 +200,16 @@ nonisolated enum TransferEngine {
         }
 
         // Copy into place, or next to it under a hidden temporary name when replacing.
+        let sourceParent = TransferRetryTarget.directoryIdentity(item.source.deletingLastPathComponent())
         let target = replacing ? temporaryURL(for: item.destination) : item.destination
         let copy = copy(item.source, to: target, clone: options.clone, control: control, progress: progress)
         if copy.cancelled {
-            removeIfPresent(target)
+            removeIfPresent(target, in: target, created: copy.created)
             result.outcome = .cancelled
             return result
         }
         if let fatal = copy.fatal {
-            if !copy.destinationExisted { removeIfPresent(target) }
+            if !copy.destinationExisted { removeIfPresent(target, in: target, created: copy.created) }
             return fail(fatal)
         }
         if copy.cloned {
@@ -217,37 +218,45 @@ nonisolated enum TransferEngine {
                 $0.bytes += item.bytes
             }
         }
-        result.landed = FileIdentity.read(target.path)
+        result.landed = copy.created[target.path] ?? FileIdentity.read(target.path)
         hooks.afterLanding?(target)
         var failures = copy.errors.map { error in
-            TransferFailure(item: index, stage: .copy, source: URL(fileURLWithPath: error.source),
-                            destination: replacing ? nil : URL(fileURLWithPath: error.destination), message: error.message,
-                            retryTarget: TransferRetryTarget(URL(fileURLWithPath: error.destination), identity: error.identity))
+            let errorURL = URL(fileURLWithPath: error.destination)
+            return TransferFailure(item: index, stage: .copy, source: URL(fileURLWithPath: error.source),
+                                   destination: replacing ? nil : errorURL, message: error.message,
+                                   retryTarget: TransferRetryTarget(errorURL, identity: error.identity,
+                                                                    root: target, created: copy.created,
+                                                                    source: item.source, sourceIdentities: copy.sourceIdentities))
         }
 
         if options.verify {
             hooks.beforeVerify?(target)
             let skip = Set(copy.errors.map(\.source))
-            let check = verify(item.source, against: target, skipping: skip, control: control, progress: progress)
+            let check = verify(item.source, against: target, created: copy.created, skipping: skip,
+                               control: control, progress: progress)
             if check.cancelled {
-                removeIfPresent(target)
+                removeIfPresent(target, in: target, created: copy.created)
                 result.outcome = .cancelled
                 return result
             }
             for mismatch in check.mismatches {
                 // A bad copy is worse than none: drop it so a retry starts clean.
-                removeIfPresent(URL(fileURLWithPath: mismatch.destination))
+                let mismatchURL = URL(fileURLWithPath: mismatch.destination)
+                removeIfPresent(mismatchURL, in: target, created: copy.created)
+                let remaining = FileIdentity.read(mismatch.destination) == mismatch.identity ? mismatch.identity : nil
                 failures.append(TransferFailure(item: index, stage: .verify, source: URL(fileURLWithPath: mismatch.source),
-                                                destination: replacing ? nil : URL(fileURLWithPath: mismatch.destination),
+                                                destination: replacing ? nil : mismatchURL,
                                                 message: mismatch.message,
-                                                retryTarget: TransferRetryTarget(URL(fileURLWithPath: mismatch.destination), identity: mismatch.identity)))
+                                                retryTarget: TransferRetryTarget(mismatchURL, identity: remaining,
+                                                                                 root: target, created: copy.created,
+                                                                                 source: item.source, sourceIdentities: copy.sourceIdentities)))
             }
         }
 
         if replacing {
             // Never swap a complete existing item for an incomplete one.
             guard failures.isEmpty else {
-                removeIfPresent(target)
+                removeIfPresent(target, in: target, created: copy.created)
                 result.failures = failures.map {
                     TransferFailure(item: index, stage: .item, source: item.source, destination: item.destination,
                                     message: "\($0.displayName): \($0.message)")
@@ -257,13 +266,13 @@ nonisolated enum TransferEngine {
             let trashed: URL
             result.replacedIdentity = FileIdentity.read(item.destination.path)
             do { trashed = try trash(item.destination) } catch {
-                removeIfPresent(target)
+                removeIfPresent(target, in: target, created: copy.created)
                 return fail(trashMessage(item.destination, error))
             }
             let code = rename(target, to: item.destination)
             guard code == 0 else {
                 _ = rename(trashed, to: item.destination)
-                removeIfPresent(target)
+                removeIfPresent(target, in: target, created: copy.created)
                 return fail(describe(code))
             }
             result.replaced = TransferMove(from: item.destination, to: trashed)
@@ -275,17 +284,23 @@ nonisolated enum TransferEngine {
             return result
         }
         if operation == .copyThenDelete {
+            let removeRetry = TransferRetryTarget(item.destination, identity: result.landed, root: item.destination,
+                                                  created: copy.created, source: item.source,
+                                                  sourceIdentities: copy.sourceIdentities)
             // Anything saved into the original while it was being copied isn't in the copy: keep the original then.
             if let change = changedSinceCopy(item.source, copy: item.destination) {
                 let message = String(localized: "Copied, but the original was kept because it changed during the move (\(change))")
                 result.failures.append(TransferFailure(item: index, stage: .removeSource, source: item.source,
-                                                       destination: item.destination, message: message))
+                                                       destination: item.destination, message: message,
+                                                       retryTarget: removeRetry))
                 result.outcome = .partial
                 return result
             }
-            if let message = removeSource(item.source) {
+            if let message = removeSource(item.source, destination: item.destination, landed: result.landed,
+                                          sourceParent: sourceParent, sourceIdentities: copy.sourceIdentities) {
                 result.failures.append(TransferFailure(item: index, stage: .removeSource, source: item.source,
-                                                       destination: item.destination, message: message))
+                                                       destination: item.destination, message: message,
+                                                       retryTarget: removeRetry))
                 result.outcome = .partial
                 return result
             }
@@ -300,6 +315,8 @@ nonisolated enum TransferEngine {
                       control: TransferControl, progress: TransferProgress) -> TransferItemResult {
         var result = TransferItemResult(outcome: .done, destination: item.destination, landed: landed)
         defer { hooks.afterResult?(result) }
+        var latestSourceParent = failures.lazy.compactMap { $0.retryTarget?.sourceParent }.first
+        var latestSourceIdentities = failures.lazy.compactMap { $0.retryTarget?.sourceIdentities }.first { !$0.isEmpty } ?? [:]
         for failure in retryFailures(failures) {
             guard control.checkpoint() else { result.outcome = .cancelled; return result }
             guard let destination = failure.destination else { continue }
@@ -311,10 +328,24 @@ nonisolated enum TransferEngine {
                     retryTarget: failure.retryTarget))
                 continue
             }
-            removeIfPresent(destination)
-            let copy = copy(failure.source, to: destination, clone: options.clone, control: control, progress: progress)
+            guard retryTarget.matchesSource(failure.source) else {
+                result.failures.append(TransferFailure(item: index, stage: failure.stage, source: failure.source,
+                    destination: destination, message: String(localized: "The items have moved or been changed since."),
+                    retryTarget: failure.retryTarget))
+                continue
+            }
+            let owned = retryTarget.createdIdentities(for: destination, root: item.destination, rootIdentity: result.landed)
+            var dstInfo = stat()
+            let keepingDirectory = lstat(destination.path, &dstInfo) == 0 && (dstInfo.st_mode & S_IFMT == S_IFDIR)
+            if !keepingDirectory {
+                removeIfPresent(destination, in: item.destination, created: owned)
+            }
+            let copy = copy(failure.source, to: destination, replacingOwned: keepingDirectory ? owned : nil,
+                            clone: options.clone, control: control, progress: progress)
+            var mergedCreated = owned
+            for (path, id) in copy.created { mergedCreated[path] = id }
             if copy.cancelled {
-                removeIfPresent(destination)
+                removeIfPresent(destination, in: item.destination, created: mergedCreated, keepRootDirectory: keepingDirectory)
                 result.outcome = .cancelled
                 return result
             }
@@ -323,43 +354,71 @@ nonisolated enum TransferEngine {
                                                        destination: destination, message: fatal, retryTarget: failure.retryTarget))
                 continue
             }
+            for (path, id) in copy.sourceIdentities { latestSourceIdentities[path] = id }
+            if latestSourceParent == nil {
+                latestSourceParent = TransferRetryTarget.directoryIdentity(item.source.deletingLastPathComponent())
+            }
             // Recreating a top-level file gives it a new identity. Repairing a child keeps the original folder's
             // ownership; never adopt whichever folder happens to occupy that path after the retry.
-            if destination == item.destination { result.landed = FileIdentity.read(destination.path) }
+            if destination == item.destination { result.landed = copy.created[destination.path] ?? FileIdentity.read(destination.path) }
             hooks.afterLanding?(destination)
             result.failures += copy.errors.map {
-                TransferFailure(item: index, stage: .copy, source: URL(fileURLWithPath: $0.source),
-                                destination: URL(fileURLWithPath: $0.destination), message: $0.message,
-                                retryTarget: TransferRetryTarget(URL(fileURLWithPath: $0.destination), identity: $0.identity))
+                let errorURL = URL(fileURLWithPath: $0.destination)
+                return TransferFailure(item: index, stage: .copy, source: URL(fileURLWithPath: $0.source),
+                                       destination: errorURL, message: $0.message,
+                                       retryTarget: TransferRetryTarget(errorURL, identity: $0.identity,
+                                                                        root: item.destination, created: mergedCreated,
+                                                                        source: item.source, sourceIdentities: latestSourceIdentities))
             }
             if options.verify {
                 hooks.beforeVerify?(destination)
-                let check = verify(failure.source, against: destination, skipping: Set(copy.errors.map(\.source)),
-                                   control: control, progress: progress)
-                if check.cancelled { result.outcome = .cancelled; return result }
+                let check = verify(failure.source, against: destination, created: copy.created,
+                                   skipping: Set(copy.errors.map(\.source)), control: control, progress: progress)
+                if check.cancelled {
+                    removeIfPresent(destination, in: item.destination, created: mergedCreated, keepRootDirectory: keepingDirectory)
+                    result.outcome = .cancelled
+                    return result
+                }
                 for mismatch in check.mismatches {
-                    removeIfPresent(URL(fileURLWithPath: mismatch.destination))
+                    let mismatchURL = URL(fileURLWithPath: mismatch.destination)
+                    removeIfPresent(mismatchURL, in: item.destination, created: mergedCreated)
+                    let remaining = FileIdentity.read(mismatch.destination) == mismatch.identity ? mismatch.identity : nil
                     result.failures.append(TransferFailure(item: index, stage: .verify,
                                                            source: URL(fileURLWithPath: mismatch.source),
-                                                           destination: URL(fileURLWithPath: mismatch.destination),
+                                                           destination: mismatchURL,
                                                            message: mismatch.message,
-                                                           retryTarget: TransferRetryTarget(URL(fileURLWithPath: mismatch.destination), identity: mismatch.identity)))
+                                                           retryTarget: TransferRetryTarget(mismatchURL, identity: remaining,
+                                                                                            root: item.destination, created: mergedCreated,
+                                                                                            source: item.source, sourceIdentities: latestSourceIdentities)))
                 }
             }
         }
         guard result.failures.isEmpty else { result.outcome = .partial; return result }
         if item.operation != .copy {
+            let removeRetry = failures.lazy.compactMap(\.retryTarget).first
+            if (result.landed != nil && FileIdentity.read(item.destination.path) != result.landed)
+                || (removeRetry != nil && removeRetry?.matchesSource(item.source) == false) {
+                result.failures.append(TransferFailure(item: index, stage: .removeSource, source: item.source,
+                                                       destination: item.destination,
+                                                       message: String(localized: "The items have moved or been changed since."),
+                                                       retryTarget: removeRetry))
+                result.outcome = .partial
+                return result
+            }
             // The original may hold edits the copy lacks (that's why it was kept): never delete it then.
             if let change = changedSinceCopy(item.source, copy: item.destination) {
                 let message = String(localized: "The original was kept because it changed during the move (\(change)). Move it again to copy the changes.")
                 result.failures.append(TransferFailure(item: index, stage: .removeSource, source: item.source,
-                                                       destination: item.destination, message: message))
+                                                       destination: item.destination, message: message,
+                                                       retryTarget: removeRetry))
                 result.outcome = .partial
                 return result
             }
-            if let message = removeSource(item.source) {
+            if let message = removeSource(item.source, destination: item.destination, landed: result.landed,
+                                          sourceParent: latestSourceParent, sourceIdentities: latestSourceIdentities) {
                 result.failures.append(TransferFailure(item: index, stage: .removeSource, source: item.source,
-                                                       destination: item.destination, message: message))
+                                                       destination: item.destination, message: message,
+                                                       retryTarget: removeRetry))
                 result.outcome = .partial
                 return result
             }
@@ -428,12 +487,17 @@ nonisolated enum TransferEngine {
         var destinationExisted = false
         /// Made as one APFS clone of the whole item (no per-file progress was reported).
         var cloned = false
+        var created: [String: FileIdentity] = [:]
+        var sourceIdentities: [String: FileIdentity] = [:]
     }
 
     /// Recursive `copyfile(3)` with every piece of metadata, APFS clones where possible, per-file progress, and
     /// pause/cancel at block granularity. Files that fail are recorded and skipped; copyfile removes their partial data.
-    static func copy(_ source: URL, to destination: URL, clone: Bool, control: TransferControl,
-                     progress: TransferProgress) -> CopyOutcome {
+    static func copy(_ source: URL, to destination: URL, replacingOwned: [String: FileIdentity]? = nil,
+                     clone: Bool, control: TransferControl, progress: TransferProgress) -> CopyOutcome {
+        if let owned = replacingOwned {
+            return copyfile(source, to: destination, replacingOwned: owned, clone: clone, control: control, progress: progress)
+        }
         guard !exists(destination) else {
             // copyfile would copy *into* an existing folder; the planner guarantees this never happens.
             return CopyOutcome(fatal: describe(EEXIST), destinationExisted: true)
@@ -445,24 +509,166 @@ nonisolated enum TransferEngine {
         // the whole tree, then with a plain copy, which both cope with that.
         var isDirectory: ObjCBool = false
         guard clone, !first.errors.isEmpty, !first.cancelled, first.fatal == nil,
-              FileManager.default.fileExists(atPath: source.path, isDirectory: &isDirectory), isDirectory.boolValue
+              FileManager.default.fileExists(atPath: source.path, isDirectory: &isDirectory), isDirectory.boolValue,
+              canRestart(destination, created: first.created)
         else { return first }
-        removeIfPresent(destination)   // Ours: COPYFILE_EXCL guaranteed nothing was there.
+        removeIfPresent(destination, in: destination, created: first.created)   // Ours: COPYFILE_EXCL guaranteed nothing was there.
+        guard !exists(destination) else { return first }
         progress.update {
             $0.files = start.files
             $0.bytes = start.bytes
         }
-        if clonefile(source.path, destination.path, UInt32(CLONE_NOFOLLOW | CLONE_ACL)) == 0 { return CopyOutcome(cloned: true) }
+        if clonefile(source.path, destination.path, UInt32(CLONE_NOFOLLOW | CLONE_ACL)) == 0 {
+            return CopyOutcome(cloned: true, created: snapshotIdentities(destination),
+                               sourceIdentities: snapshotIdentities(source))
+        }
         if errno == EEXIST { return CopyOutcome(fatal: describe(EEXIST), destinationExisted: true) }
         return copyfile(source, to: destination, clone: false, control: control, progress: progress)
     }
 
+    private static func canRestart(_ destination: URL, created: [String: FileIdentity]) -> Bool {
+        let current = snapshotIdentities(destination)
+        guard !current.isEmpty else { return true }
+        return current.allSatisfy { created[$0.key] == $0.value }
+    }
+
+    private static func canRepair(_ source: URL, into destination: URL, owned: [String: FileIdentity]) -> Bool {
+        var srcRoot = stat(), dstRoot = stat()
+        guard lstat(source.path, &srcRoot) == 0, srcRoot.st_mode & S_IFMT == S_IFDIR,
+              lstat(destination.path, &dstRoot) == 0, dstRoot.st_mode & S_IFMT == S_IFDIR,
+              let expectedRoot = owned[destination.path], FileIdentity.from(dstRoot) == expectedRoot else { return false }
+        guard let cpath = strdup(source.path) else { return false }
+        defer { free(cpath) }
+        var paths: [UnsafeMutablePointer<CChar>?] = [cpath, nil]
+        guard let fts = fts_open(&paths, FTS_PHYSICAL | FTS_NOCHDIR, nil) else { return false }
+        defer { fts_close(fts) }
+        while let entry = fts_read(fts) {
+            let info = Int32(entry.pointee.fts_info)
+            if info == FTS_DP { continue }
+            if info == FTS_DNR || info == FTS_ERR || info == FTS_NS { return false }
+            let srcPath = String(cString: entry.pointee.fts_path)
+            let relative = srcPath.count > source.path.count ? String(srcPath.dropFirst(source.path.count)) : ""
+            let dstPath = destination.path + relative
+            var dstInfo = stat()
+            if lstat(dstPath, &dstInfo) == 0 {
+                guard let expected = owned[dstPath], FileIdentity.from(dstInfo) == expected else { return false }
+                let srcIsDir = info == FTS_D
+                let dstIsDir = dstInfo.st_mode & S_IFMT == S_IFDIR
+                if srcIsDir != dstIsDir { return false }
+            }
+        }
+        return true
+    }
+
+    private static func snapshotIdentities(_ root: URL) -> [String: FileIdentity] {
+        var result: [String: FileIdentity] = [:]
+        guard let cpath = strdup(root.path) else { return result }
+        defer { free(cpath) }
+        var paths: [UnsafeMutablePointer<CChar>?] = [cpath, nil]
+        guard let fts = fts_open(&paths, FTS_PHYSICAL | FTS_NOCHDIR, nil) else { return result }
+        defer { fts_close(fts) }
+        while let entry = fts_read(fts) {
+            if Int32(entry.pointee.fts_info) == FTS_DP { continue }
+            let path = String(cString: entry.pointee.fts_path)
+            if let id = FileIdentity.read(path) { result[path] = id }
+        }
+        return result
+    }
+
     /// One recursive `copyfile` pass (see `copy`).
-    private static func copyfile(_ source: URL, to destination: URL, clone: Bool, control: TransferControl,
-                                 progress: TransferProgress) -> CopyOutcome {
+    private static func copyfile(_ source: URL, to destination: URL, replacingOwned: [String: FileIdentity]? = nil,
+                                 clone: Bool, control: TransferControl, progress: TransferProgress) -> CopyOutcome {
+        if let owned = replacingOwned {
+            guard canRepair(source, into: destination, owned: owned) else {
+                return CopyOutcome(fatal: String(localized: "The items have moved or been changed since."),
+                                   destinationExisted: true)
+            }
+            var outcome = CopyOutcome()
+            guard let cpath = strdup(source.path) else { return CopyOutcome(fatal: describe(ENOMEM)) }
+            defer { free(cpath) }
+            var paths: [UnsafeMutablePointer<CChar>?] = [cpath, nil]
+            guard let fts = fts_open(&paths, FTS_PHYSICAL | FTS_NOCHDIR, nil) else {
+                return CopyOutcome(fatal: describe(errno))
+            }
+            defer { fts_close(fts) }
+            let hooks = hooks
+            var directories: [String: CopySession.DirectoryDescriptor] = [:]
+            while let entry = fts_read(fts) {
+                guard control.checkpoint() else { outcome.cancelled = true; break }
+                let info = Int32(entry.pointee.fts_info)
+                let srcPath = String(cString: entry.pointee.fts_path)
+                let relative = srcPath.count > source.path.count ? String(srcPath.dropFirst(source.path.count)) : ""
+                let dstPath = destination.path + relative
+                let srcURL = URL(fileURLWithPath: srcPath), dstURL = URL(fileURLWithPath: dstPath)
+                switch info {
+                case FTS_D:
+                    if let id = FileIdentity.read(srcPath) { outcome.sourceIdentities[srcPath] = id }
+                    if exists(dstURL) {
+                        guard let expected = owned[dstPath], FileIdentity.read(dstPath) == expected,
+                              let descriptor = CopySession.DirectoryDescriptor.openDirectory(dstPath),
+                              descriptor.identity == expected else {
+                            outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
+                                                             message: String(localized: "The items have moved or been changed since."),
+                                                             identity: owned[dstPath]))
+                            fts_set(fts, entry, FTS_SKIP)
+                            continue
+                        }
+                        directories[dstPath] = descriptor
+                        outcome.created[dstPath] = expected
+                    } else {
+                        guard mkdir(dstPath, 0o700) == 0 else {
+                            outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
+                                                             message: describe(errno), identity: nil))
+                            fts_set(fts, entry, FTS_SKIP)
+                            continue
+                        }
+                        let descriptor = CopySession.DirectoryDescriptor.openDirectory(dstPath)
+                        directories[dstPath] = descriptor
+                        if let id = descriptor?.identity ?? FileIdentity.read(dstPath) { outcome.created[dstPath] = id }
+                    }
+                case FTS_DP:
+                    let descriptor = directories.removeValue(forKey: dstPath)
+                    if let expected = descriptor?.identity, FileIdentity.read(dstPath) == expected {
+                        _ = Darwin.copyfile(srcPath, dstPath, nil, copyfile_flags_t(COPYFILE_METADATA | COPYFILE_NOFOLLOW))
+                    }
+                    if let id = descriptor?.identity { outcome.created[dstPath] = id }
+                    if let code = hooks.copyFailure?(dstURL) {
+                        outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
+                                                         message: describe(code), identity: outcome.created[dstPath]))
+                    }
+                case FTS_F, FTS_SL, FTS_SLNONE:
+                    if exists(dstURL) {
+                        removeIfPresent(dstURL, in: destination, created: owned.merging(outcome.created) { _, new in new })
+                        if exists(dstURL) {
+                            outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
+                                                             message: String(localized: "The items have moved or been changed since."),
+                                                             identity: owned[dstPath]))
+                            continue
+                        }
+                    }
+                    let single = copyfile(srcURL, to: dstURL, clone: clone, control: control, progress: progress)
+                    for (path, id) in single.created { outcome.created[path] = id }
+                    for (path, id) in single.sourceIdentities { outcome.sourceIdentities[path] = id }
+                    outcome.errors += single.errors
+                    if single.cancelled { outcome.cancelled = true; return outcome }
+                    if let fatal = single.fatal {
+                        outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
+                                                         message: fatal, identity: single.created[dstPath]))
+                    }
+                case FTS_DNR, FTS_ERR, FTS_NS:
+                    outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
+                                                     message: describe(entry.pointee.fts_errno), identity: owned[dstPath]))
+                default:
+                    break
+                }
+            }
+            return outcome
+        }
+
         let hooks = hooks
         let session = CopySession(control: control, progress: progress, throttle: hooks.throttleBytesPerSecond,
                                   copyFailure: hooks.copyFailure)
+        if let id = FileIdentity.read(source.path) { session.sourceIdentities[source.path] = id }
         guard let state = copyfile_state_alloc() else { return CopyOutcome(fatal: describe(ENOMEM)) }
         defer { copyfile_state_free(state) }
         let callback: copyfile_callback_t = copyCallback
@@ -474,7 +680,8 @@ nonisolated enum TransferEngine {
         let code = errno
         withExtendedLifetime(session) {}
 
-        var outcome = CopyOutcome(errors: session.errors)
+        var outcome = CopyOutcome(errors: session.errors, created: session.created,
+                                  sourceIdentities: session.sourceIdentities)
         if session.quit || control.isCancelled {
             outcome.cancelled = true
         } else if status != 0, session.errors.isEmpty {
@@ -485,6 +692,15 @@ nonisolated enum TransferEngine {
             // The top-level item itself failed (unreadable file, folder that can't be listed…).
             outcome.fatal = session.errors.first { $0.source == source.path }?.message
             outcome.errors.removeAll { $0.source == source.path }
+        }
+        if !outcome.destinationExisted {
+            let failedDestinations = Set(session.errors.map(\.destination))
+            for (path, id) in snapshotIdentities(destination) where outcome.created[path] == nil && !failedDestinations.contains(path) {
+                outcome.created[path] = id
+            }
+            for (path, id) in snapshotIdentities(source) where outcome.sourceIdentities[path] == nil {
+                outcome.sourceIdentities[path] = id
+            }
         }
         return outcome
     }
@@ -505,7 +721,8 @@ nonisolated enum TransferEngine {
 
     /// SHA-256 of every regular file under `source` against its counterpart under `destination`, streamed in 1 MB
     /// chunks; symlinks must point at the same place. Paths in `skipping` (already failed) are left out.
-    static func verify(_ source: URL, against destination: URL, skipping: Set<String> = [], control: TransferControl,
+    static func verify(_ source: URL, against destination: URL, created: [String: FileIdentity] = [:],
+                       skipping: Set<String> = [], control: TransferControl,
                        progress: TransferProgress) -> VerifyOutcome {
         progress.update { $0.isVerifying = true }
         defer { progress.update { $0.isVerifying = false } }
@@ -530,7 +747,17 @@ nonisolated enum TransferEngine {
             }
             let relative = path.count > root.count ? String(path.dropFirst(root.count)) : ""
             let target = destination.path + relative
-            let identity = FileIdentity.read(target)
+            let currentIdentity = FileIdentity.read(target)
+            let expectedIdentity = created[target]
+            let identity = expectedIdentity ?? currentIdentity
+            if let expectedIdentity, currentIdentity != expectedIdentity {
+                if Int32(entry.pointee.fts_info) == FTS_D { fts_set(fts, entry, FTS_SKIP) }
+                let message = currentIdentity == nil
+                    ? String(localized: "The copy can’t be read back")
+                    : String(localized: "The copy doesn’t match the original")
+                outcome.mismatches.append(EntryError(source: path, destination: target, message: message, identity: identity))
+                continue
+            }
             switch Int32(entry.pointee.fts_info) {
             case FTS_F:
                 progress.update { $0.currentName = (path as NSString).lastPathComponent }
@@ -538,7 +765,7 @@ nonisolated enum TransferEngine {
                     progress.update { $0.verifiedBytes += Int64(n) }
                 }
                 if control.isCancelled { outcome.cancelled = true; return outcome }
-                let copy = sha256(target, buffer: buffers.1, control: control) { _ in }
+                let copy = sha256(target, expected: expectedIdentity, buffer: buffers.1, control: control) { _ in }
                 if control.isCancelled { outcome.cancelled = true; return outcome }
                 if original == nil || copy == nil || original != copy {
                     let reason = copy == nil ? String(localized: "The copy can’t be read back")
@@ -548,7 +775,7 @@ nonisolated enum TransferEngine {
                                                          identity: identity))
                 }
             case FTS_SL, FTS_SLNONE:
-                if readLink(path) != readLink(target) {
+                if readLink(path) != readLink(target) || (expectedIdentity != nil && FileIdentity.read(target) != expectedIdentity) {
                     outcome.mismatches.append(EntryError(source: path, destination: target,
                                                          message: String(localized: "The copied alias points somewhere else"), identity: identity))
                 }
@@ -559,11 +786,15 @@ nonisolated enum TransferEngine {
         return outcome
     }
 
-    static func sha256(_ path: String, buffer: UnsafeMutableRawBufferPointer, control: TransferControl,
-                       onRead: (Int) -> Void) -> SHA256.Digest? {
+    static func sha256(_ path: String, expected: FileIdentity? = nil, buffer: UnsafeMutableRawBufferPointer,
+                       control: TransferControl, onRead: (Int) -> Void) -> SHA256.Digest? {
         let fd = open(path, O_RDONLY | O_NOFOLLOW)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
+        if let expected {
+            var info = stat()
+            guard fstat(fd, &info) == 0, FileIdentity.from(info) == expected else { return nil }
+        }
         _ = fcntl(fd, F_NOCACHE, 1)
         var hasher = SHA256()
         while true {
@@ -605,9 +836,105 @@ nonisolated enum TransferEngine {
         return (result as URL?) ?? url
     }
 
-    static func removeIfPresent(_ url: URL) {
-        guard exists(url) else { return }
-        try? FileManager.default.removeItem(at: url)
+    static func removeIfPresent(_ url: URL, in root: URL? = nil, created: [String: FileIdentity]? = nil,
+                                keepRootDirectory: Bool = false) {
+        guard let created else {
+            guard exists(url) else { return }
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        guard !created.isEmpty else { return }
+        let base = root ?? url
+        let baseParent = base.deletingLastPathComponent().path
+        var dirFD = open(baseParent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard dirFD >= 0 else { return }
+        if url.path != base.path {
+            let prefix = base.path == "/" ? "/" : base.path + "/"
+            guard url.path.hasPrefix(prefix) else {
+                close(dirFD)
+                return
+            }
+            let relativeParent = String(url.deletingLastPathComponent().path.dropFirst(baseParent.count))
+                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            var currentPath = baseParent
+            for component in relativeParent.split(separator: "/").map(String.init) {
+                currentPath = (currentPath as NSString).appendingPathComponent(component)
+                guard let expected = created[currentPath] else {
+                    close(dirFD)
+                    return
+                }
+                let nextFD = openat(dirFD, component, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                close(dirFD)
+                guard nextFD >= 0 else { return }
+                var info = stat()
+                guard fstat(nextFD, &info) == 0, FileIdentity.from(info) == expected else {
+                    close(nextFD)
+                    return
+                }
+                dirFD = nextFD
+            }
+        }
+        let targetName = url.lastPathComponent
+        let targetPath = url.path
+        guard let expectedTarget = created[targetPath] else {
+            close(dirFD)
+            return
+        }
+        var targetInfo = stat()
+        guard fstatat(dirFD, targetName, &targetInfo, AT_SYMLINK_NOFOLLOW) == 0,
+              FileIdentity.from(targetInfo) == expectedTarget else {
+            close(dirFD)
+            return
+        }
+        if targetInfo.st_mode & S_IFMT != S_IFDIR {
+            if !keepRootDirectory { _ = unlinkat(dirFD, targetName, 0) }
+            close(dirFD)
+            return
+        }
+        let rootDirFD = openat(dirFD, targetName, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard rootDirFD >= 0 else {
+            close(dirFD)
+            return
+        }
+        var openedInfo = stat()
+        guard fstat(rootDirFD, &openedInfo) == 0, FileIdentity.from(openedInfo) == expectedTarget else {
+            close(rootDirFD)
+            close(dirFD)
+            return
+        }
+        var stack: [(parentFD: Int32, fd: Int32, name: String, path: String, expanded: Bool, keep: Bool)] = [
+            (parentFD: dirFD, fd: rootDirFD, name: targetName, path: targetPath, expanded: false, keep: keepRootDirectory)
+        ]
+        while let frame = stack.popLast() {
+            if !frame.expanded {
+                stack.append((parentFD: frame.parentFD, fd: frame.fd, name: frame.name,
+                              path: frame.path, expanded: true, keep: frame.keep))
+                for childName in Archiver.entries(frame.fd) {
+                    let childPath = (frame.path as NSString).appendingPathComponent(childName)
+                    guard let expectedChild = created[childPath] else { continue }
+                    var childInfo = stat()
+                    guard fstatat(frame.fd, childName, &childInfo, AT_SYMLINK_NOFOLLOW) == 0,
+                          FileIdentity.from(childInfo) == expectedChild else { continue }
+                    if childInfo.st_mode & S_IFMT == S_IFDIR {
+                        let childFD = openat(frame.fd, childName, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                        guard childFD >= 0 else { continue }
+                        var openedChild = stat()
+                        guard fstat(childFD, &openedChild) == 0, FileIdentity.from(openedChild) == expectedChild else {
+                            close(childFD)
+                            continue
+                        }
+                        stack.append((parentFD: frame.fd, fd: childFD, name: childName,
+                                      path: childPath, expanded: false, keep: false))
+                    } else {
+                        _ = unlinkat(frame.fd, childName, 0)
+                    }
+                }
+            } else {
+                close(frame.fd)
+                if !frame.keep { _ = unlinkat(frame.parentFD, frame.name, AT_REMOVEDIR) }
+                if frame.parentFD == dirFD { close(dirFD) }
+            }
+        }
     }
 
     /// The first difference between `source` and its copy (an item added, or a file whose size or modification date
@@ -623,13 +950,14 @@ nonisolated enum TransferEngine {
         while let entry = fts_read(fts) {
             let info = Int32(entry.pointee.fts_info)
             if info == FTS_DP { continue }
+            if info == FTS_DNR || info == FTS_ERR || info == FTS_NS { return unchecked }
             let path = String(cString: entry.pointee.fts_path)
             let relative = path.count > root.count ? String(path.dropFirst(root.count)) : ""
             let name = relative.isEmpty ? source.lastPathComponent : String(relative.dropFirst())
             var original = stat(), copied = stat()
             guard lstat(path, &original) == 0 else { continue }   // Removed meanwhile: nothing to lose.
             guard lstat(copy.path + relative, &copied) == 0,
-                  original.st_mode & S_IFMT == copied.st_mode & S_IFMT else {
+                   original.st_mode & S_IFMT == copied.st_mode & S_IFMT else {
                 return String(localized: "“\(name)” is new", comment: "Why a moved item’s original was kept, in parentheses")
             }
             // An edit after the copy makes the original newer. Some disks keep coarser dates (FAT: 2 seconds, nothing
@@ -638,19 +966,43 @@ nonisolated enum TransferEngine {
                original.st_size != copied.st_size || original.st_mtimespec.tv_sec > copied.st_mtimespec.tv_sec + 2 {
                 return String(localized: "“\(name)” was modified", comment: "Why a moved item’s original was kept, in parentheses")
             }
+            if original.st_mode & S_IFMT == S_IFLNK, readLink(path) != readLink(copy.path + relative) {
+                return String(localized: "“\(name)” was modified", comment: "Why a moved item’s original was kept, in parentheses")
+            }
         }
         return nil
     }
 
     /// Removes the original after a cross-volume move. Returns an error message, or nil on success.
-    private static func removeSource(_ url: URL) -> String? {
-        do {
-            try FileManager.default.removeItem(at: url)
-            return nil
-        } catch {
-            let reason = (error as NSError).localizedFailureReason ?? error.localizedDescription
+    private static func removeSource(_ url: URL, destination: URL? = nil, landed: FileIdentity? = nil,
+                                     sourceParent: TransferRetryTarget.PathIdentity? = nil,
+                                     sourceIdentities: [String: FileIdentity] = [:]) -> String? {
+        if let destination, let landed, FileIdentity.read(destination.path) != landed {
+            let reason = describe(EACCES)
             return String(localized: "Copied, but the original couldn’t be removed: \(reason)")
         }
+        if let sourceParent, FileIdentity.read(sourceParent.path) != sourceParent.identity {
+            let reason = describe(EACCES)
+            return String(localized: "Copied, but the original couldn’t be removed: \(reason)")
+        }
+        let owned = sourceIdentities.isEmpty ? snapshotIdentities(url) : sourceIdentities
+        guard let rootID = owned[url.path], FileIdentity.read(url.path) == rootID else {
+            guard exists(url) else { return nil }
+            let reason = describe(EACCES)
+            return String(localized: "Copied, but the original couldn’t be removed: \(reason)")
+        }
+        for (path, expected) in owned {
+            if let current = FileIdentity.read(path), current != expected {
+                let reason = describe(EACCES)
+                return String(localized: "Copied, but the original couldn’t be removed: \(reason)")
+            }
+        }
+        removeIfPresent(url, in: url, created: owned)
+        guard !exists(url) else {
+            let reason = describe(EACCES)
+            return String(localized: "Copied, but the original couldn’t be removed: \(reason)")
+        }
+        return nil
     }
 
     /// A folder that isn't a package (apps and bundles are replaced, never merged into).
@@ -735,6 +1087,8 @@ nonisolated private final class CopySession: @unchecked Sendable {
     let progress: TransferProgress
     let throttle: Int64?
     var errors: [TransferEngine.EntryError] = []
+    var created: [String: FileIdentity] = [:]
+    var sourceIdentities: [String: FileIdentity] = [:]
     var quit = false
     private var fileSize: Int64 = 0
     private var fileReported: Int64 = 0
@@ -754,6 +1108,13 @@ nonisolated private final class CopySession: @unchecked Sendable {
         let quitCode = Int32(COPYFILE_QUIT)
         if quit { return quitCode }
 
+        if let source, stage == COPYFILE_START {
+            let src = String(cString: source)
+            if sourceIdentities[src] == nil, let id = Self.sourceIdentity(state, path: src) {
+                sourceIdentities[src] = id
+            }
+        }
+
         if stage == COPYFILE_ERR {
             if code == ECANCELED || control.isCancelled {
                 quit = true
@@ -769,7 +1130,18 @@ nonisolated private final class CopySession: @unchecked Sendable {
         }
 
         if what == COPYFILE_RECURSE_DIR && stage == COPYFILE_FINISH, let destination {
-            directories[String(cString: destination)] = DirectoryDescriptor(state)
+            let dst = String(cString: destination)
+            let descriptor = DirectoryDescriptor(state)
+            directories[dst] = descriptor
+            if let id = descriptor?.identity ?? FileIdentity.read(dst) { created[dst] = id }
+        }
+        if what == COPYFILE_RECURSE_DIR_CLEANUP && stage == COPYFILE_FINISH, let destination {
+            let dst = String(cString: destination)
+            if let id = directories[dst]?.identity { created[dst] = id }
+        }
+        if what == COPYFILE_RECURSE_FILE && stage == COPYFILE_FINISH, let destination {
+            let dst = String(cString: destination)
+            if let id = Self.destinationIdentity(state) ?? FileIdentity.read(dst) { created[dst] = id }
         }
         if stage == COPYFILE_FINISH && (what == COPYFILE_RECURSE_FILE || what == COPYFILE_RECURSE_DIR_CLEANUP),
            let destination, let code = copyFailure?(URL(fileURLWithPath: String(cString: destination))) {
@@ -817,6 +1189,7 @@ nonisolated private final class CopySession: @unchecked Sendable {
         // Directory metadata cleanup reopens a pathname, so retain the identity from its exclusive creation instead.
         // The dictionary contains only directories still on copyfile's depth-first traversal stack.
         let identity = what == COPYFILE_RECURSE_DIR_CLEANUP ? directories.removeValue(forKey: dst)?.identity : Self.destinationIdentity(state)
+        if let identity { created[dst] = identity }
         if failedPaths.insert(src).inserted {
             errors.append(.init(source: src, destination: dst, message: TransferEngine.describe(code), identity: identity))
         }
@@ -824,7 +1197,7 @@ nonisolated private final class CopySession: @unchecked Sendable {
 
     /// Keep the originally opened directory alive through metadata cleanup. copyfile changes its birth time there,
     /// so read the final identity from that descriptor, never from the cleanup pass's reopened pathname.
-    private final class DirectoryDescriptor {
+    final class DirectoryDescriptor {
         private let fd: Int32
 
         init?(_ state: copyfile_state_t?) {
@@ -834,6 +1207,16 @@ nonisolated private final class CopySession: @unchecked Sendable {
             let duplicate = fcntl(original, F_DUPFD_CLOEXEC, 0)
             guard duplicate >= 0 else { return nil }
             fd = duplicate
+        }
+
+        private init(fd: Int32) {
+            self.fd = fd
+        }
+
+        static func openDirectory(_ path: String) -> DirectoryDescriptor? {
+            let opened = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard opened >= 0 else { return nil }
+            return DirectoryDescriptor(fd: opened)
         }
 
         deinit { close(fd) }
@@ -850,6 +1233,15 @@ nonisolated private final class CopySession: @unchecked Sendable {
         guard let state, copyfile_state_get(state, UInt32(COPYFILE_STATE_DST_FD), &fd) == 0,
               fd >= 0, fstat(fd, &info) == 0 else { return nil }
         return FileIdentity.from(info)
+    }
+
+    private static func sourceIdentity(_ state: copyfile_state_t?, path: String) -> FileIdentity? {
+        var fd: Int32 = -1, info = stat()
+        if let state, copyfile_state_get(state, UInt32(COPYFILE_STATE_SRC_FD), &fd) == 0,
+           fd >= 0, fstat(fd, &info) == 0 {
+            return FileIdentity.from(info)
+        }
+        return FileIdentity.read(path)
     }
 
     private func finishFile() {

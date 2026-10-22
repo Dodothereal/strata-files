@@ -8,6 +8,7 @@ final class RemoteUploadJob {
     let skipping: Set<String>
     let files: RemoteFiles
     let copies: CopyProviders
+    let expectedServer: RemoteServer?
     let serverName: String
     private(set) var state: TransferState = .queued
     private(set) var errorMessage: String?
@@ -21,13 +22,15 @@ final class RemoteUploadJob {
     var onFinish: ((RemoteUploadJob) -> Void)?
     private var finishWaiters: [CheckedContinuation<Void, Never>] = []
 
-    init(_ sources: [URL], into folder: URL, skipping: Set<String> = [], files: RemoteFiles = .shared, copies: CopyProviders? = nil) {
+    init(_ sources: [URL], into folder: URL, skipping: Set<String> = [], expected: RemoteServer? = nil,
+         files: RemoteFiles = .shared, copies: CopyProviders? = nil) {
         self.sources = sources
         self.folder = folder
         self.skipping = skipping
         self.files = files
         self.copies = copies ?? CopyProviders(servers: files, containers: .shared)
-        serverName = files.copies.server(containing: folder)?.server.name ?? ""
+        expectedServer = expected ?? files.copies.server(containing: folder)?.server
+        serverName = expectedServer?.name ?? ""
     }
 
     func start() {
@@ -36,10 +39,14 @@ final class RemoteUploadJob {
         let sources = sources.filter { !skipping.contains($0.lastPathComponent) }
         let files = files
         let copies = copies
+        let expectedServer = expectedServer
         task = Task {
             var prepSource: URL?
             do {
                 try Task.checkCancellation()
+                if let expectedServer, files.copies.server(containing: folder)?.server != expectedServer {
+                    throw CancellationError()
+                }
                 let elsewhere = sources.filter(copies.contains)
                 if !elsewhere.isEmpty {
                     prepSource = elsewhere.first
@@ -49,7 +56,10 @@ final class RemoteUploadJob {
                 }
                 totalBytes = await Self.size(of: sources)
                 try Task.checkCancellation()
-                placed = try await files.upload(sources, into: folder, stop: stop) { [sent] bytes in sent.set(bytes) }
+                if let expectedServer, files.copies.server(containing: folder)?.server != expectedServer {
+                    throw CancellationError()
+                }
+                placed = try await files.upload(sources, into: folder, expected: expectedServer, stop: stop) { [sent] bytes in sent.set(bytes) }
                 state = .finished
             } catch {
                 state = stop.isSet || Task.isCancelled || error is CancellationError ? .cancelled : .failed

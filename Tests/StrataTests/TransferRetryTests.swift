@@ -195,4 +195,99 @@ extension TransferTests {
         withExtendedLifetime((tree, other)) {}
     }
 
+    @Test func verificationDetectsReplacedCopiesAndNeverDeletesUnownedReplacements() throws {
+        let tree = try TestTree("from/a/deeper/a.txt", "from/a/keep.txt", "to/", "parked/")
+        let root = tree.url("to/a"), target = tree.url("to/a/deeper/a.txt"), parked = tree.url("parked/landed.txt")
+        let location = Self.fixtureLocation(root)
+        TransferEngine.hooks.beforeVerify = { url in
+            guard Self.fixtureLocation(url) == location else { return }
+            do {
+                try FileManager.default.moveItem(at: target, to: parked)
+                // Same bytes as the source, but a different inode: verification must reject it and leave it alone.
+                try Data("from/a/deeper/a.txt".utf8).write(to: target, options: .withoutOverwriting)
+            } catch { Issue.record(error) }
+        }
+        defer { TransferEngine.hooks = .init() }
+        let item = TransferItem(source: tree.url("from/a"), destination: root, operation: .copy)
+        let first = TransferEngine.perform(0, item, options: .init(verify: true, clone: false),
+            control: TransferControl(), progress: TransferProgress())
+        TransferEngine.hooks = .init()
+        #expect(first.outcome == .partial && first.failures.count == 1 && first.failures.first?.stage == .verify)
+        // The unowned replacement at `target` was NOT deleted by verification cleanup, and retryTarget kept the landed inode.
+        #expect(FileManager.default.fileExists(atPath: target.path))
+        #expect(first.failures.first?.retryTarget?.matches(target) == false)
+        #expect(first.failures.first?.retryTarget?.createdIdentities(for: target, root: root, rootIdentity: first.landed)[target.path] == FileIdentity.read(parked.path))
+        let beforeRetry = tree.snapshot()
+        let refused = TransferEngine.retry(0, item, landed: first.landed, failures: first.failures,
+            options: .init(verify: true, clone: false), control: TransferControl(), progress: TransferProgress())
+        #expect(refused.outcome == .partial && refused.failures.count == 1)
+        #expect(tree.snapshot() == beforeRetry)
+        withExtendedLifetime(tree) {}
+    }
+
+    @Test func retryingAPartialDirectoryRepairsInPlaceAndPreservesUnownedChildren() throws {
+        let tree = try TestTree("from/a/first.txt", "from/a/deeper/second.txt", "to/")
+        let root = tree.url("to/a")
+        let location = tree.root.resolvingSymlinksInPath().appending(path: "to/a").path
+        TransferEngine.hooks.copyFailure = { url in
+            url.resolvingSymlinksInPath().path == location ? EIO : nil
+        }
+        defer { TransferEngine.hooks = .init() }
+        let item = TransferItem(source: tree.url("from/a"), destination: root, operation: .copy)
+        let first = TransferEngine.perform(0, item, options: .init(verify: true, clone: false),
+            control: TransferControl(), progress: TransferProgress())
+        TransferEngine.hooks = .init()
+        #expect(first.outcome == .partial && first.failures.count == 1)
+        try FileManager.default.removeItem(at: tree.url("to/a/deeper/second.txt"))
+        try Data("user note".utf8).write(to: tree.url("to/a/user-added.txt"), options: .withoutOverwriting)
+        let repaired = TransferEngine.retry(0, item, landed: first.landed, failures: first.failures,
+            options: .init(verify: true, clone: false), control: TransferControl(), progress: TransferProgress())
+        #expect(repaired.outcome == .done && repaired.failures.isEmpty)
+        #expect(tree.text("to/a/first.txt") == "from/a/first.txt")
+        #expect(tree.text("to/a/deeper/second.txt") == "from/a/deeper/second.txt")
+        #expect(tree.text("to/a/user-added.txt") == "user note")
+        withExtendedLifetime(tree) {}
+    }
+
+    @Test func crossDiskMoveKeepsOriginalWhenDestinationOrSourceIdentityIsReplaced() throws {
+        // 1. Replacing the destination after landing keeps the original source.
+        let destSwapped = try TestTree("from/a.txt", "to/", "parked/")
+        let destTarget = Self.fixtureLocation(destSwapped.url("to/a.txt"))
+        let destParked = destSwapped.url("parked/landed.txt")
+        TransferEngine.hooks.afterLanding = { url in
+            guard Self.fixtureLocation(url) == destTarget else { return }
+            try? FileManager.default.moveItem(at: url, to: destParked)
+            try? Data("from/a.txt".utf8).write(to: url, options: .withoutOverwriting)
+        }
+        defer { TransferEngine.hooks = .init() }
+        let destResult = TransferEngine.perform(0, TransferItem(source: destSwapped.url("from/a.txt"),
+            destination: destSwapped.url("to/a.txt"), operation: .copyThenDelete),
+            options: .init(verify: false, clone: false), control: TransferControl(), progress: TransferProgress())
+        TransferEngine.hooks = .init()
+        #expect(destResult.outcome != .done && !destResult.sourceRemoved)
+        #expect(destSwapped.text("from/a.txt") == "from/a.txt")
+
+        // 2. Replacing the source file with a different inode carrying identical size, time and bytes keeps it.
+        let sourceSwapped = try TestTree("from/a/inner.txt", "to/", "parked/")
+        let inner = sourceSwapped.url("from/a/inner.txt")
+        let sourceParked = sourceSwapped.url("parked/original-inner.txt")
+        let modified = (try FileManager.default.attributesOfItem(atPath: inner.path))[.modificationDate] as? Date
+        let sourceTarget = Self.fixtureLocation(sourceSwapped.url("to/a"))
+        TransferEngine.hooks.afterLanding = { url in
+            guard Self.fixtureLocation(url) == sourceTarget else { return }
+            try? FileManager.default.moveItem(at: inner, to: sourceParked)
+            try? Data("from/a/inner.txt".utf8).write(to: inner, options: .withoutOverwriting)
+            if let modified {
+                try? FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: inner.path)
+            }
+        }
+        let sourceResult = TransferEngine.perform(0, TransferItem(source: sourceSwapped.url("from/a"),
+            destination: sourceSwapped.url("to/a"), operation: .copyThenDelete),
+            options: .init(verify: true, clone: false), control: TransferControl(), progress: TransferProgress())
+        TransferEngine.hooks = .init()
+        #expect(sourceResult.outcome != .done && !sourceResult.sourceRemoved)
+        #expect(sourceSwapped.text("from/a/inner.txt") == "from/a/inner.txt")
+        withExtendedLifetime((destSwapped, sourceSwapped)) {}
+    }
+
 }

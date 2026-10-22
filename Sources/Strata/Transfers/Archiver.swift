@@ -491,8 +491,13 @@ nonisolated enum Archiver {
     /// Remove one child of an already opened folder. Cache owners pin their root without following a replacement
     /// symlink; recursive cleanup keeps using descriptor-relative paths below it.
     static func removeTree(_ name: String, in parent: Int32) {
-        guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.utf8.contains(0) else { return }
+        guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.utf8.contains(0),
+              hasEntry(name, in: parent) else { return }
         removeEntry(in: parent, name)
+    }
+
+    static func hasEntry(_ name: String, in parent: Int32) -> Bool {
+        entries(parent).contains(name)
     }
 
     private static func removeEntry(in parent: Int32, _ name: String) {
@@ -537,10 +542,14 @@ nonisolated enum Archiver {
     }
 
     /// The names in an open folder.
-    private static func entries(_ fd: Int32) -> [String] {
+    static func entries(_ fd: Int32) -> [String] {
         let copy = dup(fd)
-        guard copy >= 0, let dir = fdopendir(copy) else { return [] }
+        guard copy >= 0, let dir = fdopendir(copy) else {
+            if copy >= 0 { close(copy) }
+            return []
+        }
         defer { closedir(dir) }
+        rewinddir(dir)
         var names: [String] = []
         while let entry = readdir(dir) {
             let name = withUnsafeBytes(of: entry.pointee.d_name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }

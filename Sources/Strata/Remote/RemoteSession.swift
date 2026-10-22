@@ -378,20 +378,34 @@ actor RemoteSessions {
     }
     private struct Attempt {
         let token: UUID
+        let server: RemoteServer
         let task: Task<Void, Never>
         var waiters: [UUID: Waiter] = [:]
     }
 
     private var backends: [String: any RemoteBackend] = [:]
+    private var backendServers: [String: RemoteServer] = [:]
     private var connecting: [String: Attempt] = [:]
     private var replacements: [String: RemoteSessionReplacement] = [:]
+
+    func backend(for expected: RemoteServer) async throws -> any RemoteBackend {
+        guard server(expected.id) == expected else { throw CancellationError() }
+        let backend = try await backend(for: expected.id)
+        guard server(expected.id) == expected,
+              backendServers[expected.id] == nil || backendServers[expected.id] == expected else {
+            throw CancellationError()
+        }
+        return backend
+    }
 
     func backend(for id: String) async throws -> any RemoteBackend {
         try Task.checkCancellation()
         guard replacements[id] == nil else { throw CancellationError() }
         while let backend = backends[id] {
-            if backend.isAlive { return backend }
+            let current = server(id)
+            if backend.isAlive, current == nil || backendServers[id] == nil || backendServers[id] == current { return backend }
             backends[id] = nil
+            backendServers[id] = nil
             backend.close()
             await changed(id, false)
             try Task.checkCancellation()
@@ -401,6 +415,9 @@ actor RemoteSessions {
         // Cancellation marks the ticket synchronously. A retry must not join abandoned work just because the
         // actor task that removes its last waiter has not run yet.
         retireAbandonedAttempt(id)
+        if let pending = connecting[id], let current = server(id), pending.server != current {
+            cancelAttempt(id)
+        }
         let waiter = UUID(), stopped = StopFlag()
         let token: UUID
         if let pending = connecting[id]?.token {
@@ -410,7 +427,7 @@ actor RemoteSessions {
             token = UUID()
             let task = Task { await establish(server, for: id, token: token) }
             // Registered before anything awaits, so two panes share one connection and one password dialog.
-            connecting[id] = Attempt(token: token, task: task)
+            connecting[id] = Attempt(token: token, server: server, task: task)
         }
         let (result, continuation) = AsyncThrowingStream<any RemoteBackend, Error>.makeStream(bufferingPolicy: .bufferingNewest(1))
         connecting[id]?.waiters[waiter] = Waiter(stopped: stopped, result: continuation)
@@ -420,6 +437,9 @@ actor RemoteSessions {
             try Task.checkCancellation()
             // All waiters revalidate after resuming, including during a status callback or explicit disconnect.
             guard backends[id] === backend, backend.isAlive else { throw CancellationError() }
+            if let current = server(id), let connected = backendServers[id], connected != current {
+                throw CancellationError()
+            }
             return backend
         } onCancel: {
             stopped.set()
@@ -470,8 +490,13 @@ actor RemoteSessions {
                 backend.close()
                 throw CancellationError()
             }
+            guard self.server(id) == nil || self.server(id) == server else {
+                backend.close()
+                throw CancellationError()
+            }
             connecting[id] = nil
             backends[id] = backend
+            backendServers[id] = server
             await changed(id, true)
             for waiter in attempt.waiters.values {
                 waiter.result.yield(backend)
@@ -491,6 +516,7 @@ actor RemoteSessions {
     /// A failed read retires only the connection it used. Explicit disconnect also cancels pending work; an old
     /// read must never cancel a new login or revoke a replacement's reservation.
     func retire(_ backend: any RemoteBackend, for id: String) async {
+        if backends[id] === backend { backendServers[id] = nil }
         guard backends[id] === backend else { return }
         backends[id] = nil
         backend.close()
@@ -500,6 +526,7 @@ actor RemoteSessions {
     func disconnect(_ id: String) async {
         replacements.removeValue(forKey: id)?.invalidate()
         cancelAttempt(id)
+        backendServers[id] = nil
         let had = backends.removeValue(forKey: id)
         had?.close()
         if had != nil { await changed(id, false) }
@@ -513,6 +540,7 @@ actor RemoteSessions {
         replacements.removeValue(forKey: id)?.invalidate()
         replacements[id] = replacement
         cancelAttempt(id)
+        backendServers[id] = nil
         let previous = backends.removeValue(forKey: id)
         previous?.close()
         if previous != nil { await changed(id, false) }
@@ -540,6 +568,7 @@ actor RemoteSessions {
         replacements[replacement.serverID] = nil
         replacement.invalidate()
         backends[replacement.serverID] = backend
+        backendServers[replacement.serverID] = server(replacement.serverID)
         await changed(replacement.serverID, true)
         return true
     }

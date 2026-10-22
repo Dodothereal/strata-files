@@ -57,7 +57,9 @@ nonisolated struct RemoteKeychain: Sendable {
         return String(data: data, encoding: .utf8)
     }
 
-    func delete(_ server: RemoteServer) {
-        _ = access.delete(query(for: server) as CFDictionary)
+    @discardableResult
+    func delete(_ server: RemoteServer) -> Bool {
+        let status = access.delete(query(for: server) as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
     }
 }

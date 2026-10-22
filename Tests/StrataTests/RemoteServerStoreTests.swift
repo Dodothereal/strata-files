@@ -6,7 +6,7 @@ import Testing
 
 struct RemoteServerStoreTests {
     nonisolated private final class Secrets: Sendable {
-        struct State { var values: [String: Data] = [:]; var refuseWrites = false; var calls = 0 }
+        struct State { var values: [String: Data] = [:]; var refuseWrites = false; var refuseDeletes = false; var calls = 0 }
         let state = Mutex(State())
         var access: KeychainAccess {
             KeychainAccess(copy: { query in
@@ -40,7 +40,8 @@ struct RemoteServerStoreTests {
                 let id = (query as NSDictionary)[kSecAttrAccount] as? String ?? ""
                 return self.state.withLock { state in
                     state.calls += 1
-                    state.values[id] = nil
+                    if state.refuseDeletes { return errSecAuthFailed }
+                    guard state.values.removeValue(forKey: id) != nil else { return errSecItemNotFound }
                     return errSecSuccess
                 }
             })
@@ -109,8 +110,9 @@ struct RemoteServerStoreTests {
         defer { environment.notifications.removeObserver(observer) }
         let calls = environment.secrets.state.withLock { $0.calls }
         var invalidID = original; invalidID.id = "../other"
+        var lowerID = original; lowerID.id = original.id.lowercased()
         var invalidHost = original; invalidHost.host = "--option"
-        for invalid in [invalidID, invalidHost] {
+        for invalid in [invalidID, lowerID, invalidHost] {
             #expect(throws: (any Error).self) { try environment.store.save(invalid, secret: "Invalid") }
         }
         #expect(environment.secrets.state.withLock { $0.calls } == calls)
@@ -122,8 +124,15 @@ struct RemoteServerStoreTests {
         #expect(environment.registry.server(id: original.id) == original)
         #expect(environment.secrets.state.withLock { $0.values } == secrets)
         #expect(!environment.store.forget(proposed))
+        environment.secrets.state.withLock { $0.refuseDeletes = true }
+        #expect(!environment.store.forget(original))
+        #expect(!environment.store.credentials.delete(original))
+        #expect(environment.store.all == [original, neighbor] && notifications == 0)
+        #expect(environment.registry.server(id: original.id) == original)
         #expect(environment.defaults.data(forKey: "remoteServers") == bytes)
         #expect(environment.secrets.state.withLock { $0.values } == secrets)
+        environment.secrets.state.withLock { $0.refuseDeletes = false }
+        #expect(environment.store.credentials.delete(server()))
         withExtendedLifetime(environment) {}
     }
 

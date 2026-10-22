@@ -141,7 +141,7 @@
   },
   {
     "file": "Strata/Transfers/TransferEngine.swift",
-    "find": "        result.landed = FileIdentity.read(target.path)\n        hooks.afterLanding?(target)",
+    "find": "        result.landed = copy.created[target.path] ?? FileIdentity.read(target.path)\n        hooks.afterLanding?(target)",
     "replace": "        hooks.afterLanding?(target)\n        result.landed = FileIdentity.read(target.path)",
     "rule": "A copied item's identity is read after it lands",
     "tests": "TransferTests/aFileSwapped"
@@ -465,7 +465,7 @@
   },
   {
     "file": "Strata/Containers/ContainerFiles.swift",
-    "find": "        guard fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFREG,\n              renameat(fd, temp, fd, name) == 0 else {",
+    "find": "        guard let expectedPlaceholder,\n              fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFREG,\n              ContainerCopies.isPlaceholderMode(info.st_mode), FileIdentity.from(info) == expectedPlaceholder,\n              renameat(fd, temp, fd, name) == 0 else {",
     "replace": "        guard renameat(fd, temp, fd, name) == 0 else {",
     "rule": "A fetched file replaces a folder or link now at its place",
     "tests": "ContainerTests/aFetchThat"
@@ -572,8 +572,8 @@
     "file": "Strata/Transfers/TransferEngine.swift",
     "edits": [
       {
-        "find": "        guard !exists(destination) else {",
-        "replace": "        guard true else {"
+        "find": "        guard !exists(destination) else {\n            // copyfile would copy *into* an existing folder; the planner guarantees this never happens.",
+        "replace": "        guard true else {\n            // copyfile would copy *into* an existing folder; the planner guarantees this never happens."
       },
       {
         "find": "var flags = COPYFILE_ALL | COPYFILE_RECURSIVE | COPYFILE_NOFOLLOW_SRC | COPYFILE_EXCL",
@@ -1899,7 +1899,7 @@
   },
   {
     "file": "Strata/Transfers/TransferEngine.swift",
-    "find": "if destination == item.destination { result.landed = FileIdentity.read(destination.path) }",
+    "find": "if destination == item.destination { result.landed = copy.created[destination.path] ?? FileIdentity.read(destination.path) }",
     "replace": "if destination == item.destination { result.landed = nil }",
     "rule": "Retry result ownership captures a repaired top-level copy",
     "tests": "TransferTests/retriedCopiesKeepTheirOwnershipAcrossTheWorkerHandoff"
@@ -2515,7 +2515,7 @@
   },
   {
     "file": "Strata/Remote/RemoteCopyStore.swift",
-    "find": "        guard UUID(uuidString: server.id) != nil else { throw RemoteError.unknownServer }",
+    "find": "        guard RemoteServer.isValidID(server.id) else { throw RemoteError.unknownServer }",
     "replace": "        // Accept an invalid cache child.",
     "rule": "Remote copy ownership preparation accepts IDs that escape the cache",
     "tests": "RemoteCopyOwnershipTests/preparingCopiesRefusesInvalidIDsAndReplacementLinks"
@@ -2536,7 +2536,7 @@
   },
   {
     "file": "Strata/Remote/RemoteCopyStore.swift",
-    "find": "        guard UUID(uuidString: id) != nil else { return }",
+    "find": "        guard RemoteServer.isValidID(id) else { return }",
     "replace": "        // Accept an arbitrary cache folder.",
     "rule": "Remote copy ownership cleanup removes folders that are not saved server IDs",
     "tests": "RemoteCopyOwnershipTests/removingCopiesNeverFollowsAReplacedRootOrAChildLink"
@@ -2550,7 +2550,7 @@
   },
   {
     "file": "Strata/Transfers/Archiver.swift",
-    "find": "        guard !name.isEmpty, name != \".\", name != \"..\", !name.contains(\"/\"), !name.utf8.contains(0) else { return }",
+    "find": "        guard !name.isEmpty, name != \".\", name != \"..\", !name.contains(\"/\"), !name.utf8.contains(0),\n              hasEntry(name, in: parent) else { return }",
     "replace": "        // Accept escaping child names.",
     "rule": "Remote copy ownership descriptor cleanup accepts escaping child names",
     "tests": "RemoteCopyOwnershipTests/descriptorCleanupStaysWithTheOpenedFolderAndRejectsEscapingNames"
@@ -2662,8 +2662,8 @@
   },
   {
     "file": "Strata/Remote/RemoteServers.swift",
-    "find": "credentials.delete(server)\n        persist(all.filter { $0.id != server.id })",
-    "replace": "persist(all.filter { $0.id != server.id })\n        credentials.delete(server)",
+    "find": "guard credentials.delete(server) else { return false }\n        persist(all.filter { $0.id != server.id })",
+    "replace": "persist(all.filter { $0.id != server.id })\n        _ = credentials.delete(server)",
     "rule": "Server store retire the old secret before notifying removal observers",
     "tests": "RemoteServerStoreTests/removalNotifiesOnlyAfterRetiringTheOldSecretAndRegistryEntry"
   },
@@ -2690,14 +2690,14 @@
   },
   {
     "file": "Strata/Remote/RemoteServers.swift",
-    "find": "guard UUID(uuidString: server.id) != nil else { throw RemoteError.unknownServer }",
+    "find": "guard RemoteServer.isValidID(server.id) else { throw RemoteError.unknownServer }",
     "replace": "// Accept an invalid saved ID.",
     "rule": "Server store validate saved IDs before changing credentials",
     "tests": "RemoteServerStoreTests/invalidOrRefusedSavesLeaveMetadataAndCredentialsUnchanged"
   },
   {
     "file": "Strata/Remote/RemoteServers.swift",
-    "find": "return saved.filter { $0.validate() == nil && UUID(uuidString: $0.id) != nil }",
+    "find": "return saved.filter { $0.validate() == nil && RemoteServer.isValidID($0.id) }",
     "replace": "return saved",
     "rule": "Server store exclude invalid stored definitions without rewriting the source",
     "tests": "RemoteServerStoreTests/readingInvalidSavedDataNeverRewritesItOrTouchesCredentials"
@@ -3484,7 +3484,7 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Servers.swift",
-    "find": "let job = RemoteUploadJob(urls, into: folder, skipping: skipping, files: services.remote.files, copies: services.copies)",
+    "find": "let job = RemoteUploadJob(urls, into: folder, skipping: skipping, expected: expected,\n                                      files: services.remote.files, copies: services.copies)",
     "replace": "let job = RemoteUploadJob(urls, into: folder, skipping: skipping)",
     "rule": "Browser copy provider ownership upload job uses the global remote files and copy provider",
     "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
@@ -3614,5 +3614,134 @@
     "replace": "        // Accept problem notifications from any copy store.",
     "rule": "Async action context ownership container copy problem notifications cross into another window's copy environment",
     "tests": "AsyncActionContextTests/containerStoresAndProblemNoticesStayScopedToTheirOwningBrowserServices"
+  },
+  {
+    "file": "Strata/Remote/RemoteServer.swift",
+    "find": "        UUID(uuidString: id)?.uuidString == id",
+    "replace": "        UUID(uuidString: id) != nil",
+    "rule": "Shared operation safety server IDs accept non-canonical UUID casing",
+    "tests": "RemoteCopyOwnershipTests/preparingCopiesRefusesInvalidIDsAndReplacementLinks|RemoteServerStoreTests/invalidOrRefusedSavesLeaveMetadataAndCredentialsUnchanged"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "find": "    static func hasEntry(_ name: String, in parent: Int32) -> Bool {\n        entries(parent).contains(name)\n    }",
+    "replace": "    static func hasEntry(_ name: String, in parent: Int32) -> Bool {\n        true\n    }",
+    "rule": "Shared operation safety directory entry check ignores case-sensitive spelling",
+    "tests": "RemoteCopyOwnershipTests/preparingCopiesRefusesInvalidIDsAndReplacementLinks|RemoteCopyOwnershipTests/descriptorCleanupStaysWithTheOpenedFolderAndRejectsEscapingNames"
+  },
+  {
+    "file": "Strata/Remote/RemoteServers.swift",
+    "find": "        guard credentials.delete(server) else { return false }",
+    "replace": "        _ = credentials.delete(server)",
+    "rule": "Shared operation safety server store removes metadata when keychain deletion fails",
+    "tests": "RemoteServerStoreTests/invalidOrRefusedSavesLeaveMetadataAndCredentialsUnchanged"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "edits": [
+      {
+        "find": "        guard server(expected.id) == expected else { throw CancellationError() }",
+        "replace": "        guard server(expected.id) != nil else { throw CancellationError() }"
+      },
+      {
+        "find": "        guard server(expected.id) == expected,\n              backendServers[expected.id] == nil || backendServers[expected.id] == expected else {",
+        "replace": "        guard server(expected.id) != nil else {"
+      }
+    ],
+    "rule": "Shared operation safety session backend lookup accepts a replaced server definition with the same ID",
+    "tests": "RemoteCopyOwnershipTests/serverOperationsStayBoundToTheirInitialDefinitionAndNormalizeNestedTargets"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "        let normalized = Self.outermostTargets(removals)",
+    "replace": "        let normalized = removals",
+    "rule": "Shared operation safety server delete does not normalize nested or duplicate targets",
+    "tests": "RemoteCopyOwnershipTests/serverOperationsStayBoundToTheirInitialDefinitionAndNormalizeNestedTargets"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "        let normalized = Self.outermostTargets(sources)",
+    "replace": "        let normalized = sources",
+    "rule": "Shared operation safety server move does not normalize nested or duplicate targets",
+    "tests": "RemoteCopyOwnershipTests/serverOperationsStayBoundToTheirInitialDefinitionAndNormalizeNestedTargets"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "        guard shouldPlace() else { return }",
+    "replace": "        guard true else { return }",
+    "rule": "Shared operation safety remote placeholder placement ignores server definition continuity",
+    "tests": "RemoteCopyOwnershipTests/placeholderPlacementChecksIdentityModeParentAndServerContinuity"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "        guard fstat(folder, &folderInfo) == 0, FileIdentity.from(folderInfo) == parent else { return }",
+    "replace": "        guard fstat(folder, &folderInfo) == 0 else { return }",
+    "rule": "Shared operation safety remote placeholder placement ignores a replaced parent folder",
+    "tests": "RemoteCopyOwnershipTests/placeholderPlacementChecksIdentityModeParentAndServerContinuity"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "        guard fstatat(folder, url.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFREG,\n              ContainerCopies.isPlaceholderMode(info.st_mode), FileIdentity.from(info) == placeholder else { return }",
+    "replace": "        guard fstatat(folder, url.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFREG else { return }",
+    "rule": "Shared operation safety remote placeholder placement overwrites a replaced placeholder",
+    "tests": "RemoteCopyOwnershipTests/placeholderPlacementChecksIdentityModeParentAndServerContinuity"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "              ContainerCopies.isPlaceholderMode(info.st_mode), FileIdentity.from(info) == expectedPlaceholder,",
+    "replace": "              true,",
+    "rule": "Shared operation safety container fetch overwrites a replaced placeholder or already-fetched file",
+    "tests": "ContainerTests/aFetchThat"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "edits": [
+      {
+        "find": "            if let expectedIdentity, currentIdentity != expectedIdentity {",
+        "replace": "            if false, let expectedIdentity, currentIdentity != expectedIdentity {"
+      },
+      {
+        "find": "        if let expected {\n            var info = stat()\n            guard fstat(fd, &info) == 0, FileIdentity.from(info) == expected else { return nil }\n        }",
+        "replace": "        if false {}"
+      }
+    ],
+    "rule": "Shared operation safety transfer verification accepts an unowned replacement with matching bytes",
+    "tests": "TransferTests/verificationDetectsReplacedCopiesAndNeverDeletesUnownedReplacements"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "        guard fstatat(dirFD, targetName, &targetInfo, AT_SYMLINK_NOFOLLOW) == 0,\n              FileIdentity.from(targetInfo) == expectedTarget else {",
+    "replace": "        guard fstatat(dirFD, targetName, &targetInfo, AT_SYMLINK_NOFOLLOW) == 0 else {",
+    "rule": "Shared operation safety transfer cleanup removes an unowned replacement at the target path",
+    "tests": "TransferTests/verificationDetectsReplacedCopiesAndNeverDeletesUnownedReplacements"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "            let keepingDirectory = lstat(destination.path, &dstInfo) == 0 && (dstInfo.st_mode & S_IFMT == S_IFDIR)",
+    "replace": "            let keepingDirectory = false",
+    "rule": "Shared operation safety retrying a partial directory removes the directory instead of repairing in place",
+    "tests": "TransferTests/retryingAPartialDirectoryRepairsInPlaceAndPreservesUnownedChildren"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "find": "        if let destination, let landed, FileIdentity.read(destination.path) != landed {\n            let reason = describe(EACCES)\n            return String(localized: \"Copied, but the original couldn’t be removed: \\(reason)\")\n        }",
+    "replace": "        if false {}",
+    "rule": "Shared operation safety cross-disk move deletes the source after its destination copy was replaced",
+    "tests": "TransferTests/crossDiskMoveKeepsOriginalWhenDestinationOrSourceIdentityIsReplaced"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "edits": [
+      {
+        "find": "        for (path, expected) in owned {\n            if let current = FileIdentity.read(path), current != expected {\n                let reason = describe(EACCES)\n                return String(localized: \"Copied, but the original couldn’t be removed: \\(reason)\")\n            }\n        }",
+        "replace": "        if false {}"
+      },
+      {
+        "find": "                    guard fstatat(frame.fd, childName, &childInfo, AT_SYMLINK_NOFOLLOW) == 0,\n                          FileIdentity.from(childInfo) == expectedChild else { continue }",
+        "replace": "                    guard fstatat(frame.fd, childName, &childInfo, AT_SYMLINK_NOFOLLOW) == 0 else { continue }"
+      }
+    ],
+    "rule": "Shared operation safety cross-disk move deletes a replaced source inode with identical size and time",
+    "tests": "TransferTests/crossDiskMoveKeepsOriginalWhenDestinationOrSourceIdentityIsReplaced"
   }
 ]

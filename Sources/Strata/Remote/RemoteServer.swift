@@ -58,6 +58,10 @@ nonisolated struct RemoteServer: Codable, Equatable, Hashable, Sendable, Identif
     }
 
     /// Host names, addresses (IPv6 too) and ~/.ssh/config aliases; never anything ssh could take for an option.
+    static func isValidID(_ id: String) -> Bool {
+        UUID(uuidString: id)?.uuidString == id
+    }
+
     static func isValidHost(_ host: String) -> Bool {
         guard !host.isEmpty, host.count <= 253, !host.hasPrefix("-") else { return false }
         return host.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) || ".-_:%".unicodeScalars.contains($0) }

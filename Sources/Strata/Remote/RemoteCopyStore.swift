@@ -36,19 +36,21 @@ nonisolated struct RemoteCopyStore: Sendable {
         let path = url.standardizedFileURL.path
         guard path.hasPrefix(rootPath + "/") else { return nil }
         let id = path.dropFirst(rootPath.count + 1).split(separator: "/", maxSplits: 1).first.map(String.init) ?? ""
-        guard UUID(uuidString: id) != nil, let server = lookup(id), server.id == id else { return nil }
+        guard RemoteServer.isValidID(id), let server = lookup(id), server.id == id else { return nil }
         return (server, top(of: id))
     }
 
     func top(of id: String) -> URL { root.appending(path: id, directoryHint: .isDirectory) }
 
     func prepare(_ server: RemoteServer) throws -> URL {
-        guard UUID(uuidString: server.id) != nil else { throw RemoteError.unknownServer }
+        guard RemoteServer.isValidID(server.id) else { throw RemoteError.unknownServer }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let parent = open(rootPath, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard parent >= 0 else { throw CocoaError(.fileWriteNoPermission) }
         defer { close(parent) }
-        if mkdirat(parent, server.id, 0o700) != 0, errno != EEXIST { throw CocoaError(.fileWriteUnknown) }
+        if mkdirat(parent, server.id, 0o700) != 0 {
+            guard errno == EEXIST, Archiver.hasEntry(server.id, in: parent) else { throw CocoaError(.fileWriteUnknown) }
+        }
         var info = stat()
         guard fstatat(parent, server.id, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFDIR else {
             throw CocoaError(.fileWriteNoPermission)
@@ -71,7 +73,7 @@ nonisolated struct RemoteCopyStore: Sendable {
     }
 
     func remove(_ id: String) {
-        guard UUID(uuidString: id) != nil else { return }
+        guard RemoteServer.isValidID(id) else { return }
         let parent = open(rootPath, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard parent >= 0 else { return }
         defer { close(parent) }
