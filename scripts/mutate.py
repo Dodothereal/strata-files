@@ -54,7 +54,7 @@ def sh(args, timeout=None):
 def tests_fail(pattern, report=False):
     """True for a test failure, False for a pass; None for a build failure, timeout, crash or no tests."""
     try:
-        run = sh(["swift", "test", "--filter", pattern], timeout=TEST_TIMEOUT)
+        run = sh(["swift", "test", "--disable-automatic-resolution", "--filter", pattern], timeout=TEST_TIMEOUT)
     except subprocess.TimeoutExpired:
         print(f"Test run exceeded {TEST_TIMEOUT}s; stopped its processes (this does not count as caught).")
         return None
