@@ -7,23 +7,28 @@ extension BrowserViewController {
     /// The folder shown (or the column with focus) is on a saved server, and so is everything selected. (Not Strata's
     /// Servers folder itself, nor what a removed server left behind.)
     var isOnServer: Bool {
-        guard let target = targetDirectory, RemoteCopies.server(containing: target) != nil else { return false }
-        return selectedURLs.allSatisfy { RemoteCopies.server(containing: $0) != nil }
+        let copies = services.remote.copies
+        guard let target = targetDirectory, copies.server(containing: target) != nil else { return false }
+        return selectedURLs.allSatisfy { copies.server(containing: $0) != nil }
     }
 
     /// The kind of server this pane shows, if any (Open in Terminal: a shell over ssh, none for a bucket).
     var serverKind: RemoteServer.Kind? {
-        targetDirectory.flatMap { RemoteCopies.server(containing: $0)?.server.kind }
+        targetDirectory.flatMap { services.remote.copies.server(containing: $0)?.server.kind }
     }
 
     /// Whether `url` is a server's own top folder (its `/`), which can't be renamed or deleted.
-    private static func isServerTop(_ url: URL) -> Bool {
-        guard let (_, top) = RemoteCopies.server(containing: url) else { return false }
+    static func isServerTop(_ url: URL, copies: RemoteCopyStore = RemoteCopies.store) -> Bool {
+        guard let (_, top) = copies.server(containing: url) else { return false }
         return top.standardizedFileURL == url.standardizedFileURL
     }
 
+    static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore = RemoteCopies.store) -> [URL] {
+        outermost(urls).filter { copies.server(containing: $0) != nil && !isServerTop($0, copies: copies) }
+    }
+
     private var serverName: String {
-        targetDirectory.flatMap { RemoteCopies.server(containing: $0)?.server.name } ?? ""
+        targetDirectory.flatMap { services.remote.copies.server(containing: $0)?.server.name } ?? ""
     }
 
     /// A new "untitled folder" on the server, then renaming it right away, as on this Mac.
@@ -36,18 +41,20 @@ extension BrowserViewController {
             name = "\(base) \(number)"
             number += 1
         }
-        runOnServer {
-            let made = try await RemoteFiles.shared.makeFolder(named: name, in: folder)
-            self.renameWhenShown(made, in: folder)
+        let files = services.remote.files
+        runOnServer(in: folder) { [weak self] in
+            let made = try await files.makeFolder(named: name, in: folder)
+            self?.renameWhenShown(made, in: folder)
         }
     }
 
     /// An empty "untitled.txt" on the server, like New File on this Mac.
     func newFileOnServer(in folder: URL) {
         let name = newFileNameOnServer(in: folder)
-        runOnServer {
-            let made = try await RemoteFiles.shared.makeFile(named: name, in: folder)
-            self.renameWhenShown(made, in: folder)
+        let files = services.remote.files
+        runOnServer(in: folder) { [weak self] in
+            let made = try await files.makeFile(named: name, in: folder)
+            self?.renameWhenShown(made, in: folder)
         }
     }
 
@@ -66,18 +73,24 @@ extension BrowserViewController {
     }
 
     func renameOnServer(_ url: URL, to name: String) {
-        guard !Self.isServerTop(url) else { return NSSound.beep() }
-        runOnServer {
-            let renamed = try await RemoteFiles.shared.rename(url, to: name)
-            self.pendingSelection = [renamed]
+        let copies = services.remote.copies
+        guard !Self.isServerTop(url, copies: copies) else { return NSSound.beep() }
+        let folder = url.deletingLastPathComponent()
+        let files = services.remote.files
+        runOnServer(in: folder) { [weak self] in
+            let renamed = try await files.rename(url, to: name)
+            guard let self else { return }
+            if Self.key(folder) == self.directory.map(Self.key) { self.pendingSelection = [renamed] }
             self.refresh()
         }
     }
 
     /// Asks (a server has no Trash), then deletes for good.
     func deleteOnServer(_ urls: [URL]) {
-        let urls = Self.outermost(urls).filter { !Self.isServerTop($0) }
+        let copies = services.remote.copies
+        let urls = Self.serverDeletionTargets(urls, copies: copies)
         guard !urls.isEmpty, let window = view.window else { return NSSound.beep() }
+        let serverName = copies.server(containing: urls[0])?.server.name ?? serverName
         let alert = NSAlert()
         alert.messageText = urls.count == 1
             ? String(localized: "Delete “\(urls[0].lastPathComponent)” from “\(serverName)”?", comment: "An item, then a server's name")
@@ -90,8 +103,10 @@ extension BrowserViewController {
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
             MainActor.assumeIsolated {
-                self?.runOnServer {
-                    try await RemoteFiles.shared.delete(urls)
+                guard let self else { return }
+                let files = self.services.remote.files
+                self.runOnServer(in: urls[0].deletingLastPathComponent()) { [weak self] in
+                    try await files.delete(urls)
                     self?.refresh()
                 }
             }
@@ -104,17 +119,20 @@ extension BrowserViewController {
     /// replace them, or skip them.
     func copyToServer(_ urls: [URL], into folder: URL, move: Bool) {
         guard !urls.isEmpty else { return }
-        let server = RemoteCopies.server(containing: folder)?.server.id
-        if move, urls.allSatisfy({ RemoteCopies.server(containing: $0)?.server.id == server }) {
-            return runOnServer {
-                let moved = try await RemoteFiles.shared.move(urls, into: folder)
+        let copies = services.remote.copies
+        let files = services.remote.files
+        let server = copies.server(containing: folder)?.server.id
+        if move, let server, urls.allSatisfy({ copies.server(containing: $0)?.server.id == server }) {
+            return runOnServer(in: folder) { [weak self] in
+                let moved = try await files.move(urls, into: folder)
+                guard let self else { return }
                 if folder.standardizedFileURL == self.directory?.standardizedFileURL, !moved.isEmpty { self.pendingSelection = moved }
                 self.refresh()
             }
         }
-        runOnServer {
-            let existing = try await RemoteFiles.shared.names(in: folder)
-            self.askAndUpload(urls, into: folder, clashing: urls.map(\.lastPathComponent).filter(existing.contains))
+        runOnServer(in: folder) { [weak self] in
+            let existing = try await files.names(in: folder)
+            self?.askAndUpload(urls, into: folder, clashing: urls.map(\.lastPathComponent).filter(existing.contains))
         }
     }
 
@@ -133,7 +151,7 @@ extension BrowserViewController {
 
     private func askAndUpload(_ urls: [URL], into folder: URL, clashing: [String]) {
         let upload = { [weak self, services] (skipping: Set<String>) in
-            let job = RemoteUploadJob(urls, into: folder, skipping: skipping)
+            let job = RemoteUploadJob(urls, into: folder, skipping: skipping, files: services.remote.files, copies: services.copies)
             job.onFinish = { job in
                 guard let self else { return }
                 if folder.standardizedFileURL == self.directory?.standardizedFileURL, !job.createdItems.isEmpty {
@@ -146,6 +164,7 @@ extension BrowserViewController {
         let window = view.window
         if case .upload(let skipping) = Self.uploadChoice(clashing: clashing, canAsk: window != nil) { return upload(skipping) }
         guard let window else { return }
+        let serverName = services.remote.copies.server(containing: folder)?.server.name ?? serverName
         let alert = NSAlert()
         alert.messageText = clashing.count == 1
             ? String(localized: "“\(clashing[0])” is already on “\(serverName)”", comment: "An item, then a server's name")
@@ -168,7 +187,8 @@ extension BrowserViewController {
     func openTerminalOnServer() -> Bool {
         let selected = selectedEntries
         let folder = selected.count == 1 && selected[0].isFolder ? selected[0].url : targetDirectory
-        guard let folder, let (server, top) = RemoteCopies.server(containing: folder) else { return false }
+        let copies = services.remote.copies
+        guard let folder, let (server, top) = copies.server(containing: folder) else { return false }
         guard server.kind == .sftp, let path = RemoteCopies.remotePath(of: folder.resolvingSymlinksInPath(), top: top),
               ProjectActions.openCommandFile(named: "\(server.name) — Terminal", body: server.terminalScript(path: path)) else {
             NSSound.beep()
@@ -178,18 +198,22 @@ extension BrowserViewController {
     }
 
     /// Runs a change on the server; what went wrong is said in a sheet, and the folder is shown as the server has it.
-    private func runOnServer(_ body: @escaping () async throws -> Void) {
-        Task {
+    private func runOnServer(in folder: URL? = nil, _ body: @escaping () async throws -> Void) {
+        let serverName = (folder ?? targetDirectory).flatMap { services.remote.copies.server(containing: $0)?.server.name } ?? ""
+        commandWork = Task { [weak self] in
             do {
                 try await body()
+            } catch is CancellationError {
+                return
             } catch {
-                if let window = view.window {
+                guard let self else { return }
+                if let window = self.viewIfLoaded?.window, window.isVisible, window.attachedSheet == nil {
                     let alert = NSAlert()
                     alert.messageText = String(localized: "“\(serverName)” couldn’t make that change", comment: "A server's name")
                     alert.informativeText = RemoteFiles.message(for: error)
                     alert.beginSheetModal(for: window, completionHandler: nil)
                 }
-                refresh()
+                self.refresh()
             }
         }
     }

@@ -290,6 +290,11 @@ sheet's text before clicking a destructive button. Both builds share preferences
   unselected current folder), image dimensions, document summaries, and Rich/Quick Look previews. Skip symlinks and
   placeholders, refresh metadata, summaries and previews when `.containerFilesFetched` arrives for a fetched item in
   the owning provider, and commit any active comment edit before hiding Get Info.
+  `BrowserServices` owns its `Clipboard` and `CopyProviders` (`remoteCopies` and `clipboardRoot`) and passes them to
+  `TransferQueue`, `TransferJob`, `RemoteUploadJob`, `BrowserViewController` (server commands, deletion plans,
+  clipboard staging, `Copy Path`, archive checks, drag/drop) and every presentation (`FileOutlineView`, Icons,
+  Columns, Gallery, Disk Usage, Sidebar). Verify recursive placeholder absence after `prepareForCopying` and before
+  clipboard staging; use a `.data` file-promise type when dragging symlinks from a copy.
 - `RemoteFiles` and its `CopyProvider` adapter use the same `RemoteCopyStore` for server lookup, paths, placeholders,
   download staging and removal. An injected backend must not fall back to the application's copy root. Test identical
   server IDs in independent roots, including refused cross-environment writes and scoped cleanup. Prepare and remove

@@ -14,8 +14,8 @@ enum FileOps {
         NSLocalizedDescriptionKey: String(localized: "Items in a read-only copy (an archive opened as a folder, or a container’s files) can’t be changed. Copy them out first."),
     ])
 
-    static func rename(_ url: URL, to name: String, undo: UndoManager?) async throws -> URL {
-        guard !ReadOnlyCopies.contains(url) else { throw insideArchiveError }
+    static func rename(_ url: URL, to name: String, undo: UndoManager?, copies: CopyProviders = .live) async throws -> URL {
+        guard !ReadOnlyCopies.contains(url, copies: copies) else { throw insideArchiveError }
         // A name, never a path: whatever is typed, the item stays in its folder.
         guard !name.isEmpty, name != ".", name != "..", !name.contains("/") else {
             throw CocoaError(.fileWriteInvalidFileName, userInfo: [NSFilePathErrorKey: name])
@@ -27,15 +27,15 @@ enum FileOps {
                 NSLocalizedDescriptionKey: String(localized: "The name “\(name)” is already taken. Please choose a different name."),
             ])
         }
-        try await move([(from: url, to: destination)], actionName: "Rename", undo: undo)
+        try await move([(from: url, to: destination)], actionName: "Rename", undo: undo, copies: copies)
         return destination
     }
 
     /// `record: false` for moves that are themselves an undo or redo (or part of a larger logged operation): History
     /// keeps one entry per operation and marks it undone instead of growing a row per ⌘Z.
     static func move(_ pairs: [Move], actionName: String, undo: UndoManager?, record: Bool = true,
-                     history: OperationLog = .shared) async throws {
-        guard !pairs.contains(where: { ReadOnlyCopies.contains($0.from) || ReadOnlyCopies.contains($0.to) }) else {
+                     history: OperationLog = .shared, copies: CopyProviders = .live) async throws {
+        guard !pairs.contains(where: { ReadOnlyCopies.contains($0.from, copies: copies) || ReadOnlyCopies.contains($0.to, copies: copies) }) else {
             throw insideArchiveError
         }
         let landed = LandedFiles()
@@ -167,8 +167,8 @@ enum FileOps {
         return translated
     }
 
-    static func newFolder(in directory: URL, undo: UndoManager?) throws -> URL {
-        guard !ReadOnlyCopies.contains(directory) else { throw insideArchiveError }
+    static func newFolder(in directory: URL, undo: UndoManager?, copies: CopyProviders = .live) throws -> URL {
+        guard !ReadOnlyCopies.contains(directory, copies: copies) else { throw insideArchiveError }
         let name = nameText(String(localized: "untitled folder", comment: "Name of a new folder, as Finder names it"),
                             english: "untitled folder")
         let url = available(directory.appending(path: name), copyStyle: false)
@@ -180,8 +180,8 @@ enum FileOps {
 
     /// File ▸ New File: an empty "untitled.txt" (`ext` is Settings' extension, "" for none), "untitled 2.txt" when that's
     /// taken. Never over anything: the name is claimed only while nothing is there, not even a link.
-    static func newFile(in directory: URL, extension ext: String, undo: UndoManager?) throws -> URL {
-        guard !ReadOnlyCopies.contains(directory) else { throw insideArchiveError }
+    static func newFile(in directory: URL, extension ext: String, undo: UndoManager?, copies: CopyProviders = .live) throws -> URL {
+        guard !ReadOnlyCopies.contains(directory, copies: copies) else { throw insideArchiveError }
         let name = newFileName(extension: ext)
         var url = available(directory.appending(path: name), copyStyle: false)
         for attempt in 0... {
@@ -219,14 +219,14 @@ enum FileOps {
     /// History entry `entry` as `marksUndone` once it has worked. Returns where the items went.
     @discardableResult
     static func trash(_ urls: [URL], undo: UndoManager?, record: Bool = true, entry: UUID? = nil,
-                      marksUndone: Bool = true) throws -> [Move] {
+                      marksUndone: Bool = true, copies: CopyProviders = .live) throws -> [Move] {
         var moved: [Move] = []
         let landed = LandedFiles()
         defer {
             let logged = record ? OperationLog.shared.recordMove("Move to Trash", moved, landed: landed) : entry
             registerMoveUndo(moved, "Move to Trash", undo, entry: logged, marksUndone: record ? true : marksUndone, landed: landed)
         }
-        for url in urls where !ReadOnlyCopies.contains(url) {
+        for url in urls where !ReadOnlyCopies.contains(url, copies: copies) {
             var result: NSURL?
             try FileManager.default.trashItem(at: url, resultingItemURL: &result)
             if let result {
@@ -285,8 +285,8 @@ enum FileOps {
 
     /// Moves `urls` to the Trash off the main thread (a big selection or a slow disk would freeze the window), then
     /// records and registers undo like `trash`. Items on disks without a Trash come back in `NoTrash`.
-    static func trashInBackground(_ urls: [URL], undo: UndoManager?) async throws {
-        let (moved, identities, noTrash, failure) = await trashItems(urls)
+    static func trashInBackground(_ urls: [URL], undo: UndoManager?, copies: CopyProviders = .live) async throws {
+        let (moved, identities, noTrash, failure) = await trashItems(urls, copies: copies)
         let landed = LandedFiles()
         for (move, identity) in zip(moved, identities) { landed.set(identity, at: move.to) }
         let entry = OperationLog.shared.recordMove("Move to Trash", moved, landed: landed)
@@ -303,16 +303,20 @@ enum FileOps {
     /// lose where it came from), however either's path is spelled; nor anything inside an archive opened as a folder
     /// (a temporary copy). A link to a Trash is only a link.
     nonisolated static func canTrash(_ url: URL) -> Bool {
+        canTrash(url, copies: .live)
+    }
+
+    nonisolated static func canTrash(_ url: URL, copies: CopyProviders) -> Bool {
         !Trash.isTrash(anySpelling: url) && !Trash.isInTrash(url) && !Trash.isInTrash(url.resolvingSymlinksInPath())
-            && !ReadOnlyCopies.contains(url)
+            && !ReadOnlyCopies.contains(url, copies: copies)
     }
 
     @concurrent
-    private static func trashItems(_ urls: [URL]) async -> (moved: [Move], identities: [FileIdentity?], noTrash: [URL], failure: Error?) {
+    private static func trashItems(_ urls: [URL], copies: CopyProviders) async -> (moved: [Move], identities: [FileIdentity?], noTrash: [URL], failure: Error?) {
         var moved: [Move] = []
         var identities: [FileIdentity?] = []
         var noTrash: [URL] = []
-        for url in urls where canTrash(url) {
+        for url in urls where canTrash(url, copies: copies) {
             var result: NSURL?
             do {
                 try FileManager.default.trashItem(at: url, resultingItemURL: &result)
@@ -465,34 +469,53 @@ enum FileOps {
 }
 
 /// Finder-compatible file clipboard, plus cut: ⌘X marks the items and the next paste moves them.
-enum Clipboard {
-    /// The general pasteboard; tests use one of their own.
-    static var pasteboard = NSPasteboard.general
-    private static var cut: (urls: Set<URL>, changeCount: Int)?
+final class Clipboard {
+    static let shared = Clipboard()
 
-    static func write(_ urls: [URL], cut isCut: Bool) {
+    /// The general pasteboard; tests use one of their own.
+    static var pasteboard: NSPasteboard {
+        get { shared.pasteboard }
+        set { shared.pasteboard = newValue }
+    }
+
+    var pasteboard: NSPasteboard
+    let notifications: NotificationCenter
+    private var cut: (urls: Set<URL>, changeCount: Int)?
+
+    init(pasteboard: NSPasteboard = .general, notifications: NotificationCenter = .default) {
+        self.pasteboard = pasteboard
+        self.notifications = notifications
+    }
+
+    func write(_ urls: [URL], cut isCut: Bool) {
         pasteboard.clearContents()
         pasteboard.writeObjects(urls as [NSURL])
         cut = isCut ? (Set(urls), pasteboard.changeCount) : nil
-        NotificationCenter.default.post(name: .clipboardChanged, object: nil)
+        notifications.post(name: .clipboardChanged, object: nil)
     }
 
-    static func read() -> (urls: [URL], isCut: Bool) {
+    func read() -> (urls: [URL], isCut: Bool) {
         let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         return (urls, cut?.changeCount == pasteboard.changeCount)
     }
 
-    static func isCut(_ url: URL) -> Bool {
+    func isCut(_ url: URL) -> Bool {
         guard let cut, cut.changeCount == pasteboard.changeCount else { return false }
         return cut.urls.contains(url)
     }
 
-    static func clearCut() {
+    func clearCut() {
         cut = nil
-        NotificationCenter.default.post(name: .clipboardChanged, object: nil)
+        notifications.post(name: .clipboardChanged, object: nil)
     }
 
-    static var hasFiles: Bool {
+    var hasFiles: Bool {
         pasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
     }
+
+    static func write(_ urls: [URL], cut isCut: Bool) { shared.write(urls, cut: isCut) }
+    static func read() -> (urls: [URL], isCut: Bool) { shared.read() }
+    static func isCut(_ url: URL) -> Bool { shared.isCut(url) }
+    static func clearCut() { shared.clearCut() }
+    static var hasFiles: Bool { shared.hasFiles }
 }

@@ -43,11 +43,15 @@ final class FolderTreeController: NSViewController {
     let preferences: Prefs
     private let transfers: TransferQueue
     private let remote: RemoteServices
+    private let copies: CopyProviders
+    var clipboard: Clipboard
 
     init(transfers: TransferQueue = .shared, preferences: Prefs = .shared, remote: RemoteServices = .shared,
-         watchBudget: FolderWatchers.Budget = .shared) {
+         copies: CopyProviders? = nil, clipboard: Clipboard = .shared, watchBudget: FolderWatchers.Budget = .shared) {
         watchers = FolderWatchers(budget: watchBudget)
         self.remote = remote
+        self.copies = copies ?? CopyProviders(servers: remote.files, containers: .shared)
+        self.clipboard = clipboard
         self.transfers = transfers
         self.preferences = preferences
         showedHidden = preferences.showHidden
@@ -532,19 +536,19 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
     // Dragging a folder out of the tree hands it on like dragging it from the list (a server's as a promise).
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
         guard let node = item as? FolderNode, node.kind == .folder, !roots.contains(where: { $0 === node }) else { return nil }
-        return ContainerDragItem.writer(for: node.url)
+        return ContainerDragItem.writer(for: node.url, copies: copies)
     }
 
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?,
                      proposedChildIndex index: Int) -> NSDragOperation {
-        let urls = FileDrop.urls(info)
+        let urls = FileDrop.urls(info, copies: copies)
         guard let node = item as? FolderNode, index == NSOutlineViewDropOnItemIndex, !urls.isEmpty, node.kind != .containers, node.kind != .server else {
             springLoader.hover(nil, drag: info.draggingSequenceNumber)
             return []
         }
         // Into a server's or a container's copy (Strata's caches, reachable through Home ▸ Library): nothing goes there
         // from the tree; the list routes drops onto servers.
-        if node.kind == .folder, ReadOnlyCopies.contains(node.url) {
+        if node.kind == .folder, ReadOnlyCopies.contains(node.url, copies: copies) {
             springLoader.hover(nil, drag: info.draggingSequenceNumber)
             return []
         }
@@ -557,19 +561,19 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
         }
         springLoader.hover(FileDrop.isInside(urls, node.url) || !SpringLoader.canOpen(node.url, browsing: nil) ? nil : node.url,
                            drag: info.draggingSequenceNumber)
-        return FileDrop.operation(urls, into: node.url, info: info)
+        return FileDrop.operation(urls, into: node.url, info: info, copies: copies)
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
         springLoader.cancel()
         guard let node = item as? FolderNode, node.kind != .containers, node.kind != .server else { return false }
-        let urls = FileDrop.urls(info)
+        let urls = FileDrop.urls(info, copies: copies)
         if node.kind == .trash {
             guard !urls.isEmpty, canTrash?(urls) == true else { return false }
             onTrash?(urls)
             return true
         }
-        let operation = FileDrop.operation(urls, into: node.url, info: info)
+        let operation = FileDrop.operation(urls, into: node.url, info: info, copies: copies)
         guard !urls.isEmpty, !operation.isEmpty else { return false }
         transfers.enqueue(urls, to: node.url, mode: operation == .move ? .move : .copy,
                                      undo: view.window?.undoManager, conflicts: .sheet(for: view.window))
@@ -609,8 +613,8 @@ extension FolderTreeController: NSMenuDelegate {
 
     @objc private func copyPath(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(url.path, forType: .string)
+        clipboard.pasteboard.clearContents()
+        clipboard.pasteboard.setString(url.path, forType: .string)
     }
 
     @objc private func addFavorite(_ sender: NSMenuItem) {

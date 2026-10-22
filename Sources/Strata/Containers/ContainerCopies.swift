@@ -384,6 +384,11 @@ nonisolated enum ContainerCopies {
 /// Strata, and nothing is moved or saved into one.
 nonisolated enum ReadOnlyCopies {
     static func contains(_ url: URL) -> Bool {
+        contains(url, copies: .live)
+    }
+
+    static func contains(_ url: URL, copies: CopyProviders) -> Bool {
         ArchiveCache.contains(url) || ContainerCopies.contains(url) || RemoteCopies.contains(url)
+            || copies.contains(url) || copies.remoteCopies.contains(url)
     }
 }

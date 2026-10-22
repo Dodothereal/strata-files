@@ -3,9 +3,17 @@ import AppKit
 /// Disk usage of the current folder as a squarified treemap, fed by the browser. Folder sizes may arrive later;
 /// each update relayouts with a short animation.
 final class TreemapViewController: NSViewController, FileCollectionController {
+    let copies: CopyProviders
     weak var fileDelegate: FileCollectionViewDelegate?
     /// Double-click (or Return when the browser doesn't handle it) on a folder tile.
     var onDrill: ((URL) -> Void)?
+
+    init(copies: CopyProviders = .live) {
+        self.copies = copies
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
 
     private(set) var items: [TreemapItem] = []
     private var indexByKey: [String: Int] = [:]
@@ -499,7 +507,7 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
         let dragged = tiles.filter { selectedKeys.contains($0.key) && $0.item != nil }
         let items: [NSDraggingItem] = dragged.map { t in
             // A container's or a server's item as a promise: dropped outside Strata it's fetched and finished first.
-            let item = NSDraggingItem(pasteboardWriter: ContainerDragItem.writer(for: t.item!.url))
+            let item = NSDraggingItem(pasteboardWriter: ContainerDragItem.writer(for: t.item!.url, copies: controller?.copies ?? .live))
             let icon = icon(for: t.item!)
             let side: CGFloat = 48
             item.setDraggingFrame(NSRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side), contents: icon)
@@ -510,7 +518,8 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
     }
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        FileDrop.sourceMask(context == .withinApplication ? [.copy, .move, .generic] : [.copy, .move, .link, .generic], session)
+        FileDrop.sourceMask(context == .withinApplication ? [.copy, .move, .generic] : [.copy, .move, .link, .generic],
+                            session, copies: controller?.copies ?? .live)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {

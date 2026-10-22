@@ -5,11 +5,16 @@ final class GridViewController: NSViewController, FileCollectionController {
     let preferences: Prefs
     let thumbnails: FileThumbnails
     let itemInfo: ItemInfoLoader
+    let copies: CopyProviders
+    let clipboard: Clipboard
 
-    init(preferences: Prefs = .shared, thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared) {
+    init(preferences: Prefs = .shared, thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared,
+         copies: CopyProviders = .live, clipboard: Clipboard = .shared) {
         self.preferences = preferences
         self.thumbnails = thumbnails
         self.itemInfo = itemInfo
+        self.copies = copies
+        self.clipboard = clipboard
         super.init(nibName: nil, bundle: nil)
         layout.metrics = GridMetrics(iconSize: 64, typography: FileViewTypography(preferences: preferences))
     }
@@ -104,7 +109,7 @@ final class GridViewController: NSViewController, FileCollectionController {
             dropHighlight.bottomAnchor.constraint(equalTo: root.safeAreaLayoutGuide.bottomAnchor, constant: -3),
         ])
         view = root
-        NotificationCenter.default.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
+        clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
     }
 
     // MARK: - Content
@@ -246,7 +251,7 @@ final class GridViewController: NSViewController, FileCollectionController {
         let entry = entries[index]
         item.emphasis = { [weak self] in self?.collectionView.isEmphasized ?? false }
         let git = GitStatusStore.shared
-        let dimmed = entry.isHidden || Clipboard.isCut(entry.url) || git.isIgnored(entry.url)
+        let dimmed = entry.isHidden || clipboard.isCut(entry.url) || git.isIgnored(entry.url)
         let badge = git.badge(for: entry.url, isDirectory: entry.isDirectory)
         let tags = TagStore.shared.tags(for: entry.url)
         let cloud = CloudStore.shared.status(for: entry.url)
@@ -275,7 +280,7 @@ final class GridViewController: NSViewController, FileCollectionController {
             } else {
                 if let entry = item.entry {
                     let git = GitStatusStore.shared
-                    item.dimmed = entry.isHidden || Clipboard.isCut(entry.url) || git.isIgnored(entry.url)
+                    item.dimmed = entry.isHidden || clipboard.isCut(entry.url) || git.isIgnored(entry.url)
                     item.itemView.gitBadge.badge = git.badge(for: entry.url, isDirectory: entry.isDirectory)
                 }
                 item.updateState()
@@ -485,7 +490,7 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
 
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
         guard indexPath.item < entries.count else { return nil }
-        return ContainerDragItem.writer(for: entries[indexPath.item].url)
+        return ContainerDragItem.writer(for: entries[indexPath.item].url, copies: copies)
     }
 
     // Dropping in
@@ -493,7 +498,7 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
     func collectionView(_ collectionView: NSCollectionView, validateDrop draggingInfo: NSDraggingInfo,
                         proposedIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
                         dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>) -> NSDragOperation {
-        let urls = FileDrop.urls(draggingInfo)
+        let urls = FileDrop.urls(draggingInfo, copies: copies)
         let index = (proposedIndexPath.pointee as IndexPath).item
         // A folder the drag rests on springs open (never one of the dragged items or inside one).
         let resting = !urls.isEmpty && dropOperation.pointee == .on && index < entries.count && entries[index].isFolder
@@ -502,7 +507,7 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
         guard !urls.isEmpty else { return hideDropHighlight() }
         if dropOperation.pointee == .on, index < entries.count, entries[index].isFolder,
            !urls.contains(entries[index].url) {
-            let operation = FileDrop.operation(urls, into: entries[index].url, info: draggingInfo)
+            let operation = FileDrop.operation(urls, into: entries[index].url, info: draggingInfo, copies: copies)
             if !operation.isEmpty {
                 dropHighlight.isHidden = true
                 return operation
@@ -512,7 +517,7 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
         guard let directory else { return hideDropHighlight() }
         proposedIndexPath.pointee = IndexPath(item: entries.count, section: 0) as NSIndexPath
         dropOperation.pointee = .before
-        let operation = FileDrop.operation(urls, into: directory, info: draggingInfo)
+        let operation = FileDrop.operation(urls, into: directory, info: draggingInfo, copies: copies)
         dropHighlight.isHidden = operation.isEmpty
         return operation
     }
@@ -526,11 +531,11 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
                         indexPath: IndexPath, dropOperation: NSCollectionView.DropOperation) -> Bool {
         dropHighlight.isHidden = true
         springLoader.cancel()
-        let urls = FileDrop.urls(draggingInfo)
+        let urls = FileDrop.urls(draggingInfo, copies: copies)
         let folder: URL? = dropOperation == .on && indexPath.item < entries.count && entries[indexPath.item].isFolder
             ? entries[indexPath.item].url : nil
         guard let target = folder ?? directory else { return false }
-        let operation = FileDrop.operation(urls, into: target, info: draggingInfo)
+        let operation = FileDrop.operation(urls, into: target, info: draggingInfo, copies: copies)
         guard !operation.isEmpty else { return false }
         return fileDelegate?.fileView(self, drop: urls, onto: folder, copy: operation != .move) ?? false
     }
@@ -649,7 +654,7 @@ final class GridCollectionView: NSCollectionView {
     }
 
     override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session)
+        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: controller?.copies ?? .live)
     }
 
     override func draggingEnded(_ sender: NSDraggingInfo) {

@@ -50,7 +50,8 @@ final class BrowserPresentations {
     func grid(in browser: BrowserViewController) -> GridViewController {
         if let gridController { return gridController }
         let controller = GridViewController(preferences: browser.preferences, thumbnails: browser.services.thumbnails,
-                                            itemInfo: browser.services.itemInfo)
+                                            itemInfo: browser.services.itemInfo, copies: browser.services.copies,
+                                            clipboard: browser.services.clipboard)
         controller.fileDelegate = browser
         controller.setIconSize(CGFloat(browser.preferences.gridIconSize), animated: false)
         controller.showsItemInfo = browser.preferences.iconViewOptions.showsInfo
@@ -65,7 +66,8 @@ final class BrowserPresentations {
     func columns(in browser: BrowserViewController) -> ColumnBrowserViewController {
         if let columnController { return columnController }
         let controller = ColumnBrowserViewController(directoryReader: browser.services.directories, preferences: browser.preferences,
-                                                     thumbnails: browser.services.thumbnails, itemInfo: browser.services.itemInfo)
+                                                     thumbnails: browser.services.thumbnails, itemInfo: browser.services.itemInfo,
+                                                     copies: browser.services.copies, clipboard: browser.services.clipboard)
         controller.applicationFolders = browser.applicationFolders
         controller.fileDelegate = browser
         controller.onLocationChange = { [weak browser] url in
@@ -78,7 +80,8 @@ final class BrowserPresentations {
 
     func gallery(in browser: BrowserViewController) -> GalleryViewController {
         if let galleryController { return galleryController }
-        let controller = GalleryViewController(thumbnails: browser.services.thumbnails)
+        let controller = GalleryViewController(thumbnails: browser.services.thumbnails, copies: browser.services.copies,
+                                               clipboard: browser.services.clipboard)
         controller.fileDelegate = browser
         galleryController = controller
         return controller
@@ -86,7 +89,7 @@ final class BrowserPresentations {
 
     func treemap(in browser: BrowserViewController) -> TreemapViewController {
         if let treemapController { return treemapController }
-        let controller = TreemapViewController()
+        let controller = TreemapViewController(copies: browser.services.copies)
         controller.fileDelegate = browser
         controller.onDrill = { [weak browser] url in
             guard let browser else { return }

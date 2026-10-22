@@ -70,7 +70,9 @@ final class SidebarViewController: NSViewController {
 
     init(services: BrowserServices = .shared) {
         self.services = services
-        tree = FolderTreeController(transfers: services.transfers, preferences: services.preferences, remote: services.remote)
+        tree = FolderTreeController(transfers: services.transfers, preferences: services.preferences,
+                                    remote: services.remote, copies: services.copies)
+        tree.clipboard = services.clipboard
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -144,7 +146,7 @@ final class SidebarViewController: NSViewController {
         ThemeStyle.bind(outline, to: .sidebar)
         tree.onSelect = { [weak self] target in self?.onSelect?(target) }
         tree.onTrash = { [weak self] urls in self?.moveToTrash(urls) }
-        tree.canTrash = { urls in Self.canTrash(urls) }
+        tree.canTrash = { [copies = services.copies] urls in Self.canTrash(urls, copies: copies) }
         tree.onOpenInNewTab = { [weak self] url in self?.onOpenInNewTab?(url) }
         addChild(tree)
         let container = ThemeSurfaceView()
@@ -446,7 +448,8 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
                      proposedChildIndex index: Int) -> NSDragOperation {
         // Files resting on a location spring it open; reordering favorites doesn't.
         let isReorder = info.draggingPasteboard.string(forType: .sidebarFavorite) != nil
-        let urls = isReorder ? [] : FileDrop.urls(info)
+        let copies = services.copies
+        let urls = isReorder ? [] : FileDrop.urls(info, copies: copies)
         let resting = index == NSOutlineViewDropOnItemIndex ? (item as? SidebarItem)?.url : nil
         springLoader.hover(resting.flatMap { folder in
             // A favorite can be a package (an app): springing would open its insides. Dropping on the Trash trashes.
@@ -465,36 +468,37 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         }
         if favoriteIndex(item, index) != nil {
             // Not a read-only copy's folders: they're gone when Strata quits.
-            let folders = urls.filter { !ReadOnlyCopies.contains($0) && (TransferEngine.isPlainFolder($0) || $0.hasDirectoryPath) }
+            let folders = urls.filter { !ReadOnlyCopies.contains($0, copies: copies) && (TransferEngine.isPlainFolder($0) || $0.hasDirectoryPath) }
             return folders.isEmpty ? [] : .link
         }
         guard let target = (item as? SidebarItem)?.url, index == NSOutlineViewDropOnItemIndex else { return [] }
         if Trash.isTrash(target) {
             if let verdict = trashVerdict, verdict.drag == info.draggingSequenceNumber { return verdict.operation }
-            let operation: NSDragOperation = Self.canTrash(urls) ? .delete : []
+            let operation: NSDragOperation = Self.canTrash(urls, copies: copies) ? .delete : []
             trashVerdict = (info.draggingSequenceNumber, operation)
             return operation
         }
-        return FileDrop.operation(urls, into: target, info: info)
+        return FileDrop.operation(urls, into: target, info: info, copies: copies)
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
         springLoader.cancel()
+        let copies = services.copies
         if let at = favoriteIndex(item, index) {
             if let path = info.draggingPasteboard.string(forType: .sidebarFavorite) {
                 Places.addFavorites([URL(fileURLWithPath: path)], at: at, preferences: preferences)
             } else {
-                Places.addFavorites(FileDrop.urls(info).filter { !ReadOnlyCopies.contains($0) }, at: at, preferences: preferences)
+                Places.addFavorites(FileDrop.urls(info, copies: copies).filter { !ReadOnlyCopies.contains($0, copies: copies) }, at: at, preferences: preferences)
             }
             return true
         }
         guard let target = (item as? SidebarItem)?.url else { return false }
-        let urls = FileDrop.urls(info)
+        let urls = FileDrop.urls(info, copies: copies)
         if Trash.isTrash(target) {
             moveToTrash(urls)
             return !urls.isEmpty
         }
-        let operation = FileDrop.operation(urls, into: target, info: info)
+        let operation = FileDrop.operation(urls, into: target, info: info, copies: copies)
         guard !urls.isEmpty, !operation.isEmpty else { return false }
         services.transfers.enqueue(urls, to: target, mode: operation == .move ? .move : .copy,
                                      undo: view.window?.undoManager, conflicts: .sheet(for: view.window))
@@ -675,8 +679,8 @@ extension SidebarViewController: NSMenuDelegate {
 
     @objc private func copyServerAddress(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String, let server = services.remote.servers.server(id: id) else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(server.address, forType: .string)
+        services.clipboard.pasteboard.clearContents()
+        services.clipboard.pasteboard.setString(server.address, forType: .string)
     }
 
     @objc private func removeServer(_ sender: NSMenuItem) {
@@ -752,20 +756,21 @@ extension SidebarViewController: NSMenuDelegate {
 
     /// Files dropped on the Trash go there like ⌘⌫: undoable, in History, and Put Back knows where they came from.
     /// Not what's already in a Trash, a Trash itself, a read-only copy or a whole disk.
-    static func canTrash(_ urls: [URL]) -> Bool {
+    static func canTrash(_ urls: [URL], copies: CopyProviders = .live) -> Bool {
         !urls.isEmpty && !urls.contains { url in
-            !FileOps.canTrash(url) || (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
+            !FileOps.canTrash(url, copies: copies) || (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
         }
     }
 
     private func moveToTrash(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
         let window = view.window
+        let copies = services.copies
         Task { @MainActor in
             do {
-                try await FileOps.trashInBackground(urls, undo: window?.undoManager)
+                try await FileOps.trashInBackground(urls, undo: window?.undoManager, copies: copies)
             } catch let noTrash as FileOps.NoTrash {
-                BrowserViewController.confirmDelete(noTrash.urls, in: window, noTrash: true) {}
+                BrowserViewController.confirmDelete(noTrash.urls, in: window, noTrash: true, copies: copies) {}
             } catch {
                 if let window { NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil) }
             }
@@ -784,8 +789,8 @@ extension SidebarViewController: NSMenuDelegate {
 
     @objc private func copyItemPath(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(url.path, forType: .string)
+        services.clipboard.pasteboard.clearContents()
+        services.clipboard.pasteboard.setString(url.path, forType: .string)
     }
 
     @objc private func removeFavorite(_ sender: NSMenuItem) {

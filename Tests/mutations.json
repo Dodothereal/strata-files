@@ -64,7 +64,7 @@
   },
   {
     "file": "Strata/Sidebar/SidebarViewController.swift",
-    "find": "            !FileOps.canTrash(url) || (try?",
+    "find": "            !FileOps.canTrash(url, copies: copies) || (try?",
     "replace": "            (try?",
     "rule": "The sidebar's Trash takes anything dropped",
     "tests": "DropTests"
@@ -183,14 +183,14 @@
   },
   {
     "file": "Strata/Transfers/TransferQueue.swift",
-    "find": "        let moves = moves.filter { !ReadOnlyCopies.contains($0.to) }\n",
+    "find": "        let moves = moves.filter { !ReadOnlyCopies.contains($0.to, copies: copies) }\n",
     "replace": "",
     "rule": "A transfer goes into a read-only copy",
     "tests": "TransferJobTests/aReadOnly"
   },
   {
     "file": "Strata/Transfers/TransferQueue.swift",
-    "find": "let mode = mode == .move && moves.contains(where: { ReadOnlyCopies.contains($0.from) }) ? .copy : mode",
+    "find": "let mode = mode == .move && moves.contains(where: { ReadOnlyCopies.contains($0.from, copies: copies) }) ? .copy : mode",
     "replace": "let mode = mode",
     "rule": "A move out of a read-only copy removes from it",
     "tests": "TransferJobTests/aReadOnly"
@@ -211,7 +211,7 @@
   },
   {
     "file": "Strata/Views/FileCollection.swift",
-    "find": "        if ReadOnlyCopies.contains(target) { return [] }\n",
+    "find": "        if ReadOnlyCopies.contains(target, copies: copies) { return [] }\n",
     "replace": "",
     "rule": "A drop into a read-only copy is allowed",
     "tests": "DropTests"
@@ -232,7 +232,7 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "        if isCut { Clipboard.clearCut() }\n",
+    "find": "        if isCut { clipboard.clearCut() }\n",
     "replace": "",
     "rule": "A Cut isn't used up by the paste",
     "tests": "ClipboardTests"
@@ -677,7 +677,7 @@
   },
   {
     "file": "Strata/Model/FileOps.swift",
-    "find": "        for url in urls where canTrash(url) {",
+    "find": "        for url in urls where canTrash(url, copies: copies) {",
     "replace": "        for url in urls {",
     "rule": "Move to Trash takes items inside a read-only copy",
     "tests": "DeleteScopeTests/nothingInAReadOnlyCopy"
@@ -1042,8 +1042,8 @@
   },
   {
     "file": "Strata/Sidebar/SidebarViewController.swift",
-    "find": "tree = FolderTreeController(transfers: services.transfers, preferences: services.preferences, remote: services.remote)",
-    "replace": "tree = FolderTreeController(preferences: services.preferences, remote: services.remote)",
+    "find": "tree = FolderTreeController(transfers: services.transfers, preferences: services.preferences,\n                                    remote: services.remote, copies: services.copies)",
+    "replace": "tree = FolderTreeController(preferences: services.preferences,\n                                    remote: services.remote, copies: services.copies)",
     "rule": "Browser service ownership folder tree drops use the global queue",
     "tests": "TransferContextTests/bothSidebarDropModesUseTheWindowQueue"
   },
@@ -1204,8 +1204,8 @@
   },
   {
     "file": "Strata/Remote/CopyProviders.swift",
-    "find": "self.init([ServerCopyProvider(files: servers), ContainerCopyProvider(files: containers)])",
-    "replace": "self.init([ServerCopyProvider(files: servers)])",
+    "find": "[ServerCopyProvider(files: servers), ContainerCopyProvider(files: containers)]",
+    "replace": "[ServerCopyProvider(files: servers)]",
     "rule": "Copy provider routing the live facade forgets container copies",
     "tests": "CopyProvidersTests/theLiveFacadeRecognizesBothCopyFamiliesWithoutClaimingTheirNeighbors"
   },
@@ -1527,8 +1527,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "FileOps.newFile(in: directory, extension: preferences.newFileExtension, undo: self.undoManager)",
-    "replace": "FileOps.newFile(in: directory, extension: Prefs.shared.newFileExtension, undo: self.undoManager)",
+    "find": "FileOps.newFile(in: directory, extension: preferences.newFileExtension, undo: self.undoManager, copies: self.services.copies)",
+    "replace": "FileOps.newFile(in: directory, extension: Prefs.shared.newFileExtension, undo: self.undoManager, copies: self.services.copies)",
     "rule": "Browser preferences New File uses another panes extension",
     "tests": "BrowserPreferencesTests/newFileUsesItsOwnExtensionAndTargetInEveryView"
   },
@@ -1569,8 +1569,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !ReadOnlyCopies.contains($0) },\n                            preferences: preferences)",
-    "replace": "Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !ReadOnlyCopies.contains($0) })",
+    "find": "Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !isReadOnlyCopy($0) },\n                            preferences: preferences)",
+    "replace": "Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !isReadOnlyCopy($0) })",
     "rule": "Browser preferences Add to Sidebar writes to another store",
     "tests": "BrowserPreferencesTests/favoriteCommandsAndPathSuggestionsUseTheirOwningStore"
   },
@@ -3460,5 +3460,110 @@
     "replace": "canMeasure: { entry in entry.url == self.location || browser.canMeasure(entry) })",
     "rule": "Inspector provider ownership unselected window folder bypasses browser canMeasure",
     "tests": "InspectorProviderTests/inspectorAndWindowFollowTheirOwnServerAndCopyProvider"
+  },
+  {
+    "file": "Strata/Transfers/TransferJob.swift",
+    "find": "let copies = queue?.copies ?? .live\n        let fromContainers = sources.filter(copies.contains)",
+    "replace": "let copies = CopyProviders.live\n        let fromContainers = sources.filter(copies.contains)",
+    "rule": "Browser copy provider ownership transfer job prepares copies with the global provider",
+    "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
+  },
+  {
+    "file": "Strata/Transfers/TransferJob.swift",
+    "find": "guard !copies.containsPlaceholder(in: fromContainers) else { throw CocoaError(.fileReadUnknown) }",
+    "replace": "guard true else { throw CocoaError(.fileReadUnknown) }",
+    "rule": "Browser copy provider ownership transfer job copies an item that remained a placeholder",
+    "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
+  },
+  {
+    "file": "Strata/Remote/RemoteJobs.swift",
+    "find": "guard !copies.containsPlaceholder(in: elsewhere) else { throw CocoaError(.fileReadUnknown) }",
+    "replace": "guard true else { throw CocoaError(.fileReadUnknown) }",
+    "rule": "Browser copy provider ownership upload job uploads an item that remained a placeholder",
+    "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Servers.swift",
+    "find": "let job = RemoteUploadJob(urls, into: folder, skipping: skipping, files: services.remote.files, copies: services.copies)",
+    "replace": "let job = RemoteUploadJob(urls, into: folder, skipping: skipping)",
+    "rule": "Browser copy provider ownership upload job uses the global remote files and copy provider",
+    "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Servers.swift",
+    "find": "services.transfers.add(job)",
+    "replace": "TransferQueue.shared.add(job)",
+    "rule": "Browser copy provider ownership upload job is added to the global transfer queue",
+    "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Servers.swift",
+    "find": "let files = services.remote.files\n        runOnServer(in: folder) { [weak self] in\n            let made = try await files.makeFolder(named: name, in: folder)",
+    "replace": "let files = RemoteFiles.shared\n        runOnServer(in: folder) { [weak self] in\n            let made = try await files.makeFolder(named: name, in: folder)",
+    "rule": "Browser copy provider ownership New Folder on a server uses the global remote files",
+    "tests": "BrowserCopyProviderTests/serverCommandsAndDeletionsStayInTheirOwnBrowserServices"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Servers.swift",
+    "find": "let files = services.remote.files\n        runOnServer(in: folder) { [weak self] in\n            let renamed = try await files.rename(url, to: name)",
+    "replace": "let files = RemoteFiles.shared\n        runOnServer(in: folder) { [weak self] in\n            let renamed = try await files.rename(url, to: name)",
+    "rule": "Browser copy provider ownership server rename uses the global remote files",
+    "tests": "BrowserCopyProviderTests/serverCommandsAndDeletionsStayInTheirOwnBrowserServices"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Servers.swift",
+    "find": "static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore = RemoteCopies.store) -> [URL] {\n        outermost(urls).filter { copies.server(containing: $0) != nil && !isServerTop($0, copies: copies) }",
+    "replace": "static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore = RemoteCopies.store) -> [URL] {\n        outermost(urls).filter { RemoteCopies.store.server(containing: $0) != nil && !isServerTop($0, copies: RemoteCopies.store) }",
+    "rule": "Browser copy provider ownership server deletion targets check the global server store",
+    "tests": "BrowserCopyProviderTests/serverCommandsAndDeletionsStayInTheirOwnBrowserServices"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Trash.swift",
+    "find": "let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url, copies: copies)",
+    "replace": "let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url)",
+    "rule": "Browser copy provider ownership deletionPlan checks the global copy provider",
+    "tests": "BrowserCopyProviderTests/serverCommandsAndDeletionsStayInTheirOwnBrowserServices"
+  },
+  {
+    "file": "Strata/Remote/LazyCopies.swift",
+    "find": "guard !copies.containsPlaceholder(in: [url]) else { return nil }",
+    "replace": "guard true else { return nil }",
+    "rule": "Browser copy provider ownership clipboard staging copies an unfetched placeholder",
+    "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "return services.transfers.add(CopyFetchJob(fromContainers, copies: copies) { [weak self] in\n                let task = Task {\n                    let staged = await Task.detached(priority: .userInitiated) { copies.stageForClipboard(urls) }.value",
+    "replace": "return services.transfers.add(CopyFetchJob(fromContainers, copies: copies) { [weak self] in\n                let task = Task {\n                    let staged = await Task.detached(priority: .userInitiated) { LazyCopies.stageForClipboard(urls) }.value",
+    "rule": "Browser copy provider ownership Copy command stages clipboard items with the global provider",
+    "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "if copies.contains(url) { return copies.displayPath(url) }",
+    "replace": "if LazyCopies.contains(url) { return LazyCopies.displayPath(url) }",
+    "rule": "Browser copy provider ownership Copy Path uses the global copy provider",
+    "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
+  },
+  {
+    "file": "Strata/Containers/ContainerDrag.swift",
+    "find": "let type = (rawType.conforms(to: .data) || rawType.conforms(to: .directory)) ? rawType : .data",
+    "replace": "let type = (rawType.conforms(to: .data) || rawType.conforms(to: .directory)) ? rawType : .directory",
+    "rule": "Browser copy provider ownership dragging a symlink in a copy uses a folder promise type",
+    "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
+  },
+  {
+    "file": "Strata/Containers/ContainerDrag.swift",
+    "find": "copies.contains(url) ? ContainerDragItem(source: url, copies: copies) : url as NSURL",
+    "replace": "CopyProviders.live.contains(url) ? ContainerDragItem(source: url, copies: .live) : url as NSURL",
+    "rule": "Browser copy provider ownership drag writer checks the global copy provider",
+    "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "let clipboard = services.clipboard\n        // A container's or a server's items are read first",
+    "replace": "let clipboard = Clipboard.shared\n        // A container's or a server's items are read first",
+    "rule": "Browser copy provider ownership Copy command writes to the global clipboard",
+    "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
   }
 ]

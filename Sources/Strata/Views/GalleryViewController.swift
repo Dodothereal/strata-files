@@ -6,12 +6,16 @@ import Quartz
 /// Finder's, something is always selected, so the preview always has something to show.
 final class GalleryViewController: NSViewController, FileCollectionController {
     let thumbnails: FileThumbnails
+    let copies: CopyProviders
+    let clipboard: Clipboard
     weak var fileDelegate: FileCollectionViewDelegate?
     /// The folder shown; background drops go into it.
     var directory: URL?
 
-    init(thumbnails: FileThumbnails = .shared) {
+    init(thumbnails: FileThumbnails = .shared, copies: CopyProviders = .live, clipboard: Clipboard = .shared) {
         self.thumbnails = thumbnails
+        self.copies = copies
+        self.clipboard = clipboard
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -170,7 +174,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         updateStripHeight()
         view = root
         root.registerForDraggedTypes(FileDrop.types)
-        NotificationCenter.default.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
+        clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(scrollerStyleChanged), name: NSScroller.preferredScrollerStyleDidChangeNotification,
                                                object: nil)
     }
@@ -299,7 +303,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
                 if reconfigure {
                     configure(item, with: entry)
                 } else {
-                    item.dimmed = Self.isDimmed(entry)
+                    item.dimmed = isDimmed(entry)
                 }
             }
             item.emphasized = strip.isEmphasized
@@ -315,12 +319,12 @@ final class GalleryViewController: NSViewController, FileCollectionController {
             self.iconView.image = image
         }
         item.configure(entry, size: Self.thumbnailSize, scale: view.window?.backingScaleFactor ?? 2, thumbnails: thumbnails)
-        item.dimmed = Self.isDimmed(entry)
+        item.dimmed = isDimmed(entry)
         item.emphasized = strip.isEmphasized
     }
 
-    private static func isDimmed(_ entry: FileEntry) -> Bool {
-        entry.isHidden || Clipboard.isCut(entry.url) || GitStatusStore.shared.isIgnored(entry.url)
+    private func isDimmed(_ entry: FileEntry) -> Bool {
+        entry.isHidden || clipboard.isCut(entry.url) || GitStatusStore.shared.isIgnored(entry.url)
     }
 
     // MARK: - Preview
@@ -473,18 +477,18 @@ final class GalleryViewController: NSViewController, FileCollectionController {
 
     fileprivate func validateBackgroundDrop(_ info: NSDraggingInfo) -> NSDragOperation {
         springLoader.hover(nil, drag: info.draggingSequenceNumber)
-        let urls = FileDrop.urls(info)
+        let urls = FileDrop.urls(info, copies: copies)
         guard !urls.isEmpty, let directory else { return hideDropHighlight() }
-        let operation = FileDrop.operation(urls, into: directory, info: info)
+        let operation = FileDrop.operation(urls, into: directory, info: info, copies: copies)
         dropHighlight.isHidden = operation.isEmpty
         return operation
     }
 
     fileprivate func acceptBackgroundDrop(_ info: NSDraggingInfo) -> Bool {
         dragEnded()
-        let urls = FileDrop.urls(info)
+        let urls = FileDrop.urls(info, copies: copies)
         guard let directory else { return false }
-        let operation = FileDrop.operation(urls, into: directory, info: info)
+        let operation = FileDrop.operation(urls, into: directory, info: info, copies: copies)
         guard !operation.isEmpty else { return false }
         return fileDelegate?.fileView(self, drop: urls, onto: nil, copy: operation != .move) ?? false
     }
@@ -532,13 +536,13 @@ extension GalleryViewController: NSCollectionViewDataSource, NSCollectionViewDel
     }
 
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
-        indexPath.item < entries.count ? ContainerDragItem.writer(for: entries[indexPath.item].url) : nil
+        indexPath.item < entries.count ? ContainerDragItem.writer(for: entries[indexPath.item].url, copies: copies) : nil
     }
 
     func collectionView(_ collectionView: NSCollectionView, validateDrop draggingInfo: NSDraggingInfo,
                         proposedIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
                         dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>) -> NSDragOperation {
-        let urls = FileDrop.urls(draggingInfo)
+        let urls = FileDrop.urls(draggingInfo, copies: copies)
         let index = (proposedIndexPath.pointee as IndexPath).item
         let onFolder = !urls.isEmpty && dropOperation.pointee == .on && index < entries.count && entries[index].isFolder
             && !FileDrop.isInside(urls, entries[index].url)
@@ -547,7 +551,7 @@ extension GalleryViewController: NSCollectionViewDataSource, NSCollectionViewDel
         springLoader.hover(springs ? entries[index].url : nil, drag: draggingInfo.draggingSequenceNumber)
         guard !urls.isEmpty else { return hideDropHighlight() }
         if onFolder {
-            let operation = FileDrop.operation(urls, into: entries[index].url, info: draggingInfo)
+            let operation = FileDrop.operation(urls, into: entries[index].url, info: draggingInfo, copies: copies)
             if !operation.isEmpty {
                 dropHighlight.isHidden = true
                 return operation
@@ -556,7 +560,7 @@ extension GalleryViewController: NSCollectionViewDataSource, NSCollectionViewDel
         guard let directory else { return hideDropHighlight() }
         proposedIndexPath.pointee = IndexPath(item: entries.count, section: 0) as NSIndexPath
         dropOperation.pointee = .before
-        let operation = FileDrop.operation(urls, into: directory, info: draggingInfo)
+        let operation = FileDrop.operation(urls, into: directory, info: draggingInfo, copies: copies)
         dropHighlight.isHidden = operation.isEmpty
         return operation
     }
@@ -564,11 +568,11 @@ extension GalleryViewController: NSCollectionViewDataSource, NSCollectionViewDel
     func collectionView(_ collectionView: NSCollectionView, acceptDrop draggingInfo: NSDraggingInfo,
                         indexPath: IndexPath, dropOperation: NSCollectionView.DropOperation) -> Bool {
         dragEnded()
-        let urls = FileDrop.urls(draggingInfo)
+        let urls = FileDrop.urls(draggingInfo, copies: copies)
         let folder: URL? = dropOperation == .on && indexPath.item < entries.count && entries[indexPath.item].isFolder
             ? entries[indexPath.item].url : nil
         guard let target = folder ?? directory else { return false }
-        let operation = FileDrop.operation(urls, into: target, info: draggingInfo)
+        let operation = FileDrop.operation(urls, into: target, info: draggingInfo, copies: copies)
         guard !operation.isEmpty else { return false }
         return fileDelegate?.fileView(self, drop: urls, onto: folder, copy: operation != .move) ?? false
     }
@@ -726,7 +730,7 @@ final class GalleryStripView: NSCollectionView {
     }
 
     override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session)
+        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: controller?.copies ?? .live)
     }
 }
 

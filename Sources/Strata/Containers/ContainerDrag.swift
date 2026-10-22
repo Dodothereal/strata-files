@@ -11,19 +11,22 @@ extension NSPasteboard.PasteboardType {
 /// read the item's path instead and copy it like any other file.
 nonisolated final class ContainerDragItem: NSFilePromiseProvider {
     let source: URL
+    let copies: CopyProviders
 
-    init(source: URL) {
+    init(source: URL, copies: CopyProviders = .live) {
         self.source = source
+        self.copies = copies
         super.init()
-        let type = (try? source.resourceValues(forKeys: [.contentTypeKey]))?.contentType ?? .data
+        let rawType = (try? source.resourceValues(forKeys: [.contentTypeKey]))?.contentType ?? .data
+        let type = (rawType.conforms(to: .data) || rawType.conforms(to: .directory)) ? rawType : .data
         fileType = type.identifier
         delegate = ContainerPromises.shared
     }
 
     /// An item of a container's files gets a promise; anything else drags as itself.
     @MainActor
-    static func writer(for url: URL) -> NSPasteboardWriting {
-        LazyCopies.contains(url) ? ContainerDragItem(source: url) : url as NSURL
+    static func writer(for url: URL, copies: CopyProviders = .live) -> NSPasteboardWriting {
+        copies.contains(url) ? ContainerDragItem(source: url, copies: copies) : url as NSURL
     }
 
     override func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
@@ -52,12 +55,15 @@ nonisolated final class ContainerPromises: NSObject, NSFilePromiseProviderDelega
     func operationQueue(for provider: NSFilePromiseProvider) -> OperationQueue { queue }
 
     func filePromiseProvider(_ provider: NSFilePromiseProvider, writePromiseTo url: URL, completionHandler: @escaping (Error?) -> Void) {
-        guard let source = (provider as? ContainerDragItem)?.source else { return completionHandler(CocoaError(.fileNoSuchFile)) }
+        guard let item = provider as? ContainerDragItem else { return completionHandler(CocoaError(.fileNoSuchFile)) }
+        let source = item.source
+        let copies = item.copies
         let done = DispatchSemaphore(value: 0)
         nonisolated(unsafe) var failure: Error?
         Task {
             do {
-                try await LazyCopies.prepareForCopying([source])
+                try await copies.prepareForCopying([source])
+                guard !copies.containsPlaceholder(in: [source]) else { throw CocoaError(.fileReadUnknown) }
                 try FileManager.default.copyItem(at: source, to: url)
                 ContainerCopies.finishCopyingOut(url, from: source)
             } catch {
@@ -72,8 +78,8 @@ nonisolated final class ContainerPromises: NSObject, NSFilePromiseProviderDelega
 
 extension FileDrop {
     /// Items of containers' files dragged within Strata (see `ContainerDragItem`).
-    static func containerItems(_ pasteboard: NSPasteboard) -> [URL] {
+    static func containerItems(_ pasteboard: NSPasteboard, copies: CopyProviders = .live) -> [URL] {
         (pasteboard.pasteboardItems ?? []).compactMap { $0.string(forType: .strataContainerItem) }
-            .map { URL(fileURLWithPath: $0) }.filter(LazyCopies.contains)
+            .map { URL(fileURLWithPath: $0) }.filter { copies.contains($0) || LazyCopies.contains($0) }
     }
 }

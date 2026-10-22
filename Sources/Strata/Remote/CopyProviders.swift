@@ -21,17 +21,44 @@ nonisolated protocol CopyProvider: Sendable {
 nonisolated struct CopyProviders: Sendable {
     static let live = CopyProviders(servers: .shared, containers: .shared)
     private let providers: [any CopyProvider]
+    let remoteCopies: RemoteCopyStore
+    let clipboardRoot: URL
 
-    init(_ providers: [any CopyProvider]) { self.providers = providers }
+    init(_ providers: [any CopyProvider], remoteCopies: RemoteCopyStore = RemoteCopies.store,
+         clipboardRoot: URL = LazyCopies.clipboardRoot) {
+        self.providers = providers
+        self.remoteCopies = remoteCopies
+        self.clipboardRoot = clipboardRoot
+    }
 
-    init(servers: RemoteFiles, containers: ContainerFiles) {
-        self.init([ServerCopyProvider(files: servers), ContainerCopyProvider(files: containers)])
+    init(servers: RemoteFiles, containers: ContainerFiles, clipboardRoot: URL? = nil) {
+        let defaultRoot = servers.copies.root == RemoteCopies.root
+            ? LazyCopies.clipboardRoot
+            : servers.copies.root.deletingLastPathComponent().appending(path: "Clipboard.noindex", directoryHint: .isDirectory)
+        self.init([ServerCopyProvider(files: servers), ContainerCopyProvider(files: containers)],
+                  remoteCopies: servers.copies, clipboardRoot: clipboardRoot ?? defaultRoot)
     }
 
     private func provider(for url: URL) -> (any CopyProvider)? { providers.first { $0.contains(url) } }
 
     func contains(_ url: URL) -> Bool { provider(for: url) != nil }
     func isPlaceholder(_ url: URL) -> Bool { provider(for: url)?.isPlaceholder(url) ?? false }
+    func containsPlaceholder(in urls: [URL]) -> Bool {
+        func check(_ url: URL) -> Bool {
+            guard contains(url) else { return false }
+            if isPlaceholder(url) { return true }
+            var info = stat()
+            guard lstat(url.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR else { return false }
+            for name in (try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? [] {
+                if check(url.appending(path: name)) { return true }
+            }
+            return false
+        }
+        return urls.contains(where: check)
+    }
+    func stageForClipboard(_ urls: [URL]) -> [URL] {
+        LazyCopies.stageForClipboard(urls, copies: self, root: clipboardRoot)
+    }
     func refresh(_ folder: URL) async { await provider(for: folder)?.refresh(folder) }
     func invalidate(_ folder: URL) async { await provider(for: folder)?.invalidate(folder) }
     func reveal(_ url: URL) async -> Bool { await provider(for: url)?.reveal(url) ?? false }
@@ -64,7 +91,7 @@ nonisolated struct CopyProviders: Sendable {
     }
 }
 
-private nonisolated struct ServerCopyProvider: CopyProvider {
+nonisolated struct ServerCopyProvider: CopyProvider {
     let files: RemoteFiles
     func contains(_ url: URL) -> Bool { files.copies.contains(url) }
     func isPlaceholder(_ url: URL) -> Bool { files.copies.isPlaceholder(url) }

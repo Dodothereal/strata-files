@@ -176,21 +176,23 @@ enum BrowserViewMode: Int, CaseIterable {
 enum FileDrop {
     /// Out of an archive opened as a folder, things are only copied: no move, no alias to a temporary copy, and no
     /// dropping on the Dock's Trash.
-    static func sourceMask(_ mask: NSDragOperation, _ session: NSDraggingSession) -> NSDragOperation {
-        let urls = urls(session.draggingPasteboard)
+    static func sourceMask(_ mask: NSDragOperation, _ session: NSDraggingSession, copies: CopyProviders = .live) -> NSDragOperation {
+        let urls = urls(session.draggingPasteboard, copies: copies)
         // A server's items can also move within that server (a rename there); out of it, they're copied.
-        if !urls.isEmpty, urls.allSatisfy({ RemoteCopies.server(containing: $0) != nil }) { return mask.intersection([.copy, .move]) }
-        return urls.contains(where: ReadOnlyCopies.contains) ? mask.intersection(.copy) : mask
+        if !urls.isEmpty, urls.allSatisfy({ copies.remoteCopies.server(containing: $0) != nil || RemoteCopies.server(containing: $0) != nil }) {
+            return mask.intersection([.copy, .move])
+        }
+        return urls.contains(where: { ReadOnlyCopies.contains($0, copies: copies) }) ? mask.intersection(.copy) : mask
     }
 
-    static func urls(_ info: NSDraggingInfo) -> [URL] {
-        urls(info.draggingPasteboard)
+    static func urls(_ info: NSDraggingInfo, copies: CopyProviders = .live) -> [URL] {
+        urls(info.draggingPasteboard, copies: copies)
     }
 
     /// Dragged files, and items of containers' files dragged within Strata.
-    static func urls(_ pasteboard: NSPasteboard) -> [URL] {
+    static func urls(_ pasteboard: NSPasteboard, copies: CopyProviders = .live) -> [URL] {
         ((pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? [])
-            + containerItems(pasteboard)
+            + containerItems(pasteboard, copies: copies)
     }
 
     /// What file views accept dropped on them.
@@ -210,21 +212,23 @@ enum FileDrop {
         }
     }
 
-    static func operation(_ urls: [URL], into target: URL, info: NSDraggingInfo) -> NSDragOperation {
-        operation(urls, into: target, mask: info.draggingSourceOperationMask, option: NSEvent.modifierFlags.contains(.option))
+    static func operation(_ urls: [URL], into target: URL, info: NSDraggingInfo, copies: CopyProviders = .live) -> NSDragOperation {
+        operation(urls, into: target, mask: info.draggingSourceOperationMask, option: NSEvent.modifierFlags.contains(.option), copies: copies)
     }
 
     /// What dropping `urls` on `target` does, given what the source allows and whether Option is held: a move, a copy,
     /// or nothing (into itself, back where it is, into a copy that can't change).
-    static func operation(_ urls: [URL], into target: URL, mask: NSDragOperation, option: Bool) -> NSDragOperation {
+    static func operation(_ urls: [URL], into target: URL, mask: NSDragOperation, option: Bool, copies: CopyProviders = .live) -> NSDragOperation {
         guard let first = urls.first else { return [] }
         let targetPath = target.standardizedFileURL.path
         if isInside(urls, target) { return [] }
+        let remoteCopies = copies.remoteCopies
         // Onto a server: copied there, or moved within that server.
-        if RemoteCopies.contains(target) {
+        if remoteCopies.contains(target) || RemoteCopies.contains(target) {
+            let store = remoteCopies.contains(target) ? remoteCopies : RemoteCopies.store
             // Strata's Servers folder, or what a removed server left: nothing goes there.
-            guard let sameServer = RemoteCopies.server(containing: target)?.server.id else { return [] }
-            if urls.allSatisfy({ RemoteCopies.server(containing: $0)?.server.id == sameServer }) {
+            guard let sameServer = store.server(containing: target)?.server.id else { return [] }
+            if urls.allSatisfy({ store.server(containing: $0)?.server.id == sameServer }) {
                 // Within one server: a move there, or a copy with Option, as on this Mac.
                 if option { return .copy }
                 return urls.allSatisfy({ $0.deletingLastPathComponent().standardizedFileURL.path == targetPath }) ? [] : .move
@@ -232,8 +236,8 @@ enum FileDrop {
             return mask.contains(.copy) || mask.contains(.generic) ? .copy : []
         }
         // An archive opened as a folder isn't changed; what's dragged out of one is copied.
-        if ReadOnlyCopies.contains(target) { return [] }
-        let wantsCopy = option || !sameVolume(first, target) || urls.contains(where: ReadOnlyCopies.contains)
+        if ReadOnlyCopies.contains(target, copies: copies) { return [] }
+        let wantsCopy = option || !sameVolume(first, target) || urls.contains(where: { ReadOnlyCopies.contains($0, copies: copies) })
         let operation: NSDragOperation
         if wantsCopy || !mask.contains(.move) {
             operation = mask.contains(.copy) || mask.contains(.generic) ? .copy : []

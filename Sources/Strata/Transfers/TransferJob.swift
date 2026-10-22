@@ -205,15 +205,18 @@ final class TransferJob {
         state = .scanning
         changed()
         // From a container's files: everything copied out is fetched first (folders with all they hold).
-        let fromContainers = sources.filter(LazyCopies.contains)
+        let copies = queue?.copies ?? .live
+        let fromContainers = sources.filter(copies.contains)
         if !fromContainers.isEmpty {
-            let fetch = Task { try await LazyCopies.prepareForCopying(fromContainers) }
+            let fetch = Task {
+                try await copies.prepareForCopying(fromContainers)
+                guard !copies.containsPlaceholder(in: fromContainers) else { throw CocoaError(.fileReadUnknown) }
+            }
             containerFetch = fetch
             do {
                 try await fetch.value
             } catch {
-                errorMessage = fromContainers.first.flatMap { ContainerCopies.copy(containing: $0)?.source }
-                    .map { ContainerFiles.message(for: error, source: $0) } ?? error.localizedDescription
+                errorMessage = fromContainers.first.map { copies.message(for: error, about: $0) } ?? error.localizedDescription
                 return finish()
             }
         }
@@ -570,8 +573,9 @@ final class TransferJob {
     private func finish() {
         // Copied out of a container or a server: ordinary files from now on. What a cancelled or failed item left
         // behind too (its links mustn't lead anywhere either); only what came from the copy is touched.
-        if sources.contains(where: LazyCopies.contains) {
-            let made = items.filter { [.done, .partial, .failed, .cancelled].contains($0.outcome) && LazyCopies.contains($0.source) }
+        let copies = queue?.copies ?? .live
+        if sources.contains(where: copies.contains) {
+            let made = items.filter { [.done, .partial, .failed, .cancelled].contains($0.outcome) && copies.contains($0.source) }
                 .map { (source: $0.source, destination: $0.destination) }
             DispatchQueue.global(qos: .utility).async {
                 for item in made { ContainerCopies.finishCopyingOut(item.destination, from: item.source) }

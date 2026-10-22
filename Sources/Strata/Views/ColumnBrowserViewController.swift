@@ -9,6 +9,8 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     let preferences: Prefs
     let thumbnails: FileThumbnails
     let itemInfo: ItemInfoLoader
+    let copies: CopyProviders
+    let clipboard: Clipboard
     /// The folder the user is "in": the selected folder, or the folder of the focused column. Drive the path bar
     /// and window title from it (without reloading the browser).
     var onLocationChange: ((URL) -> Void)?
@@ -35,11 +37,14 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     private weak var renameWhenLoaded: ColumnPane?
 
     init(scrollView: NSScrollView = NSScrollView(), directoryReader: DirectoryReader = .live, preferences: Prefs = .shared,
-         thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared) {
+         thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared, copies: CopyProviders = .live,
+         clipboard: Clipboard = .shared) {
         self.directoryReader = directoryReader
         self.preferences = preferences
         self.thumbnails = thumbnails
         self.itemInfo = itemInfo
+        self.copies = copies
+        self.clipboard = clipboard
         showHidden = { preferences.showHidden }
         sortComparator = { a, b in
             if preferences.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
@@ -71,7 +76,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         scrollView.automaticallyAdjustsContentInsets = false
         scrollView.contentInsets = NSEdgeInsets()
         view = scrollView
-        NotificationCenter.default.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
+        clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
     }
 
     override func viewDidLayout() {
@@ -504,7 +509,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private(set) var isLoaded = false
     private var matches: [String: [Int]] = [:]
     private var rowByKey: [String: Int] = [:]
-    private weak var controller: ColumnBrowserViewController?
+    fileprivate weak var controller: ColumnBrowserViewController?
     let tableView = ColumnTableView()
     /// Opens the folder a drag rests on in the next column, by selecting it.
     fileprivate lazy var springLoader = SpringLoader(view: tableView, frame: { [weak self] folder in
@@ -752,8 +757,9 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         let cell = tableView.makeView(withIdentifier: ColumnCellView.identifier, owner: nil) as? ColumnCellView ?? ColumnCellView()
         let entry = entries[row]
         let git = GitStatusStore.shared
+        let clipboard = controller?.clipboard ?? .shared
         cell.configure(entry, matches: matches[entry.url.fileViewKey] ?? [],
-                       dimmed: entry.isHidden || Clipboard.isCut(entry.url) || git.isIgnored(entry.url),
+                       dimmed: entry.isHidden || clipboard.isCut(entry.url) || git.isIgnored(entry.url),
                        git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
                        cloud: CloudStore.shared.status(for: entry.url), scale: tableView.window?.backingScaleFactor ?? 2,
                        preferences: preferences, thumbnails: controller?.thumbnails ?? .shared)
@@ -773,30 +779,32 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     // Drag and drop
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        row < entries.count ? ContainerDragItem.writer(for: entries[row].url) : nil
+        row < entries.count ? ContainerDragItem.writer(for: entries[row].url, copies: controller?.copies ?? .live) : nil
     }
 
     func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
                    proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
-        let urls = FileDrop.urls(info)
+        let copies = controller?.copies ?? .live
+        let urls = FileDrop.urls(info, copies: copies)
         let resting = !urls.isEmpty && dropOperation == .on && row >= 0 && row < entries.count && entries[row].isFolder
             && !FileDrop.isInside(urls, entries[row].url) && SpringLoader.canOpen(entries[row].url, browsing: folder)
         springLoader.hover(resting ? entries[row].url : nil, drag: info.draggingSequenceNumber)
         guard !urls.isEmpty else { return [] }
         if dropOperation == .on, row >= 0, row < entries.count, entries[row].isFolder {
-            let operation = FileDrop.operation(urls, into: entries[row].url, info: info)
+            let operation = FileDrop.operation(urls, into: entries[row].url, info: info, copies: copies)
             if !operation.isEmpty { return operation }
         }
         tableView.setDropRow(-1, dropOperation: .on)
-        return FileDrop.operation(urls, into: folder, info: info)
+        return FileDrop.operation(urls, into: folder, info: info, copies: copies)
     }
 
     func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
                    dropOperation: NSTableView.DropOperation) -> Bool {
         springLoader.cancel()
-        let urls = FileDrop.urls(info)
+        let copies = controller?.copies ?? .live
+        let urls = FileDrop.urls(info, copies: copies)
         let target = row >= 0 && row < entries.count && dropOperation == .on && entries[row].isFolder ? entries[row].url : folder
-        let operation = FileDrop.operation(urls, into: target, info: info)
+        let operation = FileDrop.operation(urls, into: target, info: info, copies: copies)
         guard !operation.isEmpty, let controller else { return false }
         return controller.drop(urls, onto: target, from: self, copy: operation != .move)
     }
@@ -875,7 +883,7 @@ final class ColumnTableView: NSTableView {
     }
 
     override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session)
+        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: pane?.controller?.copies ?? .live)
     }
 
     override func draggingEnded(_ sender: NSDraggingInfo) {

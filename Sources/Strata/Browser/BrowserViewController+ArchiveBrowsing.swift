@@ -14,8 +14,12 @@ extension BrowserViewController {
 
     /// Whether this pane shows (or the selection is) inside a read-only copy (an archive opened as a folder, or a
     /// container's files): changing things there is off.
+    func isReadOnlyCopy(_ url: URL) -> Bool {
+        ReadOnlyCopies.contains(url, copies: services.copies)
+    }
+
     var isInsideArchive: Bool {
-        targetDirectory.map(ReadOnlyCopies.contains) == true || selectedURLs.contains(where: ReadOnlyCopies.contains)
+        targetDirectory.map(isReadOnlyCopy) == true || selectedURLs.contains(where: isReadOnlyCopy)
     }
 
     /// Whether opening `entry` shows its contents (zip, tar, 7z, rar, unless turned off in Settings). Disk images,
@@ -143,7 +147,7 @@ extension BrowserViewController {
     /// read-only disk, the Trash, another archive's copy), then shows the result.
     func extractArchive(_ archive: URL) {
         let folder = archive.deletingLastPathComponent()
-        let usable = access(folder.path, W_OK) == 0 && !ReadOnlyCopies.contains(folder) && !Trash.isInTrash(archive)
+        let usable = access(folder.path, W_OK) == 0 && !isReadOnlyCopy(folder) && !Trash.isInTrash(archive)
         let destination = usable ? folder : FileManager.default.homeDirectoryForCurrentUser.appending(path: "Downloads", directoryHint: .isDirectory)
         let job = ArchiveJob(.extract(archive, into: destination), undo: undoManager)
         job.onFinish = { [weak self] job in

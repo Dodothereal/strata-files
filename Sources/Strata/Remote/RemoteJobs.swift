@@ -6,6 +6,8 @@ final class RemoteUploadJob {
     let sources: [URL]
     let folder: URL
     let skipping: Set<String>
+    let files: RemoteFiles
+    let copies: CopyProviders
     let serverName: String
     private(set) var state: TransferState = .queued
     private(set) var errorMessage: String?
@@ -19,31 +21,45 @@ final class RemoteUploadJob {
     var onFinish: ((RemoteUploadJob) -> Void)?
     private var finishWaiters: [CheckedContinuation<Void, Never>] = []
 
-    init(_ sources: [URL], into folder: URL, skipping: Set<String>) {
+    init(_ sources: [URL], into folder: URL, skipping: Set<String> = [], files: RemoteFiles = .shared, copies: CopyProviders? = nil) {
         self.sources = sources
         self.folder = folder
         self.skipping = skipping
-        serverName = RemoteCopies.server(containing: folder)?.server.name ?? ""
+        self.files = files
+        self.copies = copies ?? CopyProviders(servers: files, containers: .shared)
+        serverName = files.copies.server(containing: folder)?.server.name ?? ""
     }
 
     func start() {
         guard state == .queued else { return }
         state = .running
-        onChange?(self)
         let sources = sources.filter { !skipping.contains($0.lastPathComponent) }
+        let files = files
+        let copies = copies
         task = Task {
+            var prepSource: URL?
             do {
-                let elsewhere = sources.filter(LazyCopies.contains)
-                if !elsewhere.isEmpty { try await LazyCopies.prepareForCopying(elsewhere) }
+                try Task.checkCancellation()
+                let elsewhere = sources.filter(copies.contains)
+                if !elsewhere.isEmpty {
+                    prepSource = elsewhere.first
+                    try await copies.prepareForCopying(elsewhere)
+                    guard !copies.containsPlaceholder(in: elsewhere) else { throw CocoaError(.fileReadUnknown) }
+                    prepSource = nil
+                }
                 totalBytes = await Self.size(of: sources)
-                placed = try await RemoteFiles.shared.upload(sources, into: folder, stop: stop) { [sent] bytes in sent.set(bytes) }
+                try Task.checkCancellation()
+                placed = try await files.upload(sources, into: folder, stop: stop) { [sent] bytes in sent.set(bytes) }
                 state = .finished
             } catch {
-                state = stop.isSet || Task.isCancelled ? .cancelled : .failed
-                if state == .failed { errorMessage = RemoteFiles.message(for: error) }
+                state = stop.isSet || Task.isCancelled || error is CancellationError ? .cancelled : .failed
+                if state == .failed {
+                    errorMessage = prepSource.map { copies.message(for: error, about: $0) } ?? RemoteFiles.message(for: error)
+                }
             }
             finish()
         }
+        onChange?(self)
     }
 
     /// Bytes in `urls` (folders with all they hold, links not followed), off the main thread.
@@ -79,6 +95,7 @@ final class RemoteUploadJob {
     }
 
     private func finish() {
+        task = nil
         onChange?(self)
         onFinish?(self)
         let waiters = finishWaiters

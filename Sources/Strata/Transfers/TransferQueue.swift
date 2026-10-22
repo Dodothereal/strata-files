@@ -21,10 +21,14 @@ final class TransferQueue {
 
     let preferences: Prefs
     let history: OperationLog
+    var copies: CopyProviders
+    private(set) var hasCustomCopies: Bool
 
-    init(preferences: Prefs = .shared, history: OperationLog = .shared) {
+    init(preferences: Prefs = .shared, history: OperationLog = .shared, copies: CopyProviders? = nil) {
         self.preferences = preferences
         self.history = history
+        self.copies = copies ?? .live
+        self.hasCustomCopies = copies != nil
     }
 
     var defaultOptions: TransferEngine.Options {
@@ -60,8 +64,8 @@ final class TransferQueue {
                  logHistory: Bool = true, actionName: String? = nil, containers: [URL] = [],
                  containerOwnership: CreatedFolders? = nil) -> TransferJob {
         // An archive opened as a folder is a temporary copy: nothing goes into it, and what leaves it is copied.
-        let moves = moves.filter { !ReadOnlyCopies.contains($0.to) }
-        let mode = mode == .move && moves.contains(where: { ReadOnlyCopies.contains($0.from) }) ? .copy : mode
+        let moves = moves.filter { !ReadOnlyCopies.contains($0.to, copies: copies) }
+        let mode = mode == .move && moves.contains(where: { ReadOnlyCopies.contains($0.from, copies: copies) }) ? .copy : mode
         let folder = destination ?? moves.first?.to.deletingLastPathComponent() ?? URL(fileURLWithPath: "/")
         let job = TransferJob(mode: mode, moves: moves, destination: folder, options: options ?? defaultOptions, undo: undo,
                               conflicts: conflicts, queue: self)

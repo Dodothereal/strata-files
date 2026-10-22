@@ -22,7 +22,7 @@ extension BrowserViewController {
 
     /// Whether what Compress or Extract makes next to the selection has somewhere to go.
     var canWriteBesideSelection: Bool {
-        guard let first = selectedURLs.first, !ReadOnlyCopies.contains(first) else { return false }
+        guard let first = selectedURLs.first, !isReadOnlyCopy(first) else { return false }
         return access(first.deletingLastPathComponent().path, W_OK) == 0
     }
 

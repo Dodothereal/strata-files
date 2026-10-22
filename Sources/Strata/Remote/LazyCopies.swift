@@ -26,8 +26,9 @@ nonisolated enum LazyCopies {
     /// writable, still marked as downloaded). Pasting them anywhere, Finder included, gets ordinary files. Anything else
     /// is itself; a link chosen on its own is left out (from wherever it's pasted it would lead into this Mac's own
     /// folders). Staged items are removed at the next launch.
-    static func stageForClipboard(_ urls: [URL]) -> [URL] {
-        guard urls.contains(where: contains) else { return urls }
+    static func stageForClipboard(_ urls: [URL], copies: CopyProviders = .live, root: URL? = nil) -> [URL] {
+        guard urls.contains(where: copies.contains) else { return urls }
+        let clipboardRoot = root ?? copies.clipboardRoot
         let fm = FileManager.default
         func newFolder() -> URL? {
             let folder = clipboardRoot.appending(path: UUID().uuidString, directoryHint: .isDirectory)
@@ -38,9 +39,10 @@ nonisolated enum LazyCopies {
                 return nil
             }
         }
-        guard var folder = newFolder() else { return urls.filter { !contains($0) } }
+        guard var folder = newFolder() else { return urls.filter { !copies.contains($0) } }
         return urls.compactMap { url in
-            guard contains(url) else { return url }
+            guard copies.contains(url) else { return url }
+            guard !copies.containsPlaceholder(in: [url]) else { return nil }
             var info = stat()
             // Two chosen items with one name (from different folders) each get a folder of their own.
             if lstat(folder.appending(path: url.lastPathComponent).path, &info) == 0 {

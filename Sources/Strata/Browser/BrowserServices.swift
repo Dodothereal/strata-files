@@ -16,6 +16,7 @@ final class BrowserServices {
     let remote: RemoteServices
     let remoteBrowsing: RemoteBrowsing
     let copies: CopyProviders
+    let clipboard: Clipboard
     let openContainer: @MainActor @Sendable (String) async throws -> URL
     let directories: DirectoryReader
     let mediaReader: MediaInfoLoader.Reader
@@ -27,6 +28,7 @@ final class BrowserServices {
     init(transfers: TransferQueue, visits: Frecency, directories: DirectoryReader? = nil, preferences: Prefs = .shared, windows: BrowserWindows = .native,
          availableCapacity: @escaping @Sendable (URL) async -> Int64? = BrowserLoading.freeSpace,
          remote: RemoteServices = .shared, remoteBrowsing: RemoteBrowsing? = nil, copies: CopyProviders? = nil,
+         clipboard: Clipboard = .shared,
          mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
          thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
          openContainer: @escaping @MainActor @Sendable (String) async throws -> URL = { id in
@@ -40,6 +42,10 @@ final class BrowserServices {
         self.remote = remote
         self.remoteBrowsing = remoteBrowsing ?? remote.browsing
         self.copies = copies ?? CopyProviders(servers: remote.files, containers: .shared)
+        self.clipboard = clipboard
+        if transfers !== TransferQueue.shared && !transfers.hasCustomCopies {
+            transfers.copies = self.copies
+        }
         self.openContainer = openContainer
         self.directories = directories ?? DirectoryReader(copies: self.copies)
         self.mediaReader = mediaReader

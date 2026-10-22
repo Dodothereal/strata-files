@@ -15,6 +15,7 @@ final class FileOutlineView: NSOutlineView {
     var onDragEnd: (() -> Void)?
     /// A second, slower click on the name of the only selected row (Finder's click to rename).
     var onNameClick: ((Int) -> Void)?
+    var copies: CopyProviders = .live
     private let clickToRename = ClickToRename()
 
     override func viewDidChangeEffectiveAppearance() {
@@ -35,7 +36,7 @@ final class FileOutlineView: NSOutlineView {
     }
 
     override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session)
+        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: copies)
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {

@@ -191,7 +191,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         guard panes.count == 2, case .folder(let left) = panes[0].destination, case .folder(let right) = panes[1].destination
         else { return nil }
         // Not a copy Strata fills in (a server's, a container's, an archive's): a sync can't write into one.
-        guard !ReadOnlyCopies.contains(left), !ReadOnlyCopies.contains(right) else { return nil }
+        guard !ReadOnlyCopies.contains(left, copies: services.copies), !ReadOnlyCopies.contains(right, copies: services.copies) else { return nil }
         let l = TransferJob.realPath(left.standardizedFileURL.path), r = TransferJob.realPath(right.standardizedFileURL.path)
         func inside(_ a: String, _ b: String) -> Bool { a == b || a.hasPrefix(b == "/" ? "/" : b + "/") }
         guard !inside(l, r), !inside(r, l) else { return nil }
@@ -214,7 +214,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         let urls = browser.selectedURLs
         guard !urls.isEmpty else { return }
         // Onto a server: copied there (or moved within it), through the server.
-        if RemoteCopies.contains(target) { return other.browser.copyToServer(urls, into: target, move: move) }
+        if services.remote.copies.contains(target) { return other.browser.copyToServer(urls, into: target, move: move) }
         let job = services.transfers.enqueue(urls, to: target, mode: move ? .move : .copy,
                                                undo: window?.undoManager, conflicts: .sheet(for: window))
         job.onFinish = { [weak self, weak other] job in

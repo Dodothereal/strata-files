@@ -57,13 +57,14 @@ extension BrowserViewController {
     @objc func deleteImmediately(_ sender: Any?) {
         guard !isLoadingFolder else { return }
         if isOnServer { return deleteOnServer(selectedURLs) }
-        Self.confirmDelete(selectedURLs, in: view.window) { [weak self] in self?.refresh() }
+        Self.confirmDelete(selectedURLs, in: view.window, copies: services.copies) { [weak self] in self?.refresh() }
     }
 
     /// Asks, then deletes `urls` for good (see `deletionPlan`): everything it may delete is tried, and whatever couldn't
     /// be deleted is listed. `noTrash`: they were headed for the Trash, but their disk has none.
-    static func confirmDelete(_ urls: [URL], in window: NSWindow?, noTrash: Bool = false, then done: @escaping () -> Void) {
-        let (candidates, refused) = deletionPlan(urls)
+    static func confirmDelete(_ urls: [URL], in window: NSWindow?, noTrash: Bool = false,
+                              copies: CopyProviders = .live, then done: @escaping () -> Void) {
+        let (candidates, refused) = deletionPlan(urls, copies: copies)
         guard let first = candidates.first else {
             if let item = refused.first {
                 let alert = NSAlert()
@@ -108,13 +109,13 @@ extension BrowserViewController {
     /// What deleting `urls` for good deletes, and what it refuses. Disks, Trashes, and items in folders you can't change
     /// are refused up front: deleting one would remove its contents before failing on the item itself. Items inside
     /// other selected items are left to their parent.
-    static func deletionPlan(_ urls: [URL]) -> (candidates: [URL], refused: [URL]) {
+    static func deletionPlan(_ urls: [URL], copies: CopyProviders = .live) -> (candidates: [URL], refused: [URL]) {
         var refused: [URL] = []
         let candidates = outermost(urls).filter { url in
             // A Trash is emptied, never deleted itself.
             let fixed = (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true || Trash.isTrash(anySpelling: url)
             // An archive opened as a folder isn't changed either.
-            let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url)
+            let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url, copies: copies)
             if fixed || !changeable { refused.append(url) }
             return !fixed && changeable
         }
