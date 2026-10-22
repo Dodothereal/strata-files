@@ -290,7 +290,7 @@ final class PlanSheetController: NSViewController {
                 overlay.addArrangedSubview(settings)
             }
             if !suggestions.isEmpty {
-                overlay.setCustomSpacing(18, after: overlay.arrangedSubviews.last!)
+                if let last = overlay.arrangedSubviews.last { overlay.setCustomSpacing(18, after: last) }
                 appendSuggestions(suggestions, title: String(localized: "Strata can do these without it", comment: "Heading of requests Strata can plan without Apple Intelligence"))
             }
             summary.stringValue = ""
@@ -372,7 +372,7 @@ final class PlanSheetController: NSViewController {
     }
 
     private func symbol(_ name: String, size: CGFloat, color: NSColor) -> NSImageView {
-        let view = NSImageView(image: NSImage(systemSymbolName: name, accessibilityDescription: nil)!)
+        let view = NSImageView(image: NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage())
         view.symbolConfiguration = .init(pointSize: size, weight: .light)
         view.contentTintColor = color
         return view
@@ -474,6 +474,7 @@ extension PlanSheetController: NSTableViewDataSource, NSTableViewDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard rows.indices.contains(row) else { return nil }
         let id = NSUserInterfaceItemIdentifier("PlanRow")
         let cell = tableView.makeView(withIdentifier: id, owner: nil) as? PlanRowView ?? {
             let cell = PlanRowView()
@@ -747,7 +748,7 @@ private final class AppIconBadge: NSView {
         wantsLayer = true
         layer?.cornerRadius = 8
         layer?.cornerCurve = .continuous
-        let image = NSImageView(image: NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)!)
+        let image = NSImageView(image: NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil) ?? NSImage())
         image.symbolConfiguration = .init(pointSize: 15, weight: .semibold)
         image.contentTintColor = .white
         image.translatesAutoresizingMaskIntoConstraints = false
@@ -777,7 +778,10 @@ private final class AppIconBadge: NSView {
             }()
             gradient.frame = bounds
             let accent = NSColor.controlAccentColor
-            gradient.colors = [accent.blended(withFraction: 0.25, of: .white)!.cgColor, accent.blended(withFraction: 0.15, of: .black)!.cgColor]
+            gradient.colors = [
+                (accent.blended(withFraction: 0.25, of: .white) ?? accent).cgColor,
+                (accent.blended(withFraction: 0.15, of: .black) ?? accent).cgColor,
+            ]
             gradient.startPoint = CGPoint(x: 0, y: 1)
             gradient.endPoint = CGPoint(x: 1, y: 0)
         }

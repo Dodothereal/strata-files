@@ -1727,8 +1727,11 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     }
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        guard let node = item as? FileNode else { return rows[index] }
-        return node.children![index]
+        guard let node = item as? FileNode else {
+            return rows.indices.contains(index) ? rows[index] : (rows.first as Any)
+        }
+        guard let children = node.children, children.indices.contains(index) else { return node }
+        return children[index]
     }
 
     func outlineView(_ outlineView: NSOutlineView, shouldExpandItem item: Any) -> Bool {
@@ -1932,7 +1935,8 @@ extension BrowserViewController: NSTextFieldDelegate {
         } else {
             deferredApply = nil
             let row = outlineView.row(forItem: node)
-            if row >= 0 { outlineView.reloadData(forRowIndexes: [row], columnIndexes: [outlineView.column(withIdentifier: .name)]) }
+            let column = outlineView.column(withIdentifier: .name)
+            if row >= 0, column >= 0 { outlineView.reloadData(forRowIndexes: [row], columnIndexes: [column]) }
         }
         view.window?.makeFirstResponder(outlineView)
         if deferredMetadataOrder {

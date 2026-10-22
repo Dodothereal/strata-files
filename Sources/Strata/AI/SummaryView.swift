@@ -158,12 +158,12 @@ final class SummaryView: NSView {
                     : String(localized: "Pull out the key sentences of this document.")
             body.addArrangedSubview(wrapping(text, size: 12, color: InspectorColors.secondary))
             let button = NSButton(title: String(localized: "Summarize", comment: "Button: summarize the document"),
-                                  image: NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)!,
+                                  image: NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil) ?? NSImage(),
                                   target: self, action: #selector(summarize(_:)))
             button.imagePosition = .imageLeading
             button.controlSize = .regular
             button.bezelStyle = .push
-            body.setCustomSpacing(10, after: body.arrangedSubviews.last!)
+            if let last = body.arrangedSubviews.last { body.setCustomSpacing(10, after: last) }
             body.addArrangedSubview(button)
         case let .working(partial):
             spinner.startAnimation(nil)
@@ -233,7 +233,7 @@ final class SummaryView: NSView {
     }
 
     private func symbol(_ name: String, color: NSColor, size: CGFloat) -> NSImageView {
-        let view = NSImageView(image: NSImage(systemSymbolName: name, accessibilityDescription: nil)!)
+        let view = NSImageView(image: NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage())
         view.symbolConfiguration = .init(pointSize: size, weight: .medium)
         view.contentTintColor = color
         view.setContentHuggingPriority(.required, for: .horizontal)

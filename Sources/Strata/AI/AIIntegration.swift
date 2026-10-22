@@ -39,9 +39,10 @@ enum StrataAI {
                 subtitle = String(localized: "p. \(page) · \(hit.snippet)",
                                   comment: "Content search result: the PDF page the matching text is on, then the text")
             }
+            let score = hit.score.isFinite ? Int((min(max(hit.score, 0), 100) * 100).rounded()) : 0
             return PaletteItem(title: hit.title ?? hit.url.lastPathComponent, subtitle: subtitle,
                                icon: IconCache.shared.icon(forPath: hit.url.path), kind: .match,
-                               fixedScore: Int(hit.score * 100)) { open(hit.url) }
+                               fixedScore: score) { open(hit.url) }
         }
     }
 }

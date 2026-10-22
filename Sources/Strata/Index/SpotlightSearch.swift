@@ -331,8 +331,9 @@ package enum SpotlightSearch {
                     query.stop()
                     let total = query.resultCount
                     var urls: [URL] = []
-                    for index in 0..<min(total, limit) {
-                        if let path = (query.result(at: index) as? NSMetadataItem)?.value(forAttribute: NSMetadataItemPathKey) as? String {
+                    for index in 0..<max(0, min(total, limit)) {
+                        if let path = (query.result(at: index) as? NSMetadataItem)?.value(forAttribute: NSMetadataItemPathKey) as? String,
+                           !path.isEmpty {
                             urls.append(URL(fileURLWithPath: path))
                         }
                     }

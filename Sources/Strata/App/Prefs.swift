@@ -259,7 +259,7 @@ final class Prefs {
     }
 
     var lastLocation: URL? {
-        get { defaults.string(forKey: Key.lastLocation).map { URL(fileURLWithPath: $0, isDirectory: true) } }
+        get { defaults.string(forKey: Key.lastLocation).flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) } }
         set { defaults.set(newValue?.path, forKey: Key.lastLocation) }
     }
 }

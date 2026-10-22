@@ -65,7 +65,8 @@ if workspace != nil, query != nil || scope != nil || !paths.isEmpty {
     exit(2)
 }
 
-let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+let currentDirectory = FileManager.default.currentDirectoryPath
+let cwd = URL(fileURLWithPath: currentDirectory.isEmpty ? "/" : currentDirectory, isDirectory: true)
 func absolute(_ path: String) -> URL {
     let expanded = (path as NSString).expandingTildeInPath
     guard !expanded.isEmpty else {

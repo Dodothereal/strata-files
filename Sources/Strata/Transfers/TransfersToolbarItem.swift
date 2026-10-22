@@ -89,7 +89,7 @@ enum TransferRing {
         let hasFailures: Bool
 
         init(progress: Double?, hasFailures: Bool) {
-            step = progress.map { Int(($0 * 48).rounded()) }
+            step = progress.map { $0.isFinite ? Int((min(max($0, 0), 1) * 48).rounded()) : 0 }
             self.hasFailures = hasFailures
         }
     }

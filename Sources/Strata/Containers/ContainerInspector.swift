@@ -323,7 +323,7 @@ private final class MountRow: NSView {
         inside.toolTip = String(localized: "Show it in the container", comment: "Inspector, Mounts: tooltip on a mount's path in the container")
         var details: [NSView] = []
         switch mount.kind {
-        case .bind:
+        case .bind where !mount.source.isEmpty:
             let source = URL(fileURLWithPath: mount.source)
             let text = String(localized: "from \(Format.tildePath(source))", comment: "Inspector, Mounts: the Mac folder a container mounts")
             if mount.source.hasPrefix("/"), FileManager.default.fileExists(atPath: mount.source) {
@@ -333,6 +333,8 @@ private final class MountRow: NSView {
             } else {
                 details.append(ContainerInspectorView.small(text, color: InspectorColors.secondary))
             }
+        case .bind:
+            break
         case .volume:
             details.append(ContainerInspectorView.small(String(localized: "volume \(mount.name ?? mount.source)", comment: "Inspector, Mounts: a named volume"),
                                                         color: InspectorColors.secondary))

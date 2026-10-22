@@ -157,7 +157,7 @@ nonisolated package enum JSONFormatter {
            let match = description.firstMatch(of: /line (\d+)/), let line = Int(match.1) {
             return line
         }
-        if let index = error.userInfo["NSJSONSerializationErrorIndex"] as? Int, index <= data.count {
+        if let index = error.userInfo["NSJSONSerializationErrorIndex"] as? Int, index >= 0, index <= data.count {
             return data.prefix(index).count(where: { $0 == 0x0A }) + 1
         }
         return nil

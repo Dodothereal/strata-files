@@ -30,7 +30,22 @@ nonisolated package final class FSEventsStream: @unchecked Sendable {
         }
     }
 
+    private final class CallbackContext: @unchecked Sendable {
+        private let lock = NSLock()
+        private var handler: (@Sendable ([Event]) -> Void)?
+
+        init(_ handler: (@Sendable ([Event]) -> Void)?) { self.handler = handler }
+
+        func emit(_ events: [Event]) {
+            let current = lock.withLock { handler }
+            current?(events)
+        }
+
+        func clear() { lock.withLock { handler = nil } }
+    }
+
     private var stream: FSEventStreamRef?
+    private var contextBox: CallbackContext?
     private let queue = DispatchQueue(label: "dev.strata.fsevents", qos: .utility)
     /// Receives each batch of events. Set before `start`.
     package var handler: (@Sendable ([Event]) -> Void)?
@@ -40,28 +55,45 @@ nonisolated package final class FSEventsStream: @unchecked Sendable {
     /// Starts watching `paths`, replaying everything since `since` (or only new changes when `nil`).
     package func start(paths: [String], since: FSEventStreamEventId?, latency: TimeInterval = 0.4) {
         stop()
-        var context = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(),
-                                           retain: nil, release: nil, copyDescription: nil)
+        let box = CallbackContext(handler)
+        let retained = Unmanaged.passRetained(box)
+        var context = FSEventStreamContext(
+            version: 0, info: retained.toOpaque(), retain: nil,
+            release: { info in
+                guard let info else { return }
+                Unmanaged<CallbackContext>.fromOpaque(info).release()
+            },
+            copyDescription: nil
+        )
         let callback: FSEventStreamCallback = { _, info, count, paths, flags, ids in
-            guard let info else { return }
-            let me = Unmanaged<FSEventsStream>.fromOpaque(info).takeUnretainedValue()
-            let list = unsafeBitCast(paths, to: NSArray.self) as? [String] ?? []
+            guard let info, count > 0 else { return }
+            let rawPaths = Unmanaged<AnyObject>.fromOpaque(paths).takeUnretainedValue()
+            guard CFGetTypeID(rawPaths) == CFArrayGetTypeID(),
+                  let list = rawPaths as? [String] else { return }
+            let box = Unmanaged<CallbackContext>.fromOpaque(info).takeUnretainedValue()
+            let total = min(count, list.count)
             var events: [Event] = []
-            events.reserveCapacity(count)
-            for index in 0..<min(count, list.count) {
+            events.reserveCapacity(total)
+            for index in 0..<total {
                 events.append(Event(path: list[index], flags: flags[index], id: ids[index]))
             }
-            me.handler?(events)
+            box.emit(events)
         }
         let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagWatchRoot)
         guard let stream = FSEventStreamCreate(nil, callback, &context, paths as CFArray,
-                                               since ?? FSEventStreamEventId(kFSEventStreamEventIdSinceNow), latency, flags) else { return }
+                                               since ?? FSEventStreamEventId(kFSEventStreamEventIdSinceNow), latency, flags) else {
+            retained.release()
+            return
+        }
+        contextBox = box
         FSEventStreamSetDispatchQueue(stream, queue)
         FSEventStreamStart(stream)
         self.stream = stream
     }
 
     package func stop() {
+        contextBox?.clear()
+        contextBox = nil
         guard let stream else { return }
         FSEventStreamStop(stream)
         FSEventStreamInvalidate(stream)

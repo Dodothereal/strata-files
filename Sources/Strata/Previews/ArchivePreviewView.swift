@@ -102,7 +102,9 @@ package final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NS
     }
 
     package func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        ((item as? ArchiveNode) ?? root).children[index]
+        let parent = (item as? ArchiveNode) ?? root
+        guard parent.children.indices.contains(index) else { return root }
+        return parent.children[index]
     }
 
     package func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {

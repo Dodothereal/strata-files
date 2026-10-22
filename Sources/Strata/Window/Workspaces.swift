@@ -65,7 +65,7 @@ final class Workspaces {
     /// are kept, never with a password.
     static func shares(for paths: [String]) -> [String: String]? {
         var found: [String: String] = [:]
-        for path in paths {
+        for path in paths where !path.isEmpty {
             guard let values = try? URL(fileURLWithPath: path).resourceValues(forKeys: [.volumeURLKey, .volumeURLForRemountingKey]),
                   let volume = values.volume, let address = values.volumeURLForRemounting,
                   ServerConnection.schemes.contains(address.scheme?.lowercased() ?? "") else { continue }
@@ -243,9 +243,9 @@ final class Workspaces {
     func openWindows(_ plan: WorkspacePlan, name: String) -> [BrowserWindowController] {
         guard let services else { return [] }
         var controllers: [BrowserWindowController] = []
-        for tab in plan.tabs {
-            let location = tab[0].waiting == nil ? URL(fileURLWithPath: tab[0].path) : Places.home
-            let second = tab.count > 1 ? (tab[1].waiting == nil ? URL(fileURLWithPath: tab[1].path) : Places.home) : nil
+        for tab in plan.tabs where !tab.isEmpty {
+            let location = tab[0].waiting == nil && !tab[0].path.isEmpty ? URL(fileURLWithPath: tab[0].path) : Places.home
+            let second = tab.count > 1 ? (tab[1].waiting == nil && !tab[1].path.isEmpty ? URL(fileURLWithPath: tab[1].path) : Places.home) : nil
             // Each tab goes after the one before, so they keep their order.
             guard let controller = services.windows.open(location, second, controllers.last?.window, services) else {
                 controllers.forEach { $0.window?.close() }
@@ -265,13 +265,15 @@ final class Workspaces {
     /// Resolve saved server paths against this workspace's owner, including copies not created yet.
     func plan(_ workspace: Workspace) -> WorkspacePlan {
         WorkspacePlan(workspace, exists: Self.isThere, server: { [copies = remote.copies] path in
-            copies.server(containing: URL(fileURLWithPath: path))?.server.id
+            guard !path.isEmpty else { return nil }
+            return copies.server(containing: URL(fileURLWithPath: path))?.server.id
         })
     }
 
     /// The saved server whose files `path` is in (a folder in Strata's copy of them), if any.
     nonisolated static func server(of path: String) -> String? {
-        RemoteCopies.server(containing: URL(fileURLWithPath: path))?.server.id
+        guard !path.isEmpty else { return nil }
+        return RemoteCopies.server(containing: URL(fileURLWithPath: path))?.server.id
     }
 
     /// Connects to the shares and servers that `controllers`' panes wait for, one at a time (macOS or ssh may ask for a
@@ -411,9 +413,10 @@ final class Workspaces {
 
     /// Folders as a short list: a few, then how many more.
     private static func list(_ paths: [String]) -> String {
-        let shown = paths.prefix(5).map { Format.tildePath(URL(fileURLWithPath: $0)) }
+        let nonEmpty = paths.filter { !$0.isEmpty }
+        let shown = nonEmpty.prefix(5).map { Format.tildePath(URL(fileURLWithPath: $0)) }
         var lines = shown
-        if paths.count > shown.count { lines.append(String(localized: "and \(paths.count - shown.count) more", comment: "plural")) }
+        if nonEmpty.count > shown.count { lines.append(String(localized: "and \(nonEmpty.count - shown.count) more", comment: "plural")) }
         return lines.joined(separator: "\n")
     }
 
@@ -433,7 +436,8 @@ final class Workspaces {
     /// a share that isn't there).
     func help(_ workspace: Workspace) -> String {
         var lines = workspace.tabs.map { tab in
-            tab.map { path in
+            tab.compactMap { path -> String? in
+                guard !path.isEmpty else { return nil }
                 let url = URL(fileURLWithPath: path)
                 if let (server, top) = remote.copies.server(containing: url), top.standardizedFileURL.path == url.standardizedFileURL.path { return server.name }
                 return url.lastPathComponent.isEmpty ? path : url.lastPathComponent

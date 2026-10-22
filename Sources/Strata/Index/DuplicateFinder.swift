@@ -35,12 +35,13 @@ nonisolated package enum DuplicateFinder {
         for (index, group) in candidates.enumerated() {
             if isCancelled() { return [] }
             progress(index, total)
-            let size = group[0].size
+            guard let first = group.first, group.count > 1 else { continue }
+            let size = first.size
             // Hard links are one file under several names: deleting one frees nothing, so each counts once.
             var inodes: Set<[UInt64]> = []
             let distinct = group.filter { file in
                 var info = stat()
-                guard lstat(file.path, &info) == 0 else { return false }
+                guard lstat(file.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else { return false }
                 return inodes.insert([UInt64(bitPattern: Int64(info.st_dev)), info.st_ino]).inserted
             }
             guard distinct.count > 1 else { continue }
@@ -68,8 +69,21 @@ nonisolated package enum DuplicateFinder {
         return groups.sorted { $0.reclaimable > $1.reclaimable }
     }
 
+    private static func openRegularFile(_ path: String) -> FileHandle? {
+        let fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard fd >= 0 else { return nil }
+        var info = stat()
+        guard fstat(fd, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else {
+            close(fd)
+            return nil
+        }
+        let flags = fcntl(fd, F_GETFL)
+        if flags != -1 { _ = fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) }
+        return FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+    }
+
     private static func quickHash(_ path: String, size: Int64) -> Data? {
-        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        guard let handle = openRegularFile(path) else { return nil }
         defer { try? handle.close() }
         let chunk = 64 * 1024
         var hasher = SHA256()
@@ -83,7 +97,7 @@ nonisolated package enum DuplicateFinder {
     }
 
     private static func fullHash(_ path: String) -> Data? {
-        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        guard let handle = openRegularFile(path) else { return nil }
         defer { try? handle.close() }
         var hasher = SHA256()
         do {

@@ -1,7 +1,7 @@
 [
   {
     "file": "Strata/Model/OperationLog.swift",
-    "find": "guard paths.allSatisfy({ $0.count == 2 }) else {",
+    "find": "guard paths.allSatisfy({ $0.count == 2 && !$0[0].isEmpty && !$0[1].isEmpty }) else {",
     "replace": "guard true else {",
     "rule": "Malformed History pairs reach undo",
     "tests": "HistoryDecodingSafetyTests"

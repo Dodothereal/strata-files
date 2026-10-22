@@ -108,24 +108,28 @@ final class HistoryWindowController: NSWindowController {
     }
 
     fileprivate func summary(_ entry: OperationLog.Entry) -> String {
-        let items = entry.kind == .move ? entry.pairs.map { $0[0] } : entry.created
+        let items = entry.kind == .move ? entry.pairs.compactMap { $0.first } : entry.created
         let first = (items.first as NSString?)?.lastPathComponent ?? ""
-        let more = items.count - 1
+        let more = max(0, items.count - 1)
         switch entry.kind {
         case .move:
-            let destination = entry.pairs.first.map { Format.tildePath(URL(fileURLWithPath: $0[1]).deletingLastPathComponent()) } ?? ""
+            let destination = entry.pairs.first.flatMap {
+                $0.count == 2 && !$0[1].isEmpty ? Format.tildePath(URL(fileURLWithPath: $0[1]).deletingLastPathComponent()) : nil
+            } ?? ""
             // Renames (every item stays in its folder) show the new name, not a destination.
             let inPlace = !entry.pairs.isEmpty && entry.pairs.allSatisfy {
-                ($0[0] as NSString).deletingLastPathComponent == ($0[1] as NSString).deletingLastPathComponent
+                $0.count == 2 && ($0[0] as NSString).deletingLastPathComponent == ($0[1] as NSString).deletingLastPathComponent
             }
-            if inPlace, let to = entry.pairs.first.map({ ($0[1] as NSString).lastPathComponent }) {
+            if inPlace, let to = entry.pairs.first.flatMap({ $0.count == 2 ? ($0[1] as NSString).lastPathComponent : nil }) {
                 return more > 0 ? String(localized: "“\(first)” → “\(to)” and \(more) more, in \(destination)", comment: "plural")
                     : String(localized: "“\(first)” → “\(to)”", comment: "History: an item renamed from one name to another")
             }
             return more > 0 ? String(localized: "“\(first)” and \(more) more → \(destination)", comment: "plural")
                 : String(localized: "“\(first)” → \(destination)", comment: "History: an item moved to a folder")
         case .create:
-            let folder = entry.created.first.map { Format.tildePath(URL(fileURLWithPath: $0).deletingLastPathComponent()) } ?? ""
+            let folder = entry.created.first.flatMap {
+                $0.isEmpty ? nil : Format.tildePath(URL(fileURLWithPath: $0).deletingLastPathComponent())
+            } ?? ""
             return more > 0 ? String(localized: "“\(first)” and \(more) more in \(folder)", comment: "plural")
                 : String(localized: "“\(first)” in \(folder)", comment: "History: an item created in a folder")
         }

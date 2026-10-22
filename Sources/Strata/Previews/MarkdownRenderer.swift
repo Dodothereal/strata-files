@@ -86,10 +86,11 @@ nonisolated package final class MarkdownRenderer {
 
     private func heading(level: Int, text: String, into output: NSMutableAttributedString, context: Context) {
         let sizes: [CGFloat] = [21, 17, 15, 13, 12, 12]
-        let size = sizes[min(level, 6) - 1]
-        let style = paragraphStyle(context, after: level <= 2 ? 10 : 6, before: output.length == 0 ? 0 : (level <= 2 ? 12 : 8))
+        let clamped = min(max(level, 1), 6)
+        let size = sizes[clamped - 1]
+        let style = paragraphStyle(context, after: clamped <= 2 ? 10 : 6, before: output.length == 0 ? 0 : (clamped <= 2 ? 12 : 8))
         style.lineHeightMultiple = 1.05
-        if level <= 2 {
+        if clamped <= 2 {
             let rule = NSTextBlock()
             rule.setValue(100, type: .percentageValueType, for: .width)
             rule.setWidth(1, type: .absoluteValueType, for: .border, edge: .maxY)
@@ -174,6 +175,7 @@ nonisolated package final class MarkdownRenderer {
 
     private func table(header: [String], alignments: [NSTextAlignment], rows: [[String]],
                        into output: NSMutableAttributedString, context: Context) {
+        guard !header.isEmpty else { return }
         let table = NSTextTable()
         table.numberOfColumns = header.count
         table.layoutAlgorithm = .automaticLayoutAlgorithm
@@ -183,7 +185,7 @@ nonisolated package final class MarkdownRenderer {
         table.setWidth(2, type: .absoluteValueType, for: .margin, edge: .minY)
         table.setWidth(blockSpacing, type: .absoluteValueType, for: .margin, edge: .maxY)
         for (rowIndex, row) in ([header] + rows).enumerated() {
-            for (column, text) in row.enumerated() {
+            for (column, text) in row.enumerated() where column < header.count {
                 let cell = NSTextTableBlock(table: table, startingRow: rowIndex, rowSpan: 1, startingColumn: column, columnSpan: 1)
                 cell.setWidth(1, type: .absoluteValueType, for: .border)
                 cell.setBorderColor(.separatorColor)
@@ -193,7 +195,7 @@ nonisolated package final class MarkdownRenderer {
                 if rowIndex == 0 { cell.backgroundColor = MarkdownColors.tableHeader }
                 let style = NSMutableParagraphStyle()
                 style.textBlocks = context.textBlocks + [cell]
-                style.alignment = alignments[column]
+                style.alignment = alignments.indices.contains(column) ? alignments[column] : .left
                 style.lineHeightMultiple = 1.1
                 let size: CGFloat = 12
                 output.append(inline(text, size: size, weight: rowIndex == 0 ? .semibold : .regular, color: textColor(context), paragraph: style))

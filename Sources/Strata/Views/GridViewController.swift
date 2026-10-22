@@ -472,7 +472,7 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
 
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
         let item = collectionView.makeItem(withIdentifier: GridItem.identifier, for: indexPath)
-        if let item = item as? GridItem { configure(item, at: indexPath.item) }
+        if let item = item as? GridItem, indexPath.count == 2 { configure(item, at: indexPath.item) }
         return item
     }
 

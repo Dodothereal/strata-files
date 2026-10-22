@@ -598,7 +598,10 @@ nonisolated enum PlanExpander {
         }
         result += rest
         // A model may include the extension in the template; it is added back separately.
-        if !item.ext.isEmpty, result.lowercased().hasSuffix("." + item.ext.lowercased()) { result.removeLast(item.ext.count + 1) }
+        if !item.ext.isEmpty,
+           let range = result.range(of: "." + item.ext, options: [.caseInsensitive, .backwards, .anchored]) {
+            result.removeSubrange(range)
+        }
         return result
     }
 

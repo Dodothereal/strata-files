@@ -24,7 +24,7 @@ nonisolated enum EngineDiscovery {
                            temporary: URL = FileManager.default.temporaryDirectory) -> [String] {
         var paths: [String] = []
         if let host = environment["DOCKER_HOST"], let path = socketPath(fromHost: host) { paths.append(path) }
-        let config = environment["DOCKER_CONFIG"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+        let config = environment["DOCKER_CONFIG"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
             ?? home.appending(path: ".docker", directoryHint: .isDirectory)
         if let context = environment["DOCKER_CONTEXT"] ?? currentContext(config: config), context != "default",
            let host = contextHost(name: context, config: config), let path = socketPath(fromHost: host) {

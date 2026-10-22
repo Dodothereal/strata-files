@@ -81,7 +81,7 @@ nonisolated struct WorkspacePlan: Equatable, Sendable {
     init(_ workspace: Workspace, exists: (String) -> Bool, server: (String) -> String? = { _ in nil }) {
         for (t, tab) in workspace.tabs.enumerated() {
             var panes: [Pane] = []
-            for (p, path) in tab.enumerated().prefix(2) {
+            for (p, path) in tab.enumerated().prefix(2) where !path.isEmpty {
                 let mode = workspace.mode(tab: t, pane: p)
                 if let id = server(path) {
                     // A server's files are read again each time: the pane waits for its server.

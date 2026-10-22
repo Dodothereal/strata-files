@@ -101,14 +101,15 @@ extension TransferJob {
 
 enum TransferFormat {
     static func rate(_ bytesPerSecond: Double) -> String {
-        String(localized: "\(Format.bytes(Int64(bytesPerSecond)))/s", comment: "Transfer speed, like 84 MB/s")
+        let clamped = bytesPerSecond.isFinite && bytesPerSecond > 0 ? min(bytesPerSecond, Double(Int64.max / 2)) : 0
+        return String(localized: "\(Format.bytes(Int64(clamped)))/s", comment: "Transfer speed, like 84 MB/s")
     }
 
     /// "a few seconds left", "about 40 s left", "about 3 min left", "about 1 h 20 min left".
     static func remaining(_ seconds: TimeInterval) -> String {
-        if seconds < 5 { return String(localized: "a few seconds left") }
+        guard seconds.isFinite, seconds >= 5 else { return String(localized: "a few seconds left") }
         if seconds < 55 { return String(localized: "about \(Int((seconds / 5).rounded()) * 5) s left", comment: "Time left, in seconds") }
-        let minutes = max(1, Int((seconds / 60).rounded()))
+        let minutes = max(1, Int(min(seconds / 60, Double(Int.max / 2)).rounded()))
         if minutes < 60 { return String(localized: "about \(minutes) min left", comment: "Time left, in minutes") }
         let hours = minutes / 60, rest = minutes % 60
         return rest == 0 ? String(localized: "about \(hours) h left", comment: "Time left, in hours")

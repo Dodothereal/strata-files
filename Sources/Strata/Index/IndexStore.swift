@@ -213,9 +213,10 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             for path in paths {
                 var info = statfs()
                 guard statfs(path, &info) == 0 else { continue }
-                volumes[info.f_fsid.val.0] = Int(info.f_files &- info.f_ffree)
+                let used = info.f_files >= info.f_ffree ? info.f_files - info.f_ffree : 0
+                volumes[info.f_fsid.val.0] = Int(min(used, 60_000_000))
             }
-            return min(volumes.values.reduce(0, +) + 100_000, 60_000_000)
+            return volumes.values.reduce(100_000) { min(60_000_000, $0 + $1) }
         }
 
         /// Adds a size/count change to every ancestor of `id` (not to `id` itself).
@@ -415,10 +416,12 @@ nonisolated package final class IndexStore: @unchecked Sendable {
         package func nameEquals(_ id: Int32, _ bytes: [UInt8]) -> Bool {
             let length = Int(nameLength[Int(id)])
             guard length == bytes.count else { return false }
+            guard length > 0 else { return true }
             let start = Int(nameStart[Int(id)])
             return names.withUnsafeBufferPointer { buffer in
                 bytes.withUnsafeBufferPointer { wanted in
-                    memcmp(buffer.baseAddress! + start, wanted.baseAddress!, length) == 0
+                    guard let base = buffer.baseAddress, let wantedBase = wanted.baseAddress else { return false }
+                    return memcmp(base + start, wantedBase, length) == 0
                 }
             }
         }

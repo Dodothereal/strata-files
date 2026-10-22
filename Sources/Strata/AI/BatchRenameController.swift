@@ -257,7 +257,9 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
         rules.addAtEnd = position.indexOfSelectedItem == 0
         rules.template = template.stringValue
         rules.startNumber = Int(start.stringValue).map { min(max($0, RenameRules.startRange.lowerBound), RenameRules.startRange.upperBound) } ?? 1
-        rules.transform = PlanRecipe.NameTransform.allCases[max(0, caseMenu.indexOfSelectedItem)]
+        let allTransforms = PlanRecipe.NameTransform.allCases
+        let transformIndex = min(max(0, caseMenu.indexOfSelectedItem), max(0, allTransforms.count - 1))
+        rules.transform = allTransforms[transformIndex]
         rules.includeExtension = includeExtension.state == .on
         guard !items.isEmpty else { return }
         previewTask?.cancel()
@@ -305,6 +307,7 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard rows.indices.contains(row) else { return nil }
         let id = NSUserInterfaceItemIdentifier("RenameRow")
         let cell = tableView.makeView(withIdentifier: id, owner: nil) as? PlanRowView ?? {
             let view = PlanRowView()

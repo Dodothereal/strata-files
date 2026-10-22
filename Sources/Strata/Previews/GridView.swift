@@ -145,7 +145,8 @@ package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate
     package func numberOfRows(in tableView: NSTableView) -> Int { data.rows.count }
 
     package func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard let tableColumn, let column = Int(tableColumn.identifier.rawValue) else { return nil }
+        guard let tableColumn, let column = Int(tableColumn.identifier.rawValue),
+              data.rows.indices.contains(row), data.columns.indices.contains(column) else { return nil }
         let identifier = NSUserInterfaceItemIdentifier("GridCell")
         let cell = tableView.makeView(withIdentifier: identifier, owner: nil) as? GridCellView ?? GridCellView()
         cell.identifier = identifier

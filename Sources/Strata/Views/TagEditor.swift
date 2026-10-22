@@ -75,7 +75,7 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
     var typed: (text: String, range: NSRange)? {
         guard let editor = currentEditor() else { return nil }
         let string = editor.string as NSString
-        let caret = min(editor.selectedRange.location, string.length)
+        let caret = max(0, min(editor.selectedRange.location, string.length))
         // Tags are attachment characters; a comma ends a tag.
         func isBreak(_ index: Int) -> Bool { [0xFFFC, 0x2C].contains(string.character(at: index)) }
         var start = caret

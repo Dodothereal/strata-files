@@ -63,7 +63,7 @@ nonisolated enum Archiver {
     static func freeSpace(onDiskOf url: URL) -> Int64? {
         var info = statfs()
         guard statfs(url.path, &info) == 0 else { return nil }
-        return Int64(info.f_bavail) * Int64(info.f_bsize)
+        return Int64(clamping: info.f_bavail).saturatingMultiply(Int64(info.f_bsize))
     }
 
     /// Free space on `url`'s disk, read fresh each time (a URL caches what it was first told).

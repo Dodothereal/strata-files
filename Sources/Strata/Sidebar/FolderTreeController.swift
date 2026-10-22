@@ -202,14 +202,26 @@ final class FolderTreeController: NSViewController {
         guard isActive, !roots.isEmpty else { return }
         let fresh = currentRoots()
         let removed = IndexSet(roots.indices.filter { index in !fresh.contains { $0 === roots[index] } })
+        for index in removed { unwatch(below: roots[index].url) }
+        let remaining = roots.enumerated().filter { !removed.contains($0.offset) }.map(\.element)
+        let keptInFresh = fresh.filter { item in remaining.contains { $0 === item } }
+        let orderPreserved = remaining.count == keptInFresh.count
+            && zip(remaining, keptInFresh).allSatisfy { $0 === $1 }
+        guard orderPreserved else {
+            roots = fresh
+            outline.reloadData()
+            if let current { reveal(current) }
+            return
+        }
+        outline.beginUpdates()
         if !removed.isEmpty {
-            for index in removed { unwatch(below: roots[index].url) }
-            roots = roots.enumerated().filter { !removed.contains($0.offset) }.map(\.element)
+            roots = remaining
             outline.removeItems(at: removed, inParent: nil, withAnimation: [])
         }
         let inserted = IndexSet(fresh.indices.filter { index in !roots.contains { $0 === fresh[index] } })
         roots = fresh
         if !inserted.isEmpty { outline.insertItems(at: inserted, inParent: nil, withAnimation: []) }
+        outline.endUpdates()
         if let current { reveal(current) }
     }
 
@@ -236,9 +248,9 @@ final class FolderTreeController: NSViewController {
         guard !node.isLoading else { return }
         node.isLoading = true
         let url = node.url, hidden = preferences.showHidden, generation = generation
-        Self.reads.async {
+        Self.reads.async { [weak self] in
             let folders = Self.subfolders(of: url, includeHidden: hidden)
-            DispatchQueue.main.async { [weak self] in
+            DispatchQueue.main.async {
                 MainActor.assumeIsolated { self?.loaded(node, folders, generation: generation) }
             }
         }
@@ -273,9 +285,9 @@ final class FolderTreeController: NSViewController {
         }
         guard !candidates.isEmpty else { return }
         let urls = candidates.map(\.url), hidden = preferences.showHidden, generation = generation
-        Self.lookAheads.async {
+        Self.lookAheads.async { [weak self] in
             let answers = urls.map { Self.hasSubfolder($0, includeHidden: hidden) }
-            DispatchQueue.main.async { [weak self] in
+            DispatchQueue.main.async {
                 MainActor.assumeIsolated { self?.lookedAhead(candidates, answers, generation: generation) }
             }
         }
@@ -360,9 +372,9 @@ final class FolderTreeController: NSViewController {
         node.isRefreshing = true
         node.refreshes += 1
         let token = node.refreshes, url = node.url, hidden = preferences.showHidden, generation = generation
-        Self.reads.async {
+        Self.reads.async { [weak self] in
             let folders = Self.subfolders(of: url, includeHidden: hidden)
-            DispatchQueue.main.async { [weak self] in
+            DispatchQueue.main.async {
                 MainActor.assumeIsolated { self?.refreshed(node, folders, token: token, generation: generation) }
             }
         }
@@ -483,8 +495,11 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
     }
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        guard let node = item as? FolderNode else { return roots[index] }
-        return node.children![index]
+        guard let node = item as? FolderNode else {
+            return roots.indices.contains(index) ? roots[index] : (roots.first as Any)
+        }
+        guard let children = node.children, children.indices.contains(index) else { return node }
+        return children[index]
     }
 
     /// Read folders show a triangle when they have subfolders; unread ones when looking ahead found some (or until it has).

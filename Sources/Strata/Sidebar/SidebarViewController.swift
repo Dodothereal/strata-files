@@ -486,7 +486,7 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         springLoader.cancel()
         let copies = services.copies
         if let at = favoriteIndex(item, index) {
-            if let path = info.draggingPasteboard.string(forType: .sidebarFavorite) {
+            if let path = info.draggingPasteboard.string(forType: .sidebarFavorite), !path.isEmpty {
                 Places.addFavorites([URL(fileURLWithPath: path)], at: at, preferences: preferences)
             } else {
                 Places.addFavorites(FileDrop.urls(info, copies: copies).filter { !ReadOnlyCopies.contains($0, copies: copies) }, at: at, preferences: preferences)

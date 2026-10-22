@@ -162,11 +162,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch url.host {
         case "search":
             guard let query = value("q") else { return }
-            controller.search(query, in: value("in").map { URL(fileURLWithPath: $0) })
+            controller.search(query, in: value("in").flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) })
         case "open":
             guard let path = value("path") else { return }
+            let expanded = (path as NSString).expandingTildeInPath
+            guard !expanded.isEmpty else { return }
             // A folder opens; a file (or package) is shown selected in its folder.
-            let target = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+            let target = URL(fileURLWithPath: expanded)
             var isDirectory: ObjCBool = false
             let exists = FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory)
             if exists, !isDirectory.boolValue || NSWorkspace.shared.isFilePackage(atPath: target.path) {

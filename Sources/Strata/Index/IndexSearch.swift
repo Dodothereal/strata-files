@@ -124,10 +124,12 @@ nonisolated package struct IndexQuery: Sendable {
                 if value.hasPrefix("/") || value.hasPrefix("~") {
                     query.scopePath = (value as NSString).expandingTildeInPath
                 } else {
-                    query.scopeNames.append(Array(foldText(value).utf8))
+                    let scope = foldText(value)
+                    if !scope.isEmpty { query.scopeNames.append(Array(scope.utf8)) }
                 }
             } else if (lower.hasPrefix("!") || lower.hasPrefix("-")) && lower.count > 1 {
-                query.excludedTerms.append(Array(folded.dropFirst().utf8))
+                let term = folded.dropFirst()
+                if !term.isEmpty { query.excludedTerms.append(Array(term.utf8)) }
             } else if lower == "!" || lower == "-" {
                 continue   // Half-typed exclusion: not a term yet.
             } else if lower.contains("/") {
@@ -137,7 +139,7 @@ nonisolated package struct IndexQuery: Sendable {
                     parts[parts.count - 1] = Array(name.utf8)
                 }
                 if parts.count == 1 { query.terms.append(parts[0]) } else if parts.count > 1 { query.pathTerms.append(parts) }
-            } else if !lower.isEmpty {
+            } else if !folded.isEmpty {
                 query.terms.append(Array(folded.utf8))
             }
         }
@@ -530,7 +532,7 @@ nonisolated package enum IndexSearch {
 
     private static func positionScore(_ position: Int, _ termLength: Int, _ name: UnsafeBufferPointer<UInt8>) -> Int {
         if position == 0 && termLength == name.count { return 120 }
-        if position == 0 { return 70 }
+        if position <= 0 { return 70 }
         let previous = name[position - 1]
         if previous == UInt8(ascii: " ") || previous == UInt8(ascii: "-") || previous == UInt8(ascii: "_") || previous == UInt8(ascii: ".") {
             return 45
@@ -568,7 +570,7 @@ nonisolated package enum IndexSearch {
     /// Exact substring search.
     private static func findExact(_ term: [UInt8], in name: UnsafeBufferPointer<UInt8>) -> Int? {
         let n = name.count, m = term.count
-        guard m > 0, m <= n else { return m == 0 ? 0 : nil }
+        guard m > 0, m <= n else { return nil }
         var i = 0
         while i <= n - m {
             if name[i] == term[0] {
@@ -595,7 +597,7 @@ nonisolated package enum IndexSearch {
     /// Case-insensitive (ASCII) substring search; `term` is already lowercase.
     private static func find(_ term: [UInt8], in name: UnsafeBufferPointer<UInt8>) -> Int? {
         let n = name.count, m = term.count
-        guard m > 0, m <= n else { return m == 0 ? 0 : nil }
+        guard m > 0, m <= n else { return nil }
         let first = term[0]
         var i = 0
         while i <= n - m {

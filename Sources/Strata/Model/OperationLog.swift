@@ -64,9 +64,15 @@ final class OperationLog {
             undone = try c.decodeIfPresent(Bool.self, forKey: .undone) ?? false
             changed = try c.decodeIfPresent(Date.self, forKey: .changed)
             for (key, paths) in [(CodingKeys.pairs, pairs), (.replaced, replaced)] {
-                guard paths.allSatisfy({ $0.count == 2 }) else {
+                guard paths.allSatisfy({ $0.count == 2 && !$0[0].isEmpty && !$0[1].isEmpty }) else {
                     throw DecodingError.dataCorruptedError(forKey: key, in: c,
                                                           debugDescription: "History needs a source and destination for each move.")
+                }
+            }
+            for (key, paths) in [(CodingKeys.created, created), (.containers, containers)] {
+                guard paths.allSatisfy({ !$0.isEmpty }) else {
+                    throw DecodingError.dataCorruptedError(forKey: key, in: c,
+                                                          debugDescription: "History paths cannot be empty.")
                 }
             }
         }
@@ -225,7 +231,7 @@ final class OperationLog {
         var found: [String: (from: URL, date: Date)] = [:]
         for entry in entries {
             let when = entry.changed ?? entry.date
-            for pair in entry.pairs where pair.count == 2 {
+            for pair in entry.pairs where pair.count == 2 && !pair[0].isEmpty && !pair[1].isEmpty {
                 let here = URL(fileURLWithPath: entry.undone ? pair[0] : pair[1]).standardizedFileURL.path
                 guard wanted.contains(here), found[here].map({ $0.date <= when }) ?? true else { continue }
                 // The identity was recorded where the operation left the file, at `pair[1]`.
@@ -239,6 +245,7 @@ final class OperationLog {
 
     /// `path` still holds the file the operation left there (entries from before identities were kept: it exists).
     private func holdsOriginal(_ entry: Entry, _ path: String) -> Bool {
+        guard !path.isEmpty else { return false }
         guard let recorded = entry.identities[path] else { return TransferEngine.exists(URL(fileURLWithPath: path)) }
         return FileIdentity.matchesHistory(recorded, at: path)
     }

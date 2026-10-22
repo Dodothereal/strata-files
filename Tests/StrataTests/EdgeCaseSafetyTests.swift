@@ -159,6 +159,94 @@ struct EdgeCaseSafetyTests {
             store.aggregate()
             #expect(store.size[Int(root)] == Int64.max)
             #expect(store.fileCount[Int(root)] == 2)
+            let emptyRoot = store.addRoot(path: "", mtime: 0)
+            let emptyMatch = store.nameEquals(emptyRoot, [])
+            let nonEmptyMatch = store.nameEquals(root, [])
+            #expect(emptyMatch)
+            #expect(!nonEmptyMatch)
+        }
+
+        var emptyTermQuery = IndexQuery()
+        emptyTermQuery.terms = [[]]
+        let result = IndexSearch.run(emptyTermQuery, in: store, limit: 10)
+        #expect(result.hits.isEmpty)
+        #expect(result.total == 0)
+    }
+
+    @Test func planExpanderRenderHandlesCombiningMarkExtensionsAndNonPositiveTextLimits() {
+        let combiningItem = PlanItem(
+            url: URL(fileURLWithPath: "/tmp/a.\u{0301}"),
+            name: "a.\u{0301}",
+            isFolder: false,
+            kind: "Document",
+            contentType: nil,
+            size: 1,
+            created: nil,
+            modified: nil,
+            captureDate: nil,
+            cameraModel: nil
+        )
+        let rendered = PlanExpander.render("{name}.\u{0301}", item: combiningItem, index: 1, width: 2, source: .modified)
+        #expect(rendered == "a")
+
+        #expect(TextChunker.chunks("hello world", target: 0, overlap: 0).isEmpty)
+        #expect(!TextChunker.chunks("hello world", target: 5, overlap: 5).isEmpty)
+        #expect(Summarizer.shorten("hello world", to: 0).isEmpty)
+        #expect(Summarizer.shorten("hello world", to: -5).isEmpty)
+        let markdown = MarkdownRenderer(baseURL: URL(fileURLWithPath: "/tmp")).render(MarkdownParser.parse("![](missing.png)"))
+        #expect(markdown.length >= 0)
+        #expect(!TransferFormat.rate(.infinity).isEmpty)
+        #expect(!TransferFormat.rate(.nan).isEmpty)
+        #expect(!TransferFormat.remaining(.infinity).isEmpty)
+        #expect(!TransferFormat.remaining(.nan).isEmpty)
+        _ = TransferRing.Key(progress: .nan, hasFailures: false)
+        _ = TransferRing.Key(progress: .infinity, hasFailures: false)
+    }
+
+    @Test func duplicateFinderAndArchiveListerSkipNamedPipesAndOversizeExtensionsSafely() async throws {
+        let tree = try TestTree("regular.txt")
+        let fifoA = tree.url("pipe-a.tar")
+        let fifoB = tree.url("pipe-b.tar")
+        try #require(mkfifo(fifoA.path, 0o600) == 0)
+        try #require(mkfifo(fifoB.path, 0o600) == 0)
+
+        let groups = DuplicateFinder.find([
+            [],
+            [
+                (path: fifoA.path, size: 8192),
+                (path: fifoB.path, size: 8192),
+            ],
+        ], progress: { _, _ in }, isCancelled: { false })
+        #expect(groups.isEmpty)
+
+        await #expect(throws: (any Error).self) {
+            _ = try await ArchiveLister.list(fifoA, kind: .tar)
+        }
+
+        let longExtName = "prefix." + String(repeating: "e", count: 245)
+        let longExtURL = tree.url(longExtName)
+        try Data("x".utf8).write(to: longExtURL)
+        let available = FileOps.available(longExtURL, copyStyle: false)
+        #expect(available.lastPathComponent.utf8.count <= 255)
+        #expect(available != longExtURL)
+        #expect(tree.snapshot().contains("regular.txt"))
+    }
+
+    @Test func emptyPathDecodeGuardsNeverAbortOnEmptyStrings() throws {
+        let suiteName = "strata.edgecase.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set("", forKey: "lastLocation")
+        let prefs = Prefs(defaults: defaults, domainName: suiteName)
+        #expect(prefs.lastLocation == nil)
+
+        let ws = Workspace(name: "Empty", tabs: [[""]])
+        let plan = WorkspacePlan(ws, exists: { _ in true })
+        #expect(plan.tabs.isEmpty)
+
+        let badEntryJSON = Data(#"{"id":"00000000-0000-0000-0000-000000000000","date":0,"name":"Rename","kind":"move","pairs":[["",""]]}"#.utf8)
+        #expect(throws: (any Error).self) {
+            _ = try JSONDecoder().decode(OperationLog.Entry.self, from: badEntryJSON)
         }
     }
 }

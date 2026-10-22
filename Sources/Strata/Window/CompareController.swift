@@ -363,7 +363,10 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
             let difference = shown[index]
             if FolderCompare.actions(for: difference.kind).contains(action) { actions[difference.id] = action }
         }
-        table.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: table.column(withIdentifier: .init("action"))))
+        let column = table.column(withIdentifier: .init("action"))
+        if column >= 0 {
+            table.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: column))
+        }
         updateSummary()
     }
 

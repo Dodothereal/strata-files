@@ -79,15 +79,17 @@ nonisolated enum TextExtractor {
             return nil
         }
 
+        let maxCharacters = max(0, options.maxCharacters)
+        let plainLimit = min(maxCharacters, Int.max / 2) * 2
         var result: ExtractedText?
         if ext == "pdf" || type?.conforms(to: .pdf) == true {
             result = await pdf(url, options: options)
         } else if let docType = richTextTypes[ext] ?? (type?.conforms(to: .rtf) == true ? .rtf : nil) {
             result = rich(url, type: docType, maxBytes: Int(clamping: options.maxFileBytes))
         } else if htmlExtensions.contains(ext) || type?.conforms(to: .html) == true {
-            result = readPlain(url, limit: options.maxCharacters * 2).map { html($0) }
+            result = readPlain(url, limit: plainLimit).map { html($0) }
         } else if plainTextExtensions.contains(ext) || type?.conforms(to: .plainText) == true || type?.conforms(to: .sourceCode) == true {
-            if let text = readPlain(url, limit: options.maxCharacters * 2) {
+            if let text = readPlain(url, limit: plainLimit) {
                 if markdownExtensions.contains(ext) {
                     result = ExtractedText(text: text, title: markdownTitle(text), source: .markdown)
                 } else {
@@ -101,8 +103,8 @@ nonisolated enum TextExtractor {
 
         guard var result else { return nil }
         result.text = normalizeWhitespace(result.text)
-        if result.text.count > options.maxCharacters {
-            result.text = String(result.text.prefix(options.maxCharacters))
+        if result.text.count > maxCharacters {
+            result.text = String(result.text.prefix(maxCharacters))
             result.truncated = true
         }
         if let title = result.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty, title.count < 200 {
@@ -153,8 +155,8 @@ nonisolated enum TextExtractor {
 
     static func pdf(_ url: URL, options: Options) async -> ExtractedText? {
         guard let document = PDFDocument(url: url), !document.isLocked else { return nil }
-        let count = document.pageCount
-        let limit = min(count, options.maxPDFPages)
+        let count = max(0, document.pageCount)
+        let limit = max(0, min(count, options.maxPDFPages))
         var text = ""
         var starts: [Int] = []
         var scanned: [Int] = []
@@ -164,14 +166,14 @@ nonisolated enum TextExtractor {
             let pageText = page.string ?? ""
             if pageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { scanned.append(index) }
             text += pageText + "\n\n"
-            if text.count > options.maxCharacters { break }
+            if text.count > max(0, options.maxCharacters) { break }
         }
         var source = ExtractedText.Source.pdf
         if options.ocr, scanned.count == starts.count, !scanned.isEmpty {
             // No text layer at all: a scan. Recognise the first few pages.
             text = ""
             starts = []
-            for index in scanned.prefix(options.maxOCRPages) {
+            for index in scanned.prefix(max(0, options.maxOCRPages)) {
                 guard let page = document.page(at: index), let image = render(page) else { continue }
                 starts.append(text.utf16.count)
                 text += (await ocr(image) ?? "") + "\n\n"
@@ -184,6 +186,7 @@ nonisolated enum TextExtractor {
 
     private static func render(_ page: PDFPage) -> CGImage? {
         let bounds = page.bounds(for: .mediaBox)
+        guard bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0 else { return nil }
         let scale = min(2, 2200 / max(bounds.width, bounds.height, 1))
         let size = NSSize(width: bounds.width * scale, height: bounds.height * scale)
         return page.thumbnail(of: size, for: .mediaBox).cgImage(forProposedRect: nil, context: nil, hints: nil)
@@ -419,6 +422,7 @@ nonisolated enum TextChunker {
     }
 
     static func chunks(_ text: String, target: Int = 1000, overlap: Int = 160, maxChunks: Int = 32) -> [Chunk] {
+        guard target > 0, maxChunks > 0 else { return [] }
         let sentences = segments(text)
         guard !sentences.isEmpty else { return [] }
         var chunks: [Chunk] = []
@@ -481,7 +485,7 @@ nonisolated enum TextChunker {
 
     /// Splits a run-on "sentence" (code, tables) at word boundaries.
     private static func hardSplit(_ text: String, start: Int, limit: Int) -> [(text: String, start: Int)] {
-        guard text.count > limit else { return [(text, start)] }
+        guard limit > 0, text.count > limit else { return [(text, start)] }
         var pieces: [(String, Int)] = []
         var rest = Substring(text)
         while rest.count > limit {

@@ -69,6 +69,12 @@ nonisolated package enum ArchiveLister {
 
     @concurrent
     package static func list(_ url: URL, kind: ArchiveKind) async throws -> ArchiveListing {
+        let fd = open(url.path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)
+        guard fd >= 0 else { throw CocoaError(.fileReadNoSuchFile) }
+        var info = stat()
+        let isRegular = fstat(fd, &info) == 0 && (info.st_mode & S_IFMT) == S_IFREG
+        close(fd)
+        guard isRegular else { throw CocoaError(.fileReadCorruptFile) }
         let (executable, arguments) = switch kind {
         case .zip: ("/usr/bin/zipinfo", ["-l", "-T", url.path])
         case .tar: ("/usr/bin/tar", ["-tvf", url.path])
@@ -264,6 +270,7 @@ nonisolated package enum ProcessRunner {
         private let lock = NSLock()
         private var process: Process?
         private var timedOut = false
+        private var cancelled = false
 
         func run(_ executable: String, _ arguments: [String], timeout: TimeInterval) throws -> Result {
             let process = Process()
@@ -275,9 +282,16 @@ nonisolated package enum ProcessRunner {
             process.standardOutput = pipe
             process.standardError = FileHandle.nullDevice
             process.standardInput = FileHandle.nullDevice
-            lock.withLock { self.process = process }
+            let alreadyCancelled = lock.withLock { () -> Bool in
+                self.process = process
+                return cancelled
+            }
+            if alreadyCancelled { throw CancellationError() }
             try Task.checkCancellation()
             try process.run()
+            if lock.withLock({ cancelled }) {
+                process.terminate()
+            }
             let deadline = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 lock.withLock { self.timedOut = true }
@@ -305,7 +319,10 @@ nonisolated package enum ProcessRunner {
         }
 
         func terminate() {
-            let process = lock.withLock { self.process }
+            let process = lock.withLock { () -> Process? in
+                cancelled = true
+                return self.process
+            }
             if let process, process.isRunning { process.terminate() }
         }
     }

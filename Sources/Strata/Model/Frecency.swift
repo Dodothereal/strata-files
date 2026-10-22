@@ -40,6 +40,7 @@ final class Frecency {
     func ranked() -> [URL] {
         let now = now()
         return visits
+            .filter { !$0.key.isEmpty }
             .map { (path: $0.key, score: score($0.value, now: now)) }
             .sorted { $0.score > $1.score }
             .map { URL(fileURLWithPath: $0.path, isDirectory: true) }

@@ -266,6 +266,7 @@ nonisolated enum Summarizer {
     }
 
     static func shorten(_ text: String, to limit: Int) -> String {
+        guard limit > 0 else { return "" }
         guard text.count > limit else { return text }
         var cut = String(text.prefix(limit))
         if let space = cut.lastIndex(of: " ") { cut = String(cut[..<space]) }

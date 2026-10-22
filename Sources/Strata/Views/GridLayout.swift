@@ -118,7 +118,7 @@ final class GridLayout: NSCollectionViewLayout {
     }
 
     override func layoutAttributesForItem(at indexPath: IndexPath) -> NSCollectionViewLayoutAttributes? {
-        guard indexPath.item < itemCount else { return nil }
+        guard indexPath.count == 2, indexPath.item >= 0, indexPath.item < itemCount else { return nil }
         return attributes(for: indexPath.item)
     }
 

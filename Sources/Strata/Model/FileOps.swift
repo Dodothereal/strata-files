@@ -148,7 +148,7 @@ enum FileOps {
     nonisolated static func parkingName(for url: URL) -> URL {
         let prefix = ".strata-" + UUID().uuidString.prefix(8).lowercased() + "-"
         var name = url.lastPathComponent
-        while (prefix + name).utf8.count > 255 { name.removeLast() }
+        while !name.isEmpty, (prefix + name).utf8.count > 255 { name.removeLast() }
         return url.deletingLastPathComponent().appending(path: prefix + name)
     }
 
@@ -346,7 +346,8 @@ enum FileOps {
         var isDir: ObjCBool = false
         fm.fileExists(atPath: url.path, isDirectory: &isDir)
         let isPlainFolder = isDir.boolValue && !NSWorkspace.shared.isFilePackage(atPath: url.path)
-        let ext = isPlainFolder ? "" : url.pathExtension
+        let rawExt = isPlainFolder ? "" : url.pathExtension
+        let ext = rawExt.utf8.count <= 64 ? rawExt : ""
         let base = ext.isEmpty ? url.lastPathComponent : url.deletingPathExtension().lastPathComponent
         var n = 1
         while true {

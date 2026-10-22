@@ -88,6 +88,8 @@ actor SemanticIndex {
     private var rowCount = 0
     private var freeRows: [Int] = []
     private var loaded = false
+    private var loading = false
+    private var loadWaiters: [CheckedContinuation<Void, Never>] = []
     private var updating = false
     private var unsavedChanges = 0
     private var lastSave = ContinuousClock.now
@@ -253,9 +255,10 @@ actor SemanticIndex {
 
         var hits: [SemanticHit] = []
         for match in ranked.prefix(limit) {
-            guard let file = files[match.path] else { continue }
-            // The passage to quote: best blend of meaning and wording within this document.
-            let chunk = file.chunks.max { signals.chunkScore($0) < signals.chunkScore($1) }!
+            guard !match.path.isEmpty,
+                  let file = files[match.path],
+                  // The passage to quote: best blend of meaning and wording within this document.
+                  let chunk = file.chunks.max(by: { signals.chunkScore($0) < signals.chunkScore($1) }) else { continue }
             let snippet = await Self.snippet(chunk.text, chunkStart: chunk.start, pages: chunk.pages, terms: Set(signals.terms),
                                              queryVector: signals.queryWordVector, embedder: queryEmbedder)
             hits.append(SemanticHit(url: URL(fileURLWithPath: match.path), title: file.title, score: match.score,
@@ -268,7 +271,10 @@ actor SemanticIndex {
     /// Diagnostics: the raw signals behind a search, per document (best passage cosines, keyword score, name overlap).
     func explain(_ text: String) async -> [(url: URL, word: Float, sentence: Float, keyword: Float, name: Float)] {
         await loadIfNeeded()
-        return await signals(for: text).candidates.map { (URL(fileURLWithPath: $0.path), $0.word, $0.sentence, $0.keyword, $0.name) }
+        return await signals(for: text).candidates.compactMap {
+            guard !$0.path.isEmpty else { return nil }
+            return (URL(fileURLWithPath: $0.path), $0.word, $0.sentence, $0.keyword, $0.name)
+        }
     }
 
     private func signals(for query: String) async -> QuerySignals {
@@ -427,6 +433,7 @@ actor SemanticIndex {
     }
 
     private nonisolated static func trim(_ text: String, around terms: Set<String>, limit: Int) -> String {
+        guard limit > 0 else { return "" }
         guard text.count > limit else { return text }
         let words = text.split(separator: " ", omittingEmptySubsequences: true)
         let firstMatch = words.firstIndex { word in Terms.normalize(String(word)).contains(where: terms.contains) } ?? 0
@@ -538,12 +545,24 @@ actor SemanticIndex {
 
     private func loadIfNeeded() async {
         guard !loaded else { return }
-        loaded = true
+        if loading {
+            await withCheckedContinuation { loadWaiters.append($0) }
+            return
+        }
+        loading = true
+        defer {
+            loading = false
+            loaded = true
+            let waiters = loadWaiters
+            loadWaiters.removeAll()
+            for waiter in waiters { waiter.resume() }
+        }
         // Earlier builds kept passages in a plain property list: start over rather than keep that copy around.
         SecureStorage.removeLegacy(configuration.storeDirectory.appending(path: "index.plist"))
         guard let stored = await Self.read(storeURL), stored.version == StoredIndex.currentVersion,
               stored.revision == Embedder.revision, stored.sentences == configuration.sentenceEmbeddings else { return }
         for file in stored.files {
+            guard !file.path.isEmpty else { continue }
             let context = file.title ?? URL(fileURLWithPath: file.path).deletingPathExtension().lastPathComponent
             let contextLength = context.utf16.count
             guard file.size >= 0, file.modified.isFinite,
@@ -942,7 +961,7 @@ nonisolated final class Embedder: @unchecked Sendable {
         var norm: Float = 0
         vDSP_svesq(vector, 1, &norm, vDSP_Length(vector.count))
         norm = norm.squareRoot()
-        guard norm > 0 else { return nil }
+        guard norm.isFinite, norm > 0 else { return nil }
         var result = vector
         vDSP_vsdiv(vector, 1, &norm, &result, 1, vDSP_Length(vector.count))
         return result
