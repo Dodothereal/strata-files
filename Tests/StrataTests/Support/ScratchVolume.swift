@@ -3,22 +3,31 @@ import Synchronization
 
 /// A disk of its own for a test (a small disk image, attached without showing in Finder and detached when the test
 /// process exits), for moves that cross disks: a copy and then the original removed, so the item is a new file where it
-/// lands. Attached once on a serial queue and handed out as isolated folders (`make`, `eject`): `hdiutil` takes
-/// seconds, and other tests' work waits on the main thread and on Swift's shared threads.
+/// lands. Attached on a serial queue and pooled across sequential callers (`make`, `eject`): `hdiutil` takes seconds,
+/// and other tests' work waits on the main thread and on Swift's shared threads.
 nonisolated final class ScratchVolume: @unchecked Sendable {
-    private struct SharedDisk {
+    private struct SharedDisk: Equatable {
         let folder: URL
         let mount: URL
     }
 
+    private struct Pool {
+        var available: [SharedDisk] = []
+        var all: [SharedDisk] = []
+    }
+
     private static let queue = DispatchQueue(label: "strata.tests.scratch-volume")
-    private static let shared = Mutex<SharedDisk?>(nil)
+    private static let pool = Mutex(Pool())
+    private static let systemEntries: Set<String> = [
+        ".fseventsd", ".Spotlight-V100", ".DocumentRevisions-V100", ".TemporaryItems"
+    ]
     private static let registeredCleanup: Void = {
         atexit(detachSharedScratchVolume)
     }()
 
-    /// The disk's top folder for this test.
+    /// The disk's top folder.
     let root: URL
+    private let disk: SharedDisk
     private let state = Mutex(false)
 
     static func make() async throws -> ScratchVolume {
@@ -30,7 +39,7 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
     func eject() async {
         await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
             Self.queue.async {
-                self.cleanup()
+                self.release()
                 done.resume()
             }
         }
@@ -38,32 +47,44 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
 
     private init() throws {
         _ = Self.registeredCleanup
-        let disk = try Self.ensureSharedDisk()
-        root = disk.mount.appending(path: UUID().uuidString, directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let checkedOut = try Self.checkoutDisk()
+        disk = checkedOut
+        root = checkedOut.mount
     }
 
-    /// A test that stopped early still leaves its folder cleaned up.
+    /// A test that stopped early still leaves its disk cleaned up.
     deinit {
-        cleanup()
-    }
-
-    private func cleanup() {
-        let shouldRemove = state.withLock { ejected in
-            guard !ejected else { return false }
-            ejected = true
+        let shouldRelease = state.withLock { released in
+            guard !released else { return false }
+            released = true
             return true
         }
-        guard shouldRemove else { return }
-        try? FileManager.default.removeItem(at: root)
+        guard shouldRelease else { return }
+        let disk = self.disk
+        Self.queue.sync {
+            Self.recycleOrDetach(disk)
+        }
+    }
+
+    private func release() {
+        let shouldRelease = state.withLock { released in
+            guard !released else { return false }
+            released = true
+            return true
+        }
+        guard shouldRelease else { return }
+        Self.recycleOrDetach(disk)
     }
 
     /// A path on the disk.
     func url(_ path: String) -> URL { root.appending(path: path) }
 
-    private static func ensureSharedDisk() throws -> SharedDisk {
-        if let existing = shared.withLock({ $0 }), FileManager.default.fileExists(atPath: existing.mount.path) {
-            return existing
+    private static func checkoutDisk() throws -> SharedDisk {
+        while let candidate = pool.withLock({ $0.available.popLast() }) {
+            if FileManager.default.fileExists(atPath: candidate.mount.path), cleanDisk(candidate) {
+                return candidate
+            }
+            detachDisk(candidate)
         }
         let fm = FileManager.default
         let folder = fm.temporaryDirectory.appending(path: "strata-volume-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -79,7 +100,7 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
             }
             defer { free(real) }
             let disk = SharedDisk(folder: folder, mount: URL(fileURLWithPath: String(cString: real), isDirectory: true))
-            shared.withLock { $0 = disk }
+            pool.withLock { $0.all.append(disk) }
             return disk
         } catch {
             try? fm.removeItem(at: folder)
@@ -87,14 +108,53 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
         }
     }
 
-    fileprivate static func detachShared() {
-        guard let disk = shared.withLock({
-            let current = $0
-            $0 = nil
-            return current
-        }) else { return }
+    private static func cleanDisk(_ disk: SharedDisk) -> Bool {
+        let fm = FileManager.default
+        guard let items = try? fm.contentsOfDirectory(at: disk.mount, includingPropertiesForKeys: nil, options: []) else {
+            return false
+        }
+        for item in items where !systemEntries.contains(item.lastPathComponent) {
+            do {
+                try fm.removeItem(at: item)
+            } catch {
+                return false
+            }
+        }
+        return true
+    }
+
+    private static func recycleOrDetach(_ disk: SharedDisk) {
+        if cleanDisk(disk) {
+            pool.withLock {
+                if $0.all.contains(disk) {
+                    $0.available.append(disk)
+                }
+            }
+        } else {
+            detachDisk(disk)
+        }
+    }
+
+    private static func detachDisk(_ disk: SharedDisk) {
+        pool.withLock {
+            $0.available.removeAll { $0 == disk }
+            $0.all.removeAll { $0 == disk }
+        }
         _ = try? hdiutil(["detach", disk.mount.path, "-force", "-quiet"])
         try? FileManager.default.removeItem(at: disk.folder)
+    }
+
+    fileprivate static func detachShared() {
+        let disks = pool.withLock {
+            let current = $0.all
+            $0.available.removeAll()
+            $0.all.removeAll()
+            return current
+        }
+        for disk in disks {
+            _ = try? hdiutil(["detach", disk.mount.path, "-force", "-quiet"])
+            try? FileManager.default.removeItem(at: disk.folder)
+        }
     }
 
     @discardableResult

@@ -5,6 +5,7 @@ import AppKit
 final class ContainerInspectorView: NSView {
     /// Shows a folder (in the container's files, or on this Mac).
     var onOpen: ((URL) -> Void)?
+    let preferences: Prefs
     private let stack = NSStackView()
     private var display: Display?
 
@@ -29,7 +30,8 @@ final class ContainerInspectorView: NSView {
         let busy: ContainerAction?
     }
 
-    override init(frame: NSRect) {
+    init(frame: NSRect = .zero, preferences: Prefs = .shared) {
+        self.preferences = preferences
         super.init(frame: frame)
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -103,13 +105,15 @@ final class ContainerInspectorView: NSView {
             content.spacing = 10
             rows.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
             buttons.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
-            return InspectorCard(id: "container", title: shown.source.name, symbol: "shippingbox", content: content, accessory: state)
+            return InspectorCard(id: "container", title: shown.source.name, symbol: "shippingbox", content: content,
+                                 accessory: state, preferences: preferences)
         } else {
             rows.setText([(String(localized: "Engine", comment: "Inspector row: Docker Desktop, OrbStack, Colima…"), shown.source.engineName)])
             state = Self.small(String(localized: "Not available", comment: "Inspector: the container is gone, or its engine isn't running"),
                                color: InspectorColors.secondary)
         }
-        return InspectorCard(id: "container", title: shown.source.name, symbol: "shippingbox", content: rows, accessory: state)
+        return InspectorCard(id: "container", title: shown.source.name, symbol: "shippingbox", content: rows,
+                             accessory: state, preferences: preferences)
     }
 
     private func mountsCard(_ shown: Shown) -> InspectorCard? {
@@ -125,7 +129,8 @@ final class ContainerInspectorView: NSView {
         }
         let count = Self.small(mounts.count.formatted(), color: InspectorColors.secondary)
         return InspectorCard(id: "containerMounts", title: String(localized: "Mounts", comment: "Inspector section: a container's mounted folders and volumes"),
-                             symbol: "externaldrive.connected.to.line.below", content: content, accessory: count)
+                             symbol: "externaldrive.connected.to.line.below", content: content, accessory: count,
+                             preferences: preferences)
     }
 
     /// The containers of the Compose project this folder is. Nil when none of them are here.
@@ -176,7 +181,8 @@ final class ContainerInspectorView: NSView {
         content.spacing = 10
         rows.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
         buttons.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
-        return InspectorCard(id: "stack", title: shown.project, symbol: "square.stack.3d.up", content: content, accessory: state)
+        return InspectorCard(id: "stack", title: shown.project, symbol: "square.stack.3d.up", content: content,
+                             accessory: state, preferences: preferences)
     }
 
     private func stackActions(_ shown: StackShown) -> NSView {
@@ -402,6 +408,7 @@ final class LinkButton: NSButton {
 final class ComposeInspectorView: NSView {
     /// Shows a container's files.
     var onOpenContainer: ((String) -> Void)?
+    let preferences: Prefs
     private let stack = NSStackView()
     private var shown: Shown?
 
@@ -419,7 +426,8 @@ final class ComposeInspectorView: NSView {
 
     static let fileNames = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"]
 
-    override init(frame: NSRect) {
+    init(frame: NSRect = .zero, preferences: Prefs = .shared) {
+        self.preferences = preferences
         super.init(frame: frame)
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -481,7 +489,8 @@ final class ComposeInspectorView: NSView {
         let total = next.services.count
         let accessory = ContainerInspectorView.small(String(localized: "\(running) of \(total) running", comment: "Inspector, Compose: how many services run"),
                                                      color: InspectorColors.secondary)
-        let card = InspectorCard(id: "compose", title: "Compose", symbol: "square.stack.3d.up", content: content, accessory: accessory)
+        let card = InspectorCard(id: "compose", title: "Compose", symbol: "square.stack.3d.up", content: content,
+                                 accessory: accessory, preferences: preferences)
         stack.addArrangedSubview(card)
         card.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     }

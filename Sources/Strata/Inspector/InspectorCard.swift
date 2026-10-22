@@ -11,6 +11,7 @@ final class InspectorCard: NSView, ColorThemeUpdating {
     private let titleLabel: NSTextField
     private let body = NSView()
     private let id: String
+    private let preferences: Prefs
     private var bodyHeightWhenCollapsed: NSLayoutConstraint?
     private var contentBottom: NSLayoutConstraint?
     private var bodyTop: NSLayoutConstraint?
@@ -19,8 +20,10 @@ final class InspectorCard: NSView, ColorThemeUpdating {
     /// Side inset of a section's title and rows. Smaller than `padding` so a narrow inspector keeps room for values.
     static let horizontalPadding: CGFloat = 8
 
-    init(id: String, title: String, symbol: String, content: NSView, accessory: NSView? = nil) {
+    init(id: String, title: String, symbol: String, content: NSView, accessory: NSView? = nil,
+         preferences: Prefs = .shared) {
         self.id = id
+        self.preferences = preferences
         self.content = content
         titleLabel = NSTextField(labelWithString: title)
         super.init(frame: .zero)
@@ -116,9 +119,9 @@ final class InspectorCard: NSView, ColorThemeUpdating {
     private var defaultsKey: String { "inspector.collapsed." + id }
 
     var isCollapsed: Bool {
-        get { Prefs.shared.defaults.bool(forKey: defaultsKey) }
+        get { preferences.defaults.bool(forKey: defaultsKey) }
         set {
-            Prefs.shared.defaults.set(newValue, forKey: defaultsKey)
+            preferences.defaults.set(newValue, forKey: defaultsKey)
             apply(collapsed: newValue, animated: true)
         }
     }
@@ -158,7 +161,7 @@ final class InspectorRows: NSView {
     private let grid = NSGridView()
     static let labelWidth: CGFloat = 74
     /// What the grid shows: each row's title and value view.
-    private var shown: [(title: String, value: NSView)] = []
+    private(set) var shown: [(title: String, value: NSView)] = []
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -267,20 +270,24 @@ final class InspectorLocationView: NSView {
     fileprivate(set) var action: () -> Void
     private let folder: URL
     private let path: URL
+    let nameText: String
+    let locationText: String
 
     /// `name` and `location` replace the folder's own (a container's folder, shown as it is in the container).
     init(folder: URL, shownAs path: URL, name shownName: String? = nil, location shownLocation: String? = nil, action: @escaping () -> Void) {
         self.action = action
         self.folder = folder
         self.path = path
+        self.nameText = shownName ?? FileManager.default.displayName(atPath: path.path)
+        self.locationText = shownLocation ?? Format.tildePath(path.deletingLastPathComponent())
         super.init(frame: .zero)
         let icon = NSImageView(image: NSWorkspace.shared.icon(forFile: folder.path))
         icon.image?.size = NSSize(width: 16, height: 16)
         icon.translatesAutoresizingMaskIntoConstraints = false
-        let name = NSTextField(labelWithString: shownName ?? FileManager.default.displayName(atPath: path.path))
+        let name = NSTextField(labelWithString: nameText)
         name.font = .systemFont(ofSize: 12)
         name.lineBreakMode = .byTruncatingMiddle
-        let location = NSTextField(labelWithString: shownLocation ?? Format.tildePath(path.deletingLastPathComponent()))
+        let location = NSTextField(labelWithString: locationText)
         location.font = .systemFont(ofSize: 11)
         location.textColor = InspectorColors.secondary
         location.lineBreakMode = .byTruncatingHead
@@ -314,7 +321,7 @@ final class InspectorLocationView: NSView {
 
     /// Shows the same folder, the same way (its action shows the same place too).
     func showsSamePlace(as other: InspectorLocationView) -> Bool {
-        folder == other.folder && path == other.path
+        folder == other.folder && path == other.path && nameText == other.nameText && locationText == other.locationText
     }
 
     override var firstBaselineOffsetFromTop: CGFloat {

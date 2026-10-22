@@ -3348,5 +3348,117 @@
     "replace": "let thumbnail = FileThumbnails.shared.cached(entry, size: NameCellView.iconSide, scale: scale)",
     "rule": "Provider thumbnail and info ownership Quick Look transition image ignores the browser's thumbnail store",
     "tests": "ProviderThumbnailInfoTests/allViewsAndQuickLookTransitionUseTheirOwnThumbnailsAndItemInfoAcrossFetch"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "ReadOnlyCopies.contains(url) || services.copies.contains(url)",
+    "replace": "ReadOnlyCopies.contains(url)",
+    "rule": "Inspector provider ownership read-only copy check ignores the inspector's copy provider",
+    "tests": "InspectorProviderTests/inspectorAndWindowFollowTheirOwnServerAndCopyProvider|InspectorProviderTests/switchingFromEditableItemToProviderCopyCommitsActiveCommentToOriginalItem"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "let server = services.remote.copies.server(containing: entry.url)",
+    "replace": "let server = RemoteCopies.server(containing: entry.url)",
+    "rule": "Inspector provider ownership server lookup uses the global remote copy store",
+    "tests": "InspectorProviderTests/inspectorAndWindowFollowTheirOwnServerAndCopyProvider"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "let isCopy = services.copies.contains(entry.url)",
+    "replace": "let isCopy = LazyCopies.contains(entry.url)",
+    "rule": "Inspector provider ownership single-item metadata uses the global copy store",
+    "tests": "InspectorProviderTests/inspectorAndWindowFollowTheirOwnServerAndCopyProvider"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "if services.copies.contains(item.url) { return true }",
+    "replace": "if LazyCopies.contains(item.url) { return true }",
+    "rule": "Inspector provider ownership multi-selection leaves provider folders calculating",
+    "tests": "InspectorProviderTests/multiSelectionCountsProviderFoldersAsUnmeasuredWithoutWaitingForSizes"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "return services.copies.contains(item.url) ? nil : folderSize(item.url)?.bytes",
+    "replace": "return folderSize(item.url)?.bytes",
+    "rule": "Inspector provider ownership multi-selection sums folderSize for a provider folder",
+    "tests": "InspectorProviderTests/multiSelectionCountsProviderFoldersAsUnmeasuredWithoutWaitingForSizes"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "!entry.isSymlink && !services.copies.isPlaceholder(entry.url)",
+    "replace": "!services.copies.isPlaceholder(entry.url)",
+    "rule": "Inspector provider ownership previews and summaries follow symlinks",
+    "tests": "InspectorProviderTests/inspectorSkipsPlaceholdersAndSymlinksForDimensionsSummariesAndPreviewsUntilFetched"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "!entry.isSymlink && !services.copies.isPlaceholder(entry.url)",
+    "replace": "!entry.isSymlink && !LazyCopies.isPlaceholder(entry.url)",
+    "rule": "Inspector provider ownership preview placeholder check uses the global copy store",
+    "tests": "InspectorProviderTests/inspectorSkipsPlaceholdersAndSymlinksForDimensionsSummariesAndPreviewsUntilFetched"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "guard canPreview(entry),\n              entry.contentType?.conforms(to: .image) == true,",
+    "replace": "guard entry.contentType?.conforms(to: .image) == true,",
+    "rule": "Inspector provider ownership image dimensions read a placeholder or symlink",
+    "tests": "InspectorProviderTests/inspectorSkipsPlaceholdersAndSymlinksForDimensionsSummariesAndPreviewsUntilFetched"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "let shown = shownURLs.first, services.copies.contains(shown),",
+    "replace": "let shown = shownURLs.first,",
+    "rule": "Inspector provider ownership fetched notification accepts other environments",
+    "tests": "InspectorProviderTests/inspectorSkipsPlaceholdersAndSymlinksForDimensionsSummariesAndPreviewsUntilFetched"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "if !entry.isDirectory {\n            updateSummary(for: [entry])\n            showSingleItem(entry, folderSize: { _ in nil }, canMeasure: { _ in false })\n        }",
+    "replace": "if false {}",
+    "rule": "Inspector provider ownership fetched notification does not refresh metadata or summary",
+    "tests": "InspectorProviderTests/inspectorSkipsPlaceholdersAndSymlinksForDimensionsSummariesAndPreviewsUntilFetched"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "guard self.canPreview(entry) else {\n                    self.previewingContent = false\n                    return\n                }",
+    "replace": "guard true else { return }",
+    "rule": "Inspector provider ownership deferred preview opens a file that became a placeholder",
+    "tests": "InspectorProviderTests/inspectorSkipsPlaceholdersAndSymlinksForDimensionsSummariesAndPreviewsUntilFetched"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "guard let self, self.shownURLs == [entry.url], self.canPreview(entry) else { return }",
+    "replace": "guard let self, self.shownURLs == [entry.url] else { return }",
+    "rule": "Inspector provider ownership rich preview fallback opens Quick Look for a placeholder",
+    "tests": "InspectorProviderTests/inspectorSkipsPlaceholdersAndSymlinksForDimensionsSummariesAndPreviewsUntilFetched"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "previewWork?.cancel()\n        projectTask?.cancel()",
+    "replace": "projectTask?.cancel()",
+    "rule": "Inspector provider ownership released inspector leaves its deferred preview scheduled",
+    "tests": "InspectorProviderTests/releasingTheInspectorCancelsPendingPreviewWorkWithoutRetainingIt"
+  },
+  {
+    "file": "Strata/Inspector/InspectorCard.swift",
+    "find": "folder == other.folder && path == other.path && nameText == other.nameText && locationText == other.locationText",
+    "replace": "folder == other.folder && path == other.path",
+    "rule": "Inspector provider ownership Where row keeps stale server name on in-place refresh",
+    "tests": "InspectorProviderTests/inspectorAndWindowFollowTheirOwnServerAndCopyProvider"
+  },
+  {
+    "file": "Strata/Inspector/InfoEditorView.swift",
+    "find": "if let previous = url, comments.currentEditor() != nil {\n            pendingCommentSave?.cancel()\n            saveComment(comments.stringValue, at: previous.path)\n            window?.makeFirstResponder(nil)\n        }",
+    "replace": "if false {}",
+    "rule": "Inspector provider ownership hiding Get Info discards an active comment edit",
+    "tests": "InspectorProviderTests/switchingFromEditableItemToProviderCopyCommitsActiveCommentToOriginalItem"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "canMeasure: { entry in browser.canMeasure(entry) })",
+    "replace": "canMeasure: { entry in entry.url == self.location || browser.canMeasure(entry) })",
+    "rule": "Inspector provider ownership unselected window folder bypasses browser canMeasure",
+    "tests": "InspectorProviderTests/inspectorAndWindowFollowTheirOwnServerAndCopyProvider"
   }
 ]

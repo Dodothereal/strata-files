@@ -4,15 +4,17 @@ import AppKit
 final class MainSplitViewController: NSSplitViewController {
     let sidebar: SidebarViewController
     let panes: PaneContainerViewController
-    let inspector = InspectorViewController()
+    let inspector: InspectorViewController
     let status = StatusBarController()
     let scopeBar = SearchScopeBar()
     let noticeBar = NoticeBar()
     let inspectorItem: NSSplitViewItem
 
     init(firstPane: PaneHostViewController) {
-        sidebar = SidebarViewController(services: firstPane.browser.services)
+        let services = firstPane.browser.services
+        sidebar = SidebarViewController(services: services)
         panes = PaneContainerViewController(first: firstPane)
+        inspector = InspectorViewController(services: services)
         inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
         super.init(nibName: nil, bundle: nil)
 

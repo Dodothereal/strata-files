@@ -39,6 +39,11 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
 
     private var window: NSWindow? { comments.window ?? openWith.window ?? locked.window }
 
+    isolated deinit {
+        pendingCommentSave?.cancel()
+        savedNoteHide?.cancel()
+    }
+
     override init() {
         super.init()
         comments.placeholderString = String(localized: "Add Comments", comment: "Placeholder of the Inspector’s Spotlight comments field")
@@ -133,6 +138,17 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
         loadApps(entry, same: same)
         loadPermissions(path, onlyIfChanged: true)
         updateEnabled(path)
+    }
+
+    func hide() {
+        if let previous = url, comments.currentEditor() != nil {
+            pendingCommentSave?.cancel()
+            saveComment(comments.stringValue, at: previous.path)
+            window?.makeFirstResponder(nil)
+        }
+        pendingCommentSave?.cancel()
+        savedNoteHide?.cancel()
+        url = nil
     }
 
     /// A locked item takes no changes but unlocking; only its owner can lock or unlock it.

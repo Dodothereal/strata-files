@@ -14,6 +14,7 @@ final class ProjectInspectorView: NSView {
     var onRunScript: ((ProjectScript) -> Void)?
 
     private(set) var info: ProjectInfo?
+    let preferences: Prefs
     private let stack = NSStackView()
     private var deselected: Set<String> = []
     private var showsAllScripts = false
@@ -25,7 +26,8 @@ final class ProjectInspectorView: NSView {
     private var gitUpstream: String?
     private static let collapsedScriptCount = 6
 
-    override init(frame: NSRect) {
+    init(frame: NSRect = .zero, preferences: Prefs = .shared) {
+        self.preferences = preferences
         super.init(frame: frame)
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -289,7 +291,8 @@ final class ProjectInspectorView: NSView {
     }
 
     private func addCard(id: String, title: String, symbol: String, content: NSStackView, accessory: NSView? = nil) {
-        let card = InspectorCard(id: id, title: title, symbol: symbol, content: content, accessory: accessory)
+        let card = InspectorCard(id: id, title: title, symbol: symbol, content: content, accessory: accessory,
+                                 preferences: preferences)
         stack.addArrangedSubview(card)
         card.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     }

@@ -1038,16 +1038,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         for p in panes { p.host.setStatus(isDualPane ? p.browser.statusText : nil) }
         let folder: FileEntry? = { if case .folder = destination { return pane.folderEntry } else { return nil } }()
         let browser = browser
-        let location = location
         split.inspector.onShowFolder = { [weak self] folder, item in self?.navigate(to: folder, select: item) }
         split.inspector.onOpenFolder = { [weak self] folder in self?.openFolder(folder) }
         split.inspector.onOpenContainer = { [weak self] id in self?.openContainer(id) }
         split.inspector.show(entries: browser.selectedEntries, folder: folder,
                              folderSize: { url in browser.folderSize(url, request: true) },
-                             canMeasure: { entry in
-                                 entry.url == location ? !Privacy.measuringWouldPrompt(entry.url, browsing: entry.url)
-                                     : browser.canMeasure(entry)
-                             })
+                             canMeasure: { entry in browser.canMeasure(entry) })
     }
 }
 

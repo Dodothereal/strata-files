@@ -284,6 +284,12 @@ sheet's text before clicking a destructive button. Both builds share preferences
   thumbnails and item info, cancel in-flight requests, and avoid recording Quick Look failures or fallback byte sizes
   when a copy becomes a placeholder; refresh visible cells, column previews and gallery previews when placeholders
   are fetched.
+  `InspectorViewController` also receives `BrowserServices` and passes `services.preferences` to its cards. Use
+  `services.copies` and `services.remote.copies` for read-only copy gating (project, Compose, tags, Get Info),
+  server titles and `Where` rows, single-item and multi-selection folder sizing (`browser.canMeasure` even for the
+  unselected current folder), image dimensions, document summaries, and Rich/Quick Look previews. Skip symlinks and
+  placeholders, refresh metadata, summaries and previews when `.containerFilesFetched` arrives for a fetched item in
+  the owning provider, and commit any active comment edit before hiding Get Info.
 - `RemoteFiles` and its `CopyProvider` adapter use the same `RemoteCopyStore` for server lookup, paths, placeholders,
   download staging and removal. An injected backend must not fall back to the application's copy root. Test identical
   server IDs in independent roots, including refused cross-environment writes and scoped cleanup. Prepare and remove
