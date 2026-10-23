@@ -1,5 +1,4 @@
 import Foundation
-import Synchronization
 import Testing
 @testable import Strata
 
@@ -91,18 +90,16 @@ struct FolderOpenSessionTests {
     @Test func releasingTheOwnerCancelsItsWorkAndDiscardsLateResults() async throws {
         let tree = try TestTree("result/")
         let before = tree.snapshot(), reads = Reads()
-        weak var released: FolderOpenSession?
-        let calls = Mutex(0)
-        let task: Task<Void, Never> = { @MainActor in
-            let session = FolderOpenSession()
-            released = session
-            return session.open(operation: { try await reads.open() }) { _ in calls.withLock { $0 += 1 } }
-        }()
+        var session: FolderOpenSession? = FolderOpenSession()
+        weak var released = session
+        var calls = 0
+        let task = try #require(session).open(operation: { try await reads.open() }) { _ in calls += 1 }
+        session = nil
         #expect(released == nil)
         #expect(task.isCancelled)
         await task.value
         #expect(await reads.count == 0)
-        #expect(calls.withLock { $0 } == 0)
+        #expect(calls == 0)
         #expect(tree.snapshot() == before)
     }
 
