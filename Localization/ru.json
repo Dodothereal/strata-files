@@ -1782,6 +1782,7 @@
     "The on-device model is busy. Try again in a moment.": "Модель на устройстве занята. Повторите попытку через мгновение.",
     "The on-device model returned something unexpected.": "Модель на устройстве вернула что-то неожиданное.",
     "The original can’t be read": "Не удается прочитать оригинал",
+    "The original was kept at “%@”. The completed upload was kept at “%@”.": "Оригинал сохранен по пути «%@». Полностью загруженный файл сохранен по пути «%@».",
     "The original was kept because it changed during the move (%@). Move it again to copy the changes.": "Оригинал сохранен, так как он изменился во время перемещения (%@). Переместите его еще раз, чтобы скопировать изменения.",
     "the pattern took too long on some names, so they’re left out": "шаблон слишком долго обрабатывал некоторые имена, поэтому они пропущены",
     "The port has to be a number from 1 to 65535.": "Порт должен быть числом от 1 до 65535.",
