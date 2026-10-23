@@ -561,6 +561,134 @@ struct DirectoryReadSessionTests {
         #expect(tree.snapshot() == before)
     }
 
+    @Test(arguments: ["results", "media"], [false, true])
+    func endingAnUnchangedListRenameDisplaysDeferredMetadata(update: String, cancel: Bool) async throws {
+        let tree = try TestTree("movie.mov", "movie-other.mov")
+        let before = tree.snapshot()
+        let reads = Reads()
+        defer { reads.stop() }
+        let controller = window(tree.root, second: nil, reads: reads, mediaReader: { _ in MediaInfo(duration: 123) })
+        defer { controller.window?.contentViewController = nil }
+        let browser = controller.browser
+        browser.setMode(.list, remember: false)
+        let entries = try ["movie.mov", "movie-other.mov"].map { try #require(FileEntry(url: tree.url($0))) }
+        let work = try #require(browser.directoryReads.task)
+        try await reads.request(0).finish(.success(entries))
+        await work.value
+        browser.showResults(entries, total: entries.count)
+        let identifier = NSUserInterfaceItemIdentifier(update == "media" ? "duration" : "size")
+        for column in browser.outlineView.tableColumns {
+            column.isHidden = column.identifier != .name && column.identifier != identifier
+        }
+        browser.view.layoutSubtreeIfNeeded()
+        let node = try #require(browser.node(for: entries[0].url))
+        let row = browser.outlineView.row(forItem: node)
+        let column = browser.outlineView.column(withIdentifier: identifier)
+        let cell = try #require(browser.outlineView.view(atColumn: column, row: row, makeIfNecessary: true) as? TextCellView)
+        let oldText = cell.textField?.stringValue
+        browser.select([entries[0].url])
+        browser.renameSelection(nil)
+        let field = try #require(browser.renamingField)
+        let editor = try #require(field.currentEditor() as? NSTextView)
+        let expected: String
+        if update == "media" {
+            let media = try #require(browser.mediaInfo.tasks[entries[0]])
+            await media.value
+            expected = "2:03"
+        } else {
+            let entry = entries[0]
+            let changed = FileEntry(url: entry.url, name: entry.name, isDirectory: entry.isDirectory, isPackage: entry.isPackage,
+                                    isHidden: entry.isHidden, isSymlink: entry.isSymlink, isVolume: entry.isVolume, size: 123456,
+                                    modified: entry.modified, created: entry.created, added: entry.added, kind: entry.kind,
+                                    contentType: entry.contentType)
+            browser.showResults([changed, entries[1]], total: entries.count)
+            expected = Format.bytes(123456)
+        }
+        #expect(field.currentEditor() === editor)
+        #expect(cell.textField?.stringValue == oldText)
+        if cancel {
+            field.stringValue = "partially typed"
+            editor.string = "partially typed"
+            #expect(browser.control(field, textView: editor, doCommandBy: #selector(NSResponder.cancelOperation(_:))))
+        } else {
+            controller.window?.makeFirstResponder(browser.outlineView)
+        }
+        browser.outlineView.layoutSubtreeIfNeeded()
+        let refreshed = try #require(browser.outlineView.view(atColumn: column, row: row, makeIfNecessary: true) as? TextCellView)
+        #expect(refreshed.textField?.stringValue == expected)
+        #expect(browser.renamingField == nil)
+        await browser.commandWork?.value
+        #expect(controller.window?.isVisible == false)
+        #expect(tree.snapshot() == before)
+    }
+
+    @Test(arguments: RenamePlace.allCases)
+    private func columnMetadataRefreshKeepsTheEditedLabelHidden(place: RenamePlace) async throws {
+        let tree = try TestTree("folder/old.txt", "folder/keep.txt", "root.txt", "root-other.txt")
+        let before = tree.snapshot()
+        let reads = Reads()
+        defer { reads.stop() }
+        let pasteboard = NSPasteboard(name: .init("StrataRenameRefresh.\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        let clipboard = Clipboard(pasteboard: pasteboard, notifications: NotificationCenter())
+        let controller = window(tree.root, second: tree.root, reads: reads, clipboard: clipboard)
+        defer { controller.window?.contentViewController = nil }
+        for pane in controller.panes { pane.browser.setMode(.columns, remember: false) }
+        let roots = try ["folder", "root.txt", "root-other.txt"].map { try #require(FileEntry(url: tree.url($0))) }
+        try await reads.request(0).finish(.success(roots))
+        try await reads.request(1).finish(.success(roots))
+        for pane in controller.panes { await pane.browser.directoryReads.task?.value }
+        let browser = controller.panes[place.paneIndex].browser
+        let target = tree.url(place.expanded ? "folder/old.txt" : "root.txt")
+        browser.select([target])
+        let folder = place.expanded ? tree.url("folder") : tree.root
+        let pane = try #require(views(browser.columns.view, of: ColumnPane.self).first {
+            $0.folder.standardizedFileURL.fileViewKey == folder.standardizedFileURL.fileViewKey
+        })
+        if place.expanded {
+            let request = try await reads.request(2)
+            let work = try #require(pane.directoryReads.task)
+            request.finish(.success(try ["old.txt", "keep.txt"].map { try #require(FileEntry(url: tree.url("folder/" + $0))) }))
+            await work.value
+        }
+        browser.columns.view.layoutSubtreeIfNeeded()
+        browser.renameSelection(nil)
+        let field = try #require(views(pane, of: InlineRenameField.self).first)
+        let editor = try #require(field.currentEditor() as? NSTextView)
+        field.stringValue = "partially typed"
+        editor.string = "partially typed"
+        let row = try #require(pane.row(for: target))
+        let sibling = tree.url(place.expanded ? "folder/keep.txt" : "root-other.txt")
+        let siblingRow = try #require(pane.row(for: sibling))
+        clipboard.write([target, sibling], cut: true)
+        let siblingCell = try #require(pane.tableView.view(atColumn: 0, row: siblingRow, makeIfNecessary: true) as? ColumnCellView)
+        #expect(siblingCell.nameCell.imageView?.alphaValue == 0.45)
+        let editingCell = try #require(pane.tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? ColumnCellView)
+        #expect(editingCell.nameCell.imageView?.alphaValue == 1)
+        try #require(pane.tableView.rows(in: pane.tableView.visibleRect).length > 0)
+        for git in [false, true] {
+            // AppKit can replace a cell during a reload rather than reuse the hidden label's old cell.
+            let oldCell = try #require(pane.tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? ColumnCellView)
+            oldCell.identifier = nil
+            if git { browser.gitStatusChanged(Notification(name: .gitStatusDidChange, userInfo: ["root": tree.root])) }
+            else { browser.tagsChanged() }
+            let cell = try #require(pane.tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? ColumnCellView)
+            #expect(cell.nameCell.textField?.isHidden == true)
+            #expect(field.currentEditor() === editor)
+            #expect(editor.string == "partially typed")
+        }
+        field.cancel()
+        pane.tableView.layoutSubtreeIfNeeded()
+        let cell = try #require(pane.tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? ColumnCellView)
+        #expect(cell.nameCell.textField?.isHidden == false)
+        #expect(cell.nameCell.textField?.stringValue == target.lastPathComponent)
+        #expect(cell.nameCell.imageView?.alphaValue == 0.45)
+        #expect(views(pane, of: InlineRenameField.self).isEmpty)
+        await browser.commandWork?.value
+        #expect(controller.window?.isVisible == false)
+        #expect(tree.snapshot() == before)
+    }
+
     @Test func endingAnInlineEditCannotApplyAListingSupersededByAnotherRead() async throws {
         let tree = try TestTree("old.txt", "stale.txt", "current.txt")
         let reads = Reads()
@@ -643,7 +771,9 @@ struct DirectoryReadSessionTests {
         return (browser, pane)
     }
 
-    private func window(_ folder: URL, second: URL?, reads: Reads) -> BrowserWindowController {
+    private func window(_ folder: URL, second: URL?, reads: Reads,
+                        mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
+                        clipboard: Clipboard = .shared) -> BrowserWindowController {
         _ = NSApplication.shared
         let services = BrowserServices.configured(
             transfers: .shared,
@@ -652,8 +782,8 @@ struct DirectoryReadSessionTests {
             remote: .shared,
             containers: .shared,
             containerStore: .shared,
-            clipboard: .shared,
-            directories: reads.reader)
+            clipboard: clipboard,
+            directories: reads.reader, mediaReader: mediaReader)
         let controller = BrowserWindowController(location: folder, secondPane: second, services: services)
         controller.split.splitView.autosaveName = nil
         controller.window?.setFrameAutosaveName("")

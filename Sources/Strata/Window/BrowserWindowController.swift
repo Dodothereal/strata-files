@@ -485,8 +485,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func goToEnclosingFolder(_ sender: Any?) {
         if case .folder = destination {
+            if browser.mode == .columns, browser.columns.focusParentColumn() { return }
             // In column view "here" is the focused column's folder, not the first column's.
-            let current = (browser.mode == .columns ? pane.columnLocation : nil) ?? location
+            let current = (browser.mode == .columns ? browser.columns.activeDirectory : nil) ?? location
             guard current.path != "/" else { return }
             // Up from an archive opened as a folder: the folder the archive is in, with the archive selected.
             if let (archive, top) = ArchiveCache.archive(containing: current), top.standardizedFileURL == current.standardizedFileURL {

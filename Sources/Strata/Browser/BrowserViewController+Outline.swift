@@ -166,8 +166,9 @@ extension BrowserViewController: NSTextFieldDelegate {
         } else {
             deferredApply = nil
             let row = outlineView.row(forItem: node)
-            let column = outlineView.column(withIdentifier: .name)
-            if row >= 0, column >= 0 { outlineView.reloadData(forRowIndexes: [row], columnIndexes: [column]) }
+            if row >= 0 {
+                outlineView.reloadData(forRowIndexes: [row], columnIndexes: IndexSet(integersIn: 0..<outlineView.numberOfColumns))
+            }
         }
         view.window?.makeFirstResponder(outlineView)
         if deferredMetadataOrder {

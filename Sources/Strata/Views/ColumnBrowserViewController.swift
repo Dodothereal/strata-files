@@ -355,6 +355,17 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         revealColumns(animated: true, pane: preview ?? panes.last)
     }
 
+    @discardableResult
+    func focusParentColumn() -> Bool {
+        guard activeIndex > 0, let pane = activePane else { return false }
+        moveLeft(from: pane)
+        if let parent = activeDirectory {
+            location = parent
+            onLocationChange?(parent)
+        }
+        return true
+    }
+
     fileprivate func moveLeft(from pane: ColumnPane) {
         guard let index = panes.firstIndex(where: { $0 === pane }), index > 0 else { return }
         let previous = panes[index - 1]
@@ -491,12 +502,14 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         field.frame = NSRect(x: labelFrame.minX - 3, y: labelFrame.midY - height / 2,
                              width: max(pane.tableView.bounds.width - labelFrame.minX - 8, 80), height: height)
         cell.nameCell.textField?.isHidden = true
+        pane.renamingRow = row
         field.onCommit = { [weak self] name in
             guard let self, name != entry.name else { return }
             self.fileDelegate?.fileView(self, rename: entry, to: name)
         }
         field.onEnd = { [weak self, weak cell, weak pane] in
             cell?.nameCell.textField?.isHidden = false
+            pane?.renamingRow = nil
             self?.renameField = nil
             if let self, let pane, self.panes.contains(where: { $0 === pane }) {
                 self.view.window?.makeFirstResponder(pane.tableView)
@@ -523,6 +536,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private var rowByKey: [String: Int] = [:]
     weak var controller: ColumnBrowserViewController?
     let tableView = ColumnTableView()
+    fileprivate var renamingRow: Int?
     /// Opens the folder a drag rests on in the next column, by selecting it.
     lazy var springLoader = SpringLoader(view: tableView, frame: { [weak self] folder in
         guard let self, let row = rowByKey[folder.fileViewKey] else { return nil }
@@ -550,7 +564,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private var deferred: DeferredEntries?
 
     func applyDeferred() {
-        guard let deferred else { return }
+        guard let deferred else { refreshVisibleRows(); return }
         self.deferred = nil
         setEntries(deferred.entries, matches: deferred.matches)
     }
@@ -751,7 +765,9 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     func refreshVisibleRows() {
         let visible = tableView.rows(in: tableView.visibleRect)
         guard visible.length > 0 else { return }
-        tableView.reloadData(forRowIndexes: IndexSet(integersIn: visible.location..<NSMaxRange(visible)), columnIndexes: [0])
+        var rows = IndexSet(integersIn: visible.location..<NSMaxRange(visible))
+        if let renamingRow { rows.remove(renamingRow) }
+        tableView.reloadData(forRowIndexes: rows, columnIndexes: [0])
     }
 
     /// Width that shows the longest name in full.

@@ -4290,5 +4290,40 @@
     "replace": "outlineView.reloadData(forRowIndexes: [row], columnIndexes: columns)",
     "rule": "Inline rename metadata: media updates cannot commit a partial name",
     "tests": "DirectoryReadSessionTests"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Outline.swift",
+    "find": "outlineView.reloadData(forRowIndexes: [row], columnIndexes: IndexSet(integersIn: 0..<outlineView.numberOfColumns))",
+    "replace": "outlineView.reloadData(forRowIndexes: [row], columnIndexes: [outlineView.column(withIdentifier: .name)])",
+    "rule": "Rename refresh follow-up: ending an unchanged edit refreshes deferred metadata columns",
+    "tests": "DirectoryReadSessionTests"
+  },
+  {
+    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "find": "if let renamingRow { rows.remove(renamingRow) }",
+    "replace": "// Refresh the edited row too.",
+    "rule": "Rename refresh follow-up: Columns metadata cannot reveal the old label during editing",
+    "tests": "DirectoryReadSessionTests"
+  },
+  {
+    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "find": "guard let deferred else { refreshVisibleRows(); return }",
+    "replace": "guard let deferred else { return }",
+    "rule": "Rename refresh follow-up: Columns cancellation refreshes postponed metadata",
+    "tests": "DirectoryReadSessionTests"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "if browser.mode == .columns, browser.columns.focusParentColumn() { return }",
+    "replace": "// Leave focus in the deeper column.",
+    "rule": "Finder parent navigation: Command Up leaves the focused child column and keeps going upward",
+    "tests": "FinderNavigationTests"
+  },
+  {
+    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "find": "onLocationChange?(parent)",
+    "replace": "// Keep the old folder-open request alive.",
+    "rule": "Finder parent navigation: leaving a child column cancels a late folder open",
+    "tests": "FinderNavigationTests"
   }
 ]
