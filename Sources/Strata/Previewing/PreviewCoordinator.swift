@@ -62,7 +62,7 @@ import Quartz
                 if created { panel.center() }
                 guard presentPanel(panel, browser.focusView) else { return close() }
             }
-            if panel?.isVisible == true, content?.session.isContainer == true { panel?.makeFirstResponder(content?.outline) }
+            if panel?.isVisible == true, content?.session.isContainer == true { panel?.makeFirstResponder(content?.focusView) }
         }
     }
 

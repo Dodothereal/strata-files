@@ -22,10 +22,12 @@ extension PreviewBrowserController: NSMenuItemValidation {
     @objc func addToShelf(_ sender: Any?) {}
     @objc func showInFinder(_ sender: Any?) {}
     @objc func openInTerminal(_ sender: Any?) {}
-    @objc func goBack(_ sender: Any?) {}
+    @objc func showCommandPalette(_ sender: Any?) {}
+    @objc func goBack(_ sender: Any?) { if mode == .icons { goToPreviewParent() } }
     @objc func goForward(_ sender: Any?) {}
 
     @objc func goToEnclosingFolder(_ sender: Any?) {
+        if mode == .icons { goToPreviewParent(); return }
         let row = session.selected?.parent.map { outline.row(forItem: $0) } ?? -1
         if row >= 0 { outline.selectRowIndexes([row], byExtendingSelection: false) } else { outline.deselectAll(nil) }
     }
@@ -42,6 +44,12 @@ extension PreviewBrowserController: NSMenuItemValidation {
     @objc func openSelection(_ sender: Any?) { perform(.open) }
     @objc func focusSearch(_ sender: Any?) { view.window?.makeFirstResponder(controls.search) }
     @objc func toggleQuickLook(_ sender: Any?) { outline.onClose?() }
+    @objc func biggerIcons(_ sender: Any?) { chooseIconSize(controls.sizeSlider.doubleValue + 16) }
+    @objc func smallerIcons(_ sender: Any?) { chooseIconSize(controls.sizeSlider.doubleValue - 16) }
+    @objc func syncViewMode(_ sender: NSMenuItem) {
+        guard let view = BrowserViewMode(rawValue: sender.tag), view == .list || view == .grid else { return }
+        chooseMode(view == .grid ? .icons : .list)
+    }
     @objc func sortBy(_ sender: NSMenuItem) {
         guard let key = Self.sortKeys[sender.tag] else { return }
         chooseSort(key)
@@ -56,7 +64,13 @@ extension PreviewBrowserController: NSMenuItemValidation {
         case #selector(openSelection(_:)): action = .open
         case #selector(focusSearch(_:)): return session.isContainer
         case #selector(toggleQuickLook(_:)): return !session.isClosed
-        case #selector(goToEnclosingFolder(_:)): return session.selected != nil
+        case #selector(goToEnclosingFolder(_:)): return mode == .icons ? gridScope != nil : session.selected != nil
+        case #selector(goBack(_:)): return mode == .icons && gridScope != nil
+        case #selector(biggerIcons(_:)): return mode == .icons && controls.sizeSlider.doubleValue < 256
+        case #selector(smallerIcons(_:)): return mode == .icons && controls.sizeSlider.doubleValue > 32
+        case #selector(syncViewMode(_:)):
+            item.state = (mode == .icons ? BrowserViewMode.grid : .list).rawValue == item.tag ? .on : .off
+            return session.isContainer && [BrowserViewMode.list.rawValue, BrowserViewMode.grid.rawValue].contains(item.tag)
         case #selector(undo(_:)): return editingText?.undoManager?.canUndo == true
         case #selector(redo(_:)): return editingText?.undoManager?.canRedo == true
         case #selector(sortBy(_:)): return session.isContainer && Self.sortKeys[item.tag] != nil

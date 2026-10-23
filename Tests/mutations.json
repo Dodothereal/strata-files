@@ -4388,5 +4388,54 @@
     "replace": "true",
     "rule": "Space preview files: refuse special files and replacement links before starting a renderer",
     "tests": "PreviewCommandTests/specialFilesAndPathsReplacedByLinksNeverReachFileRenderers"
+  },
+  {
+    "file": "Strata/App/Prefs.swift",
+    "find": "defaults.set(newValue.rawValue, forKey: Key.previewViewMode)",
+    "replace": "defaults.set(newValue.rawValue, forKey: Key.viewMode)",
+    "rule": "Space preview grid: choosing Icons never changes the browser view preference",
+    "tests": "PreviewGridTests/theGridUsesIndependentPreferencesAndKeepsDeepSelectionWhenSwitchingToList"
+  },
+  {
+    "file": "Strata/App/Prefs.swift",
+    "find": "defaults.set(newValue.isFinite ? min(max(newValue, 32), 256) : 80, forKey: Key.previewIconSize)",
+    "replace": "defaults.set(newValue.isFinite ? min(max(newValue, 32), 256) : 80, forKey: Key.gridIconSize)",
+    "rule": "Space preview grid: resizing thumbnails never changes browser icon size",
+    "tests": "PreviewGridTests/theGridUsesIndependentPreferencesAndKeepsDeepSelectionWhenSwitchingToList"
+  },
+  {
+    "file": "Strata/Previewing/PreviewThumbnails.swift",
+    "find": "while active.count < limit, !pending.isEmpty {",
+    "replace": "while !pending.isEmpty {",
+    "rule": "Space preview grid: thumbnail work keeps its bounded generation allowance",
+    "tests": "PreviewGridTests/thumbnailFailuresReleaseThePreviewAllowanceAndClosingRejectsLateImages"
+  },
+  {
+    "file": "Strata/Previewing/PreviewThumbnails.swift",
+    "find": "        isClosed = true",
+    "replace": "        // Allow new work after closing.",
+    "rule": "Space preview grid: a closed thumbnail owner cannot start more work",
+    "tests": "PreviewGridTests/thumbnailFailuresReleaseThePreviewAllowanceAndClosingRejectsLateImages"
+  },
+  {
+    "file": "Strata/Views/FileThumbnails.swift",
+    "find": "defer { for observer in entry.callbacks.values { observer.finished?() } }",
+    "replace": "// Do not release the preview allowance on completion.",
+    "rule": "Space preview grid: failed thumbnail requests release the next waiting item",
+    "tests": "PreviewGridTests/thumbnailFailuresReleaseThePreviewAllowanceAndClosingRejectsLateImages"
+  },
+  {
+    "file": "Strata/Views/FileThumbnails.swift",
+    "find": "image.width <= 4096, image.height <= 4096",
+    "replace": "true",
+    "rule": "Space preview grid: reject oversized callback images before cropping or display",
+    "tests": "PreviewGridTests/oversizedThumbnailCallbacksAreRefusedBeforeCroppingAndTheNextRequestCanFinish"
+  },
+  {
+    "file": "Strata/Previewing/PreviewGridItem.swift",
+    "find": "if keep { return }",
+    "replace": "// Restart the thumbnail for each point of the slider.",
+    "rule": "Space preview grid: resizing within one bucket keeps its current thumbnail request",
+    "tests": "PreviewGridTests/resizingWithinAThumbnailBucketKeepsItsRequestAndCrossingTheBucketCancelsOnlyThatCell"
   }
 ]

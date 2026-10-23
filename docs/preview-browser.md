@@ -76,3 +76,21 @@ appearance. GUI checks must not manipulate the installed Strata or change the us
   selection also covers the added special-file and late-fallback cases, with no sanitizer diagnostics. All seven
   action/sorting/provider-path/renderer mutations are caught. The 44 Python regressions, catalogs and source audits
   pass, and temporary verification checkouts are removed.
+- Actions commit: `8694811`.
+- Native Icons implemented and reviewed. Use the existing
+  GridLayout, GridItemView, typography, thumbnail owner and ThemeStyle canvas. Preview mode and icon size have their
+  own preferences. Internal folder navigation, Back and Command-Up retain the source browser; switching modes
+  preserves a selected descendant and expands its already-loaded ancestors. No folder measurements start here.
+- Grid review fixes: clear hidden selections, use the active view for keyboard focus, cancel pending folder reads
+  when going back, keep palette/font changes in place, and cancel offscreen/closed/reused cells. Eight concurrent
+  thumbnail requests share the preview allowance; failures, cache hits and placeholder invalidation return it.
+  Resizing within a size bucket keeps the existing request/image. Oversized callback images are rejected before
+  cropping or display with checked byte-cost multiplication.
+- Grid checks: 46 preview/thumbnail/provider tests pass, including native arrows, Return, Command-Up and Space,
+  private preferences, cancellation, coalescing, cache and image-size boundaries. The 36-case theme fixture uses
+  real native collection cells and verifies the drawn owning canvas plus AppKit's collection background binding;
+  selection, cell and thumbnail identities survive. These remain headless checks, not a live compositor check.
+- Final grid verification: 936 tests in 113 suites pass under Debug ASan; the final 31-test ASan selection and
+  20-test native selection pass after adding the command-palette responder guard. All seven grid mutations are
+  caught, all 44 Python regressions pass, 22 catalogs remain complete and both source audits pass. The preview
+  cannot open the underlying browser's file-command palette while it has focus.

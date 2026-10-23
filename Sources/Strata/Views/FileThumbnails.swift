@@ -28,7 +28,12 @@ final class FileThumbnails {
         var entry: FileEntry
         var request: QLThumbnailGenerator.Request
         var generation: Int
-        var callbacks: [Int: (NSImage) -> Void]
+        var callbacks: [Int: Observer]
+    }
+
+    private struct Observer {
+        let image: (NSImage) -> Void
+        let finished: (() -> Void)?
     }
 
     private let cache: ThumbnailCache
@@ -97,6 +102,7 @@ final class FileThumbnails {
             failed.remove(key)
             if let item = pending.removeValue(forKey: key) {
                 cancelGeneration(item.request)
+                for observer in item.callbacks.values { observer.finished?() }
             }
         }
     }
@@ -122,20 +128,24 @@ final class FileThumbnails {
     }
 
     /// Generates a thumbnail; `completion` runs on the main actor, only on success and only if not cancelled.
+    /// `finished` also reports failures and cache hits, so bounded consumers can release their allowance. Cancelling
+    /// a ticket removes both callbacks; the caller already knows it cancelled that request.
     @discardableResult
-    func request(_ entry: FileEntry, size: CGFloat, scale: CGFloat, completion: @escaping (NSImage) -> Void) -> Ticket? {
-        guard canThumbnail(entry) else { return nil }
+    func request(_ entry: FileEntry, size: CGFloat, scale: CGFloat, finished: (() -> Void)? = nil,
+                 completion: @escaping (NSImage) -> Void) -> Ticket? {
+        guard canThumbnail(entry) else { finished?(); return nil }
         let bucket = Self.bucket(for: size)
         let key = key(entry, bucket, scale)
-        if failed.contains(key) { return nil }
+        if failed.contains(key) { finished?(); return nil }
         if let image = cache.image(forKey: key) {
             completion(image)
+            finished?()
             return nil
         }
         nextID += 1
         let ticket = Ticket(key: key, id: nextID)
         if pending[key] != nil {
-            pending[key]?.callbacks[ticket.id] = completion
+            pending[key]?.callbacks[ticket.id] = Observer(image: completion, finished: finished)
             return ticket
         }
         let request = QLThumbnailGenerator.Request(fileAt: entry.url, size: CGSize(width: bucket, height: bucket),
@@ -146,8 +156,10 @@ final class FileThumbnails {
             keysByPath.removeAll(keepingCapacity: true)
         }
         keysByPath[entry.url.path, default: []].insert(key)
-        pending[key] = Pending(entry: entry, request: request, generation: generation, callbacks: [ticket.id: completion])
+        pending[key] = Pending(entry: entry, request: request, generation: generation,
+                               callbacks: [ticket.id: Observer(image: completion, finished: finished)])
         generate(request) { [weak self] original, cancelled in
+            let original = original.flatMap { Self.bounded($0) ? $0 : nil }
             // Icon-mode thumbnails sit on a square transparent canvas; trim it so wide images can bottom-align.
             let image = original.map { FileThumbnails.trimmed($0) }
             // A cropped CGImage can retain the original backing, so charge its full decoded size.
@@ -159,6 +171,12 @@ final class FileThumbnails {
             }
         }
         return ticket
+    }
+
+    nonisolated private static func bounded(_ image: CGImage) -> Bool {
+        guard image.width > 0, image.height > 0, image.width <= 4096, image.height <= 4096 else { return false }
+        let (bytes, overflow) = image.bytesPerRow.multipliedReportingOverflow(by: image.height)
+        return !overflow && bytes <= 128 << 20
     }
 
     func cancel(_ ticket: Ticket?) {
@@ -221,6 +239,7 @@ final class FileThumbnails {
         // A cancelled request can still complete after a new one for the same key started; ignore it.
         guard let entry = pending[key], entry.generation == generation else { return }
         pending[key] = nil
+        defer { for observer in entry.callbacks.values { observer.finished?() } }
         guard canThumbnail(entry.entry) else { return }
         guard let cgImage else {
             if !cancelled {
@@ -236,7 +255,7 @@ final class FileThumbnails {
         let image = NSImage(cgImage: cgImage, size: NSSize(width: CGFloat(cgImage.width) * factor,
                                                            height: CGFloat(cgImage.height) * factor))
         cache.insert(image, forKey: key, cost: cost)
-        for callback in entry.callbacks.values { callback(image) }
+        for observer in entry.callbacks.values { observer.image(image) }
     }
 }
 

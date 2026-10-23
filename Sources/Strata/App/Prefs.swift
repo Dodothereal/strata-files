@@ -10,6 +10,7 @@ extension Notification.Name {
     /// A list column was shown or hidden (right-click the column titles): every list follows.
     static let listColumnsChanged = Notification.Name("StrataListColumnsChanged")
     static let viewOptionsChanged = Notification.Name("StrataViewOptionsChanged")
+    static let previewOptionsChanged = Notification.Name("StrataPreviewOptionsChanged")
     /// A sidebar section was hidden or shown: every window's sidebar follows.
     static let sidebarSectionsCollapsed = Notification.Name("StrataSidebarSectionsCollapsed")
 }
@@ -63,6 +64,8 @@ final class Prefs {
         static let customWindowFolder = "customWindowFolder"
         static let viewMode = "viewMode"
         static let gridIconSize = "gridIconSize"
+        static let previewViewMode = "previewViewMode"
+        static let previewIconSize = "previewIconSize"
         static let verifyCopies = "verifyCopies"
         static let favoritePaths = "favoritePaths"
         static let reopenWindows = "reopenWindows"
@@ -147,6 +150,25 @@ final class Prefs {
         set {
             defaults.set(newValue, forKey: Key.gridIconSize)
             notifications.post(name: .viewOptionsChanged, object: nil)
+        }
+    }
+
+    var previewViewMode: PreviewViewMode {
+        get { PreviewViewMode(rawValue: defaults.integer(forKey: Key.previewViewMode)) ?? .list }
+        set {
+            defaults.set(newValue.rawValue, forKey: Key.previewViewMode)
+            notifications.post(name: .previewOptionsChanged, object: nil)
+        }
+    }
+
+    var previewIconSize: Double {
+        get {
+            let value = defaults.object(forKey: Key.previewIconSize) as? Double ?? 80
+            return value.isFinite ? min(max(value, 32), 256) : 80
+        }
+        set {
+            defaults.set(newValue.isFinite ? min(max(newValue, 32), 256) : 80, forKey: Key.previewIconSize)
+            notifications.post(name: .previewOptionsChanged, object: nil)
         }
     }
 

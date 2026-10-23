@@ -5,6 +5,24 @@ import Testing
 @testable import Strata
 
 struct ProviderThumbnailInfoTests {
+    @Test func placeholderInvalidationFinishesBoundedThumbnailObserversWithoutDeliveringLateImages() async throws {
+        let tree = try TestTree("provider/a.png")
+        let state = State([]), generator = Generator()
+        let copies = CopyProviders([Provider(root: tree.url("provider"), state: state)])
+        let loader = generator.loader(copies: copies)
+        let entry = try #require(FileEntry(url: tree.url("provider/a.png")))
+        let before = tree.snapshot()
+        var finished = 0, delivered = 0
+        _ = loader.request(entry, size: 80, scale: 1, finished: { finished += 1 }) { _ in delivered += 1 }
+        state.set(entry.url, missing: true)
+        #expect(!loader.canThumbnail(entry))
+        #expect(finished == 1 && delivered == 0 && generator.cancelled.count == 1)
+        generator.requests[0].1(nil, false)
+        await withCheckedContinuation { done in DispatchQueue.main.async { done.resume() } }
+        #expect(finished == 1 && delivered == 0 && !loader.hasFailed(entry, size: 80, scale: 1))
+        #expect(tree.snapshot() == before)
+    }
+
     private nonisolated final class State: Sendable {
         let missing: Mutex<Set<String>>
         init(_ urls: [URL]) { missing = Mutex(Set(urls.map { $0.standardizedFileURL.path })) }

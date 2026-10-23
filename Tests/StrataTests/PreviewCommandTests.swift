@@ -206,7 +206,8 @@ struct PreviewCommandTests {
         content.nextResponder = spy
         let actions: [Selector] = [#selector(BrowserViewController.moveToTrash(_:)), #selector(BrowserViewController.deleteImmediately(_:)),
                                    #selector(BrowserViewController.paste(_:)), #selector(BrowserViewController.renameSelection(_:)),
-                                   #selector(BrowserViewController.newFolder(_:)), #selector(BrowserWindowController.moveToOtherPane(_:))]
+                                   #selector(BrowserViewController.newFolder(_:)), #selector(BrowserWindowController.moveToOtherPane(_:)),
+                                   #selector(BrowserWindowController.showCommandPalette(_:))]
         for action in actions {
             #expect(!content.validateMenuItem(NSMenuItem(title: "", action: action, keyEquivalent: "")))
             #expect(content.tryToPerform(action, with: nil))
@@ -320,4 +321,5 @@ private final class PreviewEditingSpy: NSResponder {
     @objc func renameSelection(_ sender: Any?) { calls += 1 }
     @objc func newFolder(_ sender: Any?) { calls += 1 }
     @objc func moveToOtherPane(_ sender: Any?) { calls += 1 }
+    @objc func showCommandPalette(_ sender: Any?) { calls += 1 }
 }

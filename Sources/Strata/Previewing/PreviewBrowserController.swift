@@ -8,6 +8,9 @@ import StrataPreviews
     let fileView: PreviewFileView
     let controls = PreviewControls()
     let listing = PreviewListing()
+    private(set) var mode = PreviewViewMode.list
+    private(set) var gridScope: PreviewItem?
+    private(set) var grid: PreviewGridController?
     private(set) var commandTarget: PreviewCommandTarget?
     var onAction: ((PreviewAction, PreviewCommandTarget) -> Void)?
     private let preferences: Prefs
@@ -16,6 +19,8 @@ import StrataPreviews
     private let scroll = NSScrollView()
     private let split = NSSplitViewController()
     private let treeItem: NSSplitViewItem
+    private let treeController: NSViewController
+    private let treeHost = NSView()
     private let path = NSTextField(labelWithString: "")
     private let status = NSTextField(labelWithString: "")
     private let progress = NSProgressIndicator()
@@ -25,6 +30,7 @@ import StrataPreviews
     private let dateColumn = NSTableColumn(identifier: .init("previewDate"))
     private var applying = false
     private var shownGeneration = -1
+    var focusView: NSView { if mode == .icons, let grid { return grid.collection }; return outline }
 
     init(session: PreviewSession, preferences: Prefs, thumbnails: FileThumbnails, copies: CopyProviders) {
         self.session = session
@@ -33,7 +39,8 @@ import StrataPreviews
         self.copies = copies
         fileView = PreviewFileView(thumbnails: thumbnails, copies: copies)
         let tree = NSViewController()
-        tree.view = scroll
+        tree.view = treeHost
+        treeController = tree
         treeItem = NSSplitViewItem(viewController: tree)
         super.init(nibName: nil, bundle: nil)
         let preview = NSViewController()
@@ -55,13 +62,24 @@ import StrataPreviews
         view = NSView()
         ThemeStyle.bind(view, to: .content)
         configureOutline()
+        ThemeStyle.bind(treeHost, to: .content)
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        treeHost.addSubview(scroll)
+        NSLayoutConstraint.activate([
+            scroll.leadingAnchor.constraint(equalTo: treeHost.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: treeHost.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: treeHost.topAnchor), scroll.bottomAnchor.constraint(equalTo: treeHost.bottomAnchor),
+        ])
         controls.onQuery = { [weak self] query in self?.filter(query) }
         controls.onOrder = { [weak self] key in self?.chooseSort(key) }
+        controls.onMode = { [weak self] mode in self?.chooseMode(mode) }
+        controls.onIconSize = { [weak self] size in self?.chooseIconSize(size) }
+        controls.onBack = { [weak self] in self?.goToPreviewParent() }
         controls.canPerform = { [weak self] action, target in self?.canPerform(action, target: target) == true }
         controls.onAction = { [weak self] action, target in self?.onAction?(action, target) }
         controls.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(controls)
         preferences.notifications.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(previewOptionsChanged), name: .previewOptionsChanged, object: nil)
         addChild(split)
         split.view.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(split.view)
@@ -139,6 +157,7 @@ import StrataPreviews
     }
 
     @objc private func appearanceChanged() {
+        grid?.updateAppearance()
         outline.rowHeight = FileViewStyle.listHeight(for: preferences)
         let visible = outline.rows(in: outline.visibleRect)
         guard visible.location != NSNotFound, visible.length > 0 else { return }
@@ -162,9 +181,11 @@ import StrataPreviews
                 shownGeneration = session.generation
                 listing.query = ""
                 controls.search.stringValue = ""
+                gridScope = nil
             }
             treeItem.isCollapsed = !session.isContainer
             controls.search.isEnabled = session.isContainer
+            updateMode()
             refreshTree()
             fileView.show(nil, root: session.root)
             view.window?.title = session.root?.displayName ?? ""
@@ -172,11 +193,13 @@ import StrataPreviews
             refreshTree()
         case .selection:
             fileView.show(session.selected, root: session.root)
+            if mode == .icons { grid?.select(session.selected) }
         }
         if commandTarget?.isActive(in: session) != true {
             commandTarget = PreviewCommandTarget(session: session)
         }
         controls.update(commandTarget)
+        updateViewControls()
         updateFooter()
     }
 
@@ -206,9 +229,16 @@ import StrataPreviews
         let expanded = (0..<outline.numberOfRows).compactMap { outline.item(atRow: $0) as? PreviewItem }.filter { outline.isItemExpanded($0) }
         listing.foldersFirst = preferences.foldersFirst
         listing.rebuild(session.roots, reorder: reorder)
+        if mode == .icons {
+            refreshGrid()
+            return
+        }
         applying = true
         outline.reloadData()
         for item in expanded where listing.contains(item) { outline.expandItem(item) }
+        var ancestors: [PreviewItem] = [], parent = selected?.parent
+        while let item = parent { ancestors.append(item); parent = item.parent }
+        for item in ancestors.reversed() where item.children != nil { outline.expandItem(item) }
         if !listing.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             var pending = listing.roots
             while let item = pending.popLast() {
@@ -252,12 +282,98 @@ import StrataPreviews
     func close() {
         session.close()
         fileView.close()
+        grid?.close()
+        gridScope = nil
         listing.rebuild([])
         applying = true
         outline.reloadData()
         applying = false
         commandTarget = nil
         controls.update(nil)
+    }
+
+    func chooseMode(_ mode: PreviewViewMode) {
+        guard !session.isClosed else { return }
+        preferences.previewViewMode = mode
+    }
+
+    func chooseIconSize(_ size: Double) {
+        guard !session.isClosed else { return }
+        preferences.previewIconSize = size
+    }
+
+    @objc private func previewOptionsChanged() {
+        guard !session.isClosed else { return }
+        let previous = mode
+        updateMode()
+        grid?.updateAppearance()
+        if previous != mode { refreshTree(reorder: false) }
+        if previous != mode { view.window?.makeFirstResponder(focusView) }
+        updateViewControls()
+    }
+
+    private func updateMode() {
+        let next = session.isContainer ? preferences.previewViewMode : .list
+        if mode != .icons, next == .icons { gridScope = session.selected?.parent }
+        mode = next
+        scroll.isHidden = mode == .icons
+        if mode == .icons { _ = ensureGrid() }
+        grid?.view.isHidden = mode != .icons
+        if mode != .icons { grid?.pause() }
+    }
+
+    private func updateViewControls() {
+        controls.updateView(mode: mode, size: preferences.previewIconSize, canBrowse: session.isContainer, canGoBack: gridScope != nil)
+    }
+
+    private func ensureGrid() -> PreviewGridController {
+        if let grid { return grid }
+        let grid = PreviewGridController(preferences: preferences, thumbnails: thumbnails)
+        treeController.addChild(grid)
+        grid.view.translatesAutoresizingMaskIntoConstraints = false
+        treeHost.addSubview(grid.view)
+        NSLayoutConstraint.activate([
+            grid.view.leadingAnchor.constraint(equalTo: treeHost.leadingAnchor), grid.view.trailingAnchor.constraint(equalTo: treeHost.trailingAnchor),
+            grid.view.topAnchor.constraint(equalTo: treeHost.topAnchor), grid.view.bottomAnchor.constraint(equalTo: treeHost.bottomAnchor),
+        ])
+        grid.onSelection = { [weak self] item in
+            guard let self, mode == .icons else { return }
+            session.select(item ?? gridScope)
+        }
+        grid.onActivate = { [weak self] in self?.activateGridItem($0) }
+        grid.onClose = { [weak self] in self?.outline.onClose?() }
+        grid.onContextMenu = { [weak self] in self?.controls.actionMenu() }
+        self.grid = grid
+        return grid
+    }
+
+    private func refreshGrid(resetScroll: Bool = false) {
+        guard mode == .icons else { return }
+        let visible = listing.children(of: gridScope)
+        if let selected = session.selected, selected !== gridScope, !visible.contains(where: { $0 === selected }) { session.select(gridScope) }
+        ensureGrid().apply(visible, selected: session.selected, resetScroll: resetScroll)
+    }
+
+    func activateGridItem(_ item: PreviewItem) {
+        guard mode == .icons, !session.isClosed, listing.children(of: gridScope).contains(where: { $0 === item }) else { return }
+        guard item.isDirectory else { session.select(item); return perform(.open) }
+        gridScope = item
+        listing.query = ""
+        controls.search.stringValue = ""
+        session.expand(item)
+        listing.rebuild(session.roots)
+        session.select(item)
+        refreshGrid(resetScroll: true)
+        updateViewControls()
+    }
+
+    func goToPreviewParent() {
+        guard mode == .icons, let scope = gridScope, !session.isClosed else { return }
+        session.collapse(scope)
+        gridScope = scope.parent
+        session.select(scope)
+        refreshGrid(resetScroll: true)
+        updateViewControls()
     }
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
