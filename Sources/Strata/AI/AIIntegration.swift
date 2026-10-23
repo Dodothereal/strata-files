@@ -60,7 +60,7 @@ extension BrowserWindowController {
         let folder = location
         let selectAfterReload = selectionAfterOperation()
         PlanSheetController.present(on: window, urls: urls, baseFolder: folder, undoManager: window.undoManager,
-                                    instruction: instruction) { [weak self] outcome in
+                                    instruction: instruction, files: services.files) { [weak self] outcome in
             guard self != nil, let outcome, !outcome.results.isEmpty else { return }
             selectAfterReload(outcome.results)
             Task { for url in outcome.results { await StrataAI.index.refresh(url) } }

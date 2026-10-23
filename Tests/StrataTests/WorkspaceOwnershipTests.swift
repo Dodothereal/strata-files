@@ -43,8 +43,15 @@ struct WorkspaceOwnershipTests {
             preferences.showIconPreviews = false
             let storage = SecureStorage.Context(directory: tree.url(domain), caches: tree.url(domain + "/Caches"), key: nil)
             let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage))
-            services = BrowserServices(transfers: transfers, visits: Frecency(preferences: defaults),
-                                       directories: DirectoryReader { _, _, _ in [] }, preferences: preferences, windows: windows.boundary)
+            services = BrowserServices.configured(
+                transfers: transfers,
+                visits: Frecency(preferences: defaults),
+                windows: windows.boundary,
+                remote: .shared,
+                containers: .shared,
+                containerStore: .shared,
+                clipboard: .shared,
+                directories: DirectoryReader { _, _, _ in [] })
         }
 
         isolated deinit { defaults.removePersistentDomain(forName: domain) }

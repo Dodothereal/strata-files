@@ -1516,6 +1516,7 @@
     "The copy can’t be read back": "Kopya geri okunamıyor",
     "The copy doesn’t match the original": "Kopya orijinalle eşleşmiyor",
     "The destination folder couldn’t be found": "Hedef klasör bulunamadı",
+    "The disk has no Trash.": "Diskte Çöp Sepeti yok.",
     "The disk is full": "Disk dolu",
     "The disk is read-only": "Disk salt okunur",
     "The document is too long for the on-device model.": "Belge, aygıt üzerindeki model için çok uzun.",

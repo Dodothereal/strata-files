@@ -173,7 +173,15 @@ struct BrowserPresentationsTests {
         let tree = try TestTree("a.txt", "b.txt")
         let entries = try entries(tree, ["a.txt", "b.txt"])
         let reader = DirectoryReader { _, _, _ in entries }
-        var browser: BrowserViewController? = BrowserViewController(services: BrowserServices(transfers: .shared, visits: .shared, directories: reader))
+        var browser: BrowserViewController? = BrowserViewController(services: BrowserServices.configured(
+            transfers: .shared,
+            visits: .shared,
+            windows: .headless,
+            remote: .shared,
+            containers: .shared,
+            containerStore: .shared,
+            clipboard: .shared,
+            directories: reader))
         weak var owner = browser
         browser?.setStoredMode(.list)
         _ = browser?.view

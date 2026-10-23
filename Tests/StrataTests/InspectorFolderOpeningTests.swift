@@ -83,8 +83,15 @@ struct InspectorFolderOpeningTests {
             let preferences = Prefs(defaults: defaults, domainName: domain)
             preferences.showIconPreviews = false
             let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
-            services = BrowserServices(transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage)),
-                visits: Frecency(preferences: defaults), directories: reader, preferences: preferences, copies: copies)
+            services = BrowserServices.configured(
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
+                visits: Frecency(preferences: defaults),
+                windows: .headless,
+                remote: .shared,
+                containers: .shared,
+                containerStore: .shared,
+                clipboard: .shared,
+                directories: reader)
         }
         isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }

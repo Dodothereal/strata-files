@@ -770,9 +770,10 @@ extension SidebarViewController: NSMenuDelegate {
         guard !urls.isEmpty else { return }
         let window = view.window
         let copies = services.copies
+        let files = services.files
         Task { @MainActor in
             do {
-                try await FileOps.trashInBackground(urls, undo: window?.undoManager, copies: copies)
+                try await files.trash(urls, undo: window?.undoManager)
             } catch let noTrash as FileOps.NoTrash {
                 BrowserViewController.confirmDelete(noTrash.urls, in: window, noTrash: true, copies: copies) {}
             } catch {

@@ -1516,6 +1516,7 @@
     "The copy can’t be read back": "Kopien kan ikke leses tilbake",
     "The copy doesn’t match the original": "Kopien samsvarer ikke med originalen",
     "The destination folder couldn’t be found": "Målmappen ble ikke funnet",
+    "The disk has no Trash.": "Disken har ingen papirkurv.",
     "The disk is full": "Disken er full",
     "The disk is read-only": "Disken er skrivebeskyttet",
     "The document is too long for the on-device model.": "Dokumentet er for langt for modellen på enheten.",

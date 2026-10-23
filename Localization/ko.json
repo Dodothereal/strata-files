@@ -1396,6 +1396,7 @@
     "The copy can’t be read back": "복사본을 다시 읽을 수 없음",
     "The copy doesn’t match the original": "복사본이 원본과 일치하지 않음",
     "The destination folder couldn’t be found": "대상 폴더를 찾을 수 없음",
+    "The disk has no Trash.": "이 디스크에는 휴지통이 없습니다.",
     "The disk is full": "디스크가 가득 참",
     "The disk is read-only": "디스크가 읽기 전용임",
     "The document is too long for the on-device model.": "기기 내 모델로 처리하기에는 문서가 너무 깁니다.",

@@ -87,15 +87,18 @@ struct InspectorProviderTests {
                 caches: tree.url(folder + "/state/Caches"),
                 key: nil
             )
-            let copies = extraProviders.isEmpty ? nil : CopyProviders(extraProviders)
-            services = BrowserServices(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage)),
+            let copies = extraProviders.isEmpty
+                ? CopyProviders(servers: remote.files, containers: .shared)
+                : CopyProviders(extraProviders, remoteCopies: remote.copies)
+            services = BrowserServices.configured(
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
                 visits: Frecency(preferences: defaults),
-                directories: DirectoryReader { _, _, _ in [] },
-                preferences: preferences,
+                windows: .headless,
                 remote: remote,
-                copies: copies
-            )
+                containers: .shared,
+                containerStore: .shared,
+                clipboard: .shared,
+                directories: DirectoryReader { _, _, _ in [] })
         }
 
         isolated deinit {

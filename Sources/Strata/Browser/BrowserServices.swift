@@ -3,7 +3,45 @@ import Foundation
 /// Services shared by a window and its panes. Production windows share one set; headless windows can own independent
 /// preferences, transfers and visit history without changing AppKit's responder chain or presentation controllers.
 final class BrowserServices {
-    static let shared = BrowserServices(transfers: .shared, visits: .shared)
+    static let shared = application()
+
+    private static func application() -> BrowserServices {
+        BrowserServices(transfers: .shared, visits: .shared, windows: .native, remote: .shared,
+                        containers: .shared, containerStore: .shared, clipboard: .shared)
+    }
+
+    /// Build an independent environment as a unit. Its queue, History, providers and preferences agree from birth;
+    /// callers supply external services explicitly so a fixture never silently borrows a native connection or clipboard.
+    static func isolated(preferences: Prefs, storage: SecureStorage.Context, credentials: RemoteKeychain,
+                         connector: RemoteConnector, clipboard: Clipboard,
+                         containers: ContainerFiles? = nil, containerStore: ContainerStore = ContainerStore(),
+                         windows: BrowserWindows = .headless, directories: DirectoryReader? = nil,
+                         mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read) -> BrowserServices {
+        let remote = RemoteServices(preferences: preferences, credentials: credentials,
+                                    copyRoot: storage.caches.appending(path: "Servers"), connector: connector)
+        let containers = containers ?? ContainerFiles(copies: ContainerCopyStore(root: storage.caches.appending(path: "Containers")))
+        let copies = CopyProviders(servers: remote.files, containers: containers)
+        let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies)
+        return configured(transfers: transfers, visits: Frecency(preferences: preferences.defaults), windows: windows,
+                          remote: remote, containers: containers, containerStore: containerStore, clipboard: clipboard,
+                          directories: directories, mediaReader: mediaReader)
+    }
+
+    /// Explicit composition for custom providers and readers. The queue is the sole owner of preferences, History
+    /// and copy routing; constructing a window never reconfigures an existing queue or its active jobs.
+    static func configured(transfers: TransferQueue, visits: Frecency, windows: BrowserWindows,
+                           remote: RemoteServices, containers: ContainerFiles, containerStore: ContainerStore,
+                           clipboard: Clipboard, directories: DirectoryReader? = nil,
+                           availableCapacity: @escaping @Sendable (URL) async -> Int64? = BrowserLoading.freeSpace,
+                           remoteBrowsing: RemoteBrowsing? = nil,
+                           mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
+                           thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
+                           openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil) -> BrowserServices {
+        BrowserServices(transfers: transfers, visits: visits, directories: directories, windows: windows,
+                        availableCapacity: availableCapacity, remote: remote, remoteBrowsing: remoteBrowsing,
+                        containers: containers, containerStore: containerStore, clipboard: clipboard,
+                        mediaReader: mediaReader, thumbnails: thumbnails, itemInfo: itemInfo, openContainer: openContainer)
+    }
 
     let preferences: Prefs
     lazy var workspaces = Workspaces(services: self)
@@ -12,6 +50,7 @@ final class BrowserServices {
     lazy var viewOptions = ViewOptionsWindowController(preferences: preferences)
 
     let transfers: TransferQueue
+    let files: BrowserFileCommands
     let visits: Frecency
     let remote: RemoteServices
     let remoteBrowsing: RemoteBrowsing
@@ -27,27 +66,23 @@ final class BrowserServices {
     let availableCapacity: @Sendable (URL) async -> Int64?
     let windows: BrowserWindows
 
-    init(transfers: TransferQueue, visits: Frecency, directories: DirectoryReader? = nil, preferences: Prefs = .shared, windows: BrowserWindows = .native,
-         availableCapacity: @escaping @Sendable (URL) async -> Int64? = BrowserLoading.freeSpace,
-         remote: RemoteServices = .shared, remoteBrowsing: RemoteBrowsing? = nil,
-         containers: ContainerFiles = .shared, containerStore: ContainerStore = .shared,
-         copies: CopyProviders? = nil,
-         clipboard: Clipboard = .shared,
-         mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
-         thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
-         openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil) {
-        self.preferences = preferences
+    private init(transfers: TransferQueue, visits: Frecency, directories: DirectoryReader? = nil, windows: BrowserWindows,
+                 availableCapacity: @escaping @Sendable (URL) async -> Int64? = BrowserLoading.freeSpace,
+                 remote: RemoteServices, remoteBrowsing: RemoteBrowsing? = nil,
+                 containers: ContainerFiles, containerStore: ContainerStore, clipboard: Clipboard,
+                 mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
+                 thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
+                 openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil) {
+        self.preferences = transfers.preferences
         self.transfers = transfers
+        self.files = BrowserFileCommands(transfers: transfers)
         self.visits = visits
         self.remote = remote
         self.remoteBrowsing = remoteBrowsing ?? remote.browsing
         self.containers = containers
         self.containerStore = containerStore
-        self.copies = copies ?? CopyProviders(servers: remote.files, containers: containers)
+        self.copies = transfers.copies
         self.clipboard = clipboard
-        if transfers !== TransferQueue.shared && !transfers.hasCustomCopies {
-            transfers.copies = self.copies
-        }
         self.openContainer = openContainer ?? { id in
             guard let engine = containerStore.engine, let container = containerStore.container(id: id) else { throw ContainerAPIError.notFound }
             return try await containers.open(container, on: engine)

@@ -1516,6 +1516,7 @@
     "The copy can’t be read back": "Não é possível ler a cópia novamente",
     "The copy doesn’t match the original": "A cópia não corresponde ao original",
     "The destination folder couldn’t be found": "Não foi possível encontrar a pasta de destino",
+    "The disk has no Trash.": "O disco não tem Lixeira.",
     "The disk is full": "O disco está cheio",
     "The disk is read-only": "O disco é somente leitura",
     "The document is too long for the on-device model.": "O documento é longo demais para o modelo no dispositivo.",

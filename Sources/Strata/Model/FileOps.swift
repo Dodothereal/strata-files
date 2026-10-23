@@ -14,7 +14,8 @@ enum FileOps {
         NSLocalizedDescriptionKey: String(localized: "Items in a read-only copy (an archive opened as a folder, or a container’s files) can’t be changed. Copy them out first."),
     ])
 
-    static func rename(_ url: URL, to name: String, undo: UndoManager?, copies: CopyProviders = .live) async throws -> URL {
+    static func rename(_ url: URL, to name: String, undo: UndoManager?, copies: CopyProviders = .live,
+                       history: OperationLog = .shared) async throws -> URL {
         guard !ReadOnlyCopies.contains(url, copies: copies) else { throw insideArchiveError }
         // A name, never a path: whatever is typed, the item stays in its folder.
         guard !name.isEmpty, name != ".", name != "..", !name.contains("/") else {
@@ -31,7 +32,7 @@ enum FileOps {
                 NSLocalizedDescriptionKey: String(localized: "The name “\(name)” is already taken. Please choose a different name."),
             ])
         }
-        try await move([(from: url, to: destination)], actionName: "Rename", undo: undo, copies: copies)
+        try await move([(from: url, to: destination)], actionName: "Rename", undo: undo, history: history, copies: copies)
         return destination
     }
 
@@ -50,7 +51,7 @@ enum FileOps {
         for pair in done where landed.identity(at: pair.to) == nil { landed.record([pair.to]) }
         done.forEach { landed.arrived($0.to); TransferEngine.hooks.afterLanding?($0.to) }
         let entry = record ? history.recordMove(actionName, done, landed: landed) : nil
-        registerMoveUndo(done, actionName, undo, entry: entry, landed: landed, history: history)
+        registerMoveUndo(done, actionName, undo, entry: entry, copies: copies, landed: landed, history: history)
         if let error { throw error }
     }
 
@@ -177,20 +178,23 @@ enum FileOps {
         return translated
     }
 
-    static func newFolder(in directory: URL, undo: UndoManager?, copies: CopyProviders = .live) throws -> URL {
+    static func newFolder(in directory: URL, undo: UndoManager?, copies: CopyProviders = .live,
+                          history: OperationLog = .shared) throws -> URL {
         guard !ReadOnlyCopies.contains(directory, copies: copies) else { throw insideArchiveError }
         let name = nameText(String(localized: "untitled folder", comment: "Name of a new folder, as Finder names it"),
                             english: "untitled folder")
         let url = available(directory.appending(path: name), copyStyle: false)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
-        let entry = OperationLog.shared.recordCreate("New Folder", [url])
-        registerTrashUndo([url], "New Folder", undo, entry: entry)
+        let landed = LandedFiles([url])
+        let entry = history.recordCreate("New Folder", [url], landed: landed)
+        registerTrashUndo([url], "New Folder", undo, entry: entry, landed: landed, copies: copies, history: history)
         return url
     }
 
     /// File ▸ New File: an empty "untitled.txt" (`ext` is Settings' extension, "" for none), "untitled 2.txt" when that's
     /// taken. Never over anything: the name is claimed only while nothing is there, not even a link.
-    static func newFile(in directory: URL, extension ext: String, undo: UndoManager?, copies: CopyProviders = .live) throws -> URL {
+    static func newFile(in directory: URL, extension ext: String, undo: UndoManager?, copies: CopyProviders = .live,
+                        history: OperationLog = .shared) throws -> URL {
         guard !ReadOnlyCopies.contains(directory, copies: copies) else { throw insideArchiveError }
         let name = newFileName(extension: ext)
         var url = available(directory.appending(path: name), copyStyle: false)
@@ -203,8 +207,9 @@ enum FileOps {
                 url = available(directory.appending(path: name), copyStyle: false)
             }
         }
-        let entry = OperationLog.shared.recordCreate("New File", [url])
-        registerTrashUndo([url], "New File", undo, entry: entry)
+        let landed = LandedFiles([url])
+        let entry = history.recordCreate("New File", [url], landed: landed)
+        registerTrashUndo([url], "New File", undo, entry: entry, landed: landed, copies: copies, history: history)
         return url
     }
 
@@ -289,8 +294,12 @@ enum FileOps {
     }
 
     /// Items that couldn't go to the Trash because their disk has none (network shares, some external disks).
-    struct NoTrash: Error {
+    struct NoTrash: LocalizedError {
         let urls: [URL]
+
+        nonisolated var errorDescription: String? {
+            String(localized: "The disk has no Trash.", comment: "Error when a disk cannot move files to the Trash")
+        }
     }
 
     /// Moves `urls` to the Trash off the main thread (a big selection or a slow disk would freeze the window), then
@@ -390,15 +399,15 @@ enum FileOps {
         byReference: true)
 
     /// Undo for something just made: it goes to the Trash; redoing brings it back. History follows both.
-    private static func registerTrashUndo(_ created: [URL], _ actionName: String, _ undo: UndoManager?, entry: UUID?) {
+    private static func registerTrashUndo(_ created: [URL], _ actionName: String, _ undo: UndoManager?, entry: UUID?,
+                                          landed: LandedFiles, copies: CopyProviders, history: OperationLog) {
         guard !created.isEmpty else { return }
-        let landed = LandedFiles(created)
         register(actionName, undo) { undo in
             do {
                 let made = created.filter(landed.holds)
                 guard !made.isEmpty else { return }
-                try trash(made, undo: undo, record: false, entry: entry, marksUndone: false)
-                if let entry { OperationLog.shared.setUndone(entry, true) }
+                try trash(made, undo: undo, record: false, entry: entry, marksUndone: false, copies: copies, history: history)
+                if let entry { history.setUndone(entry, true) }
             } catch {
                 reportUndoFailure(actionName, error)
             }

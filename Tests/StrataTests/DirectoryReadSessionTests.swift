@@ -6,7 +6,15 @@ struct DirectoryReadSessionTests {
     private typealias Reads = ControlledDirectoryReads
 
     private func browser(_ reads: Reads) -> BrowserViewController {
-        let services = BrowserServices(transfers: .shared, visits: .shared, directories: reads.reader)
+        let services = BrowserServices.configured(
+            transfers: .shared,
+            visits: .shared,
+            windows: .headless,
+            remote: .shared,
+            containers: .shared,
+            containerStore: .shared,
+            clipboard: .shared,
+            directories: reads.reader)
         let browser = BrowserViewController(services: services)
         browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
         browser.setMode(.list, remember: false)
@@ -17,7 +25,16 @@ struct DirectoryReadSessionTests {
         let tree = try TestTree("a/", "b/")
         let reads = Reads()
         defer { reads.stop() }
-        let services = BrowserServices(transfers: .shared, visits: .shared, directories: reads.reader, availableCapacity: { _ in 123 })
+        let services = BrowserServices.configured(
+            transfers: .shared,
+            visits: .shared,
+            windows: .headless,
+            remote: .shared,
+            containers: .shared,
+            containerStore: .shared,
+            clipboard: .shared,
+            directories: reads.reader,
+            availableCapacity: { _ in 123 })
         let browser = BrowserViewController(services: services)
         _ = browser.view
         browser.load(tree.url("a"))
@@ -574,7 +591,15 @@ struct DirectoryReadSessionTests {
 
     private func window(_ folder: URL, second: URL?, reads: Reads) -> BrowserWindowController {
         _ = NSApplication.shared
-        let services = BrowserServices(transfers: .shared, visits: .shared, directories: reads.reader)
+        let services = BrowserServices.configured(
+            transfers: .shared,
+            visits: .shared,
+            windows: .headless,
+            remote: .shared,
+            containers: .shared,
+            containerStore: .shared,
+            clipboard: .shared,
+            directories: reads.reader)
         let controller = BrowserWindowController(location: folder, secondPane: second, services: services)
         controller.split.splitView.autosaveName = nil
         controller.window?.setFrameAutosaveName("")

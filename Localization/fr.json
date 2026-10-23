@@ -1516,6 +1516,7 @@
     "The copy can’t be read back": "La copie ne peut pas être relue",
     "The copy doesn’t match the original": "La copie ne correspond pas à l’original",
     "The destination folder couldn’t be found": "Le dossier de destination est introuvable",
+    "The disk has no Trash.": "Le disque n’a pas de corbeille.",
     "The disk is full": "Le disque est plein",
     "The disk is read-only": "Le disque est en lecture seule",
     "The document is too long for the on-device model.": "Le document est trop long pour le modèle sur l’appareil.",

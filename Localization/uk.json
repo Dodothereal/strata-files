@@ -1756,6 +1756,7 @@
     "The copy can’t be read back": "Копію не вдається прочитати повторно",
     "The copy doesn’t match the original": "Копія не збігається з оригіналом",
     "The destination folder couldn’t be found": "Не вдається знайти папку призначення",
+    "The disk has no Trash.": "На цьому диску немає Смітника.",
     "The disk is full": "Диск заповнено",
     "The disk is read-only": "Диск лише для читання",
     "The document is too long for the on-device model.": "Документ задовгий для моделі на пристрої.",

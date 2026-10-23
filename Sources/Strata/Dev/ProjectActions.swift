@@ -104,7 +104,9 @@ extension ProjectInfo {
 enum ProjectActions {
     /// Asks before moving `artifacts` to the Trash (sheet on `window`), then trashes them with undo. Calls
     /// `completion` with the trashed folders (empty when cancelled or failed).
-    static func confirmClean(_ artifacts: [ProjectArtifact], window: NSWindow, completion: @escaping ([URL]) -> Void) {
+    static func confirmClean(_ artifacts: [ProjectArtifact], window: NSWindow,
+                             files: BrowserFileCommands,
+                             completion: @escaping ([URL]) -> Void) {
         guard !artifacts.isEmpty else { return completion([]) }
         let total = artifacts.compactMap(\.bytes).saturatingSum
         let alert = NSAlert()
@@ -136,15 +138,18 @@ enum ProjectActions {
         let trash = alert.addButton(withTitle: String(localized: "Move to Trash"))
         trash.hasDestructiveAction = true
         alert.addButton(withTitle: String(localized: "Cancel"))
-        alert.beginSheetModal(for: window) { response in
-            guard response == .alertFirstButtonReturn else { return completion([]) }
-            let urls = artifacts.flatMap(\.urls)
-            do {
-                try FileOps.trash(urls, undo: window.undoManager)
-                completion(urls)
-            } catch {
-                NSAlert(error: error).beginSheetModal(for: window)
-                completion([])
+        alert.beginSheetModal(for: window) { [weak window] response in
+            guard response == .alertFirstButtonReturn, let window else { return completion([]) }
+            let undo = window.undoManager
+            Task { [weak window] in
+                do {
+                    let urls = artifacts.flatMap(\.urls)
+                    try await files.trash(urls, undo: undo)
+                    completion(urls)
+                } catch {
+                    if let window { NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil) }
+                    completion([])
+                }
             }
         }
     }

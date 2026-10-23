@@ -1013,9 +1013,9 @@
     "tests": "TransferContextTests/replacementPanesAndBrowserCommandsKeepTheWindowServices"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "let job = services.transfers.enqueue(urls, to: target",
-    "replace": "let job = TransferQueue.shared.enqueue(urls, to: target",
+    "file": "Strata/Browser/BrowserFileCommands.swift",
+    "find": "transfers.enqueue(urls, to: directory, mode: move ? .move : .copy, undo: undo, conflicts: conflicts)",
+    "replace": "TransferQueue.shared.enqueue(urls, to: directory, mode: move ? .move : .copy, undo: undo, conflicts: conflicts)",
     "rule": "Browser service ownership browser transfers use the global queue",
     "tests": "TransferContextTests/replacementPanesAndBrowserCommandsKeepTheWindowServices"
   },
@@ -1526,9 +1526,9 @@
     "tests": "BrowserPreferencesTests/readsSortAndSavedModesStayWithTheirEnvironment"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "FileOps.newFile(in: directory, extension: preferences.newFileExtension, undo: self.undoManager, copies: self.services.copies)",
-    "replace": "FileOps.newFile(in: directory, extension: Prefs.shared.newFileExtension, undo: self.undoManager, copies: self.services.copies)",
+    "file": "Strata/Browser/BrowserFileCommands.swift",
+    "find": "extension: transfers.preferences.newFileExtension",
+    "replace": "extension: Prefs.shared.newFileExtension",
     "rule": "Browser preferences New File uses another panes extension",
     "tests": "BrowserPreferencesTests/newFileUsesItsOwnExtensionAndTargetInEveryView"
   },
@@ -1703,8 +1703,8 @@
   },
   {
     "file": "Strata/Model/FileOps.swift",
-    "find": "registerMoveUndo(done, actionName, undo, entry: entry, landed: landed, history: history)",
-    "replace": "registerMoveUndo(done, actionName, undo, entry: entry, landed: landed)",
+    "find": "registerMoveUndo(done, actionName, undo, entry: entry, copies: copies, landed: landed, history: history)",
+    "replace": "registerMoveUndo(done, actionName, undo, entry: entry, copies: copies, landed: landed)",
     "rule": "Move History ownership retains its injected journal through Undo",
     "tests": "HistoryOwnershipTests/ownedMoveHistoryAndLiveUndoKeepTheInjectedJournal"
   },
@@ -2935,10 +2935,10 @@
   },
   {
     "file": "Strata/Browser/BrowserServices.swift",
-    "find": "copies ?? CopyProviders(servers: remote.files, containers: containers)",
-    "replace": "copies ?? .live",
+    "find": "let copies = CopyProviders(servers: remote.files, containers: containers)",
+    "replace": "let copies = CopyProviders.live",
     "rule": "Provider directory ownership default copies ignore their server environment",
-    "tests": "RemoteEnvironmentTests/defaultWindowReadersUseTheirRemoteEnvironmentWithoutAnOverride"
+    "tests": "FileCommandOwnershipTests/serviceCompositionKeepsQueueDependenciesAndIndependentFactories"
   },
   {
     "file": "Strata/Browser/BrowserServices.swift",
@@ -3778,5 +3778,138 @@
     "replace": "let showHidden = Prefs.shared.showHidden || prefix.hasPrefix(\".\")",
     "rule": "Module and provider boundaries path suggestions read hidden files from global preferences",
     "tests": "PathQueryTests/pathSuggestionsFollowInjectedHiddenFilesPreference"
+  },
+  {
+    "file": "Strata/Browser/BrowserFileCommands.swift",
+    "find": "try await FileOps.rename(url, to: name, undo: undo, copies: copies, history: history)",
+    "replace": "try await FileOps.rename(url, to: name, undo: undo, copies: copies)",
+    "rule": "File command ownership rename records in the application History",
+    "tests": "FileCommandOwnershipTests/renameKeepsHistoryAndRepeatedUndoWithItsOwner"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "actionName: \"Rename\", undo: undo, history: history, copies: copies",
+    "replace": "actionName: \"Rename\", undo: undo, copies: copies",
+    "rule": "File command ownership rename discards its supplied History",
+    "tests": "FileCommandOwnershipTests/renameKeepsHistoryAndRepeatedUndoWithItsOwner"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "let entry = history.recordCreate(\"New Folder\", [url], landed: landed)",
+    "replace": "let entry = OperationLog.shared.recordCreate(\"New Folder\", [url], landed: landed)",
+    "rule": "File command ownership new folder records in another History",
+    "tests": "FileCommandOwnershipTests/newItemsKeepHistoryThroughNativeAndHistoryUndo"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "let entry = history.recordCreate(\"New File\", [url], landed: landed)",
+    "replace": "let entry = OperationLog.shared.recordCreate(\"New File\", [url], landed: landed)",
+    "rule": "File command ownership new file records in another History",
+    "tests": "FileCommandOwnershipTests/newItemsKeepHistoryThroughNativeAndHistoryUndo"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "if let entry { history.setUndone(entry, true) }",
+    "replace": "if let entry { OperationLog.shared.setUndone(entry, true) }",
+    "rule": "File command ownership creation Undo marks another History",
+    "tests": "FileCommandOwnershipTests/newItemsKeepHistoryThroughNativeAndHistoryUndo"
+  },
+  {
+    "file": "Strata/Browser/BrowserServices.swift",
+    "find": "self.preferences = transfers.preferences",
+    "replace": "self.preferences = .shared",
+    "rule": "Service composition uses preferences outside its queue",
+    "tests": "FileCommandOwnershipTests/serviceCompositionKeepsQueueDependenciesAndIndependentFactories"
+  },
+  {
+    "file": "Strata/Browser/BrowserServices.swift",
+    "find": "self.copies = transfers.copies",
+    "replace": "self.copies = .live",
+    "rule": "Service composition uses copy routing outside its queue",
+    "tests": "FileCommandOwnershipTests/serviceCompositionKeepsQueueDependenciesAndIndependentFactories"
+  },
+  {
+    "file": "Strata/Browser/BrowserRename.swift",
+    "find": "guard let window else { return }\n        let alert = NSAlert()\n        if oldExtension",
+    "replace": "guard let window else { commit(newName); return }\n        let alert = NSAlert()\n        if oldExtension",
+    "rule": "Rename extension changes proceed without a confirmation window",
+    "tests": "FileCommandOwnershipTests/extensionChangesNeedAWindowAndOrdinaryRenameKeepsItsCapturedItem"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "find": "try services.files.newFolder(in: directory, undo: undoManager)",
+    "replace": "try FileOps.newFolder(in: directory, undo: undoManager)",
+    "rule": "Browser new folder bypasses its command owner",
+    "tests": "FileCommandOwnershipTests/everyBrowserViewUsesItsCommandOwner"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "find": "try services.files.newFile(in: directory, undo: undoManager)",
+    "replace": "try FileOps.newFile(in: directory, extension: preferences.newFileExtension, undo: undoManager)",
+    "rule": "Browser new file bypasses its command owner",
+    "tests": "FileCommandOwnershipTests/everyBrowserViewUsesItsCommandOwner"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "registerTrashUndo([url], \"New File\", undo, entry: entry, landed: landed, copies: copies, history: history)",
+    "replace": "registerTrashUndo([url], \"New File\", undo, entry: entry, landed: LandedFiles([url]), copies: copies, history: history)",
+    "rule": "Creation Undo adopts a replacement file after History callbacks",
+    "tests": "FileCommandOwnershipTests/creationUndoNeverAdoptsAReplacementFromHistoryNotification"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "registerTrashUndo([url], \"New Folder\", undo, entry: entry, landed: landed, copies: copies, history: history)",
+    "replace": "registerTrashUndo([url], \"New Folder\", undo, entry: entry, landed: LandedFiles([url]), copies: copies, history: history)",
+    "rule": "Creation Undo adopts a replacement folder after History callbacks",
+    "tests": "FileCommandOwnershipTests/creationUndoNeverAdoptsAReplacementFromHistoryNotification"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "find": "guard let self, navigationRevision == revision, name != url.lastPathComponent else { return }",
+    "replace": "guard let self, name != url.lastPathComponent else { return }",
+    "rule": "Rename confirmation changes an item after navigating away and back",
+    "tests": "FileCommandOwnershipTests/renameConfirmationCannotOutliveItsNavigationOrRenameAnotherSelection"
+  },
+  {
+    "file": "Strata/Browser/BrowserFileCommands.swift",
+    "find": "try await FileOps.trashInBackground(urls, undo: undo, copies: copies, history: history)",
+    "replace": "try await FileOps.trashInBackground(urls, undo: undo, copies: copies)",
+    "rule": "File command Trash records in another History",
+    "tests": "FileCommandOwnershipTests/trashAndPlansUseTheSameCommandHistoryAsCreationAndRename"
+  },
+  {
+    "file": "Strata/Browser/BrowserFileCommands.swift",
+    "find": "await PlanExecutor.apply(plan, actionName: actionName, undo: undo, copies: copies, history: history)",
+    "replace": "await PlanExecutor.apply(plan, actionName: actionName, undo: undo, copies: copies)",
+    "rule": "File command plan records in another History",
+    "tests": "FileCommandOwnershipTests/trashAndPlansUseTheSameCommandHistoryAsCreationAndRename"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "find": "guard FileIdentity.read(url.path) == identity else { return }",
+    "replace": "// Do not check whether the confirmed item was replaced.",
+    "rule": "Rename confirmation changes a replacement item at the same path",
+    "tests": "FileCommandOwnershipTests/renameConfirmationRefusesAnItemReplacedWhileTheSheetWaited"
+  },
+  {
+    "file": "Strata/Browser/BrowserRename.swift",
+    "find": "newName.hasSuffix(\".\") ? String(newName.dropLast()) : (newName as NSString).deletingPathExtension",
+    "replace": "(newName as NSString).deletingPathExtension",
+    "rule": "Rename extension confirmation keeps an extra trailing delimiter",
+    "tests": "FileCommandOwnershipTests/keepingAnExtensionRemovesOnlyItsDelimiterAndCancelCommitsNothing"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "String(localized: \"The disk has no Trash.\", comment: \"Error when a disk cannot move files to the Trash\")",
+    "replace": "nil",
+    "rule": "Missing Trash error falls back to a raw type name",
+    "tests": "FileCommandOwnershipTests/missingTrashHasALocalizedAlertAndLeavesTheSelectionAlone"
+  },
+  {
+    "file": "Strata/Dev/ProjectInspectorView.swift",
+    "find": "self.preferences = files.transfers.preferences",
+    "replace": "self.preferences = .shared",
+    "rule": "Project inspector uses preferences outside its command owner",
+    "tests": "FileCommandOwnershipTests/serviceCompositionKeepsQueueDependenciesAndIndependentFactories"
   }
 ]

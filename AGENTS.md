@@ -391,6 +391,13 @@ sheet's text before clicking a destructive button. Both builds share preferences
 - History panels receive their store and native Undo manager from the application owner. Observe only that store,
   and keep both dependencies through a requested Undo even if the panel closes. A delayed alert must not clear a
   different History. Headless panels disable native frame autosaving and never show error sheets.
+- Browser file commands use `BrowserServices.files`, which retains the transfer queue's History, preferences and
+  providers. New File, New Folder, Rename, Trash, project cleanup and Ask Strata must keep that owner through
+  native Undo/Redo and sheets. Capture creation identities before History notifications can replace an item.
+  `BrowserRename.decision` is separate from its native confirmation; commits recheck navigation and item identity.
+- Construct application services through `BrowserServices.shared`, or build independent stores and providers with
+  `BrowserServices.isolated`. Custom composition is explicit through `configured`: its queue supplies preferences,
+  History and copy routing. Never mutate a supplied queue when constructing a window; copy routing is immutable.
 - Transfer results are journaled by `TransferJournal` after each completed pass. Native Undo and History share the
   same receipt: a repaired copy updates its captured identity, and a finished move replaces its copy classification.
   Never extend a record whose Undo has started, whose action has been replayed, or which History has cleared.

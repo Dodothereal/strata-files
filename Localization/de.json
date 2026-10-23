@@ -1516,6 +1516,7 @@
     "The copy can’t be read back": "Die Kopie kann nicht zurückgelesen werden",
     "The copy doesn’t match the original": "Die Kopie stimmt nicht mit dem Original überein",
     "The destination folder couldn’t be found": "Der Zielordner wurde nicht gefunden",
+    "The disk has no Trash.": "Das Volume hat keinen Papierkorb.",
     "The disk is full": "Das Volume ist voll",
     "The disk is read-only": "Das Volume ist schreibgeschützt",
     "The document is too long for the on-device model.": "Das Dokument ist zu lang für das Modell auf dem Gerät.",

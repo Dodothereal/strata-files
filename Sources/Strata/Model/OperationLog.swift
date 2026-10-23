@@ -153,9 +153,10 @@ final class OperationLog {
     }
 
     @discardableResult
-    func recordCreate(_ name: String, _ created: [URL]) -> UUID? {
+    func recordCreate(_ name: String, _ created: [URL], landed: LandedFiles? = nil) -> UUID? {
         guard !created.isEmpty else { return nil }
-        return append(Entry(name: name, kind: .create, created: created.map(\.path)))
+        return append(Entry(name: name, kind: .create, created: created.map(\.path),
+                            fileIdentities: landed?.historyIdentities(for: created)))
     }
 
     /// One entry for a whole copy or move job, including what it replaced.

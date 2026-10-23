@@ -1636,6 +1636,7 @@
     "The copy can’t be read back": "Kopii nelze zpětně přečíst",
     "The copy doesn’t match the original": "Kopie neodpovídá originálu",
     "The destination folder couldn’t be found": "Cílovou složku nelze najít",
+    "The disk has no Trash.": "Disk nemá koš.",
     "The disk is full": "Disk je plný",
     "The disk is read-only": "Disk je jen pro čtení",
     "The document is too long for the on-device model.": "Dokument je pro model v zařízení příliš dlouhý.",

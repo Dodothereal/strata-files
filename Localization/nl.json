@@ -1516,6 +1516,7 @@
     "The copy can’t be read back": "De kopie kan niet worden teruggelezen",
     "The copy doesn’t match the original": "De kopie komt niet overeen met het origineel",
     "The destination folder couldn’t be found": "De doelmap is niet gevonden",
+    "The disk has no Trash.": "De schijf heeft geen prullenmand.",
     "The disk is full": "De schijf is vol",
     "The disk is read-only": "De schijf is alleen-lezen",
     "The document is too long for the on-device model.": "Het document is te lang voor het model op het apparaat.",

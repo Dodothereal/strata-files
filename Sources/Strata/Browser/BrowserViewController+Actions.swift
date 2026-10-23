@@ -76,9 +76,10 @@ extension BrowserViewController {
             pendingSelection = [survivors[min(first, survivors.count - 1)].url]
         }
         let undo = undoManager
+        let files = services.files
         Task { [weak self] in
             do {
-                try await FileOps.trashInBackground(urls, undo: undo, copies: copies)
+                try await files.trash(urls, undo: undo)
             } catch let noTrash as FileOps.NoTrash {
                 guard let self else { return }
                 Self.confirmDelete(noTrash.urls, in: view.window, noTrash: true, copies: copies) { [weak self] in self?.refresh() }
@@ -95,8 +96,7 @@ extension BrowserViewController {
         guard !urls.isEmpty, !isShowingTrash, !isInsideArchive else { return }
         let revision = navigationRevision
         // Copying onto itself with "keep both" gives Finder's "name copy" naming, with progress for big items.
-        let job = services.transfers.enqueue(moves: urls.map { TransferMove(from: $0, to: $0) }, mode: .copy,
-                                               undo: undoManager, conflicts: .keepBoth)
+        let job = services.files.duplicate(urls, undo: undoManager)
         job.onFinish = { [weak self] job in
             guard let self else { return }
             if navigationRevision == revision, !job.createdItems.isEmpty { pendingSelection = job.createdItems }
@@ -114,7 +114,7 @@ extension BrowserViewController {
         if let directory = targetDirectory, services.remote.copies.server(containing: directory) != nil, !isShowingResults { return newFolderOnServer(in: directory) }
         guard let directory = targetDirectory, !isShowingTrash, !isInsideArchive else { return }
         perform {
-            let url = try FileOps.newFolder(in: directory, undo: self.undoManager, copies: self.services.copies)
+            let url = try services.files.newFolder(in: directory, undo: undoManager)
             self.renameWhenShown(url, in: directory)
         }
     }
@@ -124,7 +124,7 @@ extension BrowserViewController {
         if let directory = targetDirectory, services.remote.copies.server(containing: directory) != nil, !isShowingResults { return newFileOnServer(in: directory) }
         guard let directory = targetDirectory, !isShowingTrash, !isInsideArchive else { return }
         perform {
-            let url = try FileOps.newFile(in: directory, extension: preferences.newFileExtension, undo: self.undoManager, copies: self.services.copies)
+            let url = try services.files.newFile(in: directory, undo: undoManager)
             self.renameWhenShown(url, in: directory)
         }
     }
@@ -485,8 +485,8 @@ extension BrowserViewController {
     /// Copies and moves go through the transfer queue: progress, pause, conflicts asked up front, undo.
     func transfer(_ urls: [URL], into target: URL, move: Bool) {
         if services.remote.copies.contains(target) { return copyToServer(urls, into: target, move: move) }
-        let job = services.transfers.enqueue(urls, to: target, mode: move ? .move : .copy,
-                                               undo: undoManager, conflicts: .sheet(for: view.window))
+        let job = services.files.transfer(urls, into: target, move: move, undo: undoManager,
+                                          conflicts: .sheet(for: view.window))
         job.onFinish = { [weak self] job in
             guard let self else { return }
             if target.standardizedFileURL == targetDirectory?.standardizedFileURL, !job.createdItems.isEmpty {
@@ -514,67 +514,22 @@ extension BrowserViewController {
 
     // MARK: - Rename
 
-    /// Renames with Finder's checks: no "/" or leading dot, and a confirmation when a file's extension changes.
-    func renameItem(_ url: URL, to newName: String) {
-        let oldName = url.lastPathComponent
-        guard !newName.isEmpty, newName != oldName else { return }
-        if newName.contains("/") {
-            renameRefused(String(localized: "The name “\(newName)” can’t be used."),
-                          String(localized: "Names can’t contain “/”. Try a different name."))
-            return
-        }
-        if newName.hasPrefix("."), !oldName.hasPrefix(".") {
-            renameRefused(String(localized: "You can’t use a name that begins with a dot “.”."),
-                          String(localized: "These names are reserved for the system, and the item would be hidden. Please choose another name."))
-            return
-        }
+    func renameItem(_ url: URL, to newName: String, confirm: BrowserRename.Confirmation = BrowserRename.confirm) {
+        guard let identity = FileIdentity.read(url.path) else { return }
         let revision = navigationRevision
-        let commit: (String) -> Void = { [self] targetName in
-            guard !targetName.isEmpty, targetName != oldName else { return }
-            if services.remote.copies.contains(url) { return renameOnServer(url, to: targetName) }
-            performAsync { [self] in
-                let renamed = try await FileOps.rename(url, to: targetName, undo: undoManager, copies: services.copies)
-                if navigationRevision == revision { pendingSelection = [renamed] }
+        confirm(url, newName, view.window) { [weak self] name in
+            guard let self, navigationRevision == revision, name != url.lastPathComponent else { return }
+            guard FileIdentity.read(url.path) == identity else { return }
+            if services.remote.copies.contains(url) { return renameOnServer(url, to: name) }
+            let files = services.files
+            let undo = undoManager
+            performAsync { [weak self] in
+                let renamed = try await files.rename(url, to: name, undo: undo)
+                guard let self, navigationRevision == revision else { return }
+                pendingSelection = [renamed]
                 refresh()
             }
         }
-        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
-        let isFolder = values?.isDirectory == true && values?.isPackage != true
-        let (oldExtension, newExtension) = ((oldName as NSString).pathExtension, (newName as NSString).pathExtension)
-        guard !isFolder, oldExtension.lowercased() != newExtension.lowercased(), let window = view.window else {
-            commit(newName)
-            return
-        }
-        let alert = NSAlert()
-        if oldExtension.isEmpty {
-            alert.messageText = String(localized: "Are you sure you want to add the extension “.\(newExtension)” to the end of the name?")
-        } else if newExtension.isEmpty {
-            alert.messageText = String(localized: "Are you sure you want to remove the extension “.\(oldExtension)”?")
-        } else {
-            alert.messageText = String(localized: "Are you sure you want to change the extension from “.\(oldExtension)” to “.\(newExtension)”?")
-        }
-        alert.informativeText = String(localized: "If you make this change, your document may open in a different app.")
-        alert.addButton(withTitle: oldExtension.isEmpty ? String(localized: "Don’t Add", comment: "Alert button: don’t add the file extension")
-                                                        : String(localized: "Keep .\(oldExtension)", comment: "Alert button: keep the file extension (“Keep .txt”)"))
-        alert.addButton(withTitle: newExtension.isEmpty ? String(localized: "Remove", comment: "Alert button: remove the file extension")
-                                                        : String(localized: "Use .\(newExtension)", comment: "Alert button: use the new file extension (“Use .md”)"))
-        alert.beginSheetModal(for: window) { response in
-            if response == .alertSecondButtonReturn {
-                commit(newName)
-            } else if response == .alertFirstButtonReturn {
-                let stem = newExtension.isEmpty ? newName : (newName as NSString).deletingPathExtension
-                let kept = oldExtension.isEmpty ? stem : "\(stem).\(oldExtension)"
-                commit(kept)
-            }
-        }
-    }
-
-    private func renameRefused(_ message: String, _ detail: String) {
-        guard let window = view.window else { return }
-        let alert = NSAlert()
-        alert.messageText = message
-        alert.informativeText = detail
-        alert.beginSheetModal(for: window)
     }
 
     func beginRename(_ url: URL) {

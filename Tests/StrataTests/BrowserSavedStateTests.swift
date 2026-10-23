@@ -15,7 +15,14 @@ struct BrowserSavedStateTests {
             preferences.showIconPreviews = false
             let storage = SecureStorage.Context(directory: tree.url(domain), caches: tree.url(domain + "/Caches"), key: nil)
             let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage))
-            services = BrowserServices(transfers: transfers, visits: Frecency(preferences: defaults), preferences: preferences)
+            services = BrowserServices.configured(
+                transfers: transfers,
+                visits: Frecency(preferences: defaults),
+                windows: .headless,
+                remote: .shared,
+                containers: .shared,
+                containerStore: .shared,
+                clipboard: .shared)
         }
 
         isolated deinit { defaults.removePersistentDomain(forName: domain) }

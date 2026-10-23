@@ -1396,6 +1396,7 @@
     "The copy can’t be read back": "コピーを読み戻せません",
     "The copy doesn’t match the original": "コピーが元のファイルと一致しません",
     "The destination folder couldn’t be found": "転送先のフォルダが見つかりませんでした",
+    "The disk has no Trash.": "このディスクにはゴミ箱がありません。",
     "The disk is full": "ディスクがいっぱいです",
     "The disk is read-only": "ディスクは読み出し専用です",
     "The document is too long for the on-device model.": "書類が長すぎるため、デバイス上のモデルで処理できません。",

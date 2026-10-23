@@ -1516,6 +1516,7 @@
     "The copy can’t be read back": "A másolat nem olvasható vissza",
     "The copy doesn’t match the original": "A másolat nem egyezik az eredetivel",
     "The destination folder couldn’t be found": "A célmappa nem található",
+    "The disk has no Trash.": "A lemezen nincs Kuka.",
     "The disk is full": "A lemez megtelt",
     "The disk is read-only": "A lemez csak olvasható",
     "The document is too long for the on-device model.": "A dokumentum túl hosszú az eszközön futó modellhez.",

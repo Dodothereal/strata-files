@@ -58,7 +58,7 @@ final class InspectorViewController: NSViewController {
                                                     store: services.containerStore)
         self.composeView = ComposeInspectorView(preferences: services.preferences,
                                                 store: services.containerStore)
-        self.projectView = ProjectInspectorView(preferences: services.preferences)
+        self.projectView = ProjectInspectorView(files: services.files)
         self.previewScheduler = previewScheduler
         super.init(nibName: nil, bundle: nil)
     }

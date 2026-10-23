@@ -101,10 +101,17 @@ struct ProviderThumbnailInfoTests {
             let itemInfo = ItemInfoLoader(copies: copies, mediaReader: reader)
             let storage = SecureStorage.Context(directory: tree.url("state/\(domain)"),
                                                 caches: tree.url("state/\(domain)/Caches"), key: nil)
-            services = BrowserServices(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage)),
-                visits: Frecency(preferences: defaults), preferences: preferences, copies: copies,
-                mediaReader: reader, thumbnails: thumbnails, itemInfo: itemInfo)
+            services = BrowserServices.configured(
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
+                visits: Frecency(preferences: defaults),
+                windows: .headless,
+                remote: .shared,
+                containers: .shared,
+                containerStore: .shared,
+                clipboard: .shared,
+                mediaReader: reader,
+                thumbnails: thumbnails,
+                itemInfo: itemInfo)
         }
 
         isolated deinit { defaults.removePersistentDomain(forName: domain) }

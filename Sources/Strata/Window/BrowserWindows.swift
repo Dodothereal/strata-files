@@ -6,6 +6,8 @@ struct BrowserWindows {
     var controllers: () -> [BrowserWindowController]
     var open: (URL, URL?, NSWindow?, BrowserServices) -> BrowserWindowController?
 
+    static let headless = BrowserWindows(controllers: { [] }, open: { _, _, _, _ in nil })
+
     static let native = BrowserWindows(
         controllers: { NSApp.windows.compactMap { $0.windowController as? BrowserWindowController } },
         open: { location, second, parent, services in

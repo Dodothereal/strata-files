@@ -1756,6 +1756,7 @@
     "The copy can’t be read back": "Nie można ponownie odczytać kopii",
     "The copy doesn’t match the original": "Kopia nie zgadza się z oryginałem",
     "The destination folder couldn’t be found": "Nie można odnaleźć folderu docelowego",
+    "The disk has no Trash.": "Ten dysk nie ma Kosza.",
     "The disk is full": "Dysk jest pełny",
     "The disk is read-only": "Dysk jest tylko do odczytu",
     "The document is too long for the on-device model.": "Dokument jest zbyt długi dla modelu na urządzeniu.",

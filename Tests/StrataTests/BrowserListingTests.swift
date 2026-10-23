@@ -154,7 +154,15 @@ struct BrowserListingTests {
         let entries = try ["gamma.txt", "alpha.txt", "beta.txt"].map { try #require(FileEntry(url: tree.url($0))) }
         let reader = DirectoryReader { _, _, _ in entries }
         for mode in BrowserViewMode.ordered {
-            let browser = BrowserViewController(services: BrowserServices(transfers: .shared, visits: .shared, directories: reader))
+            let browser = BrowserViewController(services: BrowserServices.configured(
+                transfers: .shared,
+                visits: .shared,
+                windows: .headless,
+                remote: .shared,
+                containers: .shared,
+                containerStore: .shared,
+                clipboard: .shared,
+                directories: reader))
             browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
             browser.setMode(mode, remember: false)
             browser.load(tree.root)

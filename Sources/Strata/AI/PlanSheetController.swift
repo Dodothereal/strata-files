@@ -19,6 +19,7 @@ final class PlanSheetController: NSViewController {
 
     private let urls: [URL]
     private let baseFolder: URL
+    private let files: BrowserFileCommands
     private weak var undoManagerForApply: UndoManager?
     private var items: [PlanItem] = []
     private var completion: ((PlanExecutor.Outcome?) -> Void)?
@@ -41,9 +42,10 @@ final class PlanSheetController: NSViewController {
 
     static let size = NSSize(width: 680, height: 540)
 
-    init(urls: [URL], baseFolder: URL, undoManager: UndoManager?) {
+    init(urls: [URL], baseFolder: URL, undoManager: UndoManager?, files: BrowserFileCommands) {
         self.urls = urls
         self.baseFolder = baseFolder
+        self.files = files
         undoManagerForApply = undoManager
         super.init(nibName: nil, bundle: nil)
     }
@@ -55,8 +57,9 @@ final class PlanSheetController: NSViewController {
     /// Shows the sheet on `window` for the selection. `instruction`, when given, is planned right away.
     @discardableResult
     static func present(on window: NSWindow, urls: [URL], baseFolder: URL, undoManager: UndoManager?, instruction: String? = nil,
+                        files: BrowserFileCommands,
                         completion: @escaping (PlanExecutor.Outcome?) -> Void) -> PlanSheetController {
-        let controller = PlanSheetController(urls: urls, baseFolder: baseFolder, undoManager: undoManager)
+        let controller = PlanSheetController(urls: urls, baseFolder: baseFolder, undoManager: undoManager, files: files)
         controller.completion = completion
         let sheet = NSPanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .resizable, .fullSizeContentView],
                             backing: .buffered, defer: true)
@@ -420,7 +423,7 @@ final class PlanSheetController: NSViewController {
         guard case let .review(plan) = phase, plan.changeCount > 0 else { return }
         phase = .applying(plan)
         Task {
-            let outcome = await PlanExecutor.apply(plan, actionName: PlanExecutor.actionName(for: plan), undo: undoManagerForApply)
+            let outcome = await files.apply(plan, actionName: PlanExecutor.actionName(for: plan), undo: undoManagerForApply)
             if outcome.failures.isEmpty {
                 finish(outcome)
             } else {

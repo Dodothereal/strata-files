@@ -6,16 +6,25 @@ import Testing
 struct BrowserPreferencesTests {
     private final class Environment {
         let name = "StrataBrowserPreferencesTests.\(UUID().uuidString)"
+        let state: TestTree
         let defaults: UserDefaults
         let preferences: Prefs
         let services: BrowserServices
 
         init(reader: DirectoryReader = .live) throws {
+            state = try TestTree()
             defaults = try #require(UserDefaults(suiteName: name))
             preferences = Prefs(defaults: defaults, domainName: name)
             preferences.showIconPreviews = false
-            services = BrowserServices(transfers: .shared, visits: Frecency(preferences: defaults),
-                                       directories: reader, preferences: preferences)
+            services = BrowserServices.configured(
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: SecureStorage.Context(directory: state.root, caches: state.url("Caches"), key: nil))),
+                visits: Frecency(preferences: defaults),
+                windows: .headless,
+                remote: .shared,
+                containers: .shared,
+                containerStore: .shared,
+                clipboard: .shared,
+                directories: reader)
         }
 
         isolated deinit { defaults.removePersistentDomain(forName: name) }

@@ -248,14 +248,14 @@ struct BrowserCopyProviderTests {
             pasteboard = NSPasteboard(name: .init("StrataBrowserCopyProviderTests.pasteboard.\(UUID().uuidString)"))
             clipboard = Clipboard(pasteboard: pasteboard, notifications: NotificationCenter())
             queue = TransferQueue(preferences: preferences, history: history, copies: copies)
-            services = BrowserServices(
+            services = BrowserServices.configured(
                 transfers: queue,
                 visits: Frecency(preferences: defaults),
-                preferences: preferences,
+                windows: .headless,
                 remote: remote,
-                copies: copies,
-                clipboard: clipboard
-            )
+                containers: .shared,
+                containerStore: .shared,
+                clipboard: clipboard)
         }
 
         isolated deinit {

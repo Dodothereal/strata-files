@@ -148,17 +148,15 @@ struct AsyncActionContextTests {
             }
             transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies)
             let clipboard = Clipboard(pasteboard: NSPasteboard.withUniqueName())
-            services = BrowserServices(
+            services = BrowserServices.configured(
                 transfers: transfers,
                 visits: Frecency(preferences: defaults),
-                preferences: preferences,
+                windows: .headless,
                 remote: remote,
-                remoteBrowsing: browsing,
                 containers: containerFiles,
                 containerStore: containerStore,
-                copies: copies,
-                clipboard: clipboard
-            )
+                clipboard: clipboard,
+                remoteBrowsing: browsing)
         }
 
         isolated deinit {

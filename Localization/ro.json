@@ -1636,6 +1636,7 @@
     "The copy can’t be read back": "Copia nu poate fi recitită",
     "The copy doesn’t match the original": "Copia nu corespunde originalului",
     "The destination folder couldn’t be found": "Dosarul de destinație nu a putut fi găsit",
+    "The disk has no Trash.": "Discul nu are coș de gunoi.",
     "The disk is full": "Discul este plin",
     "The disk is read-only": "Discul este doar în citire",
     "The document is too long for the on-device model.": "Documentul este prea lung pentru modelul de pe dispozitiv.",

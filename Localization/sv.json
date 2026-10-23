@@ -1516,6 +1516,7 @@
     "The copy can’t be read back": "Kopian kan inte läsas tillbaka",
     "The copy doesn’t match the original": "Kopian stämmer inte med originalet",
     "The destination folder couldn’t be found": "Målmappen kunde inte hittas",
+    "The disk has no Trash.": "Disken saknar papperskorg.",
     "The disk is full": "Skivan är full",
     "The disk is read-only": "Skivan är skrivskyddad",
     "The document is too long for the on-device model.": "Dokumentet är för långt för modellen på enheten.",

@@ -1396,6 +1396,7 @@
     "The copy can’t be read back": "無法回讀拷貝的檔案",
     "The copy doesn’t match the original": "拷貝的檔案與原始檔案不符",
     "The destination folder couldn’t be found": "找不到目標檔案夾",
+    "The disk has no Trash.": "此磁碟沒有垃圾桶。",
     "The disk is full": "磁碟已滿",
     "The disk is read-only": "磁碟為唯讀",
     "The document is too long for the on-device model.": "該文件對裝置端模型來說過長。",

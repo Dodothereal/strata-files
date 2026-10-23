@@ -21,14 +21,12 @@ final class TransferQueue {
 
     let preferences: Prefs
     let history: OperationLog
-    var copies: CopyProviders
-    private(set) var hasCustomCopies: Bool
+    let copies: CopyProviders
 
     init(preferences: Prefs = .shared, history: OperationLog = .shared, copies: CopyProviders? = nil) {
         self.preferences = preferences
         self.history = history
         self.copies = copies ?? .live
-        self.hasCustomCopies = copies != nil
     }
 
     var defaultOptions: TransferEngine.Options {

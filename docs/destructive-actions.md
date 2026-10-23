@@ -23,6 +23,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 |---|---|---|
 | ⌘Z / ⇧⌘Z of moves, renames, Move to Trash | `FileOps.registerMoveUndo`, `LandedFiles` | `TrashUndoTests/undoingARenameLeavesAFileSwappedInSince`, `undoAndRedoPressedAtOnceHappenInOrder`, `undoingTwoOperationsAtOnceUndoesBoth`; `AcrossDisksTests/aRenameAcrossDisksUndoesAndRedoes` |
 | ⌘Z / ⇧⌘Z of copies, duplicates, move jobs | `TransferUndo.register`, `TransferUndo.perform`, `TransferJob.landed` | `TrashUndoTests/undoingACopyTrashesOnlyItsOwnCopies`, `undoingAMoveJobMovesBackOnlyItsOwnItems`; `TransferTests/replacedItemsKeepTheirOwnershipAcrossTheWorkerHandoff` (replacement ownership through worker completion, native Undo/Redo and persisted History), `retriedCopiesKeepTheirOwnershipAcrossTheWorkerHandoff` (repaired files and folders retain worker ownership through native Undo), `undoingACopyLeavesAFileSwappedInWhileTheJobRan`, `aFileSwappedTheMomentItLandsIsNeverUndone`, `aRenamedFileSwappedTheMomentItLandsIsNeverUndone`; `AcrossDisksTests/aMoveJobAcrossDisksUndoesAndRedoesOnlyItsOwnItems`, `undoAndRedoPressedAtOnceAcrossDisksBothHappenInOrder`, `aFileSwappedTheMomentItLandsAcrossDisksIsNeverUndone` |
+| Owned browser file commands | `BrowserFileCommands`, `FileOps.rename`, `newFolder`, `newFile`, `registerTrashUndo` | `FileCommandOwnershipTests/*` (independent journals, persisted History, repeated native Undo/Redo, exact targets in every view); `BrowserPreferencesTests/newFileUsesItsOwnExtensionAndTargetInEveryView` |
 | ⌘Z of New Folder / New File | `FileOps.registerTrashUndo` | `TrashUndoTests/undoingANewFolderLeavesOneMadeInItsPlace` |
 | Undo from History | `OperationLog.undo`, `holdsOriginal`, `FileIdentity.matchesHistory` | `TrashUndoTests/historyUndoBringsBackWhatWasTrashedAndOnlyThat`, `undoLeavesAloneWhatTookTheOldPlace`, `undoNeverMovesBackAnItemThatWasSwappedForAnother`, `undoMovesBackOnlyTheMovedItems`, `historyUndoChecksIdentitiesSavedByOlderVersions`, `HistoryOwnershipTests`, `TransferTests/historyRejectsItemsReplacedBeforeTransferRegistration`, `historyRejectsARenameReplacedBeforeRegistration` |
 | History panels retain their store and native Undo manager, and Clear History requires confirmation | `HistoryWindowController.undo`, `clearHistory(after:)` | `HistoryWindowOwnershipTests/*`; mutations: “History window” |
@@ -49,7 +50,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 
 | Action | Code | Tests |
 |---|---|---|
-| Rename (inline, click to rename, Rename menu) | `FileOps.rename` | `InlineRenameTests/*`; `RenameTests/*` |
+| Rename (inline, click to rename, Rename menu) | `FileOps.rename`, `BrowserRename.confirmedName` | `InlineRenameTests/*`; `RenameTests/*` |
 | Batch rename, swaps and chains | `RenameRules`, `FileOps.moveAll` | `RenameTests/*` |
 | New Folder / New File | `FileOps.newFolder`, `newFile`, `BrowserViewController.newFile` | `NewFileTests/*` (incl. `newFolderNeverTakesAnExistingOne`); `TrashUndoTests/undoingANewFolderLeavesOneMadeInItsPlace`; `BrowserPreferencesTests/newFileUsesItsOwnExtensionAndTargetInEveryView` |
 
@@ -192,6 +193,7 @@ belong to.
 | `AI/PlanGenerator :: (top level)`, `recipe`, `init`, `expand`; `AI/PlanModel :: init`; `AI/PlanValidator :: validate`, `needFolder`; `AI/RenameRules :: plan` (`rename` here is a plan step's name, not a file call) | `PlanSafetyTests/*`, `RenameTests/*` |
 | `AI/SemanticIndex :: reset` | `CacheRemovalTests/resettingTheContentIndexRemovesOnlyItsStore` |
 | `App/StrataCommand :: init`; `App/MainMenu :: build`, `menuNeedsUpdate`, `rename` (menu items; `rename` is a workspace's name) | `WorkspaceTests/*` |
+| `Browser/BrowserFileCommands :: rename` | `FileCommandOwnershipTests/*` |
 | `Browser/BrowserViewController+ArchiveBrowsing :: unpackForBrowsing` (makes the copy's folder) | `ArchiveSafetyTests/*` |
 | `Browser/BrowserViewController+Servers :: renameOnServer` | `ServerSafetyTests/renamingOnAServerStaysInTheFolderAndReplacesNothing` |
 | `Browser/BrowserViewController+Trash :: putBack` (remakes missing folders), `deleteAll` | `PutBackTests/*`, `TrashUndoTests/undoingAPutBackRemovesOnlyTheFoldersItMadeOnceEmpty`; `DeleteTests/*` |
