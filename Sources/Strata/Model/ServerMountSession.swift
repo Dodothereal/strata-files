@@ -15,7 +15,7 @@ nonisolated package struct ServerMounter: Sendable {
 
 /// A sheet owns one mount at a time. Cancelling or replacing it detaches the old result before asking NetFS to stop;
 /// a late success, failure or cancellation cannot update a newer attempt's controls or recent addresses.
-package final class ServerMountSession {
+@MainActor package final class ServerMountSession {
     private let mounter: ServerMounter
     private var request: ServerConnection.Request?
     package private(set) var task: Task<Void, Never>?

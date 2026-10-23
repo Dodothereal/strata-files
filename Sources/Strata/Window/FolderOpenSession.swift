@@ -2,7 +2,7 @@ import Foundation
 
 /// A pane owns one asynchronous folder opening. Leaving the pane's destination, closing it or starting another
 /// opening discards late results even when the underlying I/O cannot stop immediately.
-final class FolderOpenSession {
+@MainActor final class FolderOpenSession {
     final class Request {}
     struct Notice {
         let symbol: String

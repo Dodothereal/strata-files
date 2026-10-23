@@ -2,7 +2,7 @@ import Foundation
 import UniformTypeIdentifiers
 
 /// Only requested columns read media. Limit concurrent readers, reuse snapshots, and discard work on navigation.
-final class MediaInfoLoader {
+@MainActor final class MediaInfoLoader {
     typealias Reader = @Sendable (FileEntry) async -> MediaInfo
     static let read: Reader = { await MediaInfo.read($0.url, contentType: $0.contentType) }
 

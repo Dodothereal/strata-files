@@ -1,7 +1,7 @@
 import Foundation
 
 /// Owns an expanded tree's native directory watchers and its share of the window-wide allowance.
-final class FolderWatchers {
+@MainActor final class FolderWatchers {
     final class Budget {
         static let shared = Budget(limit: 96)
         let limit: Int

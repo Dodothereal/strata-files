@@ -28,7 +28,7 @@ nonisolated struct DirectoryReader: Sendable {
 
 /// One presentation's current read. Replaced or detached presentations discard late successes and errors, even if
 /// the underlying reader cannot stop its I/O when cancelled. The view owns presentation state and applying entries.
-final class DirectoryReadSession {
+@MainActor final class DirectoryReadSession {
     private let reader: DirectoryReader
     private(set) var generation = 0
     private(set) var task: Task<Void, Never>?

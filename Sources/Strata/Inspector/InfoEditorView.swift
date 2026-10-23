@@ -3,7 +3,7 @@ import AppKit
 /// Get Info's editable part for one item, as three Inspector cards' contents: Spotlight comments, the app that opens it
 /// (this file, or Change All…), and Locked plus who may read and write it. Changes apply at once; what's refused says
 /// why, in the card it happened in.
-final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
+@MainActor final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
     private(set) var url: URL?
     private var isFolder = false
     /// The comment as it was when typing began (Escape goes back to it), and the pending save while typing.

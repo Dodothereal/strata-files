@@ -246,7 +246,7 @@ final class GitStatusStore {
 }
 
 /// Keeps a repository watched; drop it (or assign another) to stop.
-final class GitObservation {
+@MainActor final class GitObservation {
     let repository: GitRepository
     private weak var store: GitStatusStore?
 
@@ -322,7 +322,7 @@ nonisolated struct GitEventFilter: Sendable {
 /// FSEvents on the work tree (and the git directory, when a worktree or submodule keeps it elsewhere). Calls
 /// `onChange` on the main thread for changes git status could notice: work tree edits outside ignored paths, and
 /// index, HEAD, ref and merge-state changes. Filtering happens on a background queue.
-final class GitRepoWatcher {
+@MainActor final class GitRepoWatcher {
     private var stream: FSEventStreamRef?
     private let context: GitWatcherContext
 

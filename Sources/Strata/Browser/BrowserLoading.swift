@@ -2,7 +2,7 @@ import Foundation
 
 /// Owns a browser's folder reads and their lifetime. AppKit decides when to apply a delivered listing, including
 /// deferring it while a native name editor is open; a read completing does not mean those entries are on screen.
-final class BrowserLoading {
+@MainActor final class BrowserLoading {
     struct Delivery {
         let entries: [FileEntry]
         let fromTop: Bool

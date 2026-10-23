@@ -241,7 +241,7 @@ final class FileThumbnails {
 }
 
 /// Small facts shown under icons, read off the main thread: a folder's item count, an image's pixel size.
-final class ItemInfoLoader {
+@MainActor final class ItemInfoLoader {
     static let shared = ItemInfoLoader()
 
     private var cache: [String: String] = [:]
