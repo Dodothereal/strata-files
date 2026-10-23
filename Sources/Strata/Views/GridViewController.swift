@@ -249,6 +249,7 @@ final class GridViewController: NSViewController, FileCollectionController {
     // MARK: - Item configuration
 
     private func configure(_ item: GridItem, at index: Int, refreshImage: Bool = true) {
+        guard entries.indices.contains(index) else { return }
         let entry = entries[index]
         item.emphasis = { [weak self] in self?.collectionView.isEmphasized ?? false }
         let git = GitStatusStore.shared
@@ -309,7 +310,8 @@ final class GridViewController: NSViewController, FileCollectionController {
     }
 
     private func scrollToItem(_ index: Int) {
-        guard index < entries.count else { return }
+        guard entries.indices.contains(index) else { return }
+        layout.prepare()
         let frame = layout.frame(for: index).insetBy(dx: 0, dy: -layout.rowSpacing - 4)
         collectionView.scrollToVisible(frame)
     }
@@ -360,7 +362,7 @@ final class GridViewController: NSViewController, FileCollectionController {
     }
 
     fileprivate func contextMenu(at point: NSPoint) -> NSMenu? {
-        if let index = layout.index(at: point) {
+        if let index = layout.index(at: point), entries.indices.contains(index) {
             if !collectionView.selectionIndexPaths.contains(IndexPath(item: index, section: 0)) {
                 collectionView.selectionIndexPaths = [IndexPath(item: index, section: 0)]
                 lead = index
@@ -384,7 +386,7 @@ final class GridViewController: NSViewController, FileCollectionController {
     }
 
     fileprivate func doubleClicked(at point: NSPoint) {
-        guard layout.index(at: point) != nil else { return }
+        guard let index = layout.index(at: point), entries.indices.contains(index) else { return }
         openSelection()
     }
 
@@ -409,7 +411,7 @@ final class GridViewController: NSViewController, FileCollectionController {
     fileprivate func noteClickSelection() {
         // Mouse selection moves the keyboard lead to the clicked item.
         let flags = NSApp.currentEvent?.modifierFlags ?? []
-        if let point = collectionView.lastMouseDownPoint, let index = layout.index(at: point) {
+        if let point = collectionView.lastMouseDownPoint, let index = layout.index(at: point), entries.indices.contains(index) {
             lead = index
             if !flags.contains(.shift) { anchor = index }
         }

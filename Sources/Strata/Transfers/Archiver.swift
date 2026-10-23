@@ -261,6 +261,7 @@ nonisolated enum Archiver {
                 // archive then fails at once. Its file flags aren't restored: a locked file couldn't be cleaned up.
                 try run("/usr/bin/tar", ["-x", "-v", "--no-fflags", "--passphrase", "-", "-f", archive.path, "-C", root.path],
                         control: control, counts: { $0.hasPrefix("x ") }, watching: disk)
+                chmod(root.path, 0o700)
                 // bsdtar leaves a zip's sequestered attributes as plain files.
                 if kind == .zip { removeTree(root.appending(path: "__MACOSX")) }
             }
@@ -289,13 +290,16 @@ nonisolated enum Archiver {
         var info = stat()
         guard lstat(rootPath, &info) == 0 else { throw Failure(message: String(localized: "The extracted files couldn’t be checked.")) }
         clearAccessList(rootPath)
-        if let quarantine { try markQuarantined(rootPath, quarantine) }
         switch info.st_mode & S_IFMT {
         case S_IFREG:
-            if info.st_mode & (S_ISUID | S_ISGID) != 0 { chmod(rootPath, info.st_mode & ~(S_ISUID | S_ISGID) & 0o7777) }
+            if info.st_mode & (S_ISUID | S_ISGID) != 0 || (quarantine != nil && info.st_mode & S_IWUSR == 0) {
+                chmod(rootPath, (info.st_mode & ~(S_ISUID | S_ISGID) & 0o7777) | (quarantine != nil ? S_IWUSR : 0))
+            }
+            if let quarantine { try markQuarantined(rootPath, quarantine) }
             return
         case S_IFDIR:
             chmod(rootPath, (info.st_mode & 0o7777 & ~(S_ISUID | S_ISGID)) | S_IRWXU)
+            if let quarantine { try markQuarantined(rootPath, quarantine) }
         default:
             throw Failure(message: String(localized: "The archive holds nothing that can be extracted safely."))
         }
@@ -317,7 +321,6 @@ nonisolated enum Archiver {
                 throw Failure(message: String(localized: "“\(relative)” in the archive couldn’t be checked, so nothing was extracted."))
             }
             clearAccessList(path)
-            if let quarantine { try markQuarantined(path, quarantine) }
             switch info.st_mode & S_IFMT {
             case S_IFLNK:
                 let parent = relative.split(separator: "/").dropLast().map(String.init)
@@ -326,11 +329,16 @@ nonisolated enum Archiver {
                       resolve(target, from: parent, in: rootPath, hops: 0, budget: &budget) != nil else {
                     throw Failure(message: String(localized: "This archive contains a link that points outside it (“\(relative)”), so it wasn’t extracted."))
                 }
+                if let quarantine { try markQuarantined(path, quarantine) }
             case S_IFDIR:
                 // Readable and enterable, so the walk sees what's inside (and the folder can be removed later).
                 chmod(path, (info.st_mode & 0o7777 & ~(S_ISUID | S_ISGID)) | S_IRWXU)
+                if let quarantine { try markQuarantined(path, quarantine) }
             case S_IFREG:
-                if info.st_mode & (S_ISUID | S_ISGID) != 0 { chmod(path, info.st_mode & ~(S_ISUID | S_ISGID) & 0o7777) }
+                if info.st_mode & (S_ISUID | S_ISGID) != 0 || (quarantine != nil && info.st_mode & S_IWUSR == 0) {
+                    chmod(path, (info.st_mode & ~(S_ISUID | S_ISGID) & 0o7777) | (quarantine != nil ? S_IWUSR : 0))
+                }
+                if let quarantine { try markQuarantined(path, quarantine) }
             default:
                 try fm.removeItem(atPath: path)
             }
@@ -343,7 +351,7 @@ nonisolated enum Archiver {
     /// Where a link's `target` leads, as path components inside `root`, following links on the way; nil when it would
     /// leave `root` (an absolute target, a ".." past the top), loops, can't be checked, or takes more than `budget`
     /// steps in all (links made of links can't multiply the work). `parent`: the link's folder inside `root`.
-    private static func resolve(_ target: String, from parent: [String], in root: String, hops: Int, budget: inout Int) -> [String]? {
+    static func resolve(_ target: String, from parent: [String], in root: String, hops: Int, budget: inout Int) -> [String]? {
         guard hops < 32, !target.hasPrefix("/") else { return nil }
         var stack = parent
         for part in target.split(separator: "/") {
@@ -515,7 +523,7 @@ nonisolated enum Archiver {
         }
         // Owner rights first: a folder must be readable and changeable to empty it; any entry may carry an access list
         // that denies deleting it.
-        if info.st_mode & S_IFMT != S_IFLNK { fchmodat(parent, name, (info.st_mode & 0o7777) | S_IRWXU, 0) }
+        if info.st_mode & S_IFMT != S_IFLNK { fchmodat(parent, name, (info.st_mode & 0o7777) | S_IRWXU, AT_SYMLINK_NOFOLLOW) }
         if info.st_mode & S_IFMT == S_IFDIR {
             let fd = openat(parent, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             guard fd >= 0 else { return }
@@ -615,6 +623,18 @@ nonisolated enum Archiver {
                 }
             }
             control.advance(count)
+        }
+        if !pending.isEmpty {
+            let text = String(decoding: pending, as: UTF8.self)
+            var count = 0
+            for line in text.split(separator: "\n") {
+                if counts(line) { count += 1 }
+                if !isProgress(line) {
+                    tail.append(line.suffix(300))
+                    if tail.count > 20 { tail.removeFirst() }
+                }
+            }
+            if count > 0 { control.advance(count) }
         }
         process.waitUntilExit()
         if control.isCancelled { throw CancellationError() }

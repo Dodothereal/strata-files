@@ -401,7 +401,7 @@ nonisolated enum ContainerCopies {
     /// already there (a merge), the folder's own items, links included, stay exactly as they were.
     static func finishCopyingOut(_ url: URL, from source: URL? = nil) {
         let names = [sourceAttribute, engineAttribute, "dev.strata.modified"]
-        let root = url.standardizedFileURL.pathComponents
+        let top = url.path
         let fm = FileManager.default
         func isFromCopy(_ path: String, _ relative: String, _ info: stat) -> Bool {
             guard let source else { return true }
@@ -412,26 +412,19 @@ nonisolated enum ContainerCopies {
             let target = try? fm.destinationOfSymbolicLink(atPath: path)
             return target != nil && target == (try? fm.destinationOfSymbolicLink(atPath: counterpart))
         }
-        func leadsOutside(_ path: String) -> Bool {
-            guard let target = try? FileManager.default.destinationOfSymbolicLink(atPath: path) else { return false }
-            if target.hasPrefix("/") { return true }
-            var parts = URL(fileURLWithPath: path).deletingLastPathComponent().standardizedFileURL.pathComponents
-            for part in target.split(separator: "/") where part != "." {
-                if part == ".." {
-                    guard parts.count > root.count else { return true }
-                    parts.removeLast()
-                } else {
-                    parts.append(String(part))
-                }
-            }
-            return !parts.starts(with: root)
+        func leadsOutside(_ path: String, _ relative: String) -> Bool {
+            guard !relative.isEmpty,
+                  let target = try? FileManager.default.destinationOfSymbolicLink(atPath: path) else { return true }
+            let parent = relative.split(separator: "/").dropLast().map(String.init)
+            var budget = 4096
+            return Archiver.resolve(target, from: parent, in: top, hops: 0, budget: &budget) == nil
         }
         /// False for what isn't the copy's (nothing under it is looked at either).
         func finish(_ path: String, _ relative: String) -> Bool {
             var info = stat()
             guard lstat(path, &info) == 0, isFromCopy(path, relative, info) else { return false }
             let kind = info.st_mode & S_IFMT
-            if kind == S_IFLNK, leadsOutside(path) {
+            if kind == S_IFLNK, leadsOutside(path, relative) {
                 unlink(path)
                 return false
             }
@@ -439,7 +432,6 @@ nonisolated enum ContainerCopies {
             if kind == S_IFDIR || kind == S_IFREG, info.st_mode & 0o200 == 0 { chmod(path, (info.st_mode & 0o7777) | 0o200) }
             return true
         }
-        let top = url.path
         guard finish(top, ""), let walker = fm.enumerator(atPath: top) else { return }
         while let relative = walker.nextObject() as? String {
             if !finish(top + "/" + relative, relative) { walker.skipDescendants() }

@@ -233,6 +233,13 @@ enum Trash {
     nonisolated private static func removeTree(in parent: Int32, _ name: String) -> Int32 {
         if unlinkat(parent, name, 0) == 0 { return 0 }
         let unlinkError = errno
+        var info = stat()
+        if fstatat(parent, name, &info, AT_SYMLINK_NOFOLLOW) == 0,
+           (info.st_mode & S_IFMT) == S_IFDIR,
+           info.st_flags & UInt32(UF_IMMUTABLE | SF_IMMUTABLE) == 0,
+           (info.st_mode & S_IRWXU) != S_IRWXU {
+            _ = fchmodat(parent, name, (info.st_mode & 0o7777) | S_IRWXU, AT_SYMLINK_NOFOLLOW)
+        }
         let fd = openat(parent, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         // Not a folder: why the file itself couldn't be deleted (locked, say).
         guard fd >= 0 else { return errno == ENOTDIR || errno == ELOOP ? unlinkError : errno }

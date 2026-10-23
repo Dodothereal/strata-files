@@ -614,6 +614,10 @@ nonisolated enum TransferEngine {
                             continue
                         }
                         directories[dstPath] = descriptor
+                        var dirInfo = stat()
+                        if fstat(descriptor.fd, &dirInfo) == 0, (dirInfo.st_mode & S_IRWXU) != S_IRWXU {
+                            _ = fchmod(descriptor.fd, (dirInfo.st_mode & 0o7777) | S_IRWXU)
+                        }
                         outcome.created[dstPath] = expected
                     } else {
                         guard mkdir(dstPath, 0o700) == 0 else {
@@ -907,8 +911,27 @@ nonisolated enum TransferEngine {
         ]
         while let frame = stack.popLast() {
             if !frame.expanded {
-                stack.append((parentFD: frame.parentFD, fd: frame.fd, name: frame.name,
+                let currentFD: Int32
+                if frame.fd >= 0 {
+                    currentFD = frame.fd
+                } else {
+                    let opened = openat(frame.parentFD, frame.name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                    guard opened >= 0 else { continue }
+                    var openedChild = stat()
+                    guard let expectedChild = created[frame.path],
+                          fstat(opened, &openedChild) == 0, FileIdentity.from(openedChild) == expectedChild else {
+                        close(opened)
+                        continue
+                    }
+                    currentFD = opened
+                }
+                var dirInfo = stat()
+                if !frame.keep, fstat(currentFD, &dirInfo) == 0, (dirInfo.st_mode & S_IRWXU) != S_IRWXU {
+                    _ = fchmod(currentFD, (dirInfo.st_mode & 0o7777) | S_IRWXU)
+                }
+                stack.append((parentFD: frame.parentFD, fd: currentFD, name: frame.name,
                               path: frame.path, expanded: true, keep: frame.keep))
+                let frame = (parentFD: frame.parentFD, fd: currentFD, name: frame.name, path: frame.path, expanded: false, keep: frame.keep)
                 for childName in Archiver.entries(frame.fd) {
                     let childPath = (frame.path as NSString).appendingPathComponent(childName)
                     guard let expectedChild = created[childPath] else { continue }
@@ -916,14 +939,7 @@ nonisolated enum TransferEngine {
                     guard fstatat(frame.fd, childName, &childInfo, AT_SYMLINK_NOFOLLOW) == 0,
                           FileIdentity.from(childInfo) == expectedChild else { continue }
                     if childInfo.st_mode & S_IFMT == S_IFDIR {
-                        let childFD = openat(frame.fd, childName, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-                        guard childFD >= 0 else { continue }
-                        var openedChild = stat()
-                        guard fstat(childFD, &openedChild) == 0, FileIdentity.from(openedChild) == expectedChild else {
-                            close(childFD)
-                            continue
-                        }
-                        stack.append((parentFD: frame.fd, fd: childFD, name: childName,
+                        stack.append((parentFD: frame.fd, fd: -1, name: childName,
                                       path: childPath, expanded: false, keep: false))
                     } else {
                         _ = unlinkat(frame.fd, childName, 0)
@@ -962,8 +978,9 @@ nonisolated enum TransferEngine {
             }
             // An edit after the copy makes the original newer. Some disks keep coarser dates (FAT: 2 seconds, nothing
             // before 1980), so only a clearly newer original, or a different size, counts.
+            let (grace, overflow) = copied.st_mtimespec.tv_sec.addingReportingOverflow(2)
             if original.st_mode & S_IFMT == S_IFREG,
-               original.st_size != copied.st_size || original.st_mtimespec.tv_sec > copied.st_mtimespec.tv_sec + 2 {
+               original.st_size != copied.st_size || (!overflow && original.st_mtimespec.tv_sec > grace) {
                 return String(localized: "“\(name)” was modified", comment: "Why a moved item’s original was kept, in parentheses")
             }
             if original.st_mode & S_IFMT == S_IFLNK, readLink(path) != readLink(copy.path + relative) {
@@ -1198,7 +1215,7 @@ nonisolated private final class CopySession: @unchecked Sendable {
     /// Keep the originally opened directory alive through metadata cleanup. copyfile changes its birth time there,
     /// so read the final identity from that descriptor, never from the cleanup pass's reopened pathname.
     final class DirectoryDescriptor {
-        private let fd: Int32
+        fileprivate let fd: Int32
 
         init?(_ state: copyfile_state_t?) {
             var original: Int32 = -1

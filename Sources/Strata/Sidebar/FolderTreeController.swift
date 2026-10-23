@@ -84,6 +84,7 @@ final class FolderTreeController: NSViewController {
             if isActive {
                 rebuild()
             } else {
+                generation += 1
                 unwatchAll()
             }
         }

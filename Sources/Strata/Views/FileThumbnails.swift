@@ -176,7 +176,8 @@ final class FileThumbnails {
     /// drop shadow to fade out (no hard edge). Runs on Quick Look's callback thread.
     nonisolated static func trimmed(_ image: CGImage) -> CGImage {
         let width = image.width, height = image.height
-        guard width > 2, height > 2, image.alphaInfo != .none, image.alphaInfo != .noneSkipLast,
+        guard width > 2, height > 2, width <= 4096, height <= 4096,
+              image.alphaInfo != .none, image.alphaInfo != .noneSkipLast,
               image.alphaInfo != .noneSkipFirst else { return image }
         var alpha = [UInt8](repeating: 0, count: width * height)
         let drawn = alpha.withUnsafeMutableBytes { buffer -> Bool in
@@ -389,8 +390,8 @@ final class ItemInfoLoader {
             var count = 0
             while let entry = readdir(dir) {
                 if Task.isCancelled { return nil }
-                let name = withUnsafePointer(to: entry.pointee.d_name) {
-                    $0.withMemoryRebound(to: CChar.self, capacity: Int(entry.pointee.d_namlen) + 1) { String(cString: $0) }
+                let name = withUnsafeBytes(of: entry.pointee.d_name) { raw in
+                    String(decoding: raw.prefix(Int(entry.pointee.d_namlen)), as: UTF8.self)
                 }
                 if name == "." || name == ".." { continue }
                 if !showHidden, name.hasPrefix(".") { continue }

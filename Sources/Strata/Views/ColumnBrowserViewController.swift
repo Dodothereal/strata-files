@@ -225,6 +225,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
             let pane = panes.removeLast()
             if renameField?.superview === pane.tableView { renameField?.cancel() }
             if renameWhenLoaded === pane { cancelPendingRename() }
+            if selectWhenLoaded?.pane === pane { selectWhenLoaded = nil }
             pane.tearDown()
             pane.removeFromSuperview()
         }
@@ -330,6 +331,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     fileprivate func paneFailed(_ pane: ColumnPane) {
         if renameWhenLoaded === pane { cancelPendingRename() }
+        if selectWhenLoaded?.pane === pane { selectWhenLoaded = nil }
     }
 
     fileprivate func paneBecameActive(_ pane: ColumnPane) {
@@ -496,8 +498,8 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         field.onEnd = { [weak self, weak cell, weak pane] in
             cell?.nameCell.textField?.isHidden = false
             self?.renameField = nil
-            if let pane {
-                self?.view.window?.makeFirstResponder(pane.tableView)
+            if let self, let pane, self.panes.contains(where: { $0 === pane }) {
+                self.view.window?.makeFirstResponder(pane.tableView)
                 pane.applyDeferred()
             }
         }

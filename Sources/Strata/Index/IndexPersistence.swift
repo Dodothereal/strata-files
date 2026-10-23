@@ -98,11 +98,15 @@ nonisolated package enum IndexPersistence {
 
         guard try get(UInt32.self) == magic, try get(UInt32.self) == version else { throw Corrupt() }
         var header = Header(eventID: try get(UInt64.self), roots: [], excluded: [])
-        for _ in 0..<Int(try get(UInt32.self)) {
+        let rootCount = Int(try get(UInt32.self))
+        guard rootCount <= 10_000 else { throw Corrupt() }
+        for _ in 0..<rootCount {
             let id = try get(Int32.self)
             header.roots.append((id, try getString()))
         }
-        for _ in 0..<Int(try get(UInt32.self)) { header.excluded.append(try getString()) }
+        let excludedCount = Int(try get(UInt32.self))
+        guard excludedCount <= 100_000 else { throw Corrupt() }
+        for _ in 0..<excludedCount { header.excluded.append(try getString()) }
 
         let store = IndexStore()
         try store.write { store in
@@ -148,13 +152,15 @@ nonisolated package enum IndexPersistence {
                   Int(store.nameStart[i]) + Int(store.nameLength[i]) <= store.names.count,
                   store.size[i] >= 0 else { return false }
             if parent >= 0, store.flags[Int(parent)] & IndexStore.Flag.directory == 0 { return false }
+            if store.flags[i] & IndexStore.Flag.deleted != 0,
+               store.firstChild[i] != -1 || store.nextSibling[i] != -1 { return false }
         }
         var linked = [Bool](repeating: false, count: count)
         for i in 0..<count {
             var child = store.firstChild[i]
             while child >= 0 {
                 let id = Int(child)
-                guard !linked[id], store.parent[id] == Int32(i) else { return false }
+                guard !linked[id], store.flags[id] & IndexStore.Flag.deleted == 0, store.parent[id] == Int32(i) else { return false }
                 linked[id] = true
                 child = store.nextSibling[id]
             }

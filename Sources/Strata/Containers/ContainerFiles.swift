@@ -304,9 +304,10 @@ actor ContainerFiles {
         for url in urls where copies.isPlaceholder(url) {
             let key = url.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: url.lastPathComponent).standardizedFileURL.path
             guard let mode = modes[key], mode & 0o004 != 0 else { continue }
-            let size = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
-            guard total + size <= limit else { break }
-            total += size
+            let size = max(0, Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0))
+            let (nextTotal, overflow) = total.addingReportingOverflow(size)
+            guard !overflow, nextTotal <= limit else { break }
+            total = nextTotal
             chosen.append(url)
         }
         try? await fetch(chosen)
@@ -564,8 +565,9 @@ nonisolated enum CopyWriter {
     /// Whether a listed file is fetched with its listing: small, world-readable (a secret only its owner may read waits
     /// until it's opened), and within the folder's budget.
     static func fetchesEagerly(size: Int64, mode: UInt32, bytes: Int64, count: Int) -> Bool {
-        size <= ContainerFiles.eagerFileSize && mode & 0o004 != 0
-            && bytes + size <= ContainerFiles.eagerFolderBytes && count < ContainerFiles.eagerFolderCount
+        let (nextBytes, overflow) = bytes.addingReportingOverflow(size)
+        return size >= 0 && size <= ContainerFiles.eagerFileSize && mode & 0o004 != 0
+            && !overflow && nextBytes <= ContainerFiles.eagerFolderBytes && count < ContainerFiles.eagerFolderCount
     }
 
     /// A name in an archive stream without its leading `/`.
@@ -942,6 +944,9 @@ nonisolated enum CopyWriter {
                     if let spelling = seen[key], spelling != path { return }
                     guard parts.dropLast().indices.allSatisfy({ seen[parts[...$0].map(folded).joined(separator: "/")] == parts[...$0].joined(separator: "/")
                         || seen[parts[...$0].map(folded).joined(separator: "/")] == nil }) else { return }
+                    for idx in parts.dropLast().indices {
+                        seen[parts[...idx].map(folded).joined(separator: "/")] = parts[...idx].joined(separator: "/")
+                    }
                     let parent = try folderFD(parts.dropLast()[...])
                     let last = parts[parts.count - 1]
                     switch entry.kind {
@@ -958,6 +963,7 @@ nonisolated enum CopyWriter {
                         setLinkTimes(parent, last, entry.modified)
                     case .hardlink:
                         // Linked to its first name once the stream is through (hardlinks carry no data).
+                        seen[key] = path
                         hardlinks.append((parts, streamName(entry.linkTarget)))
                     case .file:
                         seen[key] = path
@@ -1172,9 +1178,7 @@ nonisolated enum CopyWriter {
         rewinddir(dir)
         var names: [String] = []
         while let entry = readdir(dir) {
-            let name = withUnsafePointer(to: entry.pointee.d_name) {
-                $0.withMemoryRebound(to: CChar.self, capacity: Int(entry.pointee.d_namlen) + 1) { String(cString: $0) }
-            }
+            let name = withUnsafeBytes(of: entry.pointee.d_name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
             if name != ".", name != ".." { names.append(name) }
         }
         return names

@@ -174,7 +174,7 @@ final class GridItemView: NSView, ColorThemeUpdating {
 
     var iconRect: NSRect { iconBoxRect.insetBy(dx: metrics.iconPad, dy: metrics.iconPad) }
 
-    private var labelWidth: CGFloat { min(metrics.labelWidth, bounds.width - 8) }
+    private var labelWidth: CGFloat { max(min(metrics.labelWidth, bounds.width - 8), 1) }
 
     /// The area the name occupies (for the rename field and drag images).
     var nameRect: NSRect {
@@ -244,7 +244,7 @@ final class GridItemView: NSView, ColorThemeUpdating {
         let color = textColor
         let highlight: NSColor = state.selected && state.emphasized ? color : ThemeStyle.accent
         let full = FileViewStyle.highlightedName(name, matches: matches, font: metrics.typography.font, boldFont: metrics.typography.bold, color: color, highlight: highlight)
-        let width = labelWidth - dotsLead
+        let width = max(labelWidth - dotsLead, 1)
         let typesetter = CTTypesetterCreateWithAttributedString(full)
         let length = full.length
         var breakIndex = CTTypesetterSuggestLineBreak(typesetter, 0, Double(width))

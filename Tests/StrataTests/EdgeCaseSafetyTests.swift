@@ -381,4 +381,32 @@ struct EdgeCaseSafetyTests {
         #expect(q1.modifiedBefore == nil)
         #expect(tree.snapshot() == ["a.txt", "b.txt", "link -> a.txt"])
     }
+
+    @Test func outermostPreservesURLSpellingsAndArchiverChecksQuarantinedReadOnlyAndChainedLinks() throws {
+        let tree = try TestTree("dir/", "dir/inner.txt", "sub/", "sub/back -> ..", "escape -> sub/back/../outside")
+        let dirURL = tree.url("dir")
+        let innerURL = tree.url("dir/inner.txt")
+        let outer = FileOps.outermost([dirURL, innerURL, dirURL])
+        #expect(outer == [dirURL])
+        #expect(outer.first?.path == dirURL.path)
+
+        var budget = 4096
+        let escaped = Archiver.resolve("sub/back/../outside", from: [], in: tree.root.path, hops: 0, budget: &budget)
+        #expect(escaped == nil)
+
+        let extracted = tree.url("extracted")
+        try FileManager.default.createDirectory(at: extracted, withIntermediateDirectories: true)
+        let readOnly = extracted.appending(path: "readonly.txt")
+        try Data("hello".utf8).write(to: readOnly)
+        chmod(readOnly.path, 0o444)
+        let fifo = extracted.appending(path: "pipe.fifo")
+        #expect(mkfifo(fifo.path, 0o600) == 0)
+
+        let quarantine = Data("0081;00000000;StrataTest;".utf8)
+        try Archiver.check(extracted, quarantine: quarantine)
+        #expect(TestTree.listing(of: extracted) == ["readonly.txt"])
+        chmod(readOnly.path, 0o644)
+        try FileManager.default.removeItem(at: extracted)
+        #expect(tree.snapshot() == ["dir/", "dir/inner.txt", "escape -> sub/back/../outside", "sub/", "sub/back -> .."])
+    }
 }

@@ -236,7 +236,7 @@ enum FileOps {
             let logged = record ? history.recordMove("Move to Trash", moved, landed: landed) : entry
             registerMoveUndo(moved, "Move to Trash", undo, entry: logged, copies: copies, marksUndone: record ? true : marksUndone, landed: landed, history: history)
         }
-        for url in BrowserViewController.outermost(urls) where Self.canTrash(url, copies: copies) {
+        for url in Self.outermost(urls) where Self.canTrash(url, copies: copies) {
             var result: NSURL?
             try FileManager.default.trashItem(at: url, resultingItemURL: &result)
             if let result {
@@ -321,12 +321,24 @@ enum FileOps {
             && !ReadOnlyCopies.contains(url, copies: copies)
     }
 
+    /// `urls` in order without duplicates or items inside another of them, keeping each item's original URL spelling.
+    nonisolated static func outermost(_ urls: [URL]) -> [URL] {
+        let pairs = urls.map { (url: $0, path: $0.standardizedFileURL.path) }
+        var seen: Set<String> = []
+        return pairs.filter { item in
+            guard seen.insert(item.path).inserted else { return false }
+            return !pairs.contains { other in
+                other.path != item.path && item.path.hasPrefix(other.path == "/" ? "/" : other.path + "/")
+            }
+        }.map(\.url)
+    }
+
     @concurrent
     private static func trashItems(_ urls: [URL], copies: CopyProviders) async -> (moved: [Move], identities: [FileIdentity?], noTrash: [URL], failure: Error?) {
         var moved: [Move] = []
         var identities: [FileIdentity?] = []
         var noTrash: [URL] = []
-        let urls = BrowserViewController.outermost(urls)
+        let urls = Self.outermost(urls)
         for url in urls where canTrash(url, copies: copies) {
             var result: NSURL?
             do {
