@@ -3,7 +3,9 @@ import Foundation
 /// Reading a folder is independent of the AppKit view that presents it. Production keeps the existing disk/remote
 /// loader; tests can hold a read open and deliver success or failure in a chosen order.
 nonisolated struct DirectoryReader: Sendable {
+    static let previewLimit = 50_000
     let read: @Sendable (URL, Bool, ApplicationsFolders) async throws -> [FileEntry]
+    private let previewRead: @Sendable (URL, Bool, ApplicationsFolders) async throws -> [FileEntry]
     let invalidate: @Sendable (URL) async -> Void
 
     static let live = DirectoryReader(copies: .live)
@@ -11,6 +13,7 @@ nonisolated struct DirectoryReader: Sendable {
     init(invalidate: @escaping @Sendable (URL) async -> Void = { _ in },
          read: @escaping @Sendable (URL, Bool, ApplicationsFolders) async throws -> [FileEntry]) {
         self.read = read
+        self.previewRead = read
         self.invalidate = invalidate
     }
 
@@ -19,7 +22,13 @@ nonisolated struct DirectoryReader: Sendable {
         read = { folder, hidden, applications in
             try await DirectoryLoader.load(folder, showHidden: hidden, applications: applications, copies: copies)
         }
+        previewRead = { folder, hidden, applications in
+            try await DirectoryLoader.loadPreview(folder, showHidden: hidden, applications: applications, copies: copies,
+                                                  limit: Self.previewLimit)
+        }
     }
+
+    var forPreview: DirectoryReader { DirectoryReader(invalidate: invalidate, read: previewRead) }
 
     func load(_ folder: URL, showHidden: Bool, applications: ApplicationsFolders) async throws -> [FileEntry] {
         try await read(folder, showHidden, applications)

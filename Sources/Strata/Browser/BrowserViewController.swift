@@ -174,6 +174,7 @@ final class BrowserViewController: NSViewController {
     func moveOrCopy(_ urls: [URL], into target: URL, move: Bool) { transfer(urls, into: target, move: move) }
 
     isolated deinit {
+        services.previews.invalidate(owner: self)
         selectionFetch?.cancel()
         actionFetch?.cancel()
         resortWork?.cancel()
@@ -847,11 +848,29 @@ final class BrowserViewController: NSViewController {
     // MARK: - Quick Look
 
     @objc func toggleQuickLook(_ sender: Any?) {
-        guard let panel = QLPreviewPanel.shared() else { return }
-        if QLPreviewPanel.sharedPreviewPanelExists(), panel.isVisible {
+        guard !isRenamingInPlace else { return }
+        if services.previews.isOpen {
+            services.previews.close()
+            return
+        }
+        if QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible {
             panel.orderOut(nil)
-        } else {
-            openQuickLook { panel.makeKeyAndOrderFront(nil) }
+            return
+        }
+        if selectedEntries.count == 1, let entry = selectedEntries.first {
+            if !entry.isDirectory, services.copies.isPlaceholder(entry.url) {
+                openQuickLook { [weak self] in
+                    guard let self else { return }
+                    services.previews.show(entry, from: self)
+                }
+            } else {
+                services.previews.show(entry, from: self)
+            }
+        } else if let panel = QLPreviewPanel.shared() {
+            openQuickLook { [weak self] in
+                guard let self else { return }
+                _ = services.windows.preview(panel, focusView)
+            }
         }
     }
 

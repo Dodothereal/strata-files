@@ -152,6 +152,43 @@ nonisolated struct FileEntry: Sendable, Hashable {
 }
 
 nonisolated enum DirectoryLoader {
+    /// A preview reads one level and stops before allocating an unbounded URL array. Expanded children have their
+    /// own request; hidden files, Applications merging and provider routing match the main browser.
+    @concurrent
+    static func loadPreview(_ directory: URL, showHidden: Bool, applications: ApplicationsFolders,
+                            copies: CopyProviders, limit: Int) async throws -> [FileEntry] {
+        try Task.checkCancellation()
+        if copies.contains(directory) { await copies.refresh(directory) }
+        try Task.checkCancellation()
+        return try previewEntries(directory, showHidden: showHidden, applications: applications, limit: limit)
+    }
+
+    private static func previewEntries(_ directory: URL, showHidden: Bool, applications: ApplicationsFolders,
+                                       limit: Int) throws -> [FileEntry] {
+        let directory = FileEntry.openedFolder(directory)
+        let options: FileManager.DirectoryEnumerationOptions = showHidden
+            ? [.skipsSubdirectoryDescendants, .skipsPackageDescendants]
+            : [.skipsSubdirectoryDescendants, .skipsPackageDescendants, .skipsHiddenFiles]
+        var entries: [FileEntry] = []
+        var examined = 0
+        for (index, folder) in applications.directories(for: directory).enumerated() {
+            var failure: Error?
+            guard let iterator = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: FileEntry.resourceKeys,
+                                                               options: options, errorHandler: { _, error in failure = error; return false }) else {
+                if index == 0 { throw CocoaError(.fileReadNoPermission) }
+                continue
+            }
+            for case let url as URL in iterator {
+                try Task.checkCancellation()
+                guard examined < limit else { throw CocoaError(.fileReadTooLarge) }
+                examined += 1
+                if let entry = FileEntry(url: url) { entries.append(entry) }
+            }
+            if let failure, index == 0 { throw failure }
+        }
+        return entries
+    }
+
     @concurrent
     static func load(_ directory: URL, showHidden: Bool, applications: ApplicationsFolders = .standard,
                      copies: CopyProviders = .live) async throws -> [FileEntry] {

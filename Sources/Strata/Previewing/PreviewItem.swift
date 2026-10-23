@@ -1,0 +1,67 @@
+import AppKit
+import StrataPreviews
+import UniformTypeIdentifiers
+
+/// A preview row is either an existing file or an archive member. Archive paths never masquerade as local URLs.
+@MainActor final class PreviewItem {
+    enum Source {
+        case file(FileEntry)
+        case member(ArchiveNode, path: [String])
+    }
+
+    let source: Source
+    weak var parent: PreviewItem?
+    var children: [PreviewItem]?
+
+    init(_ source: Source, parent: PreviewItem? = nil) {
+        self.source = source
+        self.parent = parent
+    }
+
+    var entry: FileEntry? {
+        if case .file(let entry) = source { return entry }
+        return nil
+    }
+
+    var name: String {
+        switch source {
+        case .file(let entry): entry.displayName
+        case .member(let node, _): node.name
+        }
+    }
+
+    var isDirectory: Bool {
+        switch source {
+        case .file(let entry): entry.isFolder && !entry.isSymlink
+        case .member(let node, _): node.isDirectory
+        }
+    }
+
+    var size: Int64? {
+        switch source {
+        case .file(let entry): entry.size
+        case .member(let node, _): node.isDirectory ? nil : node.size
+        }
+    }
+
+    var modified: Date? {
+        switch source {
+        case .file(let entry): entry.modified
+        case .member(let node, _): node.modified
+        }
+    }
+
+    var kind: String {
+        switch source {
+        case .file(let entry): return entry.kind
+        case .member:
+            let type: UTType = isDirectory ? .folder : UTType(filenameExtension: (name as NSString).pathExtension) ?? .data
+            return type.localizedDescription ?? name
+        }
+    }
+
+    func archiveChildren() -> [PreviewItem]? {
+        guard case .member(let node, let path) = source else { return nil }
+        return node.children.map { PreviewItem(.member($0, path: path + [$0.name]), parent: self) }
+    }
+}

@@ -5,6 +5,7 @@ import AppKit
 struct BrowserWindows {
     var controllers: () -> [BrowserWindowController]
     var open: (URL, URL?, NSWindow?, BrowserServices) -> BrowserWindowController?
+    var preview: (NSPanel, NSView) -> Bool = { _, _ in true }
 
     static let headless = BrowserWindows(controllers: { [] }, open: { _, _, _, _ in nil })
 
@@ -12,5 +13,10 @@ struct BrowserWindows {
         controllers: { NSApp.windows.compactMap { $0.windowController as? BrowserWindowController } },
         open: { location, second, parent, services in
             (NSApp.delegate as? AppDelegate)?.openWindow(at: location, secondPane: second, tabbedWith: parent, services: services)
+        },
+        preview: { panel, source in
+            guard source.window?.isVisible == true else { return false }
+            panel.makeKeyAndOrderFront(nil)
+            return true
         })
 }

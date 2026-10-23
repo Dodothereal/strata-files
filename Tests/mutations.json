@@ -2949,8 +2949,8 @@
   },
   {
     "file": "Strata/Model/FileEntry.swift",
-    "find": "if copies.contains(directory) { await copies.refresh(directory) }",
-    "replace": "",
+    "find": "if copies.contains(directory) { await copies.refresh(directory) }\n        // Follow a symlink or Finder alias.",
+    "replace": "// Follow a symlink or Finder alias.",
     "rule": "Provider directory ownership directory reading skips provider preparation",
     "tests": "InspectorFolderOpeningTests/independentDirectoryReadersUseTheirOwnProvidersAndKeepNativeHiddenFileFiltering"
   },
@@ -4325,5 +4325,26 @@
     "replace": "// Keep the old folder-open request alive.",
     "rule": "Finder parent navigation: leaving a child column cancels a late folder open",
     "tests": "FinderNavigationTests"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "find": "        services.previews.invalidate(owner: self)",
+    "replace": "        // Keep a preview after its pane navigates.",
+    "rule": "Space preview foundation: source navigation cancels only its own preview",
+    "tests": "PreviewSessionTests/previewExplorationNeverChangesTheBrowserAndNavigationClosesOnlyItsOwnPreview"
+  },
+  {
+    "file": "Strata/Previewing/PreviewSession.swift",
+    "find": "url.isFileURL, bases.contains(url.deletingLastPathComponent().path),",
+    "replace": "url.isFileURL, !bases.isEmpty,",
+    "rule": "Space preview foundation: reject provider entries outside the requested folder",
+    "tests": "PreviewSessionTests/providerBatchesAreValidatedBeforeAnyRowsArePublished"
+  },
+  {
+    "file": "Strata/Model/FileEntry.swift",
+    "find": "guard examined < limit else { throw CocoaError(.fileReadTooLarge) }",
+    "replace": "guard limit >= 0 else { throw CocoaError(.fileReadTooLarge) }",
+    "rule": "Space preview foundation: bound directory enumeration before building its rows",
+    "tests": "PreviewSessionTests/theNativePreviewReaderIsBoundedAndDoesNotWalkNestedOrHiddenFolders"
   }
 ]

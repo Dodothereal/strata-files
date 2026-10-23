@@ -48,6 +48,8 @@ final class BrowserServices {
     lazy var connectionSettings = ServerConnectionSettings(preferences: preferences)
     lazy var savedSearches = SavedSearches(preferences: preferences)
     lazy var viewOptions = ViewOptionsWindowController(preferences: preferences)
+    lazy var previews = PreviewCoordinator(preferences: preferences, directories: directories, copies: copies,
+                                          thumbnails: thumbnails, presentPanel: windows.preview)
 
     let transfers: TransferQueue
     let files: BrowserFileCommands

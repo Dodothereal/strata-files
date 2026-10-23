@@ -144,6 +144,7 @@ extension BrowserViewController {
 
     func noteNavigationContextChanged() {
         navigationRevision += 1
+        services.previews.invalidate(owner: self)
         actionFetch?.cancel()
         actionFetch = nil
     }

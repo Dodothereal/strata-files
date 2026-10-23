@@ -8,6 +8,7 @@ extension BrowserViewController {
     /// Starts fetching the selected files that are still placeholders (a few, up to a size: Select All doesn't read a
     /// whole folder). A new selection stops the last one's.
     func prefetchSelection() {
+        services.previews.selectionChanged(in: self)
         selectionFetch?.cancel()
         selectionFetch = nil
         let copies = services.copies

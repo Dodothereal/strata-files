@@ -1,0 +1,38 @@
+import AppKit
+import Security
+import Testing
+@testable import Strata
+
+/// A preview never borrows the application's preferences, clipboard, credentials, copy roots or History.
+final class PreviewEnvironment {
+    let domain = "StrataPreviewTests.\(UUID().uuidString)"
+    let defaults: UserDefaults
+    let preferences: Prefs
+    let pasteboard = NSPasteboard.withUniqueName()
+    let services: BrowserServices
+
+    init(_ tree: TestTree, reader: DirectoryReader? = nil) throws {
+        _ = NSApplication.shared
+        defaults = try #require(UserDefaults(suiteName: domain))
+        preferences = Prefs(defaults: defaults, domainName: domain, notifications: NotificationCenter())
+        preferences.showIconPreviews = false
+        let storage = SecureStorage.Context(directory: tree.url("environment/state"), caches: tree.url("environment/caches"), key: nil)
+        let credentials = RemoteKeychain(access: KeychainAccess(
+            copy: { _ in (errSecItemNotFound, nil) }, add: { _ in errSecSuccess },
+            update: { _, _ in errSecSuccess }, delete: { _ in errSecSuccess }))
+        let remote = RemoteServices(preferences: preferences, credentials: credentials,
+                                    copyRoot: tree.url("environment/servers"), notifications: NotificationCenter())
+        let containers = ContainerFiles(copies: ContainerCopyStore(root: tree.url("environment/containers")))
+        let copies = CopyProviders(servers: remote.files, containers: containers, clipboardRoot: tree.url("environment/clipboard"))
+        let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies)
+        services = BrowserServices.configured(transfers: transfers, visits: Frecency(preferences: defaults), windows: .headless,
+                                              remote: remote, containers: containers, containerStore: ContainerStore(),
+                                              clipboard: Clipboard(pasteboard: pasteboard), directories: reader)
+    }
+
+    isolated deinit {
+        services.previews.close()
+        defaults.removePersistentDomain(forName: domain)
+        pasteboard.releaseGlobally()
+    }
+}
