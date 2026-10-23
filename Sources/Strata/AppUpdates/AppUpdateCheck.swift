@@ -50,7 +50,8 @@ nonisolated struct InstalledApp: Sendable, Equatable {
     static let maximumInfoSize = 1 << 20
 
     private static func plist(at url: URL) -> [String: Any]? {
-        guard let (data, truncated) = try? TextFile.readPrefix(url, limit: maximumInfoSize), !truncated else { return nil }
+        guard let (data, truncated) = try? TextFile.readPrefix(url, limit: maximumInfoSize), !truncated,
+              BinaryPropertyListBudget.permitsDecoding(data, limit: 8 * maximumInfoSize) else { return nil }
         return try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
     }
 

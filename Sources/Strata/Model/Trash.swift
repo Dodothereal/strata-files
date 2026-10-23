@@ -91,7 +91,7 @@ enum Trash {
         guard let dir = opendir(homePath) else { return true }
         defer { closedir(dir) }
         while let entry = readdir(dir) {
-            let name = withUnsafeBytes(of: entry.pointee.d_name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+            guard let name = DirectoryEntryName.read(entry) else { return false }
             if name != ".", name != "..", name != ".DS_Store" { return false }
         }
         return true
@@ -233,7 +233,7 @@ enum Trash {
         defer { closedir(dir) }
         var names: [String] = []
         while let entry = readdir(dir) {
-            let name = withUnsafeBytes(of: entry.pointee.d_name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+            guard let name = DirectoryEntryName.read(entry) else { error = EILSEQ; return [] }
             if name != ".", name != ".." { names.append(name) }
         }
         return names

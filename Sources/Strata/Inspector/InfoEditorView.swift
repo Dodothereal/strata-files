@@ -8,6 +8,9 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
     private var isFolder = false
     /// The comment as it was when typing began (Escape goes back to it), and the pending save while typing.
     private var commentBeforeEditing = ""
+    // Focus can precede AppKit's first editing notification; keep the displayed item too.
+    private var shownCommentChoice: Result<ChosenFile, Error>?
+    private var commentChoice: Result<ChosenFile, Error>?
     private var pendingCommentSave: Task<Void, Never>?
     private var savedNoteHide: Task<Void, Never>?
 
@@ -126,14 +129,21 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
         // Moving on while a comment is being typed keeps it (for the item it was typed for).
         if !same, let previous = url, comments.currentEditor() != nil {
             pendingCommentSave?.cancel()
-            saveComment(comments.stringValue, at: previous.path)
+            saveComment(comments.stringValue, at: previous.path, choice: commentChoice ?? shownCommentChoice)
             window?.makeFirstResponder(nil)
+        }
+        if !same {
+            pendingCommentSave?.cancel()
+            commentChoice = nil
         }
         url = entry.url
         isFolder = entry.isDirectory
         if !same { [commentsMessage, openWithMessage, permissionsMessage].forEach { $0.isHidden = true } }
         let path = entry.url.path
-        if !same || comments.currentEditor() == nil { comments.stringValue = FileInfoEditing.comment(at: path) }
+        if !same || comments.currentEditor() == nil {
+            shownCommentChoice = Result { try ChosenFile(entry.url) }
+            comments.stringValue = FileInfoEditing.comment(at: path)
+        }
         locked.state = FileInfoEditing.isLocked(at: path) ? .on : .off
         loadApps(entry, same: same)
         loadPermissions(path, onlyIfChanged: true)
@@ -143,11 +153,13 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
     func hide() {
         if let previous = url, comments.currentEditor() != nil {
             pendingCommentSave?.cancel()
-            saveComment(comments.stringValue, at: previous.path)
+            saveComment(comments.stringValue, at: previous.path, choice: commentChoice ?? shownCommentChoice)
             window?.makeFirstResponder(nil)
         }
         pendingCommentSave?.cancel()
         savedNoteHide?.cancel()
+        shownCommentChoice = nil
+        commentChoice = nil
         url = nil
     }
 
@@ -252,11 +264,13 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
 
     func controlTextDidBeginEditing(_ notification: Notification) {
         guard let url else { return }
+        commentChoice = shownCommentChoice
         commentBeforeEditing = FileInfoEditing.comment(at: url.path)
     }
 
     func controlTextDidChange(_ notification: Notification) {
         guard let path = url?.path else { return }
+        if commentChoice == nil { commentChoice = shownCommentChoice }
         pendingCommentSave?.cancel()
         pendingCommentSave = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(600))
@@ -269,6 +283,8 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
         pendingCommentSave?.cancel()
         guard let url else { return }
         saveComment(comments.stringValue, at: url.path)
+        commentChoice = nil
+        shownCommentChoice = Result { try ChosenFile(url) }
         comments.stringValue = FileInfoEditing.comment(at: url.path)
     }
 
@@ -289,10 +305,13 @@ final class InfoEditor: NSObject, NSTextFieldDelegate, NSMenuDelegate {
         }
     }
 
-    private func saveComment(_ text: String, at path: String) {
+    private func saveComment(_ text: String, at path: String, choice: Result<ChosenFile, Error>? = nil) {
         guard text.trimmingCharacters(in: .whitespacesAndNewlines) != FileInfoEditing.comment(at: path) else { return }
         do {
-            try FileInfoEditing.setComment(text, at: path)
+            guard let choice = choice ?? commentChoice else { return }
+            let chosen = try choice.get()
+            guard chosen.url.path == path else { throw POSIXError(.ESTALE) }
+            try FileInfoEditing.setComment(text, on: chosen)
             finish(nil, in: commentsMessage)
             // Only for the item on show (a save for the one just left says nothing here).
             if path == url?.path { showSaved() }

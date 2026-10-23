@@ -290,8 +290,8 @@
   },
   {
     "file": "Strata/Model/FileInfoEditing.swift",
-    "find": "        let result = data.withUnsafeBytes { setxattr(path, commentAttribute, $0.baseAddress, data.count, 0, XATTR_NOFOLLOW) }",
-    "replace": "        let result = data.withUnsafeBytes { setxattr(path, commentAttribute, $0.baseAddress, data.count, 0, 0) }",
+    "find": "            let result = data.withUnsafeBytes { fsetxattr(fd, commentAttribute, $0.baseAddress, data.count, 0, 0) }",
+    "replace": "            let result = data.withUnsafeBytes { setxattr(path, commentAttribute, $0.baseAddress, data.count, 0, 0) }",
     "rule": "A comment on a link goes on what it points to",
     "tests": "MetadataEditTests"
   },
@@ -3449,7 +3449,7 @@
   },
   {
     "file": "Strata/Inspector/InfoEditorView.swift",
-    "find": "if let previous = url, comments.currentEditor() != nil {\n            pendingCommentSave?.cancel()\n            saveComment(comments.stringValue, at: previous.path)\n            window?.makeFirstResponder(nil)\n        }",
+    "find": "if let previous = url, comments.currentEditor() != nil {\n            pendingCommentSave?.cancel()\n            saveComment(comments.stringValue, at: previous.path, choice: commentChoice ?? shownCommentChoice)\n            window?.makeFirstResponder(nil)\n        }",
     "replace": "if false {}",
     "rule": "Inspector provider ownership hiding Get Info discards an active comment edit",
     "tests": "InspectorProviderTests/switchingFromEditableItemToProviderCopyCommitsActiveCommentToOriginalItem"
@@ -4075,7 +4075,7 @@
     "replace": "guard length >= 4 + MemoryLayout<attribute_set_t>.size, length <= buffer.count - offset else { return 0 }"
   },
   {
-    "file": "Strata/Previews/BinaryPropertyListBudget.swift",
+    "file": "Strata/Support/BinaryPropertyListBudget.swift",
     "rule": "Security review: plist expansion is bounded before XML serialization",
     "tests": "SecurityReviewTests/binaryPlist",
     "find": "var remaining = limit - 256",
@@ -4185,5 +4185,89 @@
     "replace": "\"--no-same-permissions\",",
     "rule": "Security review: guarded ZIP extraction preserves Mac resource forks",
     "tests": "ArchiveSecurityReviewTests/macMetadata"
+  },
+  {
+    "file": "Strata/Model/TagStore.swift",
+    "rule": "Security follow-up: tag attributes are budgeted before decoding",
+    "tests": "SecurityFollowupTests/tagAttributes",
+    "find": "        guard BinaryPropertyListBudget.permitsDecoding(data) else { return [] }\n",
+    "replace": ""
+  },
+  {
+    "file": "Strata/AppUpdates/AppUpdateCheck.swift",
+    "rule": "Security follow-up: bundle metadata is budgeted before decoding",
+    "tests": "SecurityFollowupTests/bundlePlists",
+    "find": ",\n              BinaryPropertyListBudget.permitsDecoding(data, limit: 8 * maximumInfoSize)",
+    "replace": ""
+  },
+  {
+    "file": "Strata/Model/FileInfoEditing.swift",
+    "rule": "Security follow-up: binary comments never fall back to raw plist bytes",
+    "tests": "SecurityFollowupTests/malformedBinaryComments",
+    "find": "guard read == size, BinaryPropertyListBudget.permitsDecoding(data) else { return \"\" }",
+    "replace": "guard read == size else { return \"\" }"
+  },
+  {
+    "file": "Strata/Model/ChosenFile.swift",
+    "rule": "Security follow-up: directory snapshots close their stream before recursion",
+    "tests": "ChosenFileFollowupTests/snapshotsClose",
+    "find": "        defer { closedir(entries) }",
+    "replace": "        defer { _ = entries }"
+  },
+  {
+    "file": "Strata/Model/ChosenFile.swift",
+    "rule": "Security follow-up: directory deletion visits every captured child",
+    "tests": "ChosenFileFollowupTests/wideAndDeep",
+    "find": "for child in try entries(in: fd) {",
+    "replace": "for child in try entries(in: fd).dropFirst() {"
+  },
+  {
+    "file": "Strata/Inspector/InfoEditorView.swift",
+    "rule": "Security follow-up: comment edits retain the item chosen when typing began",
+    "tests": "SecurityFollowupTests|InspectorProviderTests/switchingFromEditableItemToProviderCopyCommitsActiveCommentToOriginalItem",
+    "find": "try FileInfoEditing.setComment(text, on: chosen)",
+    "replace": "try FileInfoEditing.setComment(text, at: path)"
+  },
+  {
+    "file": "Strata/Model/FileInfoEditing.swift",
+    "rule": "Security follow-up: comment writes refuse replaced parents",
+    "tests": "ChosenFileFollowupTests",
+    "find": "try chosen.withDescriptor { fd, _ in",
+    "replace": "try ChosenFile(chosen.url).withDescriptor { fd, _ in"
+  },
+  {
+    "file": "Strata/Model/FileInfoEditing.swift",
+    "rule": "Security follow-up: clearing a link comment never changes its target",
+    "tests": "ChosenFileFollowupTests/commentRemoval",
+    "find": "fremovexattr(fd, commentAttribute, 0)",
+    "replace": "removexattr(path, commentAttribute, 0)"
+  },
+  {
+    "file": "Strata/Support/DirectoryEntryName.swift",
+    "rule": "Security follow-up: packed directory names retain every byte",
+    "tests": "DirectoryEntryNameTests|ChosenFileFollowupTests",
+    "find": "UnsafeRawBufferPointer(start: start, count: length)",
+    "replace": "UnsafeRawBufferPointer(start: start, count: max(0, length - 1))"
+  },
+  {
+    "file": "Strata/Support/DirectoryEntryName.swift",
+    "rule": "Security follow-up: directory name lengths stay inside their record",
+    "tests": "DirectoryEntryNameTests|ChosenFileFollowupTests",
+    "find": "length < recordLength - nameOffset",
+    "replace": "length < nameCapacity"
+  },
+  {
+    "file": "Strata/Support/DirectoryEntryName.swift",
+    "rule": "Security follow-up: directory names require their terminator",
+    "tests": "DirectoryEntryNameTests|ChosenFileFollowupTests",
+    "find": "        guard start.load(fromByteOffset: length, as: UInt8.self) == 0 else { return nil }\n",
+    "replace": ""
+  },
+  {
+    "file": "Strata/Support/DirectoryEntryName.swift",
+    "rule": "Security follow-up: directory names never use lossy decoding",
+    "tests": "DirectoryEntryNameTests|ChosenFileFollowupTests",
+    "find": "return String(bytes: bytes, encoding: .utf8)",
+    "replace": "return String(decoding: bytes, as: UTF8.self)"
   }
 ]

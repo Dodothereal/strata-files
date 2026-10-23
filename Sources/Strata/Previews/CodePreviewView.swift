@@ -1,4 +1,5 @@
 import AppKit
+import StrataSupport
 
 /// Syntax-highlighted source with a line-number gutter. Lines don't wrap; the text scrolls sideways and is selectable.
 /// JSON is pretty-printed (or shown as written, with the error line marked, when invalid).

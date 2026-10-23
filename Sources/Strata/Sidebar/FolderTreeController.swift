@@ -330,9 +330,7 @@ final class FolderTreeController: NSViewController {
         guard let directory = opendir(url.path) else { return nil }
         defer { closedir(directory) }
         while let entry = readdir(directory) {
-            let name = withUnsafeBytes(of: entry.pointee.d_name) { raw in
-                String(decoding: raw.prefix(Int(entry.pointee.d_namlen)), as: UTF8.self)
-            }
+            guard let name = DirectoryEntryName.read(entry) else { return nil }
             if name == "." || name == ".." || (!includeHidden && name.hasPrefix(".")) { continue }
             var isFolder = entry.pointee.d_type == DT_DIR
             if entry.pointee.d_type == DT_UNKNOWN {

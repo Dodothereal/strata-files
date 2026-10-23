@@ -3,6 +3,38 @@ import Testing
 @testable import Strata
 
 struct ApplicationsFoldersTests {
+    private actor Reads {
+        private var pending: [Task<[FileEntry], Error>] = []
+
+        nonisolated var reader: DirectoryReader {
+            DirectoryReader { [self] folder, hidden, applications in
+                try await load(folder, hidden: hidden, applications: applications)
+            }
+        }
+
+        private func load(_ folder: URL, hidden: Bool, applications: ApplicationsFolders) async throws -> [FileEntry] {
+            let work = Task { try await DirectoryLoader.load(folder, showHidden: hidden, applications: applications) }
+            pending.append(work)
+            return try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
+        }
+
+        func finish() async {
+            while !pending.isEmpty {
+                let work = pending
+                pending = []
+                for task in work { _ = try? await task.value }
+            }
+        }
+    }
+
+    private let reads = Reads()
+
+    private func services() -> BrowserServices {
+        BrowserServices.configured(transfers: .shared, visits: .shared, windows: .headless,
+                                   remote: .shared, containers: .shared, containerStore: .shared,
+                                   clipboard: .shared, directories: reads.reader)
+    }
+
     private func fixture() throws -> TestTree {
         try TestTree("Installed/Applications/User.app/Contents/id", "Installed/Applications/Same.app/Contents/id",
                      "Installed/Applications/Utilities/Tool.app/Contents/id", "System/Applications/BuiltIn.app/Contents/id",
@@ -16,15 +48,24 @@ struct ApplicationsFoldersTests {
     }
 
     private func wait(until condition: () -> Bool) async throws {
-        for _ in 0..<100 where !condition() { try await Task.sleep(for: .milliseconds(50)) }
+        for _ in 0..<100 {
+            if condition() { return }
+            // LaunchServices can keep an actual folder read busy beyond the polling allowance.
+            await reads.finish()
+            await Task.yield()
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        try #require(condition())
     }
 
     private func browser(_ tree: TestTree, mode: BrowserViewMode, root: URL? = nil, count: Int = 7) async throws -> BrowserViewController {
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: services())
         browser.applicationFolders = folders(tree)
         browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
         browser.setMode(mode, remember: false)
         browser.load(root ?? folders(tree).installed)
+        await browser.directoryReads.task?.value
         try await wait { browser.isLoaded && browser.itemCount == count }
         #expect(browser.isLoaded && browser.itemCount == count)
         return browser
@@ -138,7 +179,7 @@ struct ApplicationsFoldersTests {
         let tree = try fixture()
         try tree.add(["Destination/keep.txt"])
         let apps = folders(tree)
-        let window = BrowserWindowController(location: tree.root, secondPane: tree.url("Destination"))
+        let window = BrowserWindowController(location: tree.root, secondPane: tree.url("Destination"), services: services())
         let other = try #require(window.otherBrowser)
         window.browser.setMode(.list, remember: false)
         other.setMode(.list, remember: false)

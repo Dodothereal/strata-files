@@ -1,4 +1,5 @@
 import Foundation
+import StrataSupport
 
 /// The parts of Get Info that change a file: its Spotlight comment, whether it's locked, and who may read and write it.
 /// Nothing here asks for more rights than you have: a change you aren't allowed to make fails with the system's reason.
@@ -66,21 +67,29 @@ nonisolated package enum FileInfoEditing {
         guard size > 0, size <= 64 * 1024 else { return "" }
         var data = Data(count: size)
         let read = data.withUnsafeMutableBytes { getxattr(path, commentAttribute, $0.baseAddress, size, 0, XATTR_NOFOLLOW) }
-        guard read == size else { return "" }
+        guard read == size, BinaryPropertyListBudget.permitsDecoding(data) else { return "" }
         if let text = try? PropertyListSerialization.propertyList(from: data, format: nil) as? String { return text }
         return String(data: data, encoding: .utf8) ?? ""
     }
 
     /// Sets (or, when empty, removes) the item's Spotlight comment.
     package static func setComment(_ text: String, at path: String) throws {
+        try setComment(text, on: ChosenFile(URL(fileURLWithPath: path)))
+    }
+
+    /// An Inspector edit keeps the item chosen when typing began, including through a delayed save or Escape.
+    package static func setComment(_ text: String, on chosen: ChosenFile) throws {
+        let path = chosen.url.path
         let trimmed = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(commentLimit))
-        if trimmed.isEmpty {
-            if removexattr(path, commentAttribute, XATTR_NOFOLLOW) != 0, errno != ENOATTR { throw posixError(path) }
-            return
+        try chosen.withDescriptor { fd, _ in
+            if trimmed.isEmpty {
+                if fremovexattr(fd, commentAttribute, 0) != 0, errno != ENOATTR { throw posixError(path) }
+                return
+            }
+            let data = try PropertyListSerialization.data(fromPropertyList: trimmed, format: .binary, options: 0)
+            let result = data.withUnsafeBytes { fsetxattr(fd, commentAttribute, $0.baseAddress, data.count, 0, 0) }
+            if result != 0 { throw posixError(path) }
         }
-        let data = try PropertyListSerialization.data(fromPropertyList: trimmed, format: .binary, options: 0)
-        let result = data.withUnsafeBytes { setxattr(path, commentAttribute, $0.baseAddress, data.count, 0, XATTR_NOFOLLOW) }
-        if result != 0 { throw posixError(path) }
     }
 
     // MARK: - Locked and permissions

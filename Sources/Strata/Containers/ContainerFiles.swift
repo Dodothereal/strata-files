@@ -975,7 +975,7 @@ nonisolated enum CopyWriter {
         rewinddir(dir)
         var names: [String] = []
         while let entry = readdir(dir) {
-            let name = withUnsafeBytes(of: entry.pointee.d_name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+            guard let name = DirectoryEntryName.read(entry) else { continue }
             if name != ".", name != ".." { names.append(name) }
         }
         return names

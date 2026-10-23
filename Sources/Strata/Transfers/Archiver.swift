@@ -2,8 +2,7 @@ import Foundation
 
 /// Compress (zip, like Finder) and extract (like Archive Utility), with the care an archive from anywhere needs:
 /// - Extraction happens in a private folder on the destination's disk, with tools that refuse to write outside it
-///   (bsdtar's defaults: no absolute paths, no "..", nothing written through a symlink; zips go to ditto only when
-///   their listing is fully understood and shows nothing but plain files and folders).
+///   (bsdtar's defaults: no absolute paths, no "..", nothing written through a symlink).
 /// - The result is checked before it's moved into place: links must stay inside what's placed, special files are dropped,
 ///   setuid bits cleared, and anything that can't be checked stops the extraction.
 /// - The disk's free space is checked first and watched while extracting, so an archive bomb can't fill it.
@@ -16,7 +15,7 @@ nonisolated enum Archiver {
     /// What a listing says about an archive before it's extracted.
     struct Inspection: Sendable {
         var entries = 0
-        /// Files outside `__MACOSX` (ditto reports one line per file it writes).
+        /// Files outside `__MACOSX`.
         var files = 0
         var bytes: Int64 = 0
         /// Anything but plain files and folders, absolute paths, "..", or a listing not fully understood: only bsdtar's
@@ -154,8 +153,7 @@ nonisolated enum Archiver {
             if overflow { result.needsSecureTool = true }
             var name = fields[8]
             if kind == .tar, let arrow = name.range(of: " -> ") { name = name[..<arrow.lowerBound] }
-            // Entries from MS-DOS and Windows zips have no Unix type ("?rw-------", os "fat"): they can't be links, so
-            // they're plain files, or folders when the name ends in "/".
+            // Unknown creator types stay unknown; the listing must never reinterpret them as plain files.
             let type = fields[0].first
             if type == "-", !name.hasPrefix("__MACOSX/") { result.files += 1 }
             // zipinfo marks encrypted entries with a capital T or B ("TX", "Bx").
@@ -576,7 +574,7 @@ nonisolated enum Archiver {
         rewinddir(dir)
         var names: [String] = []
         while let entry = readdir(dir) {
-            let name = withUnsafeBytes(of: entry.pointee.d_name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+            guard let name = DirectoryEntryName.read(entry) else { continue }
             if name != ".", name != ".." { names.append(name) }
         }
         return names

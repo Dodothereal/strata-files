@@ -1,4 +1,5 @@
 import Foundation
+import StrataSupport
 
 /// A chosen name and its parent held open across a confirmation or metadata change. Opening each component
 /// without following links prevents a replaced ancestor from redirecting the operation.
@@ -105,21 +106,9 @@ nonisolated package final class ChosenFile: Sendable {
             guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             defer { close(fd) }
             guard fstat(fd, &info) == 0, FileIdentity.from(info) == identity else { throw POSIXError(.ESTALE) }
-            let copy = dup(fd)
-            guard copy >= 0, let entries = fdopendir(copy) else {
-                if copy >= 0 { close(copy) }
-                throw POSIXError(.EIO)
-            }
-            defer { closedir(entries) }
-            while let entry = readdir(entries) {
-                // Refuse names that cannot be represented exactly; lossy conversion could choose another item.
-                try withUnsafeBytes(of: entry.pointee.d_name) { raw in
-                    let bytes = raw.prefix { $0 != 0 }
-                    guard !bytes.elementsEqual([46]), !bytes.elementsEqual([46, 46]) else { return }
-                    guard let child = String(bytes: bytes, encoding: .utf8) else { throw POSIXError(.EILSEQ) }
-                    guard fstatat(fd, child, &info, AT_SYMLINK_NOFOLLOW) == 0 else { throw POSIXError(.ESTALE) }
-                    try remove(in: fd, name: child, identity: .from(info), depth: depth + 1)
-                }
+            // Finish and close the listing before changing it or opening the next directory level.
+            for child in try entries(in: fd) {
+                try remove(in: fd, name: child.name, identity: child.identity, depth: depth + 1)
             }
         }
         guard fstatat(parent, name, &info, AT_SYMLINK_NOFOLLOW) == 0, FileIdentity.from(info) == identity else {
@@ -127,6 +116,30 @@ nonisolated package final class ChosenFile: Sendable {
         }
         guard unlinkat(parent, name, isDirectory ? AT_REMOVEDIR : 0) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
+
+    /// Capture both names and identities. A failed listing refuses this directory before deleting its children.
+    package static func entries(in fd: Int32) throws -> [(name: String, identity: FileIdentity)] {
+        let copy = dup(fd)
+        guard copy >= 0, let entries = fdopendir(copy) else {
+            if copy >= 0 { close(copy) }
+            throw POSIXError(.EIO)
+        }
+        defer { closedir(entries) }
+        rewinddir(entries)
+        var children: [(name: String, identity: FileIdentity)] = []
+        while true {
+            errno = 0
+            guard let entry = readdir(entries) else {
+                guard errno == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                return children
+            }
+            guard let child = DirectoryEntryName.read(entry) else { throw POSIXError(.EILSEQ) }
+            guard child != ".", child != ".." else { continue }
+            var info = stat()
+            guard fstatat(fd, child, &info, AT_SYMLINK_NOFOLLOW) == 0 else { throw POSIXError(.ESTALE) }
+            children.append((child, .from(info)))
         }
     }
 }

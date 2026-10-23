@@ -278,9 +278,7 @@ enum FileOps {
                     if errno != 0 { empty = false }
                     break
                 }
-                let name = withUnsafePointer(to: &entry.pointee.d_name) {
-                    $0.withMemoryRebound(to: CChar.self, capacity: Int(entry.pointee.d_namlen) + 1) { String(cString: $0) }
-                }
+                guard let name = DirectoryEntryName.read(entry) else { empty = false; break }
                 if name == ".DS_Store" { records = true }
                 else if name != "." && name != ".." { empty = false; break }
             }

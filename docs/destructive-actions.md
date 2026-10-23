@@ -58,7 +58,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 
 | Action | Code | Tests |
 |---|---|---|
-| Locked, permissions, comments (Get Info) | `FileInfoEditing` | `MetadataEditTests/lockingTouchesOnlyThatItem`, `permissionsChangeOnlyThatAccessOnThatItem`, `aCommentChangesOnlyTheComment` |
+| Locked, permissions, comments (Get Info) | `FileInfoEditing`; `InfoEditor` retains a chosen comment item while editing | `MetadataEditTests/lockingTouchesOnlyThatItem`, `permissionsChangeOnlyThatAccessOnThatItem`, `aCommentChangesOnlyTheComment`; `SecurityFollowupTests/commentEditsRefuseItemsReplacedWhileTyping`, `focusedCommentsKeepTheirDisplayedItemBeforeTheFirstEditNotification`; `InspectorProviderTests/switchingFromEditableItemToProviderCopyCommitsActiveCommentToOriginalItem`; `ChosenFileFollowupTests/commentWritesAndRemovalRefuseReplacedParents`, `commentRemovalChangesOnlyTheChosenLink` |
 | Tags | `TagStore.update`, `toggle`, `canTag` | `MetadataEditTests/tagsGoOnTheChosenFilesOnly` |
 
 ## Compare and Sync, archives, Ask Strata, project cleanup
@@ -134,10 +134,15 @@ SFTP rename mutation removes both the preflight check and the protocol’s refus
 rule instead of passing on the second defense. A row whose tests pass with the rule broken isn't covered, whatever the
 map says, so a new test comes with a mutation, and a mutation whose text no longer matches the code is updated, not dropped.
 
+| Action | Code | Tests |
+|---|---|---|
 | Delete confirmation keeps both the selected inode and its parent across the sheet; replacement names and ancestors are refused | `Model/ChosenFile :: remove`; `Browser/BrowserViewController+Trash :: deletionPlan`, `deleteAll` | `SecurityReviewTests/deletionKeepsReplacementsAcrossTheConfirmation`, `deletionKeepsAnAncestorReplacedByAnotherDirectoryOrLink`; `DeleteTests/*` |
 | Copies from servers and containers finish sanitizing their own receipts on the worker, before completion; merged owners stay unchanged | `Containers/ContainerCopies :: finishCopyingOut`; `Transfers/TransferEngine :: copyForExport`, `performItem`, `retryItems` | `SecurityReviewTests/copiedLinksAreSanitizedFromReceiptsAfterTheSourceDisappears`, `copiedReceiptsDoNotAdoptReplacementFilesOrFollowReplacementAncestors`, `queuedCopiesFinishSanitizingBeforeCompletionAndPreserveMergeOwners`; `ContainerTests/hardlinksUseContainerPathsAndNeverReuseAnUnfetchedPlaceholder` |
 | SFTP without atomic replacement keeps a backup until the upload lands; failed rollback retains both recovery paths | `Remote/RemoteSession :: replaceWithoutExtension` | `SecurityReviewTests/standardSFTPRenameRestoresTheOriginalWhenInstallationFails`, `standardSFTPRenameKeepsBothCompleteVersionsWhenRollbackFails`, `standardSFTPRenameOnlyRemovesTheBackupAfterTheUploadLands` |
 | All ZIPs use the guarded extractor; single hidden roots stay in an archive folder; flags, privileged modes and ACLs are checked | `Transfers/Archiver :: unpack`, `extract`, `checkedPermissions`, `clearFlagsAndAccessList` | `ArchiveSecurityReviewTests/*` (including resource forks and AppleDouble links); `ArchiveSafetyTests/*` |
+| Recursive deletion snapshots child names and identities and closes the stream before descending; wide and deep folders leave siblings and link targets unchanged | `Model/ChosenFile :: entries`, `remove` | `ChosenFileFollowupTests/snapshotsCloseTheirStreamAndKeepExactChildIdentities`, `wideAndDeepDeletionKeepsSiblingsAndLinkTargets`, `aFailedDirectorySnapshotChangesNothing` |
+| Binary plist budgets cover tags, Finder comments and installed-app metadata before Foundation decoding | `Support/BinaryPropertyListBudget`; `Model/TagStore :: parse`; `Model/FileInfoEditing :: comment`; `AppUpdates/InstalledApp :: plist` | `SecurityFollowupTests/tagAttributesRefuseExcessiveSharedStrings`, `bundlePlistsRefuseExcessiveSharedStrings`, `malformedBinaryCommentsNeverBecomePlainText` |
+| Packed directory records are decoded within their declared lengths, without copying the fixed-size C name tuple or accepting lossy names | `Support/DirectoryEntryName :: read`; `Model/ChosenFile :: entries`; `Model/Trash :: entries`; `Transfers/Archiver :: entries`; `Containers/CopyWriter :: names`; `Model/FileOps :: removeCreatedFolders` | `DirectoryEntryNameTests/*`; `ChosenFileFollowupTests/wideAndDeepDeletionKeepsSiblingsAndLinkTargets` |
 
 ## Not mutated, and why
 

@@ -2,8 +2,15 @@ import Foundation
 
 /// Bounds a binary plist's expanded tree before Foundation allocates it or serializes shared references to XML.
 /// Repeated references count each time, and a cycle or excessive nesting is refused.
-nonisolated enum BinaryPropertyListBudget {
-    static func permits(_ data: Data, limit: Int = TextFile.limit) -> Bool {
+nonisolated package enum BinaryPropertyListBudget {
+    package static let defaultLimit = 512 * 1024
+
+    /// XML and legacy text have no binary reference table. Binary data must pass its budget before Foundation reads it.
+    package static func permitsDecoding(_ data: Data, limit: Int = defaultLimit) -> Bool {
+        !data.starts(with: Array("bplist00".utf8)) || permits(data, limit: limit)
+    }
+
+    package static func permits(_ data: Data, limit: Int = defaultLimit) -> Bool {
         let bytes = [UInt8](data)
         guard bytes.count >= 40, bytes.starts(with: Array("bplist00".utf8)) else { return false }
         let trailer = bytes.count - 32
@@ -19,6 +26,7 @@ nonisolated enum BinaryPropertyListBudget {
               let table = integer(trailer + 24, 8), table >= 8, table <= trailer,
               (1...8).contains(offsetWidth), (1...8).contains(referenceWidth),
               count <= (trailer - table) / offsetWidth else { return false }
+        guard limit >= 256 else { return false }
         var remaining = limit - 256
         var visiting = Set<Int>()
         func visit(_ id: Int, depth: Int) -> Bool {

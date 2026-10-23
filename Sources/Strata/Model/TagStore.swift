@@ -262,6 +262,7 @@ final class TagStore {
     }
 
     nonisolated static func parse(_ data: Data, labels: [String]) -> [FinderTag] {
+        guard BinaryPropertyListBudget.permitsDecoding(data) else { return [] }
         guard let strings = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String] else { return [] }
         var seen = Set<String>()
         var tags: [FinderTag] = []

@@ -390,9 +390,7 @@ final class ItemInfoLoader {
             var count = 0
             while let entry = readdir(dir) {
                 if Task.isCancelled { return nil }
-                let name = withUnsafeBytes(of: entry.pointee.d_name) { raw in
-                    String(decoding: raw.prefix(Int(entry.pointee.d_namlen)), as: UTF8.self)
-                }
+                guard let name = DirectoryEntryName.read(entry) else { return nil }
                 if name == "." || name == ".." { continue }
                 if !showHidden, name.hasPrefix(".") { continue }
                 count += 1
