@@ -87,12 +87,15 @@ jobs:
           python3 scripts/localize.py check --all --complete
 
       - name: Run all app regressions before signing
-        run: python3 scripts/run-test-check.py --output-directory "$RUNNER_TEMP/strata-test-diagnostics/normal" -- swift test
+        run: python3 scripts/run-test-check.py --output-directory "$RUNNER_TEMP/strata-test-diagnostics/normal" -- swift test --no-parallel
+
+      - name: Run optimized app regressions before signing
+        run: python3 scripts/run-test-check.py --output-directory "$RUNNER_TEMP/strata-test-diagnostics/release" -- swift test -c release --no-parallel --disable-automatic-resolution --jobs 4
 
       - name: Run memory safety checks before signing
         env:
           ASAN_OPTIONS: handle_abort=1
-        run: python3 scripts/run-test-check.py --output-directory "$RUNNER_TEMP/strata-test-diagnostics/address" -- swift test --sanitize address --scratch-path .build/sanitizers/address --disable-automatic-resolution --jobs 4
+        run: python3 scripts/run-test-check.py --output-directory "$RUNNER_TEMP/strata-test-diagnostics/address" -- swift test --no-parallel --sanitize address --scratch-path .build/sanitizers/address --disable-automatic-resolution --jobs 4
 
       - name: Preserve test diagnostics
         if: always()
