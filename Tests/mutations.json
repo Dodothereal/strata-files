@@ -3539,8 +3539,8 @@
     "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "if copies.contains(url) { return copies.displayPath(url) }",
+    "file": "Strata/Remote/CopyProviders.swift",
+    "find": "if contains(url) { return displayPath(url) }",
     "replace": "if LazyCopies.contains(url) { return LazyCopies.displayPath(url) }",
     "rule": "Browser copy provider ownership Copy Path uses the global copy provider",
     "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
@@ -4346,5 +4346,47 @@
     "replace": "guard limit >= 0 else { throw CocoaError(.fileReadTooLarge) }",
     "rule": "Space preview foundation: bound directory enumeration before building its rows",
     "tests": "PreviewSessionTests/theNativePreviewReaderIsBoundedAndDoesNotWalkNestedOrHiddenFolders"
+  },
+  {
+    "file": "Strata/Previewing/PreviewCommands.swift",
+    "find": "owner === session && !session.isClosed",
+    "replace": "!session.isClosed",
+    "rule": "Space preview actions: old menus cannot act on a replacement preview session",
+    "tests": "PreviewCommandTests/oldMenusCannotActOnANewSessionEvenWhenTheRootAndGenerationAreTheSame"
+  },
+  {
+    "file": "Strata/Previewing/PreviewCoordinator.swift",
+    "find": "content.canPerform(action, target: target), target.matches(content.session)",
+    "replace": "content.canPerform(action, target: target)",
+    "rule": "Space preview actions: refuse replaced files and redirected parents before copying or opening",
+    "tests": "PreviewCommandTests/replacementsAndRedirectedParentsRefuseOldCopyAndOpenRequests"
+  },
+  {
+    "file": "Strata/Previewing/PreviewReadOnlyCommands.swift",
+    "find": "@objc func moveToTrash(_ sender: Any?) {}",
+    "replace": "@objc func moveToTrash(_ sender: Any?) { _ = nextResponder?.tryToPerform(#selector(BrowserViewController.moveToTrash(_:)), with: sender) }",
+    "rule": "Space preview actions: the read-only responder stops file changes reaching the browser behind it",
+    "tests": "PreviewCommandTests/fileEditingCommandsStopAtThePreviewInsteadOfReachingABrowserBehindIt"
+  },
+  {
+    "file": "Strata/Previewing/PreviewListing.swift",
+    "find": "if query.isEmpty || node.name.localizedStandardContains(query) || !descendants.isEmpty {",
+    "replace": "if true {",
+    "rule": "Space preview actions: filtering hides nonmatching loaded items without starting more reads",
+    "tests": "PreviewCommandTests/filteringLoadedChildrenAndSortingPreserveIdentityWithoutReadingAnotherFolder"
+  },
+  {
+    "file": "Strata/Previewing/PreviewListing.swift",
+    "find": "return order.ascending ? result == .orderedAscending : result == .orderedDescending",
+    "replace": "return result == .orderedAscending",
+    "rule": "Space preview actions: native columns honor descending sort choices too",
+    "tests": "PreviewCommandTests/everyPreviewColumnSortsBothWaysAndKeepsFoldersFirst"
+  },
+  {
+    "file": "Strata/Previewing/PreviewFileView.swift",
+    "find": "Self.isRegularFile(entry.url)",
+    "replace": "true",
+    "rule": "Space preview files: refuse special files and replacement links before starting a renderer",
+    "tests": "PreviewCommandTests/specialFilesAndPathsReplacedByLinksNeverReachFileRenderers"
   }
 ]

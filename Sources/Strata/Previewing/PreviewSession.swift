@@ -22,6 +22,7 @@ import StrataPreviews
     private var applications = ApplicationsFolders.standard
 
     private(set) var root: FileEntry?
+    private(set) var rootIdentity: FileIdentity?
     private(set) var roots: [PreviewItem] = []
     private(set) var selected: PreviewItem?
     private(set) var archive: ArchiveListing?
@@ -31,6 +32,7 @@ import StrataPreviews
     var onChange: ((Change) -> Void)?
 
     var task: Task<Void, Never>? { archiveTask ?? rootRead.task }
+    var generation: Int { revision }
     var isContainer: Bool {
         guard let root, !root.isSymlink else { return false }
         return root.isFolder || (!root.isDirectory && ArchiveKind(fileName: root.name) != nil)
@@ -49,6 +51,7 @@ import StrataPreviews
         close()
         isClosed = false
         root = entry
+        rootIdentity = FileIdentity.read(entry.url.path)
         self.showHidden = showHidden
         self.applications = applications
         error = nil
@@ -100,12 +103,14 @@ import StrataPreviews
         selected = nil
         archive = nil
         root = nil
+        rootIdentity = nil
         error = nil
         isLoading = false
     }
 
     func select(_ item: PreviewItem?) {
         guard !isClosed, item.map({ items.contains(ObjectIdentifier($0)) }) ?? true else { return }
+        guard selected !== item else { return }
         selected = item
         onChange?(.selection)
     }

@@ -11,7 +11,7 @@ final class PreviewEnvironment {
     let pasteboard = NSPasteboard.withUniqueName()
     let services: BrowserServices
 
-    init(_ tree: TestTree, reader: DirectoryReader? = nil) throws {
+    init(_ tree: TestTree, reader: DirectoryReader? = nil, windows: BrowserWindows = .headless) throws {
         _ = NSApplication.shared
         defaults = try #require(UserDefaults(suiteName: domain))
         preferences = Prefs(defaults: defaults, domainName: domain, notifications: NotificationCenter())
@@ -25,7 +25,7 @@ final class PreviewEnvironment {
         let containers = ContainerFiles(copies: ContainerCopyStore(root: tree.url("environment/containers")))
         let copies = CopyProviders(servers: remote.files, containers: containers, clipboardRoot: tree.url("environment/clipboard"))
         let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies)
-        services = BrowserServices.configured(transfers: transfers, visits: Frecency(preferences: defaults), windows: .headless,
+        services = BrowserServices.configured(transfers: transfers, visits: Frecency(preferences: defaults), windows: windows,
                                               remote: remote, containers: containers, containerStore: ContainerStore(),
                                               clipboard: Clipboard(pasteboard: pasteboard), directories: reader)
     }

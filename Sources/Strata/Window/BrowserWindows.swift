@@ -6,6 +6,7 @@ struct BrowserWindows {
     var controllers: () -> [BrowserWindowController]
     var open: (URL, URL?, NSWindow?, BrowserServices) -> BrowserWindowController?
     var preview: (NSPanel, NSView) -> Bool = { _, _ in true }
+    var openFile: (URL) -> Void = { _ in }
 
     static let headless = BrowserWindows(controllers: { [] }, open: { _, _, _, _ in nil })
 
@@ -18,5 +19,6 @@ struct BrowserWindows {
             guard source.window?.isVisible == true else { return false }
             panel.makeKeyAndOrderFront(nil)
             return true
-        })
+        },
+        openFile: { NSWorkspace.shared.open($0) })
 }

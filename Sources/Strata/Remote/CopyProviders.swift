@@ -67,6 +67,16 @@ nonisolated struct CopyProviders: Sendable {
     func invalidate(_ folder: URL) async { await provider(for: folder)?.invalidate(folder) }
     func reveal(_ url: URL) async -> Bool { await provider(for: url)?.reveal(url) ?? false }
     func displayPath(_ url: URL) -> String? { provider(for: url)?.displayPath(url) }
+    func clipboardPath(_ url: URL) -> String? {
+        if remoteCopies.contains(url) { return remoteCopies.displayPath(url) }
+        if containerCopies.contains(url) {
+            guard let (source, top) = containerCopies.copy(containing: url),
+                  let path = ContainerCopies.containerPath(of: url, top: top) else { return nil }
+            return top.standardizedFileURL == url.standardizedFileURL ? source.name : path
+        }
+        if contains(url) { return displayPath(url) }
+        return url.path
+    }
     func sourceName(_ url: URL) -> String? { provider(for: url)?.sourceName(url) }
     func message(for error: Error, about url: URL) -> String {
         provider(for: url)?.message(for: error, about: url) ?? error.localizedDescription

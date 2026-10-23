@@ -14,6 +14,7 @@ import UniformTypeIdentifiers
     private var rich: NSView?
     private(set) var shownURL: URL?
     private var generation = 0
+    private var isClosed = false
 
     init(thumbnails: FileThumbnails, copies: CopyProviders) {
         self.thumbnails = thumbnails
@@ -52,6 +53,7 @@ import UniformTypeIdentifiers
     required init?(coder: NSCoder) { fatalError() }
 
     func show(_ item: PreviewItem?, root: FileEntry?) {
+        guard !isClosed else { return }
         generation += 1
         let generation = generation
         rich?.removeFromSuperview()
@@ -71,7 +73,7 @@ import UniformTypeIdentifiers
                 : UTType(filenameExtension: ((item?.name ?? "") as NSString).pathExtension) ?? .data
             icon.image = IconCache.shared.icon(forType: type)
         }
-        guard let entry, !entry.isDirectory, !entry.isSymlink, !copies.isPlaceholder(entry.url) else { return }
+        guard let entry, !entry.isDirectory, !entry.isSymlink, !copies.isPlaceholder(entry.url), Self.isRegularFile(entry.url) else { return }
         // The session already lists a root archive. Its side pane stays a summary until a member is selected.
         guard item != nil || ArchiveKind(fileName: entry.name) == nil else { return }
         let url = entry.url
@@ -96,6 +98,7 @@ import UniformTypeIdentifiers
     }
 
     func close() {
+        isClosed = true
         generation += 1
         shownURL = nil
         rich?.removeFromSuperview()
@@ -104,8 +107,17 @@ import UniformTypeIdentifiers
     }
 
     private func showNative(_ url: URL) {
-        guard native.show(url) else { return }
+        guard Self.isRegularFile(url), native.show(url) else {
+            shownURL = nil
+            summary.isHidden = false
+            return
+        }
         native.isHidden = false
         summary.isHidden = true
+    }
+
+    nonisolated static func isRegularFile(_ url: URL) -> Bool {
+        var info = stat()
+        return url.isFileURL && lstat(url.path, &info) == 0 && info.st_mode & S_IFMT == S_IFREG
     }
 }

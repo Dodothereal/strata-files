@@ -48,6 +48,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 | Copy / move jobs (drag and drop, paste, other pane, Duplicate) | `TransferQueue.enqueue`, `TransferJob` | `TransferJobTests/*`, incl. `aReadOnlyCopyTakesNothingAndWhatLeavesItIsCopied` |
 | What a drop does | `FileDrop.operation(_:into:mask:option:)` | `DropTests/*` |
 | Cut and paste | `Clipboard`, `pasteItems` | `ClipboardTests/*` |
+| Space previews stop file edits before they reach the source browser; Copy retains its chosen item, clipboard and pane | `PreviewReadOnlyCommands`, `PreviewCommandTarget`, `PreviewCoordinator.perform` | `PreviewCommandTests/*` (native responder dispatch, stale menus and sessions, replacement files and redirected parents, independent clipboards, original pane after focus changes); mutations: “Space preview actions” |
 
 ## Rename and new items
 

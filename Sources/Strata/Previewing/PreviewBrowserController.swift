@@ -6,6 +6,10 @@ import StrataPreviews
     let session: PreviewSession
     let outline = PreviewOutlineView()
     let fileView: PreviewFileView
+    let controls = PreviewControls()
+    let listing = PreviewListing()
+    private(set) var commandTarget: PreviewCommandTarget?
+    var onAction: ((PreviewAction, PreviewCommandTarget) -> Void)?
     private let preferences: Prefs
     private let thumbnails: FileThumbnails
     private let copies: CopyProviders
@@ -19,6 +23,8 @@ import StrataPreviews
     private let sizeColumn = NSTableColumn(identifier: .init("previewSize"))
     private let kindColumn = NSTableColumn(identifier: .init("previewKind"))
     private let dateColumn = NSTableColumn(identifier: .init("previewDate"))
+    private var applying = false
+    private var shownGeneration = -1
 
     init(session: PreviewSession, preferences: Prefs, thumbnails: FileThumbnails, copies: CopyProviders) {
         self.session = session
@@ -49,6 +55,12 @@ import StrataPreviews
         view = NSView()
         ThemeStyle.bind(view, to: .content)
         configureOutline()
+        controls.onQuery = { [weak self] query in self?.filter(query) }
+        controls.onOrder = { [weak self] key in self?.chooseSort(key) }
+        controls.canPerform = { [weak self] action, target in self?.canPerform(action, target: target) == true }
+        controls.onAction = { [weak self] action, target in self?.onAction?(action, target) }
+        controls.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(controls)
         preferences.notifications.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged, object: nil)
         addChild(split)
         split.view.translatesAutoresizingMaskIntoConstraints = false
@@ -75,7 +87,9 @@ import StrataPreviews
         view.addSubview(separator)
         NSLayoutConstraint.activate([
             split.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), split.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            split.view.topAnchor.constraint(equalTo: view.topAnchor), split.view.bottomAnchor.constraint(equalTo: separator.topAnchor),
+            controls.topAnchor.constraint(equalTo: view.topAnchor), controls.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            controls.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            split.view.topAnchor.constraint(equalTo: controls.bottomAnchor), split.view.bottomAnchor.constraint(equalTo: separator.topAnchor),
             separator.leadingAnchor.constraint(equalTo: view.leadingAnchor), separator.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             separator.bottomAnchor.constraint(equalTo: footer.topAnchor),
             footer.leadingAnchor.constraint(equalTo: view.leadingAnchor), footer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -98,6 +112,10 @@ import StrataPreviews
             outline.addTableColumn(column)
             ThemeStyle.bind(column)
         }
+        for (column, key) in [(nameColumn, PreviewListing.Key.name), (sizeColumn, .size), (kindColumn, .kind), (dateColumn, .modified)] {
+            column.sortDescriptorPrototype = NSSortDescriptor(key: key.rawValue, ascending: key == .name || key == .kind)
+        }
+        outline.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
         outline.outlineTableColumn = nameColumn
         outline.columnAutoresizingStyle = .noColumnAutoresizing
         outline.style = .inset
@@ -108,6 +126,10 @@ import StrataPreviews
         outline.allowsColumnReordering = false
         outline.dataSource = self
         outline.delegate = self
+        outline.target = self
+        outline.doubleAction = #selector(openSelection(_:))
+        outline.onOpen = { [weak self] in self?.perform(.open) }
+        outline.onContextMenu = { [weak self] in self?.controls.actionMenu() }
         ThemeStyle.bind(outline, to: .content)
         scroll.documentView = outline
         scroll.hasVerticalScroller = true
@@ -136,24 +158,78 @@ import StrataPreviews
         _ = view
         switch change {
         case .root:
+            if shownGeneration != session.generation {
+                shownGeneration = session.generation
+                listing.query = ""
+                controls.search.stringValue = ""
+            }
             treeItem.isCollapsed = !session.isContainer
-            outline.reloadData()
+            controls.search.isEnabled = session.isContainer
+            refreshTree()
             fileView.show(nil, root: session.root)
             view.window?.title = session.root?.displayName ?? ""
-        case .children(let item):
-            let expanded = outline.isItemExpanded(item)
-            outline.reloadItem(item, reloadChildren: true)
-            if expanded { outline.expandItem(item) }
+        case .children:
+            refreshTree()
         case .selection:
             fileView.show(session.selected, root: session.root)
         }
+        if commandTarget?.isActive(in: session) != true {
+            commandTarget = PreviewCommandTarget(session: session)
+        }
+        controls.update(commandTarget)
         updateFooter()
+    }
+
+    func filter(_ query: String) {
+        listing.query = query
+        refreshTree(reorder: false)
+        updateFooter()
+    }
+
+    func canPerform(_ action: PreviewAction, target: PreviewCommandTarget) -> Bool {
+        target.isActive(in: session) && target.permits(action, copies: copies)
+    }
+
+    func perform(_ action: PreviewAction) {
+        guard let target = commandTarget, canPerform(action, target: target) else { return }
+        onAction?(action, target)
+    }
+
+    func chooseSort(_ key: PreviewListing.Key) {
+        guard !session.isClosed else { return }
+        let ascending = listing.order.key == key ? !listing.order.ascending : key == .name || key == .kind
+        outline.sortDescriptors = [NSSortDescriptor(key: key.rawValue, ascending: ascending)]
+    }
+
+    private func refreshTree(reorder: Bool = true) {
+        let selected = session.selected
+        let expanded = (0..<outline.numberOfRows).compactMap { outline.item(atRow: $0) as? PreviewItem }.filter { outline.isItemExpanded($0) }
+        listing.foldersFirst = preferences.foldersFirst
+        listing.rebuild(session.roots, reorder: reorder)
+        applying = true
+        outline.reloadData()
+        for item in expanded where listing.contains(item) { outline.expandItem(item) }
+        if !listing.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            var pending = listing.roots
+            while let item = pending.popLast() {
+                guard item.children != nil else { continue }
+                outline.expandItem(item)
+                pending.append(contentsOf: listing.children(of: item))
+            }
+        }
+        let row = selected.map { outline.row(forItem: $0) } ?? -1
+        if row >= 0 { outline.selectRowIndexes([row], byExtendingSelection: false) } else { outline.deselectAll(nil) }
+        applying = false
+        if row < 0, selected != nil { session.select(nil) }
     }
 
     private func updateFooter() {
         guard let root = session.root else { return }
         let url = session.selected?.entry?.url ?? root.url
         path.stringValue = copies.displayPath(url) ?? Format.tildePath(url)
+        if case .member(_, let components) = session.selected?.source {
+            path.stringValue += "!/" + components.joined(separator: "/")
+        }
         if session.isLoading {
             progress.startAnimation(nil)
             status.stringValue = String(localized: "Loading…")
@@ -161,6 +237,8 @@ import StrataPreviews
             progress.stopAnimation(nil)
             if let error = session.error {
                 status.stringValue = error.localizedDescription
+            } else if session.isContainer, !listing.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                status.stringValue = String(localized: "\(listing.roots.count.formatted()) of \(session.roots.count) items") + (session.archive?.note.map { " · " + $0 } ?? "")
             } else if let archive = session.archive {
                 status.stringValue = String(localized: "\(archive.files) files", comment: "plural") + " · " + Format.bytes(archive.uncompressed) + (archive.note.map { " · " + $0 } ?? "")
             } else if session.isContainer {
@@ -174,16 +252,20 @@ import StrataPreviews
     func close() {
         session.close()
         fileView.close()
+        listing.rebuild([])
+        applying = true
+        outline.reloadData()
+        applying = false
+        commandTarget = nil
+        controls.update(nil)
     }
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        guard let node = item as? PreviewItem else { return session.roots.count }
-        if node.children == nil { session.expand(node) }
-        return node.children?.count ?? 0
+        listing.children(of: item as? PreviewItem).count
     }
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        let children = (item as? PreviewItem)?.children ?? session.roots
+        let children = listing.children(of: item as? PreviewItem)
         guard children.indices.contains(index) else { return item ?? self }
         return children[index]
     }
@@ -217,10 +299,26 @@ import StrataPreviews
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
+        guard !applying else { return }
         session.select(outline.item(atRow: outline.selectedRow) as? PreviewItem)
     }
 
+    func outlineViewItemWillExpand(_ notification: Notification) {
+        guard !applying, let item = notification.userInfo?["NSObject"] as? PreviewItem else { return }
+        let unloaded = item.children == nil
+        session.expand(item)
+        if unloaded, item.children != nil { listing.rebuild(session.roots) }
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+        guard let descriptor = outlineView.sortDescriptors.first, let key = descriptor.key.flatMap(PreviewListing.Key.init(rawValue:)) else { return }
+        listing.order = PreviewListing.Order(key: key, ascending: descriptor.ascending)
+        controls.order = listing.order
+        refreshTree()
+    }
+
     func outlineViewItemDidCollapse(_ notification: Notification) {
+        guard !applying else { return }
         if let item = notification.userInfo?["NSObject"] as? PreviewItem { session.collapse(item) }
     }
 }
@@ -228,10 +326,20 @@ import StrataPreviews
 /// Space retains its usual preview meaning when the tree has focus; text controls handle their own typing.
 @MainActor final class PreviewOutlineView: NSOutlineView {
     var onClose: (() -> Void)?
+    var onOpen: (() -> Void)?
+    var onContextMenu: (() -> NSMenu?)?
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let row = row(at: convert(event.locationInWindow, from: nil))
+        if row >= 0 { selectRowIndexes([row], byExtendingSelection: false) } else { deselectAll(nil) }
+        return onContextMenu?()
+    }
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 || (event.charactersIgnoringModifiers == " " && event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty) {
             onClose?()
+        } else if event.keyCode == 36, event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty {
+            onOpen?()
         } else {
             super.keyDown(with: event)
         }

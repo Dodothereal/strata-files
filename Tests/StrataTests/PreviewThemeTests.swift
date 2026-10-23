@@ -31,6 +31,8 @@ extension ColorThemeTests {
         let selectedText = text.selectedRange(), selectedItem = content.session.selected
         let cell = try #require(content.outline.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NameCellView)
         let backdrop = try #require(content.fileView.subviews.compactMap { $0 as? ThemeSurfaceView }.first)
+        let controlsBackdrop = try #require(content.controls.subviews.compactMap { $0 as? ThemeSurfaceView }.first)
+        let searchBezel = content.controls.search.isBezeled
         #expect(cell.textField?.font?.pointSize == 15)
         #expect(content.outline.rowHeight == FileViewStyle.listHeight(for: environment.preferences))
         try #require(backdrop.bounds.width > 0 && backdrop.bounds.height > 0)
@@ -47,7 +49,10 @@ extension ColorThemeTests {
                     if ThemeStyle.colorsSurfaces {
                         #expect(try chromePixel(backdrop, at: NSPoint(x: 4, y: 4), appearance: appearance)
                                 == chromeColorPixel(ThemeStyle.surface(.preview), appearance: appearance))
+                        #expect(try chromePixel(controlsBackdrop, at: NSPoint(x: 4, y: 4), appearance: appearance)
+                                == chromeColorPixel(ThemeStyle.surface(.content), appearance: appearance))
                     }
+                    #expect(content.controls.search.isBezeled == searchBezel)
                     #expect(content.session.selected === selectedItem && content.outline.selectedRow == 0)
                     #expect(text.textStorage === storage && text.selectedRange() == selectedText)
                     #expect(descendants(content.fileView).contains { $0 === rich })

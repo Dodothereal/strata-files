@@ -58,3 +58,21 @@ appearance. GUI checks must not manipulate the installed Strata or change the us
   source audits pass. Native headless windows remain unshown throughout these checks.
 - The complete Debug suite passes under Address Sanitizer: 914 tests in 111 suites, without sanitizer diagnostics.
   All four foundation/provider-preparation mutations are caught in a temporary checkout, removed afterward.
+- Foundation commit: `bfabab1`.
+- Filtering, sorting and actions implemented and reviewed.
+  Filtering reuses the existing sort, preserves pending explicit reads and never discovers more folders. Native
+  headers and the actions menu offer Name, Kind, Date Modified and Size without writing browser sort settings.
+  Copy, Copy Path, Open and Show in Strata retain their preview item, session and originating pane. File and parent
+  identity checks refuse replaced paths; an old menu cannot act on a newly opened preview of the same path.
+- Review fixes: prevent file-editing commands and file Undo from falling through to the browser behind the panel;
+  keep normal text editing; close Space previews from read-only content while allowing spaces in editable fields;
+  avoid recursive native window closing; release closed outline rows; retain partial-listing notices during filtering.
+  The new controls retain native search bezels and render on the existing content surface in all 36 appearance cases.
+- Additional security review: automatic file renderers accept only current regular files, refusing named pipes and
+  replacement links before any rich or native renderer starts. The real view regression passes for both cases.
+- Focused action verification: nine action/sorting/window tests and the theme test pass; the broader 31-test preview,
+  provider-clipboard and Quick Look regression selection also passes. All 22 catalogs contain 1,425 complete strings.
+- Final action verification: the complete Debug ASan suite passes 924 tests in 112 suites; the final 30-test ASan
+  selection also covers the added special-file and late-fallback cases, with no sanitizer diagnostics. All seven
+  action/sorting/provider-path/renderer mutations are caught. The 44 Python regressions, catalogs and source audits
+  pass, and temporary verification checkouts are removed.

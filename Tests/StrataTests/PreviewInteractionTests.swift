@@ -94,6 +94,7 @@ struct PreviewInteractionTests {
         _ = browser.view
         let coordinator = PreviewCoordinator(preferences: environment.preferences, directories: reads.reader,
                                              copies: environment.services.copies, thumbnails: environment.services.thumbnails,
+                                             clipboard: environment.services.clipboard, openFile: { _ in },
                                              presentPanel: { _, _ in false })
         coordinator.show(try #require(FileEntry(url: tree.url("folder"))), from: browser)
         #expect(!coordinator.isOpen && coordinator.panel == nil)

@@ -286,18 +286,7 @@ extension BrowserViewController {
         // In a container's files, the path in the container ("/etc/hosts"); a container itself, its name. On a server,
         // the server's address and path ("deploy@web-1:/srv/app"). Never the path of Strata's copy, which is gone when
         // it quits.
-        let paths = urls.compactMap { url -> String? in
-            if copies.remoteCopies.contains(url) { return copies.remoteCopies.displayPath(url) }
-            if copies.containerCopies.contains(url) {
-                guard let (source, top) = copies.containerCopies.copy(containing: url),
-                      let path = ContainerCopies.containerPath(of: url, top: top) else {
-                    return nil
-                }
-                return top.standardizedFileURL == url.standardizedFileURL ? source.name : path
-            }
-            if copies.contains(url) { return copies.displayPath(url) }
-            return url.path
-        }
+        let paths = urls.compactMap(copies.clipboardPath)
         guard !paths.isEmpty else { return NSSound.beep() }
         services.clipboard.pasteboard.clearContents()
         services.clipboard.pasteboard.setString(paths.joined(separator: "\n"), forType: .string)
