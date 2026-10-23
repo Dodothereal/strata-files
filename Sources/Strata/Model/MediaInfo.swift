@@ -32,6 +32,12 @@ nonisolated package struct MediaInfo: Equatable, Sendable {
     @concurrent
     package static func read(_ url: URL, contentType: UTType?) async -> Self {
         guard !Task.isCancelled else { return Self() }
+        let fd = open(url.path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { return Self() }
+        var info = stat()
+        let isRegular = fstat(fd, &info) == 0 && (info.st_mode & S_IFMT) == S_IFREG
+        close(fd)
+        guard isRegular else { return Self() }
         if contentType?.conforms(to: .image) == true {
             guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
                   let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],

@@ -505,7 +505,7 @@ actor SemanticIndex {
             let keys: [URLResourceKey] = [.fileSizeKey, .contentModificationDateKey]
             let members = (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: keys)) ?? []
             let stamps = members.compactMap { try? $0.resourceValues(forKeys: Set(keys)) }
-            let size = stamps.reduce(Int64(0)) { $0 + Int64($1.fileSize ?? 0) }
+            let size = stamps.map { Int64($0.fileSize ?? 0) }.saturatingSum
             let modified = stamps.compactMap(\.contentModificationDate).max() ?? values.contentModificationDate
             return modified.map { FileStamp(size: size, modified: $0.timeIntervalSinceReferenceDate) }
         }
@@ -533,7 +533,7 @@ actor SemanticIndex {
                 if pages.last.map({ Int($0.page) != page }) ?? true { pages.append(PageMark(offset: UInt32(offset.inChunk), page: UInt32(page))) }
             }
             chunks.append(.init(text: piece.text, start: piece.start, pages: pages, terms: terms,
-                                counts: terms.map { UInt8(min(255, counted[$0]!)) }, length: counted.values.reduce(0, +),
+                                counts: terms.map { UInt8(min(255, counted[$0] ?? 1)) }, length: counted.values.reduce(0, +),
                                 word: embedding.word.map(Half.encode), sentence: embedding.sentence.map(Half.encode)))
         }
         return IndexedFile.Pending(stamp: stamp, title: extracted.title, chunks: chunks)
@@ -768,7 +768,7 @@ private nonisolated extension Data {
 }
 
 private nonisolated extension Array where Element == Float {
-    subscript(safe index: Int) -> Float { index < count ? self[index] : 0 }
+    subscript(safe index: Int) -> Float { indices.contains(index) ? self[index] : 0 }
 }
 
 /// Fixed-width Float16 vectors by row, with blocked cosine similarity against a unit-length query.
@@ -850,7 +850,8 @@ private nonisolated struct KeywordScorer {
         for file in files.values {
             for chunk in file.chunks {
                 passages += 1
-                totalLength += chunk.length
+                let (nextTotal, overflow) = totalLength.addingReportingOverflow(chunk.length)
+                totalLength = overflow ? .max : nextTotal
                 for (index, hash) in hashes.enumerated() where chunk.count(of: hash) > 0 { documentFrequency[index] += 1 }
             }
         }

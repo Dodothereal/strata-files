@@ -231,7 +231,7 @@
     "tests": "ClipboardTests"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "        if isCut { clipboard.clearCut() }\n",
     "replace": "",
     "rule": "A Cut isn't used up by the paste",
@@ -655,8 +655,8 @@
   },
   {
     "file": "Strata/Transfers/TransferQueue.swift",
-    "find": "let target = TransferEngine.exists(move.to) ? FileOps.available(move.to, copyStyle: false) : move.to",
-    "replace": "let target = move.to",
+    "find": "var target = TransferEngine.exists(move.to) ? FileOps.available(move.to, copyStyle: false) : move.to",
+    "replace": "var target = move.to",
     "rule": "Undo of a job can't put an item back beside a newcomer",
     "tests": "TrashUndoTests/undoingAMoveJobPutsAnItemBackBeside"
   },
@@ -1013,7 +1013,7 @@
     "tests": "TransferContextTests/replacementPanesAndBrowserCommandsKeepTheWindowServices"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "let job = services.transfers.enqueue(urls, to: target",
     "replace": "let job = TransferQueue.shared.enqueue(urls, to: target",
     "rule": "Browser service ownership browser transfers use the global queue",
@@ -1161,7 +1161,7 @@
     "tests": "DirectoryReadSessionTests/deferredColumnRenamesStopAfterNavigationSelectionModeChangesAndErrors"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Outline.swift",
     "find": "if let deferred = deferredApply, deferred.generation == generation {",
     "replace": "if let deferred = deferredApply {",
     "rule": "Applied browser actions ending a native edit applies a superseded listing",
@@ -1526,7 +1526,7 @@
     "tests": "BrowserPreferencesTests/readsSortAndSavedModesStayWithTheirEnvironment"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "FileOps.newFile(in: directory, extension: preferences.newFileExtension, undo: self.undoManager, copies: self.services.copies)",
     "replace": "FileOps.newFile(in: directory, extension: Prefs.shared.newFileExtension, undo: self.undoManager, copies: self.services.copies)",
     "rule": "Browser preferences New File uses another panes extension",
@@ -1568,7 +1568,7 @@
     "tests": "BrowserPreferencesTests/fontsSpacingAndViewOptionsUpdateOnlyTheirNativeViews"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !isReadOnlyCopy($0) },\n                            preferences: preferences)",
     "replace": "Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !isReadOnlyCopy($0) })",
     "rule": "Browser preferences Add to Sidebar writes to another store",
@@ -1996,14 +1996,14 @@
     "tests": "TransferTests/retryingAFailedFolderRepairsItsNestedFailuresOnlyOnce"
   },
   {
-    "file": "Strata/Transfers/TransferEngine.swift",
+    "file": "Strata/Transfers/TransferSession.swift",
     "find": "directories.removeValue(forKey: dst)?.identity : Self.destinationIdentity(state)",
     "replace": "nil : Self.destinationIdentity(state)",
     "rule": "Retry cleanup retains failed directory ownership through metadata cleanup",
     "tests": "TransferTests/retriesRepairOnlyTheirRetainedPartialCopies"
   },
   {
-    "file": "Strata/Transfers/TransferEngine.swift",
+    "file": "Strata/Transfers/TransferSession.swift",
     "find": "directories.removeValue(forKey: dst)?.identity : Self.destinationIdentity(state)",
     "replace": "FileIdentity.read(dst) : Self.destinationIdentity(state)",
     "rule": "Retry cleanup never adopts a pathname replacement during directory cleanup",
@@ -2416,7 +2416,7 @@
     "tests": "BrowserOrderingTests/metadataResortUpdatesNativeDescendantRowsAndKeepsSelection"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Outline.swift",
     "find": "guard !updatingSortDescriptor, let descriptor = outlineView.sortDescriptors.first,",
     "replace": "guard let descriptor = outlineView.sortDescriptors.first,",
     "rule": "Browser ordering programmatic choices update the native header without persisting",
@@ -2437,7 +2437,7 @@
     "tests": "BrowserOrderingTests/metadataResortWaitsForTheNativeInlineEditorToFinish"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Outline.swift",
     "find": "deferredMetadataOrder = false\n            resortAfterMetadata()",
     "replace": "deferredMetadataOrder = false",
     "rule": "Browser ordering deferred metadata order resumes when editing ends",
@@ -2983,7 +2983,7 @@
     "tests": "InspectorFolderOpeningTests/providerFoldersArePreparedWithoutBecomingLocalSavedLocationsOrDraggableTitles"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "refresh(invalidateCopy: true)",
     "replace": "refresh(invalidateCopy: false)",
     "rule": "Provider directory ownership explicit Reload keeps a stale provider listing",
@@ -3095,7 +3095,7 @@
     "tests": "ProviderFetchTests/selectionPrefetchUsesItsProviderAndPreservesTheItemAndByteLimits"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "func cancelPendingActions() {\n        noteNavigationContextChanged()\n        cancelOutlineRename()\n        presentations.cached.forEach { $0.cancelRename() }\n        selectionFetch?.cancel()\n        selectionFetch = nil",
     "replace": "func cancelPendingActions() {",
     "rule": "Provider fetch ownership navigation leaves selection prefetch running",
@@ -3167,7 +3167,7 @@
     "tests": "ProviderMediaInfoTests/inFlightReadsAreCancelledWhenTheirCopyBecomesAPlaceholderBeforeRefetch"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "        loading.invalidate()\n        sizer.cancelPending()\n        mediaInfo.cancelPending()",
     "replace": "        loading.invalidate()\n        sizer.cancelPending()",
     "rule": "Provider media ownership closing a pane leaves media reads running",
@@ -3252,14 +3252,14 @@
     "tests": "ProviderThumbnailInfoTests/providerFoldersAreNotMeasuredForListIconsOrDiskUsage"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Outline.swift",
     "find": "if services.copies.contains(node.url) { return \"—\" }",
     "replace": "",
     "rule": "Provider thumbnail and info ownership List Size column shows ellipsis for a provider folder",
     "tests": "ProviderThumbnailInfoTests/providerFoldersAreNotMeasuredForListIconsOrDiskUsage"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Outline.swift",
     "find": "guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, !services.copies.contains(entry.url), let directory else { return false }",
     "replace": "guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, let directory else { return false }",
     "rule": "Provider thumbnail and info ownership browser canMeasure allows a provider folder",
@@ -3343,7 +3343,7 @@
     "tests": "ProviderThumbnailInfoTests/allViewsAndQuickLookTransitionUseTheirOwnThumbnailsAndItemInfoAcrossFetch"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Outline.swift",
     "find": "let thumbnail = services.thumbnails.cached(entry, size: NameCellView.iconSide, scale: scale)",
     "replace": "let thumbnail = FileThumbnails.shared.cached(entry, size: NameCellView.iconSide, scale: scale)",
     "rule": "Provider thumbnail and info ownership Quick Look transition image ignores the browser's thumbnail store",
@@ -3532,14 +3532,14 @@
     "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "return services.transfers.add(CopyFetchJob(fromContainers, copies: copies) { [weak self] in\n                let task = Task {\n                    let staged = await Task.detached(priority: .userInitiated) { copies.stageForClipboard(urls) }.value",
     "replace": "return services.transfers.add(CopyFetchJob(fromContainers, copies: copies) { [weak self] in\n                let task = Task {\n                    let staged = await Task.detached(priority: .userInitiated) { LazyCopies.stageForClipboard(urls) }.value",
     "rule": "Browser copy provider ownership Copy command stages clipboard items with the global provider",
     "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "if copies.contains(url) { return copies.displayPath(url) }",
     "replace": "if LazyCopies.contains(url) { return LazyCopies.displayPath(url) }",
     "rule": "Browser copy provider ownership Copy Path uses the global copy provider",
@@ -3560,7 +3560,7 @@
     "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "let clipboard = services.clipboard\n        // A container's or a server's items are read first",
     "replace": "let clipboard = Clipboard.shared\n        // A container's or a server's items are read first",
     "rule": "Browser copy provider ownership Copy command writes to the global clipboard",
@@ -3582,13 +3582,13 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+ArchiveBrowsing.swift",
-    "find": "        let show: (URL) -> Void = { [weak self] copy in\n            // Only if you're still where you opened it: a slow archive mustn't pull you away from elsewhere.\n            guard let self, navigationRevision == startedRevision else { return }\n            delegate?.browser(self, showArchiveCopy: copy)\n        }",
-    "replace": "        let startedAt = directory?.standardizedFileURL.path\n        let show: (URL) -> Void = { [weak self] copy in\n            guard let self, directory?.standardizedFileURL.path == startedAt else { return }\n            delegate?.browser(self, showArchiveCopy: copy)\n        }",
+    "find": "        let waiter = OpeningArchives.Waiter(browser: self, revision: startedRevision) { [weak self] copy in\n            // Only if you're still where you opened it: a slow archive mustn't pull you away from elsewhere.\n            guard let self, navigationRevision == startedRevision else { return }\n            delegate?.browser(self, showArchiveCopy: copy)\n        }",
+    "replace": "        let startedAt = directory?.standardizedFileURL.path\n        let waiter = OpeningArchives.Waiter(browser: self, revision: startedRevision) { [weak self] copy in\n            guard let self, directory?.standardizedFileURL.path == startedAt else { return }\n            delegate?.browser(self, showArchiveCopy: copy)\n        }",
     "rule": "Async action context ownership archive browsing completes after leaving and returning to the same folder",
     "tests": "AsyncActionContextTests/archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "            let revision = navigationRevision\n            actionFetch = afterFetching(files) { [weak self] in\n                guard let self, navigationRevision == revision else { return }\n                openFetched(entries, fileOpener: fileOpener)\n            }",
     "replace": "            _ = afterFetching(files) { [weak self] in\n                self?.openFetched(entries, fileOpener: fileOpener)\n            }",
     "rule": "Async action context ownership deferred open action fires after navigation changes",
@@ -3602,7 +3602,7 @@
     "tests": "AsyncActionContextTests/deferredOpenAndQuickLookActionsStopWhenNavigationOrSelectionChanges"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "        columnController?.stopBackgroundWork()\n        galleryController?.stopBackgroundWork()",
     "replace": "        // Leave presentation preview work running.",
     "rule": "Async action context ownership closing a pane leaves Column and Gallery preview background work alive",

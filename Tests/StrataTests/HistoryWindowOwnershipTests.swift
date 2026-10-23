@@ -65,7 +65,8 @@ struct HistoryWindowOwnershipTests {
         let other = try second.record(tree, name: "second")
         let otherSaved = try Data(contentsOf: second.storage.url("history.sealed"))
         var panel: HistoryWindowController? = first.panel()
-        weak var weakPanel = panel
+        weak var weakPanel: HistoryWindowController?
+        weakPanel = panel
         let before = tree.snapshot()
         let moved = before.filter { $0 != "first/to/a.txt" } + ["first/from/a.txt"]
         first.undo.beginUndoGrouping()

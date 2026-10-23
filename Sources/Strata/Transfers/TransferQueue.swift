@@ -390,11 +390,17 @@ enum TransferUndo {
         var done: [TransferMove] = []
         let landed = LandedFiles()
         for move in moves {
-            let target = TransferEngine.exists(move.to) ? FileOps.available(move.to, copyStyle: false) : move.to
-            landed.expect(move.from, at: target)
-            if TransferEngine.rename(move.from, to: target) == 0 {
-                done.append(TransferMove(from: move.from, to: target))
-                TransferEngine.hooks.afterLanding?(target)
+            var target = TransferEngine.exists(move.to) ? FileOps.available(move.to, copyStyle: false) : move.to
+            for _ in 0..<64 {
+                landed.expect(move.from, at: target)
+                let err = TransferEngine.rename(move.from, to: target)
+                if err == 0 {
+                    done.append(TransferMove(from: move.from, to: target))
+                    TransferEngine.hooks.afterLanding?(target)
+                    break
+                }
+                guard err == EEXIST else { break }
+                target = FileOps.available(move.to, copyStyle: false)
             }
         }
         containers.finish()

@@ -311,7 +311,7 @@ enum CommandLineTool {
             alert.messageText = String(localized: "Another “strata” is installed.")
             alert.informativeText = String(localized: "/usr/local/bin/strata isn’t Strata’s command, so it was left as it is. Remove or rename it, then install again.")
         } else if FileManager.default.isWritableFile(atPath: "/usr/local/bin") {
-            try? FileManager.default.removeItem(atPath: link)
+            _ = unlink(link)
             do {
                 try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: tool)
                 alert.messageText = String(localized: "Installed the strata command.")

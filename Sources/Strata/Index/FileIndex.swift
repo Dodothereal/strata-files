@@ -161,7 +161,9 @@ final class FileIndex {
 
     func recentFiles(days: Int = 7, limit: Int = 400) async -> [IndexHit]? {
         guard let store else { return nil }
-        let since = UInt32(max(0, Date().timeIntervalSince1970 - Double(days) * 86_400))
+        let clampedDays = max(-365_000, min(365_000, days))
+        let raw = max(0, Date().timeIntervalSince1970 - Double(clampedDays) * 86_400)
+        let since = raw.isFinite ? UInt32(clamping: Int64(min(raw, Double(UInt32.max)))) : 0
         return await Self.recent(store, since, limit)
     }
 

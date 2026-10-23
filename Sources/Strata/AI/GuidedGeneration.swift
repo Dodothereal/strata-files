@@ -73,7 +73,7 @@ nonisolated extension GeneratedContent {
 
     var integer: Int? {
         guard let rounded = number?.rounded(), rounded.isFinite,
-              rounded >= Double(Int.min), rounded < Double(Int.max) else { return nil }
+              rounded > Double(Int.min), rounded < Double(Int.max) else { return nil }
         return Int(rounded)
     }
 

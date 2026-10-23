@@ -663,32 +663,19 @@ final class GalleryStripView: NSCollectionView {
         let plain = mods.isDisjoint(with: [.command, .control])
         let extend = mods.contains(.shift)
         switch event.keyCode {
-        case 36 where plain, 76 where plain:
-            if !controller.handleKey(.returnKey) { super.keyDown(with: event) }
-            return
-        case 49 where plain:
-            if !controller.handleKey(.space) { super.keyDown(with: event) }
-            return
-        case 53:
-            if !controller.handleKey(.escape) { super.keyDown(with: event) }
-            return
-        case 48 where mods.isEmpty:
-            if !controller.handleKey(.tab) { super.keyDown(with: event) }
-            return
-        case 51 where mods.isDisjoint(with: [.command, .control, .option]):
-            if !controller.handleKey(.backspace) { super.keyDown(with: event) }
-            return
-        case 123 where plain, 126 where plain: controller.move(by: -1, extend: extend); return
-        case 124 where plain, 125 where plain: controller.move(by: 1, extend: extend); return
-        case 115: controller.move(by: Int.min, extend: extend); return // Home
-        case 119: controller.move(by: Int.max, extend: extend); return // End
-        default:
-            break
+        case KeyCode.leftArrow where plain, KeyCode.upArrow where plain: controller.move(by: -1, extend: extend); return
+        case KeyCode.rightArrow where plain, KeyCode.downArrow where plain: controller.move(by: 1, extend: extend); return
+        case KeyCode.home: controller.move(by: Int.min, extend: extend); return
+        case KeyCode.end: controller.move(by: Int.max, extend: extend); return
+        default: break
         }
-        if plain, event.specialKey == nil, let chars = event.characters, !chars.isEmpty,
-           chars.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }),
-           controller.handleKey(.type(chars)) {
-            return
+        if let key = FileViewKey.from(event) {
+            if case .type = key {
+                if controller.handleKey(key) { return }
+            } else {
+                if !controller.handleKey(key) { super.keyDown(with: event) }
+                return
+            }
         }
         super.keyDown(with: event)
     }

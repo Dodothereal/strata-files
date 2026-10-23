@@ -62,7 +62,13 @@ nonisolated struct PlanItem: Sendable, Hashable, Identifiable {
 
     /// Date taken and camera model from the image header (no pixel decoding).
     static func exif(_ url: URL) -> (Date?, String?) {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+        let fd = open(url.path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { return (nil, nil) }
+        var info = stat()
+        let isRegular = fstat(fd, &info) == 0 && (info.st_mode & S_IFMT) == S_IFREG
+        close(fd)
+        guard isRegular,
+              let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary)
                 as? [CFString: Any] else { return (nil, nil) }
         let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any]

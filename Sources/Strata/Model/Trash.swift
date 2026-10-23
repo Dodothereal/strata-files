@@ -204,21 +204,32 @@ enum Trash {
             let fd = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             guard fd >= 0 else { continue }
             defer { close(fd) }
-            for name in entries(fd) {
+            var listError: Int32 = 0
+            for name in entries(fd, error: &listError) {
                 let error = removeTree(in: fd, name)
                 if error != 0, name != ".DS_Store" {
                     failures.append((folder.appending(path: name), POSIXError(POSIXErrorCode(rawValue: error) ?? .EIO)))
                 }
+            }
+            if listError != 0 {
+                failures.append((folder, POSIXError(POSIXErrorCode(rawValue: listError) ?? .EIO)))
             }
         }
         return failures
     }
 
     /// The names in an open folder.
-    nonisolated private static func entries(_ fd: Int32) -> [String] {
+    nonisolated private static func entries(_ fd: Int32, error: inout Int32) -> [String] {
         let copy = dup(fd)
-        guard copy >= 0 else { return [] }
-        guard let dir = fdopendir(copy) else { close(copy); return [] }
+        guard copy >= 0 else {
+            error = errno != 0 ? errno : EIO
+            return []
+        }
+        guard let dir = fdopendir(copy) else {
+            error = errno != 0 ? errno : EIO
+            close(copy)
+            return []
+        }
         defer { closedir(dir) }
         var names: [String] = []
         while let entry = readdir(dir) {
@@ -230,9 +241,10 @@ enum Trash {
 
     /// Deletes `name` in the open folder `parent`: a file or link directly, a folder after its contents (opened without
     /// following links). Returns 0, or the first error (a locked file, say).
-    nonisolated private static func removeTree(in parent: Int32, _ name: String) -> Int32 {
+    nonisolated private static func removeTree(in parent: Int32, _ name: String, depth: Int = 0) -> Int32 {
         if unlinkat(parent, name, 0) == 0 { return 0 }
         let unlinkError = errno
+        guard depth < 128 else { return ELOOP }
         var info = stat()
         if fstatat(parent, name, &info, AT_SYMLINK_NOFOLLOW) == 0,
            (info.st_mode & S_IFMT) == S_IFDIR,
@@ -244,8 +256,8 @@ enum Trash {
         // Not a folder: why the file itself couldn't be deleted (locked, say).
         guard fd >= 0 else { return errno == ENOTDIR || errno == ELOOP ? unlinkError : errno }
         var firstError: Int32 = 0
-        for child in entries(fd) {
-            let error = removeTree(in: fd, child)
+        for child in entries(fd, error: &firstError) {
+            let error = removeTree(in: fd, child, depth: depth + 1)
             if firstError == 0 { firstError = error }
         }
         close(fd)

@@ -443,8 +443,7 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
 
     /// Folder icons per path (they can be custom), document icons per type; no file reads beyond Finder's icon lookup.
     private func icon(for item: TreemapItem) -> NSImage {
-        if item.isFolder || item.contentType == nil { return IconCache.shared.icon(forPath: item.url.path) }
-        let type = item.contentType!
+        guard !item.isFolder, let type = item.contentType else { return IconCache.shared.icon(forPath: item.url.path) }
         if let cached = typeIcons[type.identifier] { return cached }
         let image = NSWorkspace.shared.icon(for: type)
         typeIcons[type.identifier] = image
@@ -510,10 +509,11 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
         guard hypot(point.x - mouseDownPoint.x, point.y - mouseDownPoint.y) > 4 else { return }
         mouseDownTile = nil
         let dragged = tiles.filter { selectedKeys.contains($0.key) && $0.item != nil }
-        let items: [NSDraggingItem] = dragged.map { t in
+        let items: [NSDraggingItem] = dragged.compactMap { t in
+            guard let tileItem = t.item else { return nil }
             // A container's or a server's item as a promise: dropped outside Strata it's fetched and finished first.
-            let item = NSDraggingItem(pasteboardWriter: ContainerDragItem.writer(for: t.item!.url, copies: controller?.copies ?? .live))
-            let icon = icon(for: t.item!)
+            let item = NSDraggingItem(pasteboardWriter: ContainerDragItem.writer(for: tileItem.url, copies: controller?.copies ?? .live))
+            let icon = icon(for: tileItem)
             let side: CGFloat = 48
             item.setDraggingFrame(NSRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side), contents: icon)
             return item
@@ -546,37 +546,28 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let plain = mods.isDisjoint(with: [.command, .control])
         switch event.keyCode {
-        case 36 where plain, 76 where plain:
-            if controller?.handleKey(.returnKey) != true { super.keyDown(with: event) }
-            return
-        case 49 where plain:
-            if controller?.handleKey(.space) != true { super.keyDown(with: event) }
-            return
-        case 48 where event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty:
-            if controller?.handleKey(.tab) != true { super.keyDown(with: event) }
-            return
-        case 53:
-            if controller?.handleKey(.escape) == true { return }
-            if !selectedKeys.isEmpty {
-                selectedKeys = []
-                needsDisplay = true
-                controller?.selectionChanged()
-            }
-            return
-        case 51 where mods.isDisjoint(with: [.command, .control, .option]):
-            if controller?.handleKey(.backspace) != true { super.keyDown(with: event) }
-            return
-        case 123 where plain: moveSelection(dx: -1, dy: 0); return
-        case 124 where plain: moveSelection(dx: 1, dy: 0); return
-        case 125 where plain: moveSelection(dx: 0, dy: 1); return
-        case 126 where plain: moveSelection(dx: 0, dy: -1); return
-        default:
-            break
+        case KeyCode.leftArrow where plain: moveSelection(dx: -1, dy: 0); return
+        case KeyCode.rightArrow where plain: moveSelection(dx: 1, dy: 0); return
+        case KeyCode.downArrow where plain: moveSelection(dx: 0, dy: 1); return
+        case KeyCode.upArrow where plain: moveSelection(dx: 0, dy: -1); return
+        default: break
         }
-        if plain, event.specialKey == nil, let chars = event.characters, !chars.isEmpty,
-           chars.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }),
-           controller?.handleKey(.type(chars)) == true {
-            return
+        if let key = FileViewKey.from(event) {
+            switch key {
+            case .escape:
+                if controller?.handleKey(.escape) == true { return }
+                if !selectedKeys.isEmpty {
+                    selectedKeys = []
+                    needsDisplay = true
+                    controller?.selectionChanged()
+                }
+                return
+            case .type:
+                if controller?.handleKey(key) == true { return }
+            default:
+                if controller?.handleKey(key) != true { super.keyDown(with: event) }
+                return
+            }
         }
         super.keyDown(with: event)
     }
@@ -599,7 +590,7 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
             guard along > 1 else { continue }
             let across = abs(vx * dy) + abs(vy * dx)
             let score = along + across * 2
-            if best == nil || score < best!.1 { best = (tile, score) }
+            if best.map({ score < $0.1 }) ?? true { best = (tile, score) }
         }
         guard let next = best?.0 else { return }
         selectedKeys = [next.key]

@@ -415,7 +415,7 @@ nonisolated enum Archiver {
     /// Moves `item` into `folder` as `name`, or `name 2`, `name 3`… when taken, claiming the name atomically (nothing
     /// that appears meanwhile is ever replaced). Disks without exclusive renames (exFAT) claim the name first with an
     /// empty placeholder.
-    private static func place(_ item: URL, in folder: URL, as name: String) throws -> URL {
+    static func place(_ item: URL, in folder: URL, as name: String, supportsExclusiveRename: Bool = true) throws -> URL {
         let isFolder = (try? item.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true && !isSymlink(item)
         // Folders have no extension to keep, except packages ("Foo.app" → "Foo 2.app").
         let ext = !isFolder || (try? item.resourceValues(forKeys: [.isPackageKey]))?.isPackage == true ? (name as NSString).pathExtension : ""
@@ -423,26 +423,36 @@ nonisolated enum Archiver {
         for n in 1...10_000 {
             let candidate = n == 1 ? name : ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)"
             let destination = folder.appending(path: candidate, directoryHint: isFolder ? .isDirectory : .notDirectory)
+            if !supportsExclusiveRename { errno = ENOTSUP } else
             if renamex_np(item.path, destination.path, UInt32(RENAME_EXCL)) == 0 { return destination }
-            if errno == EEXIST { continue }
-            guard errno == ENOTSUP else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            let code = errno
+            if code == EEXIST { continue }
+            guard code == ENOTSUP || code == EINVAL else { throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO) }
             // The placeholder takes the name or fails because it's taken; then the item replaces only that.
+            let placeholderIdentity: FileIdentity?
             if isFolder {
                 if mkdir(destination.path, 0o700) != 0 {
-                    if errno == EEXIST { continue }
-                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                    let mkdirErr = errno
+                    if mkdirErr == EEXIST { continue }
+                    throw POSIXError(POSIXErrorCode(rawValue: mkdirErr) ?? .EIO)
                 }
+                placeholderIdentity = FileIdentity.read(destination.path)
             } else {
                 let fd = open(destination.path, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW, 0o600)
                 if fd < 0 {
-                    if errno == EEXIST { continue }
-                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                    let openErr = errno
+                    if openErr == EEXIST { continue }
+                    throw POSIXError(POSIXErrorCode(rawValue: openErr) ?? .EIO)
                 }
+                var info = stat()
+                placeholderIdentity = fstat(fd, &info) == 0 ? FileIdentity.from(info) : nil
                 close(fd)
             }
             if rename(item.path, destination.path) == 0 { return destination }
             let error = errno
-            if isFolder { rmdir(destination.path) } else { unlink(destination.path) }
+            if let placeholderIdentity, FileIdentity.read(destination.path) == placeholderIdentity {
+                if isFolder { rmdir(destination.path) } else { unlink(destination.path) }
+            }
             throw POSIXError(POSIXErrorCode(rawValue: error) ?? .EIO)
         }
         throw Failure(message: String(localized: "No free name for “\(name)”."))

@@ -499,7 +499,7 @@ final class ComposeInspectorView: NSView {
             }
             let row = FlowView(spacing: 6, lineSpacing: 6)
             buttons.forEach(row.add)
-            content.setCustomSpacing(10, after: content.arrangedSubviews.last!)
+            if let last = content.arrangedSubviews.last { content.setCustomSpacing(10, after: last) }
             content.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: columnOrContent(content).widthAnchor).isActive = true
         }

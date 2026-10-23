@@ -472,9 +472,12 @@ nonisolated enum ProjectDetector {
     /// Folders named `name` up to `depth` levels below `root`, skipping dependency, VCS and build trees.
     static func findFolders(named name: String, under root: URL, depth: Int) -> [URL] {
         var results: [URL] = []
+        var visited = 0
         func visit(_ folder: URL, _ level: Int) {
-            guard let children = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return }
+            guard visited < 4096, let children = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return }
+            visited += 1
             for child in children.sorted() {
+                guard visited < 4096 else { return }
                 let url = folder.appending(path: child, directoryHint: .isDirectory)
                 guard isRealDirectory(url.path) else { continue }
                 if child == name {
@@ -492,10 +495,13 @@ nonisolated enum ProjectDetector {
     /// Relative paths of folders holding a .NET project file, up to `depth` levels below a solution.
     private static func dotnetProjectFolders(_ root: URL, depth: Int) -> [String] {
         var results: [String] = []
+        var visited = 0
         func visit(_ relative: String, _ level: Int) {
             let folder = relative.isEmpty ? root : root.appending(path: relative)
-            guard let children = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return }
+            guard visited < 4096, let children = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return }
+            visited += 1
             for child in children.sorted() where !child.hasPrefix(".") && !skippedFolders.contains(child) {
+                guard visited < 4096 else { return }
                 let path = relative.isEmpty ? child : relative + "/" + child
                 let url = root.appending(path: path)
                 guard isRealDirectory(url.path) else { continue }
@@ -529,8 +535,9 @@ nonisolated enum ProjectDetector {
                                 var files = 0
                                 for path in paths {
                                     guard let size = FolderSizer.measure(path, isCancelled: { cancelled.isSet }) else { continue }
-                                    bytes += size.bytes
-                                    files += size.files
+                                    bytes = [bytes, size.bytes].saturatingSum
+                                    let (nextFiles, overflow) = files.addingReportingOverflow(size.files)
+                                    files = overflow ? .max : nextFiles
                                 }
                                 continuation.resume(returning: (index, bytes, files))
                             }

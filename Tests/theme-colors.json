@@ -78,7 +78,7 @@
     "reason": "Leaving or canceling a full-screen transition restores the auxiliary window's exact captured native background, including when AppKit returns to a departing host."
   },
   {
-    "file": "Sources/Strata/Browser/BrowserViewController.swift",
+    "file": "Sources/Strata/Browser/BrowserViewController+Actions.swift",
     "code": "field.backgroundColor = .textBackgroundColor",
     "count": 1,
     "reason": "The active inline rename editor keeps the native text-field editing background and text colors."
@@ -210,7 +210,7 @@
     "reason": "The small cloud-status glyph needs a neutral halo around its semantic state symbol."
   },
   {
-    "file": "Sources/Strata/Views/ColumnBrowserViewController.swift",
+    "file": "Sources/Strata/Views/ColumnBrowserViews.swift",
     "code": "NSColor.separatorColor.setFill()",
     "count": 1,
     "reason": "Native browser colors are captured by ThemeStyle.bind; the remaining separator marks the boundary between columns."

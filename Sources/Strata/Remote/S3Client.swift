@@ -271,7 +271,7 @@ nonisolated final class S3Client: Sendable {
         var request = try request("PUT", key: key, headers: ["Content-Length": String(size)], payloadHash: S3Signer.unsignedPayload)
         request.timeoutInterval = 3600
         let (body, response) = try await session.upload(for: request, fromFile: source, delegate: UploadProgress(progress))
-        try Self.check(response, body)
+        try Self.check(response, body.prefix(Self.maxBody))
     }
 
     /// An empty "folder/" marker, so a new folder shows before anything is in it.
@@ -392,7 +392,7 @@ nonisolated final class S3ListParser: NSObject, XMLParserDelegate {
         case (_, "CommonPrefixes"): if !key.isEmpty { items.append(S3Item(key: key, size: 0, modified: nil, isFolder: true)) }
         default: break
         }
-        path.removeLast()
+        if !path.isEmpty { path.removeLast() }
         text = ""
     }
 }

@@ -132,11 +132,21 @@ nonisolated enum TextExtractor {
         return String(data: data, encoding: .windowsCP1252)
     }
 
+    private static func isRegularFile(_ url: URL) -> Bool {
+        let fd = open(url.path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var info = stat()
+        return fstat(fd, &info) == 0 && (info.st_mode & S_IFMT) == S_IFREG
+    }
+
     static func rich(_ url: URL, type: NSAttributedString.DocumentType, maxBytes: Int = 50 << 20) -> ExtractedText? {
         var attributes: NSDictionary?
         let string: NSAttributedString
         if type == .rtfd {
-            guard let loaded = try? NSAttributedString(url: url, options: [.documentType: type], documentAttributes: &attributes) else {
+            var info = stat()
+            guard lstat(url.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR,
+                  let loaded = try? NSAttributedString(url: url, options: [.documentType: type], documentAttributes: &attributes) else {
                 return nil
             }
             string = loaded
@@ -154,7 +164,7 @@ nonisolated enum TextExtractor {
     }
 
     static func pdf(_ url: URL, options: Options) async -> ExtractedText? {
-        guard let document = PDFDocument(url: url), !document.isLocked else { return nil }
+        guard isRegularFile(url), let document = PDFDocument(url: url), !document.isLocked else { return nil }
         let count = max(0, document.pageCount)
         let limit = max(0, min(count, options.maxPDFPages))
         var text = ""
@@ -193,6 +203,7 @@ nonisolated enum TextExtractor {
     }
 
     static func ocrImage(_ url: URL) async -> String? {
+        guard isRegularFile(url) else { return nil }
         var request = RecognizeTextRequest()
         request.recognitionLevel = .accurate
         guard let observations = try? await request.perform(on: url) else { return nil }

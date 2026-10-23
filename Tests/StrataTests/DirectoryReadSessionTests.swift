@@ -186,7 +186,8 @@ struct DirectoryReadSessionTests {
         let reads = Reads()
         defer { reads.stop() }
         var browser: BrowserViewController? = browser(reads)
-        weak var owner = browser
+        weak var owner: BrowserViewController?
+        owner = browser
         browser?.load(tree.root)
         let work = try #require(browser?.directoryReads.task)
         let request = try await reads.request(0)

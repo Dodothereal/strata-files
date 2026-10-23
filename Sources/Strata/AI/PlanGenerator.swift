@@ -448,9 +448,13 @@ nonisolated enum ModelPlanner {
         """
         let session = LanguageModelSession(instructions: instructions)
         let prompt = "Items:\n\(listing(request.items, now: request.now))\n\nInstruction: \(request.instruction)"
+        #if compiler(>=6.4)
+        let options = GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 1200)
+        #else
+        let options = GenerationOptions(sampling: .greedy, maximumResponseTokens: 1200)
+        #endif
         let content = try await Deadline.run(25) {
-            try await session.respond(to: prompt, schema: try schema(),
-                                      options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 1200)).content
+            try await session.respond(to: prompt, schema: try schema(), options: options).content
         }
         return decode(content, items: request.items, now: request.now)
     }
@@ -463,8 +467,14 @@ nonisolated enum ModelPlanner {
             filter.kinds = Set(match["kinds"]?.strings.compactMap(SearchFilter.Kind.init(rawValue:)) ?? [])
             filter.extensions = Set((match["extensions"]?.strings ?? []).map { $0.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ". ")) })
             filter.nameContains = match["nameContains"]?.strings ?? []
-            if let days = match["olderThanDays"]?.integer { filter.modifiedBefore = Calendar.current.date(byAdding: .day, value: -days, to: now) }
-            if let days = match["newerThanDays"]?.integer { filter.modifiedAfter = Calendar.current.date(byAdding: .day, value: -days, to: now) }
+            if let days = match["olderThanDays"]?.integer {
+                let clamped = max(-365_000, min(365_000, days))
+                filter.modifiedBefore = Calendar.current.date(byAdding: .day, value: -clamped, to: now)
+            }
+            if let days = match["newerThanDays"]?.integer {
+                let clamped = max(-365_000, min(365_000, days))
+                filter.modifiedAfter = Calendar.current.date(byAdding: .day, value: -clamped, to: now)
+            }
         }
         let folder = content["folder"]?.meaningfulString
         switch content["action"]?.string {

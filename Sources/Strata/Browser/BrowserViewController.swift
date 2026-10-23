@@ -16,7 +16,7 @@ protocol BrowserViewControllerDelegate: AnyObject {
     func browser(_ browser: BrowserViewController, reveal url: URL)
 }
 
-private extension NSUserInterfaceItemIdentifier {
+extension NSUserInterfaceItemIdentifier {
     static let name = Self("name")
     static let modified = Self("modified")
     static let created = Self("created")
@@ -98,25 +98,25 @@ final class BrowserViewController: NSViewController {
     private let scrollView = NSScrollView()
     private let emptyState = EmptyStateView()
     private let filterPill = FilterPill()
-    private let sizer = FolderSizer()
+    let sizer = FolderSizer()
     let mediaInfo: MediaInfoLoader
 
-    private let listing = BrowserListing()
-    private var nodes: [FileNode] { listing.nodes }
-    private var rows: [FileNode] { listing.rows }
-    private var generation: Int { directoryReads.generation }
+    let listing = BrowserListing()
+    var nodes: [FileNode] { listing.nodes }
+    var rows: [FileNode] { listing.rows }
+    var generation: Int { directoryReads.generation }
     /// Optional provider reads for the current selection (see `prefetchSelection`).
     var selectionFetch: Task<Void, Never>?
     /// Explicit file fetch before opening or Quick Look; cancelled when the navigation context changes.
     var actionFetch: Task<Void, Never>?
     /// Bumped whenever this pane changes folder, column location or results context.
-    private(set) var navigationRevision = 0
+    var navigationRevision = 0
     /// The latest asynchronous file or server command started by this pane.
     var commandWork: Task<Void, Never>?
 
-    private var watchers: [DirectoryWatcher] = []
+    var watchers: [DirectoryWatcher] = []
     /// Keeps git status for the shown folder's repository fresh (FSEvents) while this folder is shown.
-    private var gitObservation: GitObservation?
+    var gitObservation: GitObservation?
     lazy var ordering = BrowserOrdering(
         choice: .init(key: SortKey(rawValue: preferences.sortColumn) ?? .name, ascending: preferences.sortAscending),
         foldersFirst: { [weak self] in self?.preferences.foldersFirst ?? true },
@@ -124,11 +124,11 @@ final class BrowserViewController: NSViewController {
                         childFolderSizes: { FileIndex.shared.childFolderSizes($0).mapValues(\.bytes) },
                         media: { [weak self] in self?.mediaInfo.cached($0) },
                         requestMedia: { [weak self] in self?.mediaInfo.request($0) }))
-    private var updatingSortDescriptor = false
+    var updatingSortDescriptor = false
     /// Selected once the folder shows them (after the reload a change brings).
     var pendingSelection: [URL]?
     /// Opens the folder row a drag rests on (only rows still on screen).
-    private lazy var springLoader = SpringLoader(view: outlineView, frame: { [weak self] folder in
+    lazy var springLoader = SpringLoader(view: outlineView, frame: { [weak self] folder in
         guard let self, let node = node(for: folder) else { return nil }
         let row = outlineView.row(forItem: node)
         return row >= 0 ? outlineView.rect(ofRow: row) : nil
@@ -137,15 +137,21 @@ final class BrowserViewController: NSViewController {
         springLoad(folder, drag: drag)
     })
     /// A drag is over the list: folders don't expand on hover then (they spring open instead).
-    private var isDragOver = false
+    var isDragOver = false
     /// Renamed (inline) once the folder shows it: a new folder.
     var pendingRename: URL?
-    private var renaming: FileNode?
-    private weak var renamingField: NSTextField?
+    var renaming: FileNode?
+    weak var renamingField: NSTextField?
+    struct DeferredListing {
+        let entries: [FileEntry]
+        let preservingState: Bool
+        let fromTop: Bool
+        let generation: Int
+    }
     /// The folder read again while a name was being edited in place: shown once the edit ends.
-    private var deferredApply: (entries: [FileEntry], preservingState: Bool, fromTop: Bool, generation: Int)?
-    private var resortWork: DispatchWorkItem?
-    private var deferredMetadataOrder = false
+    var deferredApply: DeferredListing?
+    var resortWork: DispatchWorkItem?
+    var deferredMetadataOrder = false
     /// Showing search results or Recents instead of a folder's contents.
     var isShowingResults: Bool { ordering.isShowingResults }
     private var resultsTotal = 0
@@ -380,7 +386,7 @@ final class BrowserViewController: NSViewController {
     /// Re-reads the current folder, keeping selection, expanded folders and scroll position.
     @objc func refresh() { refresh(invalidateCopy: false) }
 
-    private func refresh(invalidateCopy: Bool) {
+    func refresh(invalidateCopy: Bool) {
         guard directory != nil, !isShowingResults else { return }
         TagStore.shared.invalidate(directory)
         // FSEvents normally keeps git status current; without it, entries changing is our cue.
@@ -411,10 +417,10 @@ final class BrowserViewController: NSViewController {
     }
 
     /// Shows `entries`. `fromTop`: a folder just opened, shown from its top before anything it selects is scrolled to.
-    private func apply(_ entries: [FileEntry], preservingState: Bool, fromTop: Bool = false) {
+    func apply(_ entries: [FileEntry], preservingState: Bool, fromTop: Bool = false) {
         // Reloading the list would end a rename in progress, half typed.
         if isRenamingInPlace {
-            deferredApply = (entries, preservingState, fromTop, generation)
+            deferredApply = DeferredListing(entries: entries, preservingState: preservingState, fromTop: fromTop, generation: generation)
             return
         }
         deferredApply = nil
@@ -443,7 +449,7 @@ final class BrowserViewController: NSViewController {
         delegate?.browserSelectionDidChange(self)
     }
 
-    private func loadChildren(of node: FileNode, selecting: [URL] = []) {
+    func loadChildren(of node: FileNode, selecting: [URL] = []) {
         loading.loadChildren(of: node, showHidden: preferences.showHidden, applications: applicationFolders) { [weak self, weak node] entries in
             guard let self, let node, self.node(for: node.url) === node else { return }
             TagStore.shared.load(entries, in: node.url)
@@ -474,7 +480,7 @@ final class BrowserViewController: NSViewController {
 
     /// The URL a row of this folder uses for `url`. Icons, columns and disk usage match paths exactly, and a listing
     /// reached through a symlink doesn't spell them like the folder does ("/tmp/x" lists "/private/tmp/x/a").
-    private func rowURL(_ url: URL) -> URL { node(for: url)?.url ?? url }
+    func rowURL(_ url: URL) -> URL { node(for: url)?.url ?? url }
 
     private func showLoadError() {
         cancelPendingActions()
@@ -584,7 +590,7 @@ final class BrowserViewController: NSViewController {
     }
 
     /// Shows groups of files under header rows, all expanded (duplicate sets).
-    func showGroups(_ groups: [(title: String, detail: String, entries: [FileEntry])], summary: String) {
+    func showGroups(_ groups: [ResultGroup], summary: String) {
         enterResults()
         loading.showResults()
         sizer.cancelPending()
@@ -600,6 +606,10 @@ final class BrowserViewController: NSViewController {
         updateEmptyState()
         delegate?.browserContentDidChange(self)
         delegate?.browserSelectionDidChange(self)
+    }
+
+    func showGroups(_ groups: [(title: String, detail: String, entries: [FileEntry])], summary: String) {
+        showGroups(groups.map { ResultGroup(title: $0.title, detail: $0.detail, entries: $0.entries) }, summary: summary)
     }
 
     /// Resolve index hits' visible names without blocking search or changing their file identities.
@@ -677,12 +687,12 @@ final class BrowserViewController: NSViewController {
 
     // MARK: - Sorting and filtering
 
-    private func sort(_ list: inout [FileNode]) { _ = ordering.sort(&list) }
+    func sort(_ list: inout [FileNode]) { _ = ordering.sort(&list) }
 
     /// The same order feeds the native list and deeper columns.
     func ordered(_ a: FileEntry, _ b: FileEntry) -> Bool { ordering.ordered(a, b) }
 
-    private func syncSortDescriptor() {
+    func syncSortDescriptor() {
         let descriptors = ordering.choice.map { [NSSortDescriptor(key: $0.key.rawValue, ascending: $0.ascending)] } ?? []
         guard outlineView.sortDescriptors != descriptors else { return }
         updatingSortDescriptor = true
@@ -706,7 +716,7 @@ final class BrowserViewController: NSViewController {
     }
 
     /// Re-sorts after folder sizes arrive while sorting by size, animating rows into place.
-    private func scheduleResort() {
+    func scheduleResort() {
         guard ordering.choice != nil else { return }
         resortWork?.cancel()
         let work = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.resortAfterMetadata() } }
@@ -834,644 +844,6 @@ final class BrowserViewController: NSViewController {
         return parts.joined(separator: "  ·  ")
     }
 
-    // MARK: - Actions
-
-    @objc func openSelection(_ sender: Any?) {
-        if sender as? NSOutlineView === outlineView, outlineView.clickedRow < 0 { return }
-        open(selectedEntries)
-    }
-
-    func open(_ entries: [FileEntry], fileOpener: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }) {
-        guard !entries.isEmpty else { return }
-        actionFetch?.cancel()
-        actionFetch = nil
-        // A container's files are fetched first.
-        let files = entries.filter { !$0.isFolder }.map(\.url)
-        if files.contains(where: services.copies.isPlaceholder) {
-            let revision = navigationRevision
-            actionFetch = afterFetching(files) { [weak self] in
-                guard let self, navigationRevision == revision else { return }
-                openFetched(entries, fileOpener: fileOpener)
-            }
-            return
-        }
-        openFetched(entries, fileOpener: fileOpener)
-    }
-
-    private func openFetched(_ entries: [FileEntry], fileOpener: (URL) -> Void = { NSWorkspace.shared.open($0) }) {
-        // One archive opens like a folder (Windows-style), unless that's turned off in Settings.
-        if entries.count == 1, let entry = entries.first, opensAsFolder(entry) { return browseArchive(entry.url) }
-        // A Finder alias to a folder opens that folder here, like a folder (macOS would hand it to Finder).
-        let aliasedFolders = entries.filter { !$0.isFolder && !$0.isSymlink && FileEntry.openedFolder($0.url) != $0.url }
-        for entry in entries where !entry.isFolder && !aliasedFolders.contains(entry) {
-            fileOpener(entry.url)
-        }
-        if let folder = entries.first(where: \.isFolder) ?? aliasedFolders.first {
-            delegate?.browser(self, navigateTo: folder.url)
-        }
-    }
-
-    @objc func openWithApplication(_ sender: NSMenuItem) {
-        guard let app = sender.representedObject as? URL else { return }
-        open(selectedURLs, withApplicationAt: app)
-    }
-
-    func open(_ urls: [URL], withApplicationAt app: URL,
-              opener: @escaping ([URL], URL) -> Void = { urls, app in
-                  NSWorkspace.shared.open(urls, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
-              }) {
-        guard !urls.isEmpty else { return }
-        let revision = navigationRevision
-        actionFetch?.cancel()
-        actionFetch = afterFetching(urls) { [weak self] in
-            guard let self, navigationRevision == revision else { return }
-            opener(urls, app)
-        }
-    }
-
-    @objc func moveToTrash(_ sender: Any?) {
-        let urls = selectedURLs
-        // A server has no Trash: deleting there asks first.
-        if !urls.isEmpty, isOnServer { return deleteOnServer(urls) }
-        guard !urls.isEmpty, !isInsideArchive else { return }
-        // In the Trash, ⌘⌫ puts things back (Finder does the same). Trashing what's already in a Trash again would lose
-        // where it came from.
-        if urls.allSatisfy(Trash.contains) { return putBack(sender) }
-        let copies = services.copies
-        guard urls.allSatisfy({ FileOps.canTrash($0, copies: copies) }) else { return NSSound.beep() }
-        // Keep the cursor where it was: select the row that slides into the first removed one's place.
-        let removed = Set(urls.map(Self.key))
-        let survivors = rows.filter { !removed.contains(Self.key($0.url)) }
-        if let first = rows.firstIndex(where: { removed.contains(Self.key($0.url)) }), !survivors.isEmpty {
-            pendingSelection = [survivors[min(first, survivors.count - 1)].url]
-        }
-        let undo = undoManager
-        Task { [weak self] in
-            do {
-                try await FileOps.trashInBackground(urls, undo: undo, copies: copies)
-            } catch let noTrash as FileOps.NoTrash {
-                guard let self else { return }
-                Self.confirmDelete(noTrash.urls, in: view.window, noTrash: true, copies: copies) { [weak self] in self?.refresh() }
-            } catch {
-                self?.presentFileError(error)
-            }
-            self?.refresh()
-        }
-    }
-
-    @objc func duplicate(_ sender: Any?) {
-        let urls = selectedURLs
-        // The menus are off in the Trash and in archives opened as folders; this also covers ⌘K.
-        guard !urls.isEmpty, !isShowingTrash, !isInsideArchive else { return }
-        let revision = navigationRevision
-        // Copying onto itself with "keep both" gives Finder's "name copy" naming, with progress for big items.
-        let job = services.transfers.enqueue(moves: urls.map { TransferMove(from: $0, to: $0) }, mode: .copy,
-                                               undo: undoManager, conflicts: .keepBoth)
-        job.onFinish = { [weak self] job in
-            guard let self else { return }
-            if navigationRevision == revision, !job.createdItems.isEmpty { pendingSelection = job.createdItems }
-            refresh()
-        }
-    }
-
-    /// Selects `urls` once the folder shows them (after the reload a change brings).
-    func selectWhenShown(_ urls: [URL]) {
-        pendingSelection = urls
-        refresh()
-    }
-
-    @objc func newFolder(_ sender: Any?) {
-        if let directory = targetDirectory, services.remote.copies.server(containing: directory) != nil, !isShowingResults { return newFolderOnServer(in: directory) }
-        guard let directory = targetDirectory, !isShowingTrash, !isInsideArchive else { return }
-        perform {
-            let url = try FileOps.newFolder(in: directory, undo: self.undoManager, copies: self.services.copies)
-            self.renameWhenShown(url, in: directory)
-        }
-    }
-
-    /// File ▸ New File: an empty "untitled.txt" (the extension is in Settings ▸ General), selected and being renamed.
-    @objc func newFile(_ sender: Any?) {
-        if let directory = targetDirectory, services.remote.copies.server(containing: directory) != nil, !isShowingResults { return newFileOnServer(in: directory) }
-        guard let directory = targetDirectory, !isShowingTrash, !isInsideArchive else { return }
-        perform {
-            let url = try FileOps.newFile(in: directory, extension: preferences.newFileExtension, undo: self.undoManager, copies: self.services.copies)
-            self.renameWhenShown(url, in: directory)
-        }
-    }
-
-    /// An item just made in `directory`: selected, and renamed once it's shown.
-    func renameWhenShown(_ url: URL, in directory: URL) {
-        guard !isShowingResults, !isLoadingFolder else { return }
-        if effectiveMode == .columns, Self.key(directory) != self.directory.map(Self.key) {
-            columns.renameWhenShown(url, in: directory)
-            return
-        }
-        guard Self.key(directory) == self.directory.map(Self.key) else { return }
-        pendingSelection = [url]
-        pendingRename = url
-        refresh()
-    }
-
-    func noteNavigationContextChanged() {
-        navigationRevision += 1
-        actionFetch?.cancel()
-        actionFetch = nil
-    }
-
-    /// Navigation and failed reads must not leave a selection or rename waiting for an unrelated later listing.
-    func cancelPendingActions() {
-        noteNavigationContextChanged()
-        cancelOutlineRename()
-        presentations.cached.forEach { $0.cancelRename() }
-        selectionFetch?.cancel()
-        selectionFetch = nil
-        pendingSelection = nil
-        pendingRename = nil
-        columnController?.cancelPendingRename()
-    }
-
-    func cancelOutlineRename() {
-        guard let field = renamingField, let node = renaming else { return }
-        field.stringValue = node.entry.name
-        renaming = nil
-        renamingField = nil
-        field.abortEditing()
-        field.isEditable = false
-        field.isSelectable = false
-        field.drawsBackground = false
-    }
-
-    func stopBackgroundWork() {
-        cancelPendingActions()
-        resortWork?.cancel()
-        resortWork = nil
-        watchers = []
-        gitObservation = nil
-        loading.invalidate()
-        sizer.cancelPending()
-        mediaInfo.cancelPending()
-        columnController?.stopBackgroundWork()
-        galleryController?.stopBackgroundWork()
-    }
-
-    @objc func renameSelection(_ sender: Any?) {
-        if selectedEntries.count > 1 { return renameItems() }
-        guard selectedEntries.count == 1, let url = selectedURLs.first else { return }
-        beginRename(url)
-    }
-
-    /// A second, slower click on the name of the only selected item (Finder's click to rename): renamed in place
-    /// wherever File ▸ Rename is allowed (not in an archive opened as a folder, Disk Usage or a folder still loading).
-    func renameClicked(_ url: URL) {
-        let rename = NSMenuItem(title: "", action: #selector(renameSelection(_:)), keyEquivalent: "")
-        guard selectedURLs.count == 1, validateMenuItem(rename) else { return }
-        beginRename(url)
-    }
-
-    /// Rename N Items…: a rule for all of them, previewed live, applied as one undoable step.
-    func renameItems() {
-        let urls = selectedURLs
-        guard urls.count > 1, !isInsideArchive, !isOnServer, !isLoadingFolder else { return }
-        let revision = navigationRevision
-        let base = targetDirectory ?? directory ?? urls[0].deletingLastPathComponent()
-        let controller = BatchRenameController(urls: urls, baseFolder: base, undo: undoManager,
-                                               copies: services.copies, history: services.transfers.history)
-        controller.onApplied = { [weak self] results in
-            guard let self, navigationRevision == revision, !results.isEmpty else { return }
-            selectWhenShown(results)
-        }
-        presentAsSheet(controller)
-    }
-
-    /// "Rename", or "Rename 3 Items…" for several, like Finder.
-    var renameTitle: String {
-        let count = selectedEntries.count
-        return count > 1 ? String(localized: "Rename \(count) Items…", comment: "plural")
-                         : String(localized: "Rename", comment: "Menu command: rename the selected item")
-    }
-
-    /// View ▸ Sort By: the same orders as the list's column headers, for every view. Tags follow `sortMenuKeys`.
-    static let sortMenuKeys: [(key: NSUserInterfaceItemIdentifier, ascending: Bool)] = [
-        (.name, true), (.kind, true), (.modified, false), (.created, false), (.size, false),
-    ]
-
-    @objc func sortBy(_ sender: NSMenuItem) {
-        guard Self.sortMenuKeys.indices.contains(sender.tag) else { return }
-        let choice = Self.sortMenuKeys[sender.tag]
-        // Like Finder, picking the current order again keeps its direction.
-        if outlineView.sortDescriptors.first?.key == choice.key.rawValue { return }
-        outlineView.sortDescriptors = [NSSortDescriptor(key: choice.key.rawValue, ascending: choice.ascending)]
-    }
-
-    @objc func copy(_ sender: Any?) {
-        let urls = selectedURLs
-        let copies = services.copies
-        let clipboard = services.clipboard
-        // A container's or a server's items are read first (folders with all they hold, shown in Transfers), then go on
-        // the clipboard as a staged copy: pasting anywhere (Finder too) gets all of them as ordinary files, never a
-        // half-read copy or a link written by another machine.
-        let fromContainers = urls.filter(copies.contains)
-        guard fromContainers.isEmpty else {
-            return services.transfers.add(CopyFetchJob(fromContainers, copies: copies) { [weak self] in
-                let task = Task {
-                    let staged = await Task.detached(priority: .userInitiated) { copies.stageForClipboard(urls) }.value
-                    if !staged.isEmpty { clipboard.write(staged, cut: false) }
-                }
-                self?.commandWork = task
-            })
-        }
-        clipboard.write(urls, cut: false)
-    }
-
-    @objc func cut(_ sender: Any?) {
-        services.clipboard.write(selectedURLs, cut: true)
-    }
-
-    @objc func paste(_ sender: Any?) {
-        guard !isInsideArchive || isOnServer else { return }
-        pasteItems(forceMove: false)
-    }
-
-    @objc func pasteAndMove(_ sender: Any?) {
-        guard !isInsideArchive || isOnServer else { return }
-        pasteItems(forceMove: true)
-    }
-
-    private func pasteItems(forceMove: Bool) {
-        guard let directory = targetDirectory else { return }
-        let clipboard = services.clipboard
-        let (urls, isCut) = clipboard.read()
-        guard !urls.isEmpty else { return }
-        // Onto a server: copied there (what's on this Mac stays, even after Cut; a Cut on that server moves it there).
-        if services.remote.copies.contains(directory) { return copyToServer(urls, into: directory, move: forceMove || isCut) }
-        transfer(urls, into: directory, move: forceMove || isCut)
-        if isCut { clipboard.clearCut() }
-    }
-
-    @objc func copyPath(_ sender: Any?) {
-        let here = (effectiveMode == .columns ? columns.activeDirectory : nil) ?? directory
-        let urls = selectedURLs.isEmpty ? [here].compactMap { $0 } : selectedURLs
-        let copies = services.copies
-        // In a container's files, the path in the container ("/etc/hosts"); a container itself, its name. On a server,
-        // the server's address and path ("deploy@web-1:/srv/app"). Never the path of Strata's copy, which is gone when
-        // it quits.
-        let paths = urls.compactMap { url -> String? in
-            if copies.remoteCopies.contains(url) { return copies.remoteCopies.displayPath(url) }
-            if copies.containerCopies.contains(url) {
-                guard let (source, top) = copies.containerCopies.copy(containing: url),
-                      let path = ContainerCopies.containerPath(of: url, top: top) else {
-                    return nil
-                }
-                return top.standardizedFileURL == url.standardizedFileURL ? source.name : path
-            }
-            if copies.contains(url) { return copies.displayPath(url) }
-            return url.path
-        }
-        guard !paths.isEmpty else { return NSSound.beep() }
-        services.clipboard.pasteboard.clearContents()
-        services.clipboard.pasteboard.setString(paths.joined(separator: "\n"), forType: .string)
-    }
-
-    /// Adds the selected folders (or, with nothing selected, this folder) to the sidebar's favorites.
-    @objc func addToSidebar(_ sender: Any?) {
-        let folders = selectedEntries.filter(\.isFolder).map(\.url)
-        // A temporary copy of an archive's contents doesn't belong in the sidebar.
-        Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !isReadOnlyCopy($0) },
-                            preferences: preferences)
-    }
-
-    @objc func addToShelf(_ sender: Any?) {
-        ShelfPanel.shared.add(selectedURLs)
-    }
-
-    /// Shows the system share picker (AirDrop, Messages, Mail, …) for the selection, pointing at the first selected item.
-    @objc func share(_ sender: Any?) {
-        let urls = selectedURLs
-        guard !urls.isEmpty else { return }
-        let (rect, edge) = selectionAnchor()
-        NSSharingServicePicker(items: urls).show(relativeTo: rect, of: view, preferredEdge: edge)
-    }
-
-    /// The selection's tags in a popover with suggestions (Finder's Tags…).
-    @objc func editTags(_ sender: Any?) {
-        let urls = selectedURLs
-        guard !urls.isEmpty, urls.allSatisfy(TagStore.canTag) else { return }
-        let (rect, _) = selectionAnchor()
-        TagEditorController(urls: urls, undo: undoManager).show(relativeTo: rect, of: view)
-    }
-
-    /// Where to point a popover about the selection: the first selected item on screen (not under the toolbar), or
-    /// the top middle of the folder when none is. The edge says which way the popover should open.
-    func selectionAnchor() -> (rect: NSRect, edge: NSRectEdge) {
-        let area = view.safeAreaRect
-        if let window = view.window {
-            let anchor = selectedURLs.prefix(200).lazy.compactMap { [self] url -> NSRect? in
-                guard let screenRect = iconScreenRect(for: url) else { return nil }
-                let rect = view.convert(window.convertFromScreen(screenRect), from: nil).intersection(area)
-                return rect.isEmpty ? nil : rect
-            }.first
-            if let anchor { return (anchor, .maxY) }
-        }
-        return (NSRect(x: area.midX, y: area.maxY - 8, width: 1, height: 1), .minY)
-    }
-
-    /// Where an item's icon is on screen, when it's visible: for Quick Look's zoom and to point the share picker at it.
-    func iconScreenRect(for url: URL) -> NSRect? {
-        if let activeView { return activeView.screenRect(for: url) }
-        guard let node = node(for: url), let window = view.window else { return nil }
-        let row = outlineView.row(forItem: node)
-        guard row >= 0 else { return nil }
-        let cell = outlineView.frameOfCell(atColumn: outlineView.column(withIdentifier: .name), row: row)
-        let side = NameCellView.iconSide
-        let iconRect = NSRect(x: cell.minX + 1, y: cell.midY - side / 2, width: side, height: side)
-        guard outlineView.visibleRect.intersects(iconRect) else { return nil }
-        return window.convertToScreen(outlineView.convert(iconRect, to: nil))
-    }
-
-    @objc func showInFinder(_ sender: Any?) {
-        // Inside an archive opened as a folder, Finder shows the archive (not Strata's copy in its caches).
-        if isInsideArchive { return showArchiveInFinder(sender) }
-        guard let finder = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.finder") else { return }
-        let target = selectedURLs.first?.deletingLastPathComponent() ?? directory
-        guard let target else { return }
-        NSWorkspace.shared.open([target], withApplicationAt: finder, configuration: NSWorkspace.OpenConfiguration())
-    }
-
-    @objc func openInTerminal(_ sender: Any?) {
-        // A Compose project's folder on this Mac, not the copy Strata keeps of its containers.
-        if openStackInTerminal() { return }
-        // In a container's files: a shell in the container. On an SFTP server: a shell there.
-        if openTerminalInContainer() || openTerminalOnServer() { return }
-        let selected = selectedEntries
-        let folder = selected.count == 1 && selected[0].isFolder ? selected[0].url : targetDirectory
-        guard let folder else { return }
-        guard let terminal = preferences.terminalURL else { return }
-        NSWorkspace.shared.open([folder], withApplicationAt: terminal, configuration: NSWorkspace.OpenConfiguration())
-    }
-
-    /// The selection is a Compose project (or the folder shown is one, with nothing selected).
-    var isStackContext: Bool {
-        let copies = services.copies.containerCopies
-        if selectedEntries.isEmpty { return directory.map(copies.isStack) == true }
-        return selectedEntries.allSatisfy { copies.isStack($0.url) }
-    }
-
-    /// Project folders on this Mac for the stacks in the context menu.
-    func stackProjectFolders() -> [URL] {
-        let stacks = selectedEntries.isEmpty ? [directory].compactMap { $0 } : selectedEntries.map(\.url)
-        let copies = services.copies.containerCopies, store = services.containerStore
-        return stacks.compactMap { StackProjects.existingFolder(of: $0, copies: copies, store: store) }
-    }
-
-    /// Opens those project folders in the terminal. True when this was a stack, even if the folder is gone.
-    private func openStackInTerminal() -> Bool {
-        guard isStackContext else { return false }
-        let folders = stackProjectFolders()
-        guard let terminal = preferences.terminalURL, !folders.isEmpty else { NSSound.beep(); return true }
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.open(folders, withApplicationAt: terminal, configuration: configuration)
-        return true
-    }
-
-    @objc private func openStackWithApplication(_ sender: NSMenuItem) {
-        guard let app = sender.representedObject as? URL else { return }
-        let folders = stackProjectFolders()
-        guard !folders.isEmpty else { return NSSound.beep() }
-        for folder in folders { ProjectEditors.open(folder, with: app) }
-    }
-
-    @objc func toggleHiddenFiles(_ sender: Any?) {
-        preferences.showHidden.toggle()
-    }
-
-    @objc func toggleFoldersFirst(_ sender: Any?) {
-        preferences.foldersFirst.toggle()
-    }
-
-    @objc func reloadFolder(_ sender: Any?) {
-        for node in nodes where node.entry.isDirectory { FolderSizer.invalidate(node.url) }
-        if let repository = gitObservation?.repository { GitStatusStore.shared.refresh(repository, force: true) }
-        // Invalidation and the following read belong to the same request, cancelled together on navigation.
-        refresh(invalidateCopy: true)
-    }
-
-    @objc private func prefsChanged() {
-        listing.sort(using: sort)
-        refresh()
-    }
-
-    /// Density or text size changed: every view takes the new row height and font (nothing is read again).
-    @objc private func appearanceChanged() {
-        outlineView.rowHeight = FileViewStyle.listHeight(for: preferences)
-        outlineView.reloadData()
-        columnController?.restyle()
-        if let gridController { gridController.restyle() }
-        galleryController?.refreshVisibleItems()
-    }
-
-    @objc private func viewOptionsChanged() {
-        guard let gridController else { return }
-        gridController.showsItemInfo = preferences.iconViewOptions.showsInfo
-        gridController.setIconSize(CGFloat(preferences.gridIconSize), animated: false)
-        gridController.refreshVisibleItems(reconfigure: true)
-    }
-
-    /// Index totals moved: refresh visible sizes (and the order, when sorting by size).
-    @objc private func indexChanged() {
-        // Folder sizes come from the index; a file's is its own.
-        let column = outlineView.column(withIdentifier: .size)
-        let visible = outlineView.rows(in: outlineView.visibleRect)
-        let folders = IndexSet((visible.location..<NSMaxRange(visible)).filter { row in
-            (outlineView.item(atRow: row) as? FileNode)?.entry.isDirectory == true
-        })
-        if column >= 0, !folders.isEmpty {
-            outlineView.reloadData(forRowIndexes: folders, columnIndexes: [column])
-        }
-        if ordering.choice?.key == .size { scheduleResort() }
-        if effectiveMode == .treemap { pushContent(animated: true) }
-        if effectiveMode == .grid { gridController?.refreshVisibleItems(reconfigure: true) }
-        delegate?.browserContentDidChange(self)
-    }
-
-    /// Status arrived or changed: redraw visible rows (badges and ignored-dimming).
-    @objc private func gitStatusChanged(_ notification: Notification) {
-        guard let root = notification.userInfo?["root"] as? URL, let directory,
-              directory.path == root.path || directory.path.hasPrefix(root.path + "/") else { return }
-        clipboardChanged()
-        gridController?.refreshVisibleItems()
-        columnController?.refreshVisibleRows()
-    }
-
-    /// Reads the shown folder's tags again (Finder may have changed them while Strata was in the background).
-    func rereadTags() {
-        guard let directory, !isShowingResults else { return }
-        TagStore.shared.invalidate(directory)
-        TagStore.shared.load(nodes.map(\.entry), in: directory)
-        CloudStore.shared.load(nodes.map(\.url), in: directory)
-    }
-
-    /// Tags changed (here or in another window) or were read: redraw what's shown.
-    @objc private func tagsChanged() {
-        reloadVisibleCells()
-    }
-
-    /// Every view mode's visible items configured again (icons, badges, thumbnails).
-    func reloadVisibleCells() {
-        clipboardChanged()
-        gridController?.refreshVisibleItems(reconfigure: true)
-        columnController?.refreshVisibleRows()
-        galleryController?.refreshVisibleItems(reconfigure: true)
-    }
-
-    @objc private func clipboardChanged() {
-        let visible = outlineView.rows(in: outlineView.visibleRect)
-        guard visible.length > 0 else { return }
-        outlineView.reloadData(forRowIndexes: exceptRenaming(IndexSet(integersIn: visible.location..<NSMaxRange(visible))),
-                               columnIndexes: IndexSet(integersIn: 0..<outlineView.numberOfColumns))
-    }
-
-    /// Whether a name in the list is being edited right now.
-    private var isRenamingInPlace: Bool { renaming != nil && renamingField?.currentEditor() != nil }
-
-    /// `rows` without the one whose name is being edited: reloading a row gives it a new cell, which ends the edit.
-    private func exceptRenaming(_ rows: IndexSet) -> IndexSet {
-        guard isRenamingInPlace, let renaming else { return rows }
-        let row = outlineView.row(forItem: renaming)
-        guard row >= 0 else { return rows }
-        var rows = rows
-        rows.remove(row)
-        return rows
-    }
-
-    /// Copies and moves go through the transfer queue: progress, pause, conflicts asked up front, undo.
-    private func transfer(_ urls: [URL], into target: URL, move: Bool) {
-        if services.remote.copies.contains(target) { return copyToServer(urls, into: target, move: move) }
-        let job = services.transfers.enqueue(urls, to: target, mode: move ? .move : .copy,
-                                               undo: undoManager, conflicts: .sheet(for: view.window))
-        job.onFinish = { [weak self] job in
-            guard let self else { return }
-            if target.standardizedFileURL == targetDirectory?.standardizedFileURL, !job.createdItems.isEmpty {
-                pendingSelection = job.createdItems
-            }
-            refresh()
-        }
-    }
-
-    private func perform(_ body: () throws -> Void) {
-        do { try body() } catch { presentFileError(error) }
-    }
-
-    private func performAsync(_ body: @escaping () async throws -> Void) {
-        commandWork = Task { [weak self] in
-            do { try await body() } catch { self?.presentFileError(error) }
-        }
-    }
-
-    private func presentFileError(_ error: Error) {
-        guard let window = view.window else { return }
-        NSAlert(error: error).beginSheetModal(for: window)
-        refresh()
-    }
-
-    // MARK: - Rename
-
-    /// Renames with Finder's checks: no "/" or leading dot, and a confirmation when a file's extension changes.
-    func renameItem(_ url: URL, to newName: String) {
-        let oldName = url.lastPathComponent
-        guard !newName.isEmpty, newName != oldName else { return }
-        if newName.contains("/") {
-            renameRefused(String(localized: "The name “\(newName)” can’t be used."),
-                          String(localized: "Names can’t contain “/”. Try a different name."))
-            return
-        }
-        if newName.hasPrefix("."), !oldName.hasPrefix(".") {
-            renameRefused(String(localized: "You can’t use a name that begins with a dot “.”."),
-                          String(localized: "These names are reserved for the system, and the item would be hidden. Please choose another name."))
-            return
-        }
-        let revision = navigationRevision
-        let commit: (String) -> Void = { [self] targetName in
-            guard !targetName.isEmpty, targetName != oldName else { return }
-            if services.remote.copies.contains(url) { return renameOnServer(url, to: targetName) }
-            performAsync { [self] in
-                let renamed = try await FileOps.rename(url, to: targetName, undo: undoManager, copies: services.copies)
-                if navigationRevision == revision { pendingSelection = [renamed] }
-                refresh()
-            }
-        }
-        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
-        let isFolder = values?.isDirectory == true && values?.isPackage != true
-        let (oldExtension, newExtension) = ((oldName as NSString).pathExtension, (newName as NSString).pathExtension)
-        guard !isFolder, oldExtension.lowercased() != newExtension.lowercased(), let window = view.window else {
-            commit(newName)
-            return
-        }
-        let alert = NSAlert()
-        if oldExtension.isEmpty {
-            alert.messageText = String(localized: "Are you sure you want to add the extension “.\(newExtension)” to the end of the name?")
-        } else if newExtension.isEmpty {
-            alert.messageText = String(localized: "Are you sure you want to remove the extension “.\(oldExtension)”?")
-        } else {
-            alert.messageText = String(localized: "Are you sure you want to change the extension from “.\(oldExtension)” to “.\(newExtension)”?")
-        }
-        alert.informativeText = String(localized: "If you make this change, your document may open in a different app.")
-        alert.addButton(withTitle: oldExtension.isEmpty ? String(localized: "Don’t Add", comment: "Alert button: don’t add the file extension")
-                                                        : String(localized: "Keep .\(oldExtension)", comment: "Alert button: keep the file extension (“Keep .txt”)"))
-        alert.addButton(withTitle: newExtension.isEmpty ? String(localized: "Remove", comment: "Alert button: remove the file extension")
-                                                        : String(localized: "Use .\(newExtension)", comment: "Alert button: use the new file extension (“Use .md”)"))
-        alert.beginSheetModal(for: window) { response in
-            if response == .alertSecondButtonReturn {
-                commit(newName)
-            } else if response == .alertFirstButtonReturn {
-                let stem = newExtension.isEmpty ? newName : (newName as NSString).deletingPathExtension
-                let kept = oldExtension.isEmpty ? stem : "\(stem).\(oldExtension)"
-                commit(kept)
-            }
-        }
-    }
-
-    private func renameRefused(_ message: String, _ detail: String) {
-        guard let window = view.window else { return }
-        let alert = NSAlert()
-        alert.messageText = message
-        alert.informativeText = detail
-        alert.beginSheetModal(for: window)
-    }
-
-    private func beginRename(_ url: URL) {
-        // An archive opened as a folder isn't changed (a server's files are, through the server).
-        let remoteCopies = services.remote.copies
-        guard !isReadOnlyCopy(url) || (remoteCopies.contains(url) && RemoteCopies.remotePath(of: url, top: remoteCopies.server(containing: url)?.top ?? url) != "/") else { return }
-        if let activeView {
-            activeView.beginRename(rowURL(url))
-            return
-        }
-        guard let node = node(for: url) else { return }
-        let row = outlineView.row(forItem: node)
-        let column = outlineView.column(withIdentifier: .name)
-        guard row >= 0, column >= 0 else { return }
-        outlineView.selectRowIndexes([row], byExtendingSelection: false)
-        outlineView.scrollRowToVisible(row)
-        guard let cell = outlineView.view(atColumn: column, row: row, makeIfNecessary: true) as? NSTableCellView,
-              let field = cell.textField else { return }
-        renaming = node
-        renamingField = field
-        field.isEditable = true
-        field.isSelectable = true
-        field.drawsBackground = true
-        field.backgroundColor = .textBackgroundColor
-        field.textColor = .textColor
-        field.stringValue = node.entry.name
-        field.delegate = self
-        view.window?.makeFirstResponder(field)
-        if let editor = field.currentEditor() {
-            let name = node.entry.name as NSString
-            let base = node.entry.isFolder ? name : name.deletingPathExtension as NSString
-            editor.selectedRange = NSRange(location: 0, length: base.length)
-        }
-    }
-
     // MARK: - Quick Look
 
     @objc func toggleQuickLook(_ sender: Any?) {
@@ -1514,626 +886,5 @@ final class BrowserViewController: NSViewController {
             panel.dataSource = nil
             panel.delegate = nil
         }
-    }
-
-    // MARK: - Context menu
-
-    private func makeContextMenu() -> NSMenu {
-        let menu = NSMenu()
-        let selected = selectedEntries
-        // `addTitled` takes a title that's already localized (Rename 3 Items…), `add` a literal.
-        func addTitled(_ title: String, _ action: Selector, _ symbol: String? = nil) {
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            item.target = self
-            if let symbol { item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
-            menu.addItem(item)
-        }
-        func add(_ title: String.LocalizationValue, _ action: Selector, _ symbol: String? = nil) {
-            addTitled(String(localized: title), action, symbol)
-        }
-        func add(_ command: StrataCommand, title: String? = nil) {
-            let item = command.menuItem(title: title, target: self, withShortcut: false)
-            item.image = command.image
-            menu.addItem(item)
-        }
-        func addStackOpenItems() {
-            guard !stackProjectFolders().isEmpty else { return }
-            add(.openInTerminal)
-            let apps = ProjectEditors.installed()
-            guard !apps.isEmpty else { return }
-            let submenu = NSMenu()
-            for app in apps {
-                let item = NSMenuItem(title: FileManager.default.displayName(atPath: app.path), action: #selector(openStackWithApplication(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = app
-                let icon = NSWorkspace.shared.icon(forFile: app.path)
-                icon.size = NSSize(width: 16, height: 16)
-                item.image = icon
-                submenu.addItem(item)
-            }
-            let openWith = NSMenuItem(title: String(localized: "Open With"), action: nil, keyEquivalent: "")
-            openWith.image = NSImage(systemSymbolName: "app.badge", accessibilityDescription: nil)
-            openWith.submenu = submenu
-            menu.addItem(openWith)
-        }
-        let hiddenFilesTitle = preferences.showHidden ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files")
-        if selected.isEmpty {
-            // On a server: a new folder there, or pasting onto it; a shell there (SFTP).
-            if isOnServer {
-                add(.newFolder)
-                add(.newFile)
-                if services.clipboard.hasFiles { add(.paste) }
-                menu.addItem(.separator())
-                if directory.flatMap({ services.remote.copies.server(containing: $0)?.server.kind }) == .sftp {
-                    add(.openInTerminal)
-                }
-                add(.copyPath)
-                menu.addItem(.separator())
-                add(.toggleHiddenFiles, title: hiddenFilesTitle)
-                return menu
-            }
-            // Inside an archive opened as a folder nothing is added; Finder is shown the archive itself.
-            if isInsideArchive {
-                if directory.map(services.copies.containerCopies.isStack) == true {
-                    addStackOpenItems()
-                } else if directory.map(services.copies.containerCopies.engineFolder) == nil {
-                    add(.openInTerminal)
-                }
-                if directory.map(ArchiveCache.contains) == true { add("Show Archive in Finder", #selector(showArchiveInFinder(_:)), "macwindow") }
-                menu.addItem(.separator())
-                add(.toggleHiddenFiles, title: hiddenFilesTitle)
-                return menu
-            }
-            add(.newFolder)
-            add(.newFile)
-            if services.clipboard.hasFiles { add(.paste) }
-            menu.addItem(.separator())
-            add(.openInTerminal)
-            add(.copyPath)
-            add(.showInFinder)
-            menu.addItem(.separator())
-            add(.toggleHiddenFiles, title: hiddenFilesTitle)
-            if isShowingTrash {
-                menu.addItem(.separator())
-                addEmptyTrash()
-            }
-            return menu
-        }
-        func addEmptyTrash() {
-            let empty = NSMenuItem(title: String(localized: "Empty Trash…"), action: #selector(AppDelegate.emptyTrash(_:)), keyEquivalent: "")
-            empty.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
-            menu.addItem(empty)
-        }
-        // In the Trash, Finder leads with Put Back and Delete Immediately.
-        let inTrash = selected.allSatisfy { Trash.contains($0.url) }
-        let reachesIntoTrash = !inTrash && selected.contains { Trash.isInTrash($0.url) }
-        if inTrash {
-            add(.putBack)
-            add(.deleteImmediately)
-            menu.addItem(.separator())
-        }
-        add(.openSelection)
-        // Containers: what can be done to them, then a shell in one.
-        let containers = selectedContainers
-        if !containers.isEmpty {
-            menu.addItem(.separator())
-            for action in ContainerControl.actions(for: containers) {
-                add(.container(action))
-            }
-            add(.openInTerminal)
-            menu.addItem(.separator())
-        }
-        // With archives opening normally (Settings), browsing one is still a click away.
-        if selected.count == 1, let entry = selected.first, !entry.isFolder, !opensAsFolder(entry),
-           ArchiveKind(fileName: entry.name) != nil {
-            add("Open as Folder", #selector(openArchiveAsFolder(_:)), "archivebox")
-        }
-        if let first = selected.first, !first.isFolder {
-            let apps = NSWorkspace.shared.urlsForApplications(toOpen: first.url)
-            if !apps.isEmpty {
-                let defaultApp = NSWorkspace.shared.urlForApplication(toOpen: first.url)
-                let submenu = NSMenu()
-                for app in apps.prefix(24) {
-                    var title = FileManager.default.displayName(atPath: app.path)
-                    if app == defaultApp { title = String(localized: "\(title) (default)", comment: "Open With submenu: the app that opens the file by default") }
-                    let item = NSMenuItem(title: title, action: #selector(openWithApplication(_:)), keyEquivalent: "")
-                    item.target = self
-                    item.representedObject = app
-                    let icon = NSWorkspace.shared.icon(forFile: app.path)
-                    icon.size = NSSize(width: 16, height: 16)
-                    item.image = icon
-                    submenu.addItem(item)
-                }
-                let openWith = NSMenuItem(title: String(localized: "Open With"), action: nil, keyEquivalent: "")
-                openWith.image = NSImage(systemSymbolName: "app.badge", accessibilityDescription: nil)
-                openWith.submenu = submenu
-                menu.addItem(openWith)
-            }
-        }
-        if !selectedApps.isEmpty { add(.checkAppsForUpdates, title: appUpdatesTitle) }
-        // iCloud Drive and File Provider folders: bring items here, or free their space.
-        let cloud = selectedCloudStatuses
-        if !inTrash, cloud.contains(.cloudOnly) { add("Download Now", #selector(downloadNow(_:)), "icloud.and.arrow.down") }
-        if !inTrash, cloud.contains(.downloaded) { add("Remove Download", #selector(removeDownload(_:)), "icloud.slash") }
-        add(.toggleQuickLook)
-        // The system's own item: it keeps its picker alive and shows the share sheet next to the menu. Not for a
-        // container's files: they're only read when copied out.
-        let inContainer = directory.map(services.copies.contains) == true
-        if !inContainer { menu.addItem(NSSharingServicePicker(items: selected.map(\.url)).standardShareMenuItem) }
-        menu.addItem(.separator())
-        // On a server: rename one, delete (it asks: no Trash there), copy out.
-        if isOnServer {
-            if selected.count == 1 { add(.renameSelection, title: renameTitle) }
-            addTitled(String(localized: "Delete…", comment: "Menu command: delete for good (on a server, which has no Trash)"),
-                      #selector(moveToTrash(_:)), "trash")
-            menu.addItem(.separator())
-            add(.copy)
-            add(.copyPath)
-            return menu
-        }
-        // Inside an archive opened as a folder nothing changes: copying out is what's offered.
-        let inArchive = isInsideArchive
-        if inArchive {
-            add(.copy)
-            if !inContainer { add(.addToShelf) }
-            if containers.isEmpty {
-                if !selectedEntries.isEmpty, selectedEntries.allSatisfy({ services.copies.containerCopies.isStack($0.url) }) {
-                    if !stackProjectFolders().isEmpty { menu.addItem(.separator()) }
-                    addStackOpenItems()
-                } else {
-                    menu.addItem(.separator())
-                    add(.openInTerminal)
-                }
-            }
-            if directory.map(ArchiveCache.contains) == true { add("Show Archive in Finder", #selector(showArchiveInFinder(_:)), "macwindow") }
-            return menu
-        }
-        add(.renameSelection, title: renameTitle)
-        if inTrash {
-            addEmptyTrash()
-        } else {
-            add(.compress, title: compressTitle)
-            if !selectedArchives.isEmpty { add(.extract, title: extractTitle) }
-            add(.duplicate)
-            if !reachesIntoTrash { add(.moveToTrash) }
-        }
-        menu.addItem(.separator())
-        add(.copy)
-        add(.cut)
-        add(.copyPath)
-        add(.addToShelf)
-        // Finder's tags: the seven colors to click, and Tags… for any tag.
-        if !inTrash, selected.allSatisfy({ !$0.isVolume && TagStore.canTag($0.url) }) {
-            menu.addItem(.separator())
-            let urls = selected.map(\.url)
-            var applied: [String: Bool] = [:]
-            // Checkmarks for what every item has (not worked out for huge selections: each item would be read).
-            if urls.count <= 300 {
-                for tag in FinderTag.standard {
-                    applied[tag.name.lowercased()] = urls.allSatisfy { url in
-                        TagStore.shared.tags(for: url).contains { $0.name.caseInsensitiveCompare(tag.name) == .orderedSame }
-                    }
-                }
-            }
-            let row = NSMenuItem()
-            row.view = TagMenuView(applied: applied) { [weak self] tag in
-                guard let self else { return }
-                do { try TagStore.shared.toggle(tag, on: urls, undo: undoManager) } catch { presentFileError(error) }
-            }
-            menu.addItem(row)
-            add(.editTags)
-        }
-        if selectedEntries.contains(where: \.isFolder) { add(.addToSidebar) }
-        menu.addItem(.separator())
-        add(.openInTerminal)
-        add(.showInFinder)
-        return menu
-    }
-}
-
-// MARK: - Data source and delegate
-
-extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate {
-    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        guard let node = item as? FileNode else { return rows.count }
-        guard let children = node.children else {
-            loadChildren(of: node)
-            return 0
-        }
-        return children.count
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        guard let node = item as? FileNode else {
-            return rows.indices.contains(index) ? rows[index] : (rows.first as Any)
-        }
-        guard let children = node.children, children.indices.contains(index) else { return node }
-        return children[index]
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, shouldExpandItem item: Any) -> Bool {
-        // A drag resting on a folder springs it open; the outline's own expand-on-hover would compete.
-        !isDragOver
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        guard let node = item as? FileNode else { return false }
-        if node.groupTitle != nil { return true }
-        guard filter.isEmpty, !isShowingResults else { return false }
-        return node.entry.isFolder
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { ThemeRowView() }
-
-    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
-        guard let node = item as? FileNode else { return nil }
-        if let title = node.groupTitle {
-            let cell = outlineView.makeView(withIdentifier: .groupCell, owner: nil) as? GroupHeaderCellView ?? {
-                let cell = GroupHeaderCellView()
-                cell.identifier = .groupCell
-                return cell
-            }()
-            cell.configure(title: title, detail: node.groupDetail ?? "", icon: services.thumbnails.icon(for: node.entry))
-            return cell
-        }
-        guard let column = tableColumn else { return nil }
-        let entry = node.entry
-        let git = GitStatusStore.shared
-        let dimmed = entry.isHidden || services.clipboard.isCut(entry.url) || git.isIgnored(entry.url)
-        if column.identifier == .name {
-            let cell = outlineView.makeView(withIdentifier: .nameCell, owner: nil) as? NameCellView ?? {
-                let cell = NameCellView()
-                cell.identifier = .nameCell
-                return cell
-            }()
-            cell.configure(name: entry.displayName, icon: services.thumbnails.icon(for: entry), matches: node.matchIndices, dimmed: dimmed,
-                           git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
-                           cloud: CloudStore.shared.status(for: entry.url), thumbnail: preferences.showIconPreviews ? entry : nil,
-                           thumbnails: services.thumbnails, scale: outlineView.window?.backingScaleFactor ?? 2,
-                           typography: FileViewTypography(preferences: preferences))
-            return cell
-        }
-        let cell = outlineView.makeView(withIdentifier: .textCell, owner: nil) as? TextCellView ?? {
-            let cell = TextCellView()
-            cell.identifier = .textCell
-            return cell
-        }()
-        switch column.identifier {
-        case .modified: cell.configure(Format.date(entry.modified), alignment: .left, dimmed: dimmed)
-        case .created: cell.configure(Format.date(entry.created), alignment: .left, dimmed: dimmed)
-        case .added: cell.configure(Format.date(entry.added), alignment: .left, dimmed: dimmed)
-        case .fileExtension: cell.configure(entry.url.pathExtension, alignment: .left, dimmed: dimmed)
-        case .dimensions, .width, .height, .duration:
-            mediaInfo.request(entry)
-            let info = mediaInfo.cached(entry)
-            let text: String?
-            switch column.identifier {
-            case .dimensions: text = info?.dimensions
-            case .width: text = info?.width.map(String.init)
-            case .height: text = info?.height.map(String.init)
-            default: text = info?.durationText
-            }
-            cell.configure(text ?? (info == nil && mediaInfo.canRead(entry) ? "…" : "—"),
-                           alignment: column.headerCell.alignment, dimmed: dimmed)
-        case .size: cell.configure(sizeText(node), alignment: .right, dimmed: dimmed)
-        case .location: cell.configure(Format.tildePath(entry.url.deletingLastPathComponent()), alignment: .left, dimmed: dimmed)
-        default: cell.configure(entry.kind, alignment: .left, dimmed: dimmed)
-        }
-        return cell
-    }
-
-    private func sizeText(_ node: FileNode) -> String {
-        guard node.entry.isDirectory else { return Format.bytes(node.entry.size ?? 0) }
-        // A container's folder holds only what's been browsed: its size isn't known.
-        if services.copies.contains(node.url) { return "—" }
-        if let size = FileIndex.shared.folderSize(node.url) ?? sizer.cached(node.url) { return Format.bytes(size.bytes) }
-        guard canMeasure(node.entry) else { return "—" }
-        sizer.request(node.url)
-        return "…"
-    }
-
-    /// Symlinks and volumes aren't walked, and neither are guarded folders that would trigger a consent prompt.
-    func canMeasure(_ entry: FileEntry) -> Bool {
-        guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, !services.copies.contains(entry.url), let directory else { return false }
-        if FileIndex.shared.folderSize(entry.url) != nil { return true }
-        return !Privacy.measuringWouldPrompt(entry.url, browsing: directory)
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
-        (item as? FileNode)?.groupTitle != nil
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
-        (item as? FileNode)?.groupTitle == nil
-    }
-
-    func outlineViewSelectionDidChange(_ notification: Notification) {
-        delegate?.browserSelectionDidChange(self)
-        prefetchSelection()
-        if QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible {
-            panel.reloadData()
-        }
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-        guard !updatingSortDescriptor, let descriptor = outlineView.sortDescriptors.first,
-              let key = SortKey(rawValue: descriptor.key ?? "") else { return }
-        applySort(key, ascending: descriptor.ascending)
-    }
-
-    func applySort(_ key: SortKey, ascending direction: Bool, remember: Bool = true) {
-        ordering.choose(.init(key: key, ascending: direction), remember: remember)
-        syncSortDescriptor()
-        if remember { preferences.sortColumn = key.rawValue; preferences.sortAscending = direction }
-        let selection = selectedURLs
-        listing.sort(using: sort)
-        outlineView.reloadData()
-        pushContent()
-        select(selection, scroll: false)
-    }
-
-    // Drag and drop
-
-    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
-        guard let node = item as? FileNode, node.groupTitle == nil else { return nil }
-        return ContainerDragItem.writer(for: node.url, copies: services.copies)
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?,
-                     proposedChildIndex index: Int) -> NSDragOperation {
-        let urls = draggedURLs(info) ?? []
-        isDragOver = true
-        springLoader.hover(springTarget(item, index, urls), drag: info.draggingSequenceNumber)
-        guard !urls.isEmpty, let target = retargetDrop(outlineView, item) else { return [] }
-        // The rules every view shares: never into itself, no moves that change nothing, nothing into an archive opened
-        // as a folder, copies out of one.
-        return FileDrop.operation(urls, into: target, info: info, copies: services.copies)
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
-        springLoader.cancel()
-        isDragOver = false
-        let dropTarget: URL?
-        if let node = item as? FileNode {
-            dropTarget = node.groupTitle == nil && node.entry.isFolder ? node.url : nil
-        } else {
-            dropTarget = isShowingResults ? nil : directory
-        }
-        guard let urls = draggedURLs(info), let target = dropTarget else { return false }
-        let operation = FileDrop.operation(urls, into: target, info: info, copies: services.copies)
-        guard !operation.isEmpty else { return false }
-        transfer(urls, into: target, move: operation == .move)
-        return true
-    }
-
-    /// The folder row a file drag rests on (not between rows, not one of the dragged items or inside one), to spring
-    /// open.
-    private func springTarget(_ item: Any?, _ index: Int, _ dragged: [URL]) -> URL? {
-        guard !dragged.isEmpty, index == NSOutlineViewDropOnItemIndex, let node = item as? FileNode, node.groupTitle == nil,
-              node.entry.isFolder, !FileDrop.isInside(dragged, node.url),
-              SpringLoader.canOpen(node.url, browsing: directory) else { return nil }
-        return node.url
-    }
-
-    /// Opens a folder a drag rested on. Ignored while another folder loads: the rows on screen are the previous one's.
-    func springLoad(_ folder: URL, drag: Int) {
-        guard !isLoadingFolder else { return }
-        delegate?.browser(self, springLoadTo: folder, drag: drag)
-    }
-
-    private func retargetDrop(_ outlineView: NSOutlineView, _ item: Any?) -> URL? {
-        if let node = item as? FileNode, node.groupTitle == nil {
-            if node.entry.isFolder {
-                outlineView.setDropItem(node, dropChildIndex: NSOutlineViewDropOnItemIndex)
-                return node.url
-            }
-            if let parent = node.parent, parent.groupTitle == nil, parent.entry.isFolder {
-                outlineView.setDropItem(parent, dropChildIndex: NSOutlineViewDropOnItemIndex)
-                return parent.url
-            }
-        }
-        guard !isShowingResults else { return nil }
-        outlineView.setDropItem(nil, dropChildIndex: NSOutlineViewDropOnItemIndex)
-        return directory
-    }
-
-    private func draggedURLs(_ info: NSDraggingInfo) -> [URL]? {
-        FileDrop.urls(info, copies: services.copies)
-    }
-}
-
-// MARK: - Rename editing
-
-extension BrowserViewController: NSTextFieldDelegate {
-    func controlTextDidEndEditing(_ notification: Notification) {
-        guard let field = notification.object as? NSTextField, let node = renaming else { return }
-        let newName = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        renaming = nil
-        renamingField = nil
-        field.isEditable = false
-        field.isSelectable = false
-        field.drawsBackground = false
-        if let deferred = deferredApply, deferred.generation == generation {
-            apply(deferred.entries, preservingState: deferred.preservingState, fromTop: deferred.fromTop)
-        } else {
-            deferredApply = nil
-            let row = outlineView.row(forItem: node)
-            let column = outlineView.column(withIdentifier: .name)
-            if row >= 0, column >= 0 { outlineView.reloadData(forRowIndexes: [row], columnIndexes: [column]) }
-        }
-        view.window?.makeFirstResponder(outlineView)
-        if deferredMetadataOrder {
-            deferredMetadataOrder = false
-            resortAfterMetadata()
-        }
-        guard !newName.isEmpty, newName != node.entry.name else { return }
-        renameItem(node.url, to: newName)
-    }
-
-    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        if commandSelector == #selector(NSResponder.cancelOperation(_:)), let node = renaming {
-            (control as? NSTextField)?.stringValue = node.entry.name
-            view.window?.makeFirstResponder(outlineView)
-            return true
-        }
-        return false
-    }
-}
-
-// MARK: - Menu validation
-
-extension BrowserViewController: NSMenuItemValidation {
-    func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        let fileCommands: [Selector] = [
-            #selector(openSelection(_:)), #selector(moveToTrash(_:)), #selector(duplicate(_:)), #selector(newFolder(_:)),
-            #selector(newFile(_:)), #selector(renameSelection(_:)), #selector(toggleQuickLook(_:)), #selector(pasteAndMove(_:)),
-            #selector(copy(_:)), #selector(cut(_:)), #selector(paste(_:)), #selector(share(_:)),
-            #selector(putBack(_:)), #selector(deleteImmediately(_:)), #selector(compress(_:)), #selector(extract(_:)),
-        ]
-        // While a name is being edited, ⌘⌫, ⌘D, ⇧⌘N and ⌥⌘N belong to the text, not the file. While another folder loads,
-        // the rows on screen are the previous folder's.
-        if let action = item.action, fileCommands.contains(action),
-           view.window?.firstResponder is NSText || isLoadingFolder {
-            return false
-        }
-        let selectionCount = selectedEntries.count
-        let hasSelection = selectionCount > 0
-        // An archive opened as a folder is a copy that isn't saved back: nothing in it is changed from Strata.
-        let changes: [Selector] = [
-            #selector(newFolder(_:)), #selector(newFile(_:)), #selector(paste(_:)), #selector(pasteAndMove(_:)), #selector(renameSelection(_:)),
-            #selector(moveToTrash(_:)), #selector(deleteImmediately(_:)), #selector(duplicate(_:)), #selector(cut(_:)),
-            #selector(compress(_:)), #selector(extract(_:)), #selector(putBack(_:)),
-            #selector(editTags(_:)), #selector(addToSidebar(_:)),
-        ]
-        // On a server: new files and folders, renaming one item, deleting and pasting go to the server; the rest stays off.
-        let serverChanges: [Selector] = [#selector(newFolder(_:)), #selector(newFile(_:)), #selector(paste(_:)), #selector(pasteAndMove(_:)),
-                                         #selector(renameSelection(_:)), #selector(moveToTrash(_:)), #selector(deleteImmediately(_:))]
-        if isOnServer, let action = item.action, serverChanges.contains(action) {
-            // Like on this Mac: not in search results, a folder that didn't load, or Disk Usage.
-            let showsFolder = !isShowingResults && loadError == nil && effectiveMode != .treemap
-            switch action {
-            case #selector(moveToTrash(_:)):
-                item.title = String(localized: "Delete…", comment: "Menu command: delete for good (on a server, which has no Trash)")
-                return hasSelection
-            case #selector(deleteImmediately(_:)): return hasSelection
-            case #selector(renameSelection(_:)): return showsFolder && selectedEntries.count == 1
-            case #selector(paste(_:)), #selector(pasteAndMove(_:)): return showsFolder && services.clipboard.hasFiles
-            default: return showsFolder
-            }
-        }
-        // Back from a server: the File menu says Move to Trash again (Delete… was the server's).
-        if item.action == #selector(moveToTrash(_:)) { item.title = String(localized: "Move to Trash") }
-        if let action = item.action, changes.contains(action), isInsideArchive { return false }
-        switch item.action {
-        case #selector(moveToTrash(_:)):
-            // Finder's File menu says Put Back for things in the Trash, and won't trash what's inside a trashed folder.
-            let inTrash = hasSelection && selectedEntries.allSatisfy { Trash.contains($0.url) }
-            item.title = inTrash ? String(localized: "Put Back") : String(localized: "Move to Trash")
-            return hasSelection && (inTrash || !selectedEntries.contains { Trash.isInTrash($0.url) || Trash.isTrash(anySpelling: $0.url) })
-        case #selector(putBack(_:)):
-            return hasSelection && selectedEntries.allSatisfy { Trash.contains($0.url) }
-        case #selector(checkAppsForUpdates(_:)):
-            item.title = appUpdatesTitle
-            return !selectedApps.isEmpty
-        // A container's files are read only when copied out: no shelf, no share sheet, no Finder.
-        case #selector(addToShelf(_:)) where directory.map(services.copies.contains) == true,
-             #selector(share(_:)) where directory.map(services.copies.contains) == true,
-             #selector(showInFinder(_:)) where directory.map(services.copies.contains) == true:
-            return false
-        case #selector(openInTerminal(_:)) where serverKind != nil:
-            // On a server it's a shell there over ssh; a bucket has none.
-            return serverKind == .sftp
-        case #selector(openInTerminal(_:)) where isStackContext:
-            return !stackProjectFolders().isEmpty
-        case #selector(openInTerminal(_:)) where canOpenTerminalInContainer != nil:
-            // In a container's files it's a shell in the container, which has to be running.
-            return canOpenTerminalInContainer == true
-        case #selector(containerAction(_:)):
-            guard let raw = item.representedObject as? String, let action = ContainerAction(rawValue: raw) else { return false }
-            return selectedContainers.contains { action.applies(to: $0.state) && services.containerStore.busy[$0.id] == nil }
-        case #selector(duplicate(_:)):
-            return hasSelection && !isShowingTrash
-        case #selector(editTags(_:)):
-            return hasSelection && selectedEntries.allSatisfy { !$0.isVolume && TagStore.canTag($0.url) }
-        case #selector(compress(_:)):
-            // Finder names what it compresses: "Compress “Photos”", "Compress 3 Items".
-            item.title = hasSelection ? compressTitle : String(localized: "Compress", comment: "Menu command: zip the selected items")
-            return hasSelection && !isShowingTrash && effectiveMode != .treemap && canWriteBesideSelection
-        case #selector(extract(_:)):
-            item.title = extractTitle
-            return !selectedArchives.isEmpty && !isShowingTrash && canWriteBesideSelection
-        case #selector(openSelection(_:)), #selector(deleteImmediately(_:)),
-             #selector(copy(_:)), #selector(cut(_:)), #selector(toggleQuickLook(_:)), #selector(share(_:)):
-            return hasSelection
-        case #selector(renameSelection(_:)):
-            item.title = renameTitle
-            return selectionCount >= 1 && effectiveMode != .treemap
-        case #selector(paste(_:)), #selector(pasteAndMove(_:)):
-            return directory != nil && !isShowingResults && services.clipboard.hasFiles && !isShowingTrash
-        case #selector(newFolder(_:)), #selector(newFile(_:)):
-            // Disk Usage can't show an empty folder or file, so a new one would seem to vanish.
-            return directory != nil && !isShowingResults && loadError == nil && effectiveMode != .treemap && !isShowingTrash
-        case #selector(toggleHiddenFiles(_:)):
-            item.state = preferences.showHidden ? .on : .off
-            return true
-        case #selector(biggerIcons(_:)), #selector(smallerIcons(_:)):
-            // Icons zoom the icons; List and Columns, the names' text.
-            let bigger = item.action == #selector(biggerIcons(_:))
-            switch effectiveMode {
-            case .grid:
-                item.title = bigger ? String(localized: "Bigger Icons") : String(localized: "Smaller Icons")
-                return true
-            case .list, .columns:
-                item.title = bigger ? String(localized: "Bigger Text", comment: "View menu: make file names bigger (⌘+)")
-                    : String(localized: "Smaller Text", comment: "View menu: make file names smaller (⌘−)")
-                return bigger ? preferences.nameTextSize < Self.textSizes.upperBound : preferences.nameTextSize > Self.textSizes.lowerBound
-            case .gallery, .treemap:
-                return false
-            }
-        case #selector(toggleFoldersFirst(_:)):
-            item.state = preferences.foldersFirst ? .on : .off
-            return true
-        case #selector(sortBy(_:)):
-            let key = Self.sortMenuKeys.indices.contains(item.tag) ? Self.sortMenuKeys[item.tag].key.rawValue : ""
-            item.state = outlineView.sortDescriptors.first?.key == key ? .on : .off
-            return !isShowingResults
-        default:
-            return true
-        }
-    }
-}
-
-// MARK: - Quick Look panel
-
-extension BrowserViewController: QLPreviewPanelDataSource, QLPreviewPanelDelegate {
-    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
-        selectedURLs.count
-    }
-
-    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
-        let urls = selectedURLs
-        return urls.indices.contains(index) ? (urls[index] as NSURL) : nil
-    }
-
-    func previewPanel(_ panel: QLPreviewPanel!, handle event: NSEvent!) -> Bool {
-        guard event.type == .keyDown else { return false }
-        focusView.keyDown(with: event)
-        return true
-    }
-
-    func previewPanel(_ panel: QLPreviewPanel!, sourceFrameOnScreenFor item: (any QLPreviewItem)!) -> NSRect {
-        guard let url = (item as? NSURL) as URL? else { return .zero }
-        return iconScreenRect(for: url) ?? .zero
-    }
-
-    func previewPanel(_ panel: QLPreviewPanel!, transitionImageFor item: (any QLPreviewItem)!,
-                      contentRect: UnsafeMutablePointer<NSRect>!) -> Any! {
-        guard let url = (item as? NSURL) as URL? else { return nil }
-        guard let entry = selectedEntries.first(where: { Self.key($0.url) == Self.key(url) }) ?? node(for: url)?.entry else { return nil }
-        // The thumbnail the row shows, so the zoom starts from what's on screen.
-        let scale = view.window?.backingScaleFactor ?? 2
-        if preferences.showIconPreviews, services.thumbnails.canThumbnail(entry),
-           let thumbnail = services.thumbnails.cached(entry, size: NameCellView.iconSide, scale: scale) { return thumbnail.image }
-        return services.thumbnails.icon(for: entry)
     }
 }

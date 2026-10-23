@@ -142,7 +142,7 @@ on any function that is in neither this table nor a mutation.
 |---|---|
 | `AI/PlanGenerator :: (top level)`, `recipe`, `init`, `expand`; `AI/PlanModel :: init`; `AI/PlanValidator :: validate`, `needFolder`; `AI/RenameRules :: plan` | `rename` here is a plan step's name, not a file call. The steps are carried out by `PlanExecutor` (mutated). |
 | `App/StrataCommand :: init`; `App/MainMenu :: build`, `menuNeedsUpdate`, `rename`; `Window/Workspaces :: rename`, `askToRename` | A workspace's name in saved settings, and the menu items for it. No files. |
-| `Browser/BrowserViewController :: renameItem`; `Views/ClickToRename :: clicked`; `Browser/BrowserViewController+Servers :: renameOnServer` | Hand the typed name to `FileOps.rename` or `RemoteFiles.rename` (both mutated), which hold every check. |
+| `Browser/BrowserViewController+Actions :: renameItem`; `Views/ClickToRename :: clicked`; `Browser/BrowserViewController+Servers :: renameOnServer` | Hand the typed name to `FileOps.rename` or `RemoteFiles.rename` (both mutated), which hold every check. |
 | `Model/Places :: eject`; `Sidebar/SidebarViewController :: menuNeedsUpdate`, `ejectItem`; `Window/BrowserWindowController :: focusSearch`, `ejectVolume`, `validateMenuItem` | Hand a disk to macOS to eject. Nothing of the user's changes. |
 | `Dock/DockSearch :: restartDock` | Relaunches the Dock (`killall Dock`). No files. |
 | `Index/IndexStore :: remove`, `unlink` | An in-memory tree, not files. |
@@ -159,7 +159,7 @@ on any function that is in neither this table nor a mutation.
 | `Remote/S3Client :: download`; `Remote/SFTPClient :: init`, `rename`, `setTimes`, `download`, `upload` | Protocol calls and the copy's own temporary files; the refusals live in the backends (mutated). |
 | `Settings/SettingsWindowController :: install` | Goes ahead only when `mayReplace` (mutated) allows. |
 | `Transfers/Archiver :: clearAccessList`, `markQuarantined`, `run` | Act on the extracted copy in Strata's scratch folder before `check` (mutated) and `place` (mutated). |
-| `Transfers/TransferEngine :: removeIfPresent`, `removeSource` | Remove the incomplete copy the engine made itself; remove the original only after `changedSinceCopy` (mutated) and verification (mutated) pass. |
+| `Transfers/TransferEngine :: removeIfPresent`, `removeSource`; `Transfers/TransferSession :: repairOwnedDirectory` | Remove the incomplete copy the engine made itself; remove the original only after `changedSinceCopy` (mutated) and verification (mutated) pass; restore owner write access on a read-only folder the engine created itself during that job (`recordedDirectories`, mutated). |
 
 ## Where the system is stood in for
 
@@ -195,7 +195,7 @@ belong to.
 | `Browser/BrowserViewController+ArchiveBrowsing :: unpackForBrowsing` (makes the copy's folder) | `ArchiveSafetyTests/*` |
 | `Browser/BrowserViewController+Servers :: renameOnServer` | `ServerSafetyTests/renamingOnAServerStaysInTheFolderAndReplacesNothing` |
 | `Browser/BrowserViewController+Trash :: putBack` (remakes missing folders), `deleteAll` | `PutBackTests/*`, `TrashUndoTests/undoingAPutBackRemovesOnlyTheFoldersItMadeOnceEmpty`; `DeleteTests/*` |
-| `Browser/BrowserViewController :: resortAfterMetadata` (rows in a table, not files), `renameItem` | `BrowserOrderingTests/*`; `InlineRenameTests/*` |
+| `Browser/BrowserViewController :: resortAfterMetadata` (rows in a table, not files); `Browser/BrowserViewController+Actions :: renameItem` | `BrowserOrderingTests/*`; `InlineRenameTests/*` |
 | `Containers/ContainerCopies :: prepare`, `stackFolder`, `record`, `setAttribute`, `finish`, `setAsideForRemoval` | `ContainerTests/theContainersFolderFollowsTheEngine` … `aContainerCalledLikeAProjectKeepsItsFiles`; `RemoteFilesTests/copiedOutLinksLeadingOutsideAreDropped`, `mergingOutLeavesWhatWasThereAlone`; `CacheRemovalTests/settingCopiesAsideRemovesOnlyThemAtQuit` |
 | `Containers/ContainerDrag :: filePromiseProvider` | `ContainerCopyTests/aDraggedOutItemNeverReplacesWhatsAtTheDrop` |
 | `Containers/ContainerFiles :: place`, `bringDown`, `apply`, `makeFolders`, `folderFD`, `write`, `makePlaceholder`, `remember`, `restoreTimes`, `setTimes`, `setLinkTimes`, `markDownloaded`, `systemQuarantine` (a probe file of its own), `removeAt` | `ContainerCopyTests/aContainersFolderIsWrittenOnlyIntoItsCopy`, `aCopyThatIsALinkIsNotWrittenThrough`; `ContainerTests/listingsAreWrittenWithoutEscapingTheFolder`, `linksAlwaysResolveInsideTheCopy`, `composeProjectsGroupTheirContainers`, `aLeftoverFolderNamedLikeAProjectMakesWay` |
@@ -223,7 +223,7 @@ belong to.
 | `Settings/SettingsWindowController :: install` | `DeleteScopeTests/theCommandReplacesOnlyItsOwnLink` |
 | `Sidebar/SidebarViewController :: menuNeedsUpdate`, `ejectItem`; `Window/BrowserWindowController :: focusSearch`, `ejectVolume`, `validateMenuItem` (Eject) | not a file change; see above |
 | `Transfers/Archiver :: compress`, `extractContents`, `unpack`, `check`, `clearAccessList`, `markQuarantined`, `place`, `removeEntry`, `run` (`ditto`, `tar`) | `MetadataEditTests/compressingAddsOneArchiveAndNeverReplacesOne`, `aLinkIsArchivedAsALink`; `ArchiveSafetyTests/*`; `CacheRemovalTests/removingATreeNeverFollowsALinkOut` |
-| `Transfers/TransferEngine :: fail`, `copy`, `copyfile`, `rename`, `trash`, `removeIfPresent`, `removeSource` | `TransferTests/*` |
+| `Transfers/TransferEngine :: fail`, `copy`, `copyfile`, `rename`, `trash`, `removeIfPresent`, `removeSource`; `Transfers/TransferSession :: repairOwnedDirectory` | `TransferTests/*` |
 | `Transfers/TransferQueue :: start` (undo's moves) | `TrashUndoTests/undoingAMoveJobMovesBackOnlyItsOwnItems`, `AcrossDisksTests/*`, `TransferTests/sameDiskUndoStepsNeverAdoptItemsReplacedBeforeRegistration` (captured identity, conflicts, replacements, failed moves and repeated Undo/Redo) |
 | `Views/ClickToRename :: clicked` | `InlineRenameTests/*` |
 | `Window/Workspaces :: rename`, `askToRename` (a workspace's name, saved settings) | `WorkspaceTests/*` |

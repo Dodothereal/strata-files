@@ -346,8 +346,10 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     }
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        if let section = item as? SidebarSection { return section.items[index] }
-        return sections[index]
+        if let section = item as? SidebarSection {
+            return section.items.indices.contains(index) ? section.items[index] : section
+        }
+        return sections.indices.contains(index) ? sections[index] : (sections.first ?? SidebarSection(id: "", title: "", items: []))
     }
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
@@ -823,7 +825,7 @@ final class SidebarOutlineView: NSOutlineView {
     var onReturn: (() -> Bool)?
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 36 || event.keyCode == 76, onReturn?() == true { return }
+        if event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.numpadEnter, onReturn?() == true { return }
         super.keyDown(with: event)
     }
 

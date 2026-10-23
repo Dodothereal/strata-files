@@ -69,7 +69,8 @@ struct ServerMountSessionTests {
     @Test func replacingAndReleasingAnOwnerCancelOnlyItsRequest() async {
         let driver = Mounts()
         var owner: ServerMountSession? = ServerMountSession(mounter: driver.mounter)
-        weak var weakOwner = owner
+        weak var weakOwner: ServerMountSession?
+        weakOwner = owner
         let other = ServerMountSession(mounter: driver.mounter)
         var received: [String] = []
         let first = owner!.connect(address) { _ in received.append("first") }
@@ -192,7 +193,8 @@ struct ServerMountSessionTests {
         let settings = ServerConnectionSettings(preferences: Prefs(defaults: defaults, domainName: domain))
         let driver = Mounts(), owned = ServerMountSession(mounter: driver.mounter)
         var sheet: ConnectToServerController? = ConnectToServerController(settings: settings, mounts: owned)
-        weak var weakSheet = sheet
+        weak var weakSheet: ConnectToServerController?
+        weakSheet = sheet
         var callbacks = 0
         sheet!.onConnected = { _ in callbacks += 1 }
         let addressField = try #require(views(sheet!.view, of: NSComboBox.self).first)

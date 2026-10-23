@@ -23,7 +23,12 @@ package final class DirectoryWatcher {
 
     private func schedule(_ onChange: @escaping () -> Void) {
         debounce?.cancel()
-        let work = DispatchWorkItem { MainActor.assumeIsolated { onChange() } }
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard self != nil else { return }
+                onChange()
+            }
+        }
         debounce = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
     }

@@ -80,7 +80,7 @@ final class FileThumbnails {
     }
 
     static func bucket(for size: CGFloat) -> CGFloat {
-        buckets.first(where: { $0 >= size }) ?? buckets.last!
+        buckets.first(where: { $0 >= size }) ?? buckets.last ?? 512
     }
 
     private func key(_ entry: FileEntry, _ bucket: CGFloat, _ scale: CGFloat) -> String {
@@ -135,7 +135,7 @@ final class FileThumbnails {
         nextID += 1
         let ticket = Ticket(key: key, id: nextID)
         if pending[key] != nil {
-            pending[key]!.callbacks[ticket.id] = completion
+            pending[key]?.callbacks[ticket.id] = completion
             return ticket
         }
         let request = QLThumbnailGenerator.Request(fileAt: entry.url, size: CGSize(width: bucket, height: bucket),

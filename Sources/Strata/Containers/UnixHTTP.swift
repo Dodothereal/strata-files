@@ -151,9 +151,10 @@ nonisolated enum UnixHTTP {
 
         func write(_ data: Data) throws {
             try data.withUnsafeBytes { raw in
+                guard let base = raw.baseAddress else { return }
                 var offset = 0
                 while offset < raw.count {
-                    let sent = Darwin.send(fd, raw.baseAddress! + offset, raw.count - offset, 0)
+                    let sent = Darwin.send(fd, base + offset, raw.count - offset, 0)
                     if sent < 0, errno == EINTR { continue }
                     guard sent > 0 else { throw Failure.send }
                     offset += sent

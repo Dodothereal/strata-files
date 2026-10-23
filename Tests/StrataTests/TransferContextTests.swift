@@ -148,7 +148,8 @@ struct TransferContextTests {
         let tree = try TestTree("out/", "state/")
         let env = try Environment(tree)
         var queue: TransferQueue? = TransferQueue(preferences: env.preferences, history: env.history)
-        weak var owner = queue
+        weak var owner: TransferQueue?
+        owner = queue
         let job = try #require(queue).enqueue([tree.url("a.txt")], to: tree.url("out"), mode: .copy,
                                               undo: nil, conflicts: .keepBoth)
         await job.finished()
@@ -329,7 +330,8 @@ struct TransferContextTests {
         let services = BrowserServices(transfers: env.queue, visits: Frecency(preferences: env.defaults))
         for cancelled in [false, true] {
             var browser: BrowserViewController? = BrowserViewController(services: services)
-            weak var heldBrowser = browser
+            weak var heldBrowser: BrowserViewController?
+            heldBrowser = browser
             var calls = 0
             let job = fetchHolding(try #require(browser)) { calls += 1 }
             browser = nil

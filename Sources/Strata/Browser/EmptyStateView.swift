@@ -74,7 +74,7 @@ final class FilterPill: NSView {
         glass.cornerRadius = 18
         addSubview(glass)
 
-        let icon = NSImageView(image: NSImage(systemSymbolName: "line.3.horizontal.decrease", accessibilityDescription: String(localized: "Filter", comment: "Accessibility: the type-to-filter capsule’s icon"))!)
+        let icon = NSImageView(image: NSImage(systemSymbolName: "line.3.horizontal.decrease", accessibilityDescription: String(localized: "Filter", comment: "Accessibility: the type-to-filter capsule’s icon")) ?? NSImage())
         icon.symbolConfiguration = .init(pointSize: 12, weight: .semibold)
         icon.contentTintColor = .secondaryLabelColor
         query.font = .systemFont(ofSize: 13, weight: .semibold)

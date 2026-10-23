@@ -18,6 +18,13 @@ final class FileNode {
     var url: URL { entry.url }
 }
 
+/// A named section of files in grouped results (such as a duplicate set).
+struct ResultGroup {
+    let title: String
+    let detail: String
+    let entries: [FileEntry]
+}
+
 /// Owns the browser's entries, filtered rows and path lookup together. AppKit owns selection and expansion;
 /// refreshing this tree preserves row identities so native outline state can be restored.
 final class BrowserListing {
@@ -66,7 +73,7 @@ final class BrowserListing {
         rebuildIndex()
     }
 
-    func replaceGroups(_ groups: [(title: String, detail: String, entries: [FileEntry])]) {
+    func replaceGroups(_ groups: [ResultGroup]) {
         nodes = groups.compactMap { group in
             guard let first = group.entries.first else { return nil }
             let header = FileNode(entry: first)
@@ -77,6 +84,10 @@ final class BrowserListing {
         }
         rebuildIndex()
         applyFilter()
+    }
+
+    func replaceGroups(_ groups: [(title: String, detail: String, entries: [FileEntry])]) {
+        replaceGroups(groups.map { ResultGroup(title: $0.title, detail: $0.detail, entries: $0.entries) })
     }
 
     /// Returns changed nodes, or nil when a full replacement is needed. Validate the whole set before mutating:

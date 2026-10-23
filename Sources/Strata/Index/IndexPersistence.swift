@@ -152,11 +152,9 @@ nonisolated package enum IndexPersistence {
                   Int(store.nameStart[i]) + Int(store.nameLength[i]) <= store.names.count,
                   store.size[i] >= 0 else { return false }
             if parent >= 0, store.flags[Int(parent)] & IndexStore.Flag.directory == 0 { return false }
-            if store.flags[i] & IndexStore.Flag.deleted != 0,
-               store.firstChild[i] != -1 || store.nextSibling[i] != -1 { return false }
         }
         var linked = [Bool](repeating: false, count: count)
-        for i in 0..<count {
+        for i in 0..<count where store.flags[i] & IndexStore.Flag.deleted == 0 {
             var child = store.firstChild[i]
             while child >= 0 {
                 let id = Int(child)

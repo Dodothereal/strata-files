@@ -5,6 +5,23 @@ import UniformTypeIdentifiers
 // owner of loading, sorting, filtering, file operations and Quick Look; a view only shows what it is given and
 // reports what the user asked for.
 
+/// macOS virtual key codes shared across file views, the sidebar and shortcut recording.
+enum KeyCode {
+    static let returnKey: UInt16 = 36
+    static let tab: UInt16 = 48
+    static let space: UInt16 = 49
+    static let delete: UInt16 = 51
+    static let escape: UInt16 = 53
+    static let numpadEnter: UInt16 = 76
+    static let home: UInt16 = 115
+    static let forwardDelete: UInt16 = 117
+    static let end: UInt16 = 119
+    static let leftArrow: UInt16 = 123
+    static let rightArrow: UInt16 = 124
+    static let downArrow: UInt16 = 125
+    static let upArrow: UInt16 = 126
+}
+
 /// Keys every view hands back to the browser instead of handling itself, mirroring `FileOutlineView`.
 enum FileViewKey: Equatable {
     /// Printable characters typed with no ⌘/⌃ (the browser turns them into the filter).
@@ -15,6 +32,30 @@ enum FileViewKey: Equatable {
     case space
     /// Plain Tab: switches panes in dual-pane mode; otherwise the usual move to the next control.
     case tab
+
+    static func from(_ event: NSEvent) -> FileViewKey? {
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let plain = mods.isDisjoint(with: [.command, .control])
+        switch event.keyCode {
+        case KeyCode.returnKey where plain, KeyCode.numpadEnter where plain:
+            return .returnKey
+        case KeyCode.space where plain:
+            return .space
+        case KeyCode.tab where mods.isEmpty:
+            return .tab
+        case KeyCode.escape:
+            return .escape
+        case KeyCode.delete where mods.isDisjoint(with: [.command, .control, .option]):
+            return .backspace
+        default:
+            break
+        }
+        if plain, event.specialKey == nil, let chars = event.characters, !chars.isEmpty,
+           chars.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) {
+            return .type(chars)
+        }
+        return nil
+    }
 }
 
 protocol FileCollectionViewDelegate: AnyObject {
@@ -262,7 +303,7 @@ enum FileDrop {
         if let cached = volumeCache, cached.a == a, cached.b == b { return cached.same }
         let va = try? a.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier
         let vb = try? b.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier
-        let same = va != nil && vb != nil && va!.isEqual(vb!)
+        let same = if let va, let vb { va.isEqual(vb) } else { false }
         volumeCache = (a, b, same)
         return same
     }

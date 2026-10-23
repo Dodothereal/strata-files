@@ -95,10 +95,10 @@ nonisolated enum ArchiveCache {
                 survivors.append((copy.entry, used, size(of: copy.entry)))
             }
         }
-        var total = survivors.reduce(0) { $0 + $1.size }
+        var total = survivors.map(\.size).saturatingSum
         for copy in survivors.sorted(by: { $0.used < $1.used }) where total > sizeLimit {
             remove(copy.entry)
-            total -= copy.size
+            total = max(0, total - copy.size)
         }
     }
 
@@ -137,7 +137,7 @@ nonisolated enum ArchiveCache {
         var total: Int64 = 0
         let walker = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.totalFileAllocatedSizeKey], options: [])
         while let url = walker?.nextObject() as? URL {
-            total += Int64((try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]))?.totalFileAllocatedSize ?? 0)
+            total = [total, Int64((try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]))?.totalFileAllocatedSize ?? 0)].saturatingSum
         }
         return total
     }

@@ -62,7 +62,7 @@ nonisolated package enum DelimitedLoader {
             let bytes = raw.bindMemory(to: UInt8.self)
             var parser = Parser(bytes: bytes, separator: separator, isUTF8: isUTF8, position: bomLength)
             var records: [[String]] = []
-            while records.count <= rowLimit, let record = parser.nextRecord() {
+            while records.count <= rowLimit, let record = try parser.nextRecord() {
                 if record.count == 1, record[0].isEmpty { continue }
                 records.append(record)
                 if records.count % 256 == 0 { try Task.checkCancellation() }
@@ -116,20 +116,48 @@ nonisolated package enum DelimitedLoader {
 
         var isAtEnd: Bool { position >= bytes.count }
 
-        mutating func nextRecord() -> [String]? {
+        mutating func nextRecord() throws -> [String]? {
             guard !isAtEnd else { return nil }
             var fields: [String] = []
+            var columnCount = 0
             while true {
-                fields.append(nextField())
+                if fields.count < columnLimit {
+                    fields.append(nextField())
+                } else {
+                    skipField()
+                }
+                columnCount += 1
+                if columnCount % 4096 == 0 { try Task.checkCancellation() }
                 if position < bytes.count, bytes[position] == separator {
                     position += 1
-                    if isAtEnd { fields.append(""); return fields }
+                    if isAtEnd {
+                        if fields.count < columnLimit { fields.append("") }
+                        return fields
+                    }
                     continue
                 }
                 if position < bytes.count, bytes[position] == 0x0D { position += 1 }
                 if position < bytes.count, bytes[position] == 0x0A { position += 1 }
                 return fields
             }
+        }
+
+        private mutating func skipField() {
+            if position < bytes.count, bytes[position] == 0x22 {
+                position += 1
+                while position < bytes.count {
+                    if bytes[position] == 0x22 {
+                        if position + 1 < bytes.count, bytes[position + 1] == 0x22 {
+                            position += 2
+                            continue
+                        }
+                        position += 1
+                        break
+                    }
+                    position += 1
+                }
+            }
+            while position < bytes.count, !isTerminator(bytes[position]) { position += 1 }
         }
 
         private mutating func nextField() -> String {

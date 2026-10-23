@@ -176,9 +176,9 @@ final class RecorderButton: NSButton {
     private func handle(_ event: NSEvent) {
         let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
         switch event.keyCode {
-        case 53 where flags.isEmpty: // esc: keep it
+        case KeyCode.escape where flags.isEmpty: // esc: keep it
             return stop()
-        case 51 where flags.isEmpty, 117 where flags.isEmpty: // ⌫ or ⌦: none
+        case KeyCode.delete where flags.isEmpty, KeyCode.forwardDelete where flags.isEmpty: // ⌫ or ⌦: none
             ShortcutStore.shared.set(.cleared, for: id)
             return stop()
         default:

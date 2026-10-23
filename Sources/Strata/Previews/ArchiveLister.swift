@@ -99,9 +99,12 @@ nonisolated package enum ArchiveLister {
             } else if kind == .zip, line.contains(" uncompressed, ") {
                 // `10 files, 2513932 bytes uncompressed, 760934 bytes compressed:  69.8%`
                 let words = line.split(separator: " ")
-                if words.count > 5 {
-                    uncompressedTotal = Int64(words[2])
-                    compressed = Int64(words[5])
+                if words.count > 5, let filesCount = Int64(words[0]), filesCount >= 0,
+                   words[1].hasPrefix("file"),
+                   let uncomp = Int64(words[2]), uncomp >= 0,
+                   let comp = Int64(words[5]), comp >= 0 {
+                    uncompressedTotal = uncomp
+                    compressed = comp
                 }
             }
         }
@@ -325,7 +328,12 @@ nonisolated package enum ProcessRunner {
                 cancelled = true
                 return self.process
             }
-            if let process, process.isRunning { process.terminate() }
+            guard let process, process.isRunning else { return }
+            process.terminate()
+            let pid = process.processIdentifier
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.2) {
+                if process.isRunning { _ = kill(pid, SIGKILL) }
+            }
         }
     }
 }

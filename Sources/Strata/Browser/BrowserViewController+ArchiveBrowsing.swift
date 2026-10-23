@@ -3,7 +3,18 @@ import AppKit
 /// Archives being opened as folders, by their copy's folder: a second open of the same archive (a double double-click,
 /// the other pane) waits for the first instead of starting over and deleting what it's making.
 private enum OpeningArchives {
-    static var waiters: [String: [(URL) -> Void]] = [:]
+    struct Waiter {
+        weak var browser: BrowserViewController?
+        let revision: Int
+        let show: (URL) -> Void
+
+        var isActive: Bool {
+            guard let browser else { return false }
+            return browser.navigationRevision == revision
+        }
+    }
+
+    static var waiters: [String: [Waiter]] = [:]
 }
 
 /// Archives open like folders, the way Windows Explorer shows a zip: browse in, Quick Look, copy things out. The archive
@@ -52,24 +63,27 @@ extension BrowserViewController {
         }
         let key = folder.path
         let startedRevision = navigationRevision
-        let show: (URL) -> Void = { [weak self] copy in
+        let waiter = OpeningArchives.Waiter(browser: self, revision: startedRevision) { [weak self] copy in
             // Only if you're still where you opened it: a slow archive mustn't pull you away from elsewhere.
             guard let self, navigationRevision == startedRevision else { return }
             delegate?.browser(self, showArchiveCopy: copy)
         }
         if OpeningArchives.waiters[key] != nil {
-            OpeningArchives.waiters[key]?.append(show)
+            OpeningArchives.waiters[key]?.append(waiter)
             return
         }
-        OpeningArchives.waiters[key] = [show]
+        OpeningArchives.waiters[key] = [waiter]
         delegate?.browser(self, openingArchive: archive, stop: nil)
         Task { [weak self] in
             let inspection = await Archiver.inspect(archive, kind: kind)
+            let activeWaiters = (OpeningArchives.waiters[key] ?? []).filter(\.isActive)
+            // Keep unpacking while the opening pane or any waiting pane is still alive.
+            guard let activeOwner = (self?.navigationRevision == startedRevision ? self : nil) ?? activeWaiters.first?.browser ?? self else {
+                OpeningArchives.waiters[key] = nil
+                return
+            }
+            let activeWindow = activeOwner.view.window ?? window
             if inspection.complete, inspection.bytes > Self.largeArchive {
-                if (OpeningArchives.waiters[key]?.count ?? 0) <= 1, self?.navigationRevision != startedRevision {
-                    OpeningArchives.waiters[key] = nil
-                    return
-                }
                 let size = ByteCountFormatter.string(fromByteCount: inspection.bytes, countStyle: .file)
                 let alert = NSAlert()
                 alert.messageText = String(localized: "“\(archive.lastPathComponent)” holds \(size).", comment: "An archive, then its unpacked size (“5 GB”)")
@@ -78,22 +92,26 @@ extension BrowserViewController {
                 alert.addButton(withTitle: String(localized: "Extract", comment: "Alert button: unpack the archive next to it"))
                 alert.addButton(withTitle: String(localized: "Cancel"))
                 let response = await withCheckedContinuation { continuation in
-                    Self.present(alert, in: window) { continuation.resume(returning: $0) }
+                    Self.present(alert, in: activeWindow) { continuation.resume(returning: $0) }
                 }
                 guard response == .alertFirstButtonReturn else {
-                    OpeningArchives.waiters[key] = nil
-                    if let self {
-                        if navigationRevision == startedRevision { delegate?.browser(self, openingArchive: nil, stop: nil) }
-                        if response == .alertSecondButtonReturn { extractArchive(archive) }
+                    let cancelledWaiters = OpeningArchives.waiters.removeValue(forKey: key) ?? []
+                    for w in cancelledWaiters where w.isActive {
+                        if let b = w.browser { b.delegate?.browser(b, openingArchive: nil, stop: nil) }
+                    }
+                    if response == .alertSecondButtonReturn {
+                        activeOwner.extractArchive(archive)
                     }
                     return
                 }
             }
-            guard let self else {
+            let postAlertWaiters = (OpeningArchives.waiters[key] ?? []).filter(\.isActive)
+            guard let runner = (self?.navigationRevision == startedRevision ? self : nil) ?? postAlertWaiters.first?.browser ?? self else {
                 OpeningArchives.waiters[key] = nil
                 return
             }
-            unpackForBrowsing(archive, into: folder, key: key, startedRevision: startedRevision)
+            let runnerRevision = runner === self ? startedRevision : (postAlertWaiters.first?.revision ?? runner.navigationRevision)
+            runner.unpackForBrowsing(archive, into: folder, key: key, startedRevision: runnerRevision)
         }
     }
 
@@ -106,16 +124,21 @@ extension BrowserViewController {
         do {
             try fm.createDirectory(at: entry, withIntermediateDirectories: true)
         } catch {
-            OpeningArchives.waiters[key] = nil
-            if navigationRevision == startedRevision { delegate?.browser(self, openingArchive: nil, stop: nil) }
+            let failedWaiters = OpeningArchives.waiters.removeValue(forKey: key) ?? []
+            for w in failedWaiters where w.isActive {
+                if let b = w.browser { b.delegate?.browser(b, openingArchive: nil, stop: nil) }
+            }
             return Self.report([(archive, error)], .open, in: window)
         }
         let job = ArchiveJob(.browse(archive, at: folder), undo: nil)
-        if navigationRevision == startedRevision {
-            delegate?.browser(self, openingArchive: archive) { job.cancel() }
+        for w in OpeningArchives.waiters[key] ?? [] where w.isActive {
+            if let b = w.browser { b.delegate?.browser(b, openingArchive: archive) { job.cancel() } }
         }
         job.onFinish = { [weak self] job in
             let waiters = OpeningArchives.waiters.removeValue(forKey: key) ?? []
+            for w in waiters where w.isActive {
+                if let b = w.browser { b.delegate?.browser(b, openingArchive: nil, stop: nil) }
+            }
             if let self, navigationRevision == startedRevision { delegate?.browser(self, openingArchive: nil, stop: nil) }
             guard job.state == .finished, (try? ArchiveCache.finish(folder, from: archive)) != nil else {
                 // Only this job's own copy goes: nothing else was making it.
@@ -124,11 +147,12 @@ extension BrowserViewController {
                     let alert = NSAlert()
                     alert.messageText = String(localized: "“\(archive.lastPathComponent)” couldn’t be opened.")
                     alert.informativeText = message
-                    Self.present(alert, in: window) { _ in }
+                    let targetWindow = waiters.first(where: \.isActive)?.browser?.view.window ?? window
+                    Self.present(alert, in: targetWindow) { _ in }
                 }
                 return
             }
-            waiters.forEach { $0(folder) }
+            waiters.forEach { $0.show(folder) }
             // Keeps the cache in check while Strata stays open (launch isn't the only time).
             let keep = Set(OpeningArchives.waiters.keys).union(BrowserWindowController.archiveCopiesShown())
             DispatchQueue.global(qos: .utility).async { ArchiveCache.prune(keeping: keep) }

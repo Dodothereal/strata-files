@@ -112,9 +112,27 @@ nonisolated package enum FileInfoEditing {
     package static func names(at path: String) -> (owner: String, group: String, ownedByYou: Bool)? {
         var info = stat()
         guard lstat(path, &info) == 0 else { return nil }
-        let owner = getpwuid(info.st_uid).flatMap { String(validatingCString: $0.pointee.pw_name) } ?? "\(info.st_uid)"
-        let group = getgrgid(info.st_gid).flatMap { String(validatingCString: $0.pointee.gr_name) } ?? "\(info.st_gid)"
-        return (owner, group, info.st_uid == getuid())
+        var pw = passwd()
+        var pwResult: UnsafeMutablePointer<passwd>?
+        var pwBuffer = [CChar](repeating: 0, count: 4096)
+        let owner: String
+        if getpwuid_r(info.st_uid, &pw, &pwBuffer, pwBuffer.count, &pwResult) == 0,
+           let ptr = pwResult?.pointee.pw_name, let name = String(validatingCString: ptr) {
+            owner = name
+        } else {
+            owner = "\(info.st_uid)"
+        }
+        var gr = group()
+        var grResult: UnsafeMutablePointer<group>?
+        var grBuffer = [CChar](repeating: 0, count: 4096)
+        let groupName: String
+        if getgrgid_r(info.st_gid, &gr, &grBuffer, grBuffer.count, &grResult) == 0,
+           let ptr = grResult?.pointee.gr_name, let name = String(validatingCString: ptr) {
+            groupName = name
+        } else {
+            groupName = "\(info.st_gid)"
+        }
+        return (owner, groupName, info.st_uid == getuid())
     }
 
     package static func mode(at path: String) -> mode_t? {

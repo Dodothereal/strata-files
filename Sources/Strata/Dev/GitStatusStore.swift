@@ -401,7 +401,7 @@ nonisolated final class GitWatcherContext: @unchecked Sendable {
 nonisolated private func gitWatcherCallback(_ stream: ConstFSEventStreamRef, _ info: UnsafeMutableRawPointer?, _ count: Int,
                                             _ paths: UnsafeMutableRawPointer, _ flags: UnsafePointer<FSEventStreamEventFlags>,
                                             _ ids: UnsafePointer<FSEventStreamEventId>) {
-    guard let info else { return }
+    guard let info, count > 0 else { return }
     let cPaths = paths.assumingMemoryBound(to: UnsafePointer<CChar>.self)
     let list = (0..<count).map { String(cString: cPaths[$0]) }
     Unmanaged<GitWatcherContext>.fromOpaque(info).takeUnretainedValue().handle(list)

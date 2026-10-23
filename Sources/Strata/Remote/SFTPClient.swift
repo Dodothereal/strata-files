@@ -305,6 +305,7 @@ nonisolated final class SFTPClient: @unchecked Sendable {
             guard reply.type == Packet.data.rawValue else { throw SFTPError.malformed }
             var reader = Reader(reply.body)
             let data = try reader.bytes()
+            guard !data.isEmpty else { throw SFTPError.malformed }
             guard next.offset == written else { continue } // past a short read: asked again below
             let (nextWritten, overflow) = Int64(clamping: written).addingReportingOverflow(Int64(data.count))
             guard !overflow, nextWritten <= limit else { throw SFTPError.tooLarge }

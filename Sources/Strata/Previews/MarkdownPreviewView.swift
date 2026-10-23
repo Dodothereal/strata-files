@@ -104,6 +104,7 @@ nonisolated final class MarkdownLayoutManager: NSLayoutManager {
             super.fillBackgroundRectArray(rectArray, count: rectCount, forCharacterRange: charRange, color: color)
             return
         }
+        guard rectCount > 0 else { return }
         color.setFill()
         for rect in UnsafeBufferPointer(start: rectArray, count: rectCount) {
             let capsule = rect.insetBy(dx: -2, dy: max(1, (rect.height - 16) / 2))

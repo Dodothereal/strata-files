@@ -71,7 +71,7 @@ final class ShelfWell: NSView, NSDraggingSource {
         label.lineBreakMode = .byTruncatingMiddle
         func button(_ localizedTitle: String.LocalizationValue, _ symbol: String, _ action: Selector) -> NSButton {
             let title = String(localized: localizedTitle)
-            let button = NSButton(title: title, image: NSImage(systemSymbolName: symbol, accessibilityDescription: title)!, target: self, action: action)
+            let button = NSButton(title: title, image: NSImage(systemSymbolName: symbol, accessibilityDescription: title) ?? NSImage(), target: self, action: action)
             button.bezelStyle = .accessoryBarAction
             button.controlSize = .small
             button.imagePosition = .imageOnly

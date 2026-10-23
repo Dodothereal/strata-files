@@ -66,6 +66,7 @@ nonisolated struct GitRepository: Sendable, Hashable {
               let text = String(data: data, encoding: .utf8),
               let line = text.split(whereSeparator: \.isNewline).first, line.hasPrefix("gitdir:") else { return nil }
         let target = line.dropFirst("gitdir:".count).trimmingCharacters(in: .whitespaces)
+        guard !target.isEmpty else { return nil }
         let absolute = target.hasPrefix("/") ? target : (folder as NSString).appendingPathComponent(target)
         let url = URL(fileURLWithPath: absolute, isDirectory: true).standardizedFileURL
         return FileManager.default.fileExists(atPath: url.appending(path: "HEAD").path) ? url : nil

@@ -44,19 +44,20 @@ nonisolated enum Treemap {
     /// Tiles for `items` in `rect`: largest first, tiny ones grouped into "Other" so no tile is smaller than
     /// `minArea` points² (and there are at most `maxTiles`).
     static func tiles(_ items: [TreemapItem], in rect: CGRect, minArea: CGFloat = 34 * 26, maxTiles: Int = 300) -> [TreemapTile] {
-        let measured = items.filter { ($0.bytes ?? 0) > 0 }.sorted { $0.bytes! > $1.bytes! }
-        let total = measured.map { $0.bytes! }.saturatingSum
+        let measured = items.filter { ($0.bytes ?? 0) > 0 }.sorted { ($0.bytes ?? 0) > ($1.bytes ?? 0) }
+        let total = measured.map { $0.bytes ?? 0 }.saturatingSum
         guard total > 0, rect.width.isFinite, rect.height.isFinite, rect.width > 4, rect.height > 4 else { return [] }
         let area = Double(rect.width * rect.height)
         var kept: [TreemapItem] = []
         var otherBytes: Int64 = 0
         var otherCount = 0
         for item in measured {
-            let share = Double(item.bytes!) / Double(total) * area
+            let itemBytes = item.bytes ?? 0
+            let share = Double(itemBytes) / Double(total) * area
             if kept.count < maxTiles - 1, share >= Double(minArea) {
                 kept.append(item)
             } else {
-                otherBytes = [otherBytes, item.bytes!].saturatingSum
+                otherBytes = [otherBytes, itemBytes].saturatingSum
                 otherCount += 1
             }
         }
@@ -66,7 +67,7 @@ nonisolated enum Treemap {
             otherCount = 0
             otherBytes = 0
         }
-        var tiles = kept.map { TreemapTile(key: $0.url.fileViewKey, item: $0, bytes: $0.bytes!, otherCount: 0, frame: .zero) }
+        var tiles = kept.map { TreemapTile(key: $0.url.fileViewKey, item: $0, bytes: $0.bytes ?? 0, otherCount: 0, frame: .zero) }
         if otherCount > 0 {
             let other = TreemapTile(key: TreemapTile.otherKey, item: nil, bytes: otherBytes, otherCount: otherCount, frame: .zero)
             let index = tiles.firstIndex(where: { $0.bytes < otherBytes }) ?? tiles.count
@@ -81,12 +82,14 @@ nonisolated enum Treemap {
     /// rect per value, tiling `rect` exactly, in a top-left-origin (flipped) coordinate space.
     static func squarify(_ values: [Double], in rect: CGRect) -> [CGRect] {
         guard !values.isEmpty else { return [] }
-        guard rect.width.isFinite, rect.height.isFinite, rect.width > 0, rect.height > 0 else {
+        guard rect.width.isFinite, rect.height.isFinite, rect.width > 0, rect.height > 0,
+              values.allSatisfy({ $0.isFinite && $0 > 0 }) else {
             return values.map { _ in .zero }
         }
         let total = values.reduce(0, +)
         guard total > 0, total.isFinite else { return values.map { _ in .zero } }
         let scale = Double(rect.width * rect.height) / total
+        guard scale.isFinite, scale > 0 else { return values.map { _ in .zero } }
         let areas = values.map { $0 * scale }
         var result = [CGRect](repeating: .zero, count: values.count)
         var remaining = rect

@@ -111,7 +111,8 @@ extension ColorThemeTests {
             window.styleMask = fullSize ? [.borderless] : [.titled, .resizable, .fullSizeContentView]
             window.setContentSize(fullSize ? NSSize(width: 1536, height: 960) : NSSize(width: 1240, height: 780))
             for name in [NSAppearance.Name.aqua, .darkAqua] {
-                window.appearance = try #require(NSAppearance(named: name))
+                let chosenAppearance: NSAppearance? = NSAppearance(named: name)
+                window.appearance = try #require(chosenAppearance)
                 for palette in [ColorTheme.blue, .purple, .green, .rose, .amber, .teal, .sand, .graphite] {
                     ThemeStyle.apply(ColorThemeOptions(palette: palette), windows: [window], highContrast: false)
                     for mode in BrowserViewMode.ordered {

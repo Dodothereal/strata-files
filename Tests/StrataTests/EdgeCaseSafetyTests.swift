@@ -409,4 +409,51 @@ struct EdgeCaseSafetyTests {
         try FileManager.default.removeItem(at: extracted)
         #expect(tree.snapshot() == ["dir/", "dir/inner.txt", "escape -> sub/back/../outside", "sub/", "sub/back -> .."])
     }
+
+    @Test func nonExclusiveRenameFallbacksNeverOverwriteExistingFilesOrFolders() throws {
+        let tree = try TestTree("out/a.txt", "out/folder/", "out/dangling -> missing", "staging/f1.txt", "staging/f2.txt", "staging/d1/", "staging/d1/inside.txt")
+        #expect(TransferEngine.rename(tree.url("staging/f1.txt"), to: tree.url("out/a.txt"), supportsExclusiveRename: false) == EEXIST)
+        #expect(TransferEngine.rename(tree.url("staging/f1.txt"), to: tree.url("out/dangling"), supportsExclusiveRename: false) == EEXIST)
+        #expect(tree.text("out/a.txt") == "out/a.txt")
+        #expect(TransferEngine.rename(tree.url("staging/f1.txt"), to: tree.url("out/free.txt"), supportsExclusiveRename: false) == 0)
+        #expect(tree.text("out/free.txt") == "staging/f1.txt")
+
+        let placedFile = try Archiver.place(tree.url("staging/f2.txt"), in: tree.url("out"), as: "a.txt", supportsExclusiveRename: false)
+        #expect(placedFile.lastPathComponent == "a 2.txt")
+        #expect(tree.text("out/a.txt") == "out/a.txt")
+        #expect(tree.text("out/a 2.txt") == "staging/f2.txt")
+
+        let placedDir = try Archiver.place(tree.url("staging/d1"), in: tree.url("out"), as: "folder", supportsExclusiveRename: false)
+        #expect(placedDir.lastPathComponent == "folder 2")
+        #expect(tree.text("out/folder 2/inside.txt") == "staging/d1/inside.txt")
+        #expect(tree.snapshot() == [
+            "out/", "out/a 2.txt", "out/a.txt", "out/dangling -> missing", "out/folder 2/", "out/folder 2/inside.txt",
+            "out/folder/", "out/free.txt", "staging/",
+        ])
+    }
+
+    @Test func wideDelimitedRowsFIFOPreviewsExtremePlanDaysAndTreemapBoundsRemainSafe() async throws {
+        let tree = try TestTree("wide.csv")
+        let wide = (0..<600).map { "c\($0)" }.joined(separator: ",") + "\n" + (0..<600).map(String.init).joined(separator: ",")
+        try Data(wide.utf8).write(to: tree.url("wide.csv"))
+        let table = try await DelimitedLoader.load(tree.url("wide.csv"), separator: UInt8(ascii: ","))
+        #expect(table.data.columns.count == DelimitedLoader.columnLimit)
+        #expect(table.data.rows.first?.count == DelimitedLoader.columnLimit)
+
+        let fifo = tree.url("pipe.pdf")
+        #expect(mkfifo(fifo.path, 0o600) == 0)
+        let media = await MediaInfo.read(fifo, contentType: nil)
+        #expect(media.dimensions == nil && media.duration == nil)
+        let exif = PlanItem.exif(fifo)
+        #expect(exif.0 == nil && exif.1 == nil)
+        #expect(await TextExtractor.extract(fifo) == nil)
+        try FileManager.default.removeItem(at: fifo)
+
+        #expect(PlanRules.recipe(for: "trash files older than 999999999999999 days") != nil)
+        #expect(PlanRules.recipe(for: "trash files newer than 999999999999999 days") != nil)
+
+        let badRects = Treemap.squarify([.nan, .infinity, -5, 0, 10], in: NSRect(x: 0, y: 0, width: 100, height: 100))
+        #expect(badRects == Array(repeating: .zero, count: 5))
+        #expect(tree.snapshot() == ["wide.csv"])
+    }
 }

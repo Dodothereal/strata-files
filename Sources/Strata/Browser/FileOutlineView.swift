@@ -52,28 +52,24 @@ final class FileOutlineView: NSOutlineView {
 
     override func keyDown(with event: NSEvent) {
         clickToRename.cancel()
-        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let plain = mods.isDisjoint(with: [.command, .control])
-        switch event.keyCode {
-        case 36 where plain, 76 where plain: // Return, Enter
+        switch FileViewKey.from(event) {
+        case .returnKey:
             onReturn?()
             return
-        case 49 where plain: // Space
+        case .space:
             onSpace?()
             return
-        case 48 where mods.isEmpty: // Tab
+        case .tab:
             if onTab?() == true { return }
-        case 53: // Escape
+        case .escape:
             if onEscape?() == true { return }
-        case 51 where mods.isDisjoint(with: [.command, .control, .option]): // Delete
+        case .backspace:
             if onBackspace?() == true { return }
-        default:
-            break
-        }
-        if plain, event.specialKey == nil, let chars = event.characters, !chars.isEmpty,
-           chars.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) {
+        case .type(let chars):
             onType?(chars)
             return
+        case nil:
+            break
         }
         super.keyDown(with: event)
     }

@@ -108,7 +108,8 @@ struct FolderOpenSessionTests {
     @Test func releasingAnOwnerDuringIOCancelsAndDiscardsItsLateFailure() async throws {
         let reads = Reads()
         var session: FolderOpenSession? = FolderOpenSession()
-        weak var released = session
+        weak var released: FolderOpenSession?
+        released = session
         var calls = 0
         let task = try #require(session).open(operation: { try await reads.open() }) { _ in calls += 1 }
         await reads.started(1)
