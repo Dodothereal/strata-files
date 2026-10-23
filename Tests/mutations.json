@@ -2396,14 +2396,14 @@
   },
   {
     "file": "Strata/Browser/BrowserOrdering.swift",
-    "find": "sizes[key] = bytes",
+    "find": "pass.sizes[key] = bytes",
     "replace": "// Do not remember this folder size.",
     "rule": "Browser ordering one pass memoizes missing folder sizes too",
     "tests": "BrowserOrderingTests/aSizePassBatchesEachParentAndMemoizesMissingTotalsWithoutRetainingThem"
   },
   {
     "file": "Strata/Browser/BrowserOrdering.swift",
-    "find": "if parents.insert(parent).inserted {",
+    "find": "if pass.parents.insert(parent).inserted {",
     "replace": "if true {",
     "rule": "Browser ordering one batch serves siblings in the same parent",
     "tests": "BrowserOrderingTests/aSizePassBatchesEachParentAndMemoizesMissingTotalsWithoutRetainingThem"

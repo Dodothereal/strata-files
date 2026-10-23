@@ -27,6 +27,12 @@ final class BrowserOrdering {
         let requestMedia: (FileEntry) -> Void
     }
 
+    @MainActor private final class Pass {
+        var sizes: [String: Int64] = [:]
+        var parents: Set<URL> = []
+        var changedParents: [FileNode] = []
+    }
+
     private var folderChoice: Choice
     private var resultChoice: Choice?
     private var remembersFolderChoice = true
@@ -68,16 +74,14 @@ final class BrowserOrdering {
     @discardableResult
     func sort(_ nodes: inout [FileNode]) -> [FileNode] {
         guard let choice else { return [] }
-        var changedParents: [FileNode] = []
+        let pass = Pass()
         let foldersFirst = foldersFirst()
-        var sizes: [String: Int64] = [:]
-        var parents: Set<URL> = []
         func size(_ entry: FileEntry) -> Int64 {
             guard entry.isDirectory else { return entry.size ?? 0 }
             let key = entry.url.standardizedFileURL.path
-            if let cached = sizes[key] { return cached }
+            if let cached = pass.sizes[key] { return cached }
             let bytes = metadata.folderSize(entry.url) ?? -1
-            sizes[key] = bytes
+            pass.sizes[key] = bytes
             return bytes
         }
         func visit(_ level: inout [FileNode]) {
@@ -85,8 +89,8 @@ final class BrowserOrdering {
             if choice.key == .size {
                 for node in level where node.entry.isDirectory {
                     let parent = node.url.deletingLastPathComponent()
-                    if parents.insert(parent).inserted {
-                        for (path, bytes) in metadata.childFolderSizes(parent) { sizes[path] = bytes }
+                    if pass.parents.insert(parent).inserted {
+                        for (path, bytes) in metadata.childFolderSizes(parent) { pass.sizes[path] = bytes }
                     }
                 }
             }
@@ -95,13 +99,13 @@ final class BrowserOrdering {
                 if var children = node.children {
                     let previous = children
                     visit(&children)
-                    if !previous.elementsEqual(children, by: { $0 === $1 }) { changedParents.append(node) }
+                    if !previous.elementsEqual(children, by: { $0 === $1 }) { pass.changedParents.append(node) }
                     node.children = children
                 }
             }
         }
         visit(&nodes)
-        return changedParents
+        return pass.changedParents
     }
 
     /// Columns use the same policy for their own entries. No disk reads are needed by this comparator: metadata
