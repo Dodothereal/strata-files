@@ -53,6 +53,7 @@ LANGUAGES = {
     "hu": ("Magyar", "Hungarian", ["one", "other"], []),
     "ro": ("Română", "Romanian", ["one", "few", "other"], []),
     "uk": ("Українська", "Ukrainian", ["one", "few", "many", "other"], []),
+    "ru": ("Русский", "Russian", ["one", "few", "many", "other"], []),
     "tr": ("Türkçe", "Turkish", ["one", "other"], []),
     "ja": ("日本語", "Japanese", ["other"], []),
     "ko": ("한국어", "Korean", ["other"], []),
