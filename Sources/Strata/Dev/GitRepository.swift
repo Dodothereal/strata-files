@@ -176,10 +176,8 @@ nonisolated enum GitRunner {
         return execute(hardening + overrides + arguments, in: directory, timeout: timeout, start: start)
     }
 
-    /// `-c` arguments that blank the commands of every filter driver not defined in your own (global or system)
-    /// config: the repository's, directly or through an include. Drivers from your global config, like Git LFS, keep
-    /// working. Nil when the
-    /// config can't be read or names a driver that can't be overridden safely.
+    /// Browsing never runs filters, including global drivers whose behavior can depend on repository config.
+    /// Unrepresentable driver names fail closed rather than leaving a differently spelled command enabled.
     private static func repositoryFilterOverrides(in directory: URL, timeout: TimeInterval) -> [String]? {
         let run = execute(hardening + ["config", "--includes", "--show-scope", "--name-only", "-z", "--get-regexp",
                                        #"^filter\..*\.(clean|smudge|process)$"#],
@@ -187,22 +185,31 @@ nonisolated enum GitRunner {
         // Exit status 1 just means no filter is configured anywhere.
         if run.exitCode == 1 && !run.timedOut { return [] }
         guard run.succeeded else { return nil }
-        let fields = run.output.split(separator: 0, omittingEmptySubsequences: false).map { String(decoding: $0, as: UTF8.self) }
-        var drivers = Set<String>()
+        return filterOverrides(run.output)
+    }
+
+    static func filterOverrides(_ output: Data) -> [String]? {
+        let rawFields = output.split(separator: 0, omittingEmptySubsequences: false)
+        var fields: [String] = []
+        for field in rawFields {
+            guard let text = String(bytes: field, encoding: .utf8) else { return nil }
+            fields.append(text)
+        }
+        guard fields.last == "", fields.count % 2 == 1 else { return nil }
+        var drivers = Set<Data>()
         var index = 0
         while index + 1 < fields.count {
-            let (scope, key) = (fields[index], fields[index + 1])
+            let key = fields[index + 1]
             index += 2
-            // Only your own config keeps its drivers (Git LFS…). Anything else, including a scope a future git might
-            // add, is treated as the repository's and blanked: an unknown source fails safe.
-            guard !["global", "system", "command"].contains(scope) else { continue }
             // `-c` splits at the first "=", so a driver name containing one couldn't be overridden.
             guard !key.contains("="), !key.contains("\n"), let dot = key.lastIndex(of: ".") else { return nil }
-            drivers.insert(String(key[..<dot]))
+            drivers.insert(Data(key[..<dot].utf8))
         }
-        return drivers.sorted().flatMap { driver in
+        // Git compares driver names as bytes; Swift String equality folds canonically equivalent spellings.
+        return drivers.sorted { $0.lexicographicallyPrecedes($1) }.flatMap { bytes in
+            let driver = String(decoding: bytes, as: UTF8.self)
             // Git must also stop requiring the disabled driver, or hashing a changed file fails.
-            ["clean", "smudge", "process"].flatMap { ["-c", "\(driver).\($0)="] } + ["-c", "\(driver).required=false"]
+            return ["clean", "smudge", "process"].flatMap { ["-c", "\(driver).\($0)="] } + ["-c", "\(driver).required=false"]
         }
     }
 

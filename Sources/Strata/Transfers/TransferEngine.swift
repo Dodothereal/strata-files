@@ -7,6 +7,8 @@ nonisolated enum TransferEngine {
         var verify = false
         /// APFS clones when source and destination share a volume. Tests turn it off to get real byte copies.
         var clone = true
+        var sanitizeCopy = false
+        var sanitizationBoundary: URL?
     }
 
     /// Test-only knobs: throttle data copies and tamper with a copy before it's verified.
@@ -43,9 +45,15 @@ nonisolated enum TransferEngine {
     /// safely by copying under a temporary name and only then swapping the old item into the Trash.
     static func perform(_ index: Int, _ item: TransferItem, options: Options, control: TransferControl,
                         progress: TransferProgress) -> TransferItemResult {
+        let result = performItem(index, item, options: options, control: control, progress: progress)
+        hooks.afterResult?(result)
+        return result
+    }
+
+    private static func performItem(_ index: Int, _ item: TransferItem, options: Options, control: TransferControl,
+                                          progress: TransferProgress) -> TransferItemResult {
         let replacing = item.decision == .replace
         var result = TransferItemResult(outcome: .failed, destination: item.destination)
-        defer { hooks.afterResult?(result) }
         guard control.checkpoint() else { result.outcome = .cancelled; return result }
         progress.update { $0.currentName = item.source.lastPathComponent }
 
@@ -87,6 +95,7 @@ nonisolated enum TransferEngine {
         let sourceParent = TransferRetryTarget.directoryIdentity(item.source.deletingLastPathComponent())
         let target = replacing ? temporaryURL(for: item.destination) : item.destination
         let copy = copy(item.source, to: target, clone: options.clone, control: control, progress: progress)
+        result.created = copy.created
         if copy.cancelled {
             removeIfPresent(target, in: target, created: copy.created)
             result.outcome = .cancelled
@@ -137,6 +146,18 @@ nonisolated enum TransferEngine {
             }
         }
 
+        if options.sanitizeCopy {
+            let boundary = options.sanitizationBoundary == item.destination ? target : options.sanitizationBoundary ?? target
+            do {
+                try ContainerCopies.finishCopyingOut(boundary, owned: copy.created)
+                guard !replacing || FileIdentity.read(target.path) == result.landed else { throw CocoaError(.fileReadCorruptFile) }
+            }
+            catch {
+                removeIfPresent(target, in: target, created: copy.created)
+                return fail(error.localizedDescription)
+            }
+        }
+
         if replacing {
             // Never swap a complete existing item for an incomplete one.
             guard failures.isEmpty else {
@@ -160,6 +181,9 @@ nonisolated enum TransferEngine {
                 return fail(describe(code))
             }
             result.replaced = TransferMove(from: item.destination, to: trashed)
+            result.created = Dictionary(uniqueKeysWithValues: copy.created.map { path, identity in
+                (item.destination.path + path.dropFirst(target.path.count), identity)
+            })
         }
 
         guard failures.isEmpty else {
@@ -197,8 +221,25 @@ nonisolated enum TransferEngine {
     /// Second attempt at the parts of an item that failed: individual files and folders, or removing the original.
     static func retry(_ index: Int, _ item: TransferItem, landed: FileIdentity?, failures: [TransferFailure], options: Options,
                       control: TransferControl, progress: TransferProgress) -> TransferItemResult {
+        var result = retryItems(index, item, landed: landed, failures: failures, options: options, control: control, progress: progress)
+        sanitize(&result, options: options, index: index, source: item.source)
+        hooks.afterResult?(result)
+        return result
+    }
+
+    private static func sanitize(_ result: inout TransferItemResult, options: Options, index: Int, source: URL) {
+        guard options.sanitizeCopy else { return }
+        do { try ContainerCopies.finishCopyingOut(options.sanitizationBoundary ?? result.destination, owned: result.created) }
+        catch {
+            result.outcome = .failed
+            result.failures.append(TransferFailure(item: index, stage: .item, source: source,
+                                                   destination: result.destination, message: error.localizedDescription))
+        }
+    }
+
+    private static func retryItems(_ index: Int, _ item: TransferItem, landed: FileIdentity?, failures: [TransferFailure], options: Options,
+                                        control: TransferControl, progress: TransferProgress) -> TransferItemResult {
         var result = TransferItemResult(outcome: .done, destination: item.destination, landed: landed)
-        defer { hooks.afterResult?(result) }
         var latestSourceParent = failures.lazy.compactMap { $0.retryTarget?.sourceParent }.first
         var latestSourceIdentities = failures.lazy.compactMap { $0.retryTarget?.sourceIdentities }.first { !$0.isEmpty } ?? [:]
         for failure in retryFailures(failures) {
@@ -226,6 +267,7 @@ nonisolated enum TransferEngine {
             }
             let copy = copy(failure.source, to: destination, replacingOwned: keepingDirectory ? owned : nil,
                             clone: options.clone, control: control, progress: progress)
+            result.created.merge(copy.created) { _, new in new }
             var mergedCreated = owned
             for (path, id) in copy.created { mergedCreated[path] = id }
             if copy.cancelled {
@@ -408,6 +450,18 @@ nonisolated enum TransferEngine {
         }
         if errno == EEXIST { return CopyOutcome(fatal: describe(EEXIST), destinationExisted: true) }
         return copyfile(source, to: destination, clone: false, control: control, progress: progress)
+    }
+
+    /// File promises and clipboard staging use the same creation receipts as queued transfers.
+    static func copyForExport(_ source: URL, to destination: URL) throws {
+        let copied = copy(source, to: destination, clone: true, control: TransferControl(), progress: TransferProgress())
+        do {
+            guard copied.fatal == nil, copied.errors.isEmpty, !copied.cancelled else { throw CocoaError(.fileWriteUnknown) }
+            try ContainerCopies.finishCopyingOut(destination, owned: copied.created)
+        } catch {
+            removeIfPresent(destination, in: destination, created: copied.created)
+            throw error
+        }
     }
 
     /// One recursive `copyfile` pass (see `copy`).

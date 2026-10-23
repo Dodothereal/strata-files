@@ -21,6 +21,7 @@ actor RemoteFiles {
 
     nonisolated let copies: RemoteCopyStore
     private let now: @Sendable () -> Date
+    private let treeDepthLimit: Int
     private let removeCopy: @Sendable (String) -> Void
     private var removals: [String: Task<Void, Never>] = [:]
     /// Where connections come from (tests give a local one).
@@ -47,7 +48,8 @@ actor RemoteFiles {
          backends: @escaping @Sendable (String) async throws -> any RemoteBackend,
          serverBackends: (@Sendable (RemoteServer) async throws -> any RemoteBackend)? = nil,
          retire: @escaping @Sendable (String, any RemoteBackend) async -> Void = { _, _ in },
-         removeCopy: (@Sendable (String) -> Void)? = nil) {
+         removeCopy: (@Sendable (String) -> Void)? = nil, treeDepthLimit: Int = 512) {
+        self.treeDepthLimit = min(512, max(1, treeDepthLimit))
         self.copies = copies
         self.backends = backends
         self.serverBackends = serverBackends ?? { server in
@@ -251,7 +253,8 @@ actor RemoteFiles {
         }
     }
 
-    private func fetchTree(_ folder: URL) async throws {
+    private func fetchTree(_ folder: URL, depth: Int = 0) async throws {
+        guard depth < treeDepthLimit else { throw CocoaError(.fileReadCorruptFile) }
         invalidate(folder)
         await refresh(folder)
         let contents = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isSymbolicLinkKey, .isDirectoryKey])) ?? []
@@ -260,7 +263,7 @@ actor RemoteFiles {
             try Task.checkCancellation()
             let values = try? item.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
             if values?.isSymbolicLink == true { continue }
-            if values?.isDirectory == true { try await fetchTree(item) } else { files.append(item) }
+            if values?.isDirectory == true { try await fetchTree(item, depth: depth + 1) } else { files.append(item) }
         }
         try await fetch(files)
     }

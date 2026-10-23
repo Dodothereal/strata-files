@@ -33,76 +33,70 @@ nonisolated package enum BulkDirectoryReader {
             let count = getattrlistbulk(fd, &request, base, buffer.count, 0)
             if count < 0 { return errno }
             if count == 0 { return 0 }
-            var entry = UnsafeRawPointer(base)
-            for _ in 0..<count {
-                let length = Int(entry.loadUnaligned(as: UInt32.self))
-                defer { entry += length }
-                var field = entry + 4
-                let returned = field.loadUnaligned(as: attribute_set_t.self)
-                field += MemoryLayout<attribute_set_t>.size
-
-                // Fields follow in a fixed order: error, name, type, mtime, flags, then directory and file attributes.
-                if returned.commonattr & attrgroup_t(ATTR_CMN_ERROR) != 0 {
-                    let error = field.loadUnaligned(as: UInt32.self)
-                    field += 4
-                    if error != 0 { continue }
-                }
-                guard returned.commonattr & attrgroup_t(ATTR_CMN_NAME) != 0 else { continue }
-                let nameRef = field.loadUnaligned(as: attrreference_t.self)
-                let namePointer = field + Int(nameRef.attr_dataoffset)
-                let nameLength = max(0, Int(nameRef.attr_length) - 1) // includes the trailing NUL
-                field += MemoryLayout<attrreference_t>.size
-
-                var type: UInt32 = 0
-                if returned.commonattr & attrgroup_t(ATTR_CMN_OBJTYPE) != 0 {
-                    type = field.loadUnaligned(as: UInt32.self)
-                    field += 4
-                }
-                var mtime: UInt32 = 0
-                if returned.commonattr & attrgroup_t(ATTR_CMN_MODTIME) != 0 {
-                    let seconds = field.loadUnaligned(as: Int.self)
-                    mtime = UInt32(clamping: seconds)
-                    field += MemoryLayout<timespec>.size
-                }
-                var bsdFlags: UInt32 = 0
-                if returned.commonattr & attrgroup_t(ATTR_CMN_FLAGS) != 0 {
-                    bsdFlags = field.loadUnaligned(as: UInt32.self)
-                    field += 4
-                }
-                var fileKey: UInt32 = 0
-                if returned.commonattr & attrgroup_t(ATTR_CMN_FILEID) != 0 {
-                    let id = field.loadUnaligned(as: UInt64.self)
-                    fileKey = UInt32(truncatingIfNeeded: id ^ (id >> 32))
-                    field += 8
-                }
-                var mountStatus: UInt32 = 0
-                if returned.dirattr & attrgroup_t(ATTR_DIR_MOUNTSTATUS) != 0 {
-                    mountStatus = field.loadUnaligned(as: UInt32.self)
-                    field += 4
-                }
-                var size: Int64 = 0
-                if returned.fileattr & attrgroup_t(ATTR_FILE_DATALENGTH) != 0 {
-                    size = max(0, field.loadUnaligned(as: Int64.self))
-                    field += 8
-                }
-
-                let isDirectory = type == UInt32(VDIR.rawValue)
-                let nameBytes = UnsafeRawBufferPointer(start: namePointer, count: nameLength)
-                let isDotFile = nameLength > 0 && nameBytes[0] == UInt8(ascii: ".")
-                items.append(ScannedItem(
-                    nameOffset: names.count,
-                    nameLength: nameLength,
-                    isDirectory: isDirectory,
-                    isPackage: isDirectory && isPackageName(nameBytes),
-                    isSymlink: type == UInt32(VLNK.rawValue),
-                    isHidden: isDotFile || bsdFlags & UInt32(UF_HIDDEN) != 0,
-                    isMountPoint: mountStatus & UInt32(DIR_MNTSTATUS_MNTPOINT) != 0,
-                    size: size,
-                    mtime: mtime,
-                    fileKey: fileKey))
-                names.append(contentsOf: nameBytes)
-            }
+            let error = parse(UnsafeRawBufferPointer(buffer), count: count, items: &items, names: &names)
+            if error != 0 { return error }
         }
+    }
+
+    /// Validate every record and reference before loading from the kernel buffer. Network filesystems must not
+    /// turn a zero record length into a non-progressing walk or a relative name reference into an out-of-bounds read.
+    package static func parse(_ buffer: UnsafeRawBufferPointer, count: Int32, items: inout [ScannedItem], names: inout [UInt8]) -> Int32 {
+        var offset = 0
+        for _ in 0..<max(0, count) {
+            guard offset <= buffer.count - 4 else { return EIO }
+            let length = Int(buffer.loadUnaligned(fromByteOffset: offset, as: UInt32.self))
+            guard length >= 4 + MemoryLayout<attribute_set_t>.size, length <= buffer.count - offset else { return EIO }
+            let end = offset + length
+            var field = offset + 4
+            func read<T>(_ type: T.Type) -> T? {
+                guard MemoryLayout<T>.size <= end - field else { return nil }
+                defer { field += MemoryLayout<T>.size }
+                return buffer.loadUnaligned(fromByteOffset: field, as: type)
+            }
+            guard let returned = read(attribute_set_t.self) else { return EIO }
+            defer { offset = end }
+            if returned.commonattr & attrgroup_t(ATTR_CMN_ERROR) != 0 {
+                guard let error = read(UInt32.self) else { return EIO }
+                if error != 0 { continue }
+            }
+            guard returned.commonattr & attrgroup_t(ATTR_CMN_NAME) != 0 else { continue }
+            let referenceOffset = field
+            guard let reference = read(attrreference_t.self) else { return EIO }
+            let start = referenceOffset + Int(reference.attr_dataoffset), nameLength = Int(reference.attr_length)
+            guard start >= offset, start <= end, nameLength > 0, nameLength <= end - start,
+                  buffer[start + nameLength - 1] == 0 else { return EIO }
+            var type: UInt32 = 0, mtime: UInt32 = 0, bsdFlags: UInt32 = 0, fileKey: UInt32 = 0, mount: UInt32 = 0
+            var size: Int64 = 0
+            if returned.commonattr & attrgroup_t(ATTR_CMN_OBJTYPE) != 0 {
+                guard let value = read(UInt32.self) else { return EIO }; type = value
+            }
+            if returned.commonattr & attrgroup_t(ATTR_CMN_MODTIME) != 0 {
+                guard let value = read(timespec.self) else { return EIO }; mtime = UInt32(clamping: value.tv_sec)
+            }
+            if returned.commonattr & attrgroup_t(ATTR_CMN_FLAGS) != 0 {
+                guard let value = read(UInt32.self) else { return EIO }; bsdFlags = value
+            }
+            if returned.commonattr & attrgroup_t(ATTR_CMN_FILEID) != 0 {
+                guard let value = read(UInt64.self) else { return EIO }; fileKey = UInt32(truncatingIfNeeded: value ^ (value >> 32))
+            }
+            if returned.dirattr & attrgroup_t(ATTR_DIR_MOUNTSTATUS) != 0 {
+                guard let value = read(UInt32.self) else { return EIO }; mount = value
+            }
+            if returned.fileattr & attrgroup_t(ATTR_FILE_DATALENGTH) != 0 {
+                guard let value = read(Int64.self) else { return EIO }; size = max(0, value)
+            }
+            guard start >= field else { return EIO }
+            let nameBytes = UnsafeRawBufferPointer(rebasing: buffer[start..<(start + nameLength - 1)])
+            guard !nameBytes.isEmpty, !nameBytes.contains(0), !nameBytes.contains(47) else { return EIO }
+            let directory = type == UInt32(VDIR.rawValue)
+            items.append(ScannedItem(nameOffset: names.count, nameLength: nameBytes.count, isDirectory: directory,
+                                     isPackage: directory && isPackageName(nameBytes), isSymlink: type == UInt32(VLNK.rawValue),
+                                     isHidden: nameBytes[0] == 46 || bsdFlags & UInt32(UF_HIDDEN) != 0,
+                                     isMountPoint: mount & UInt32(DIR_MNTSTATUS_MNTPOINT) != 0,
+                                     size: size, mtime: mtime, fileKey: fileKey))
+            names.append(contentsOf: nameBytes)
+        }
+        return 0
     }
 
     private static func isPackageName(_ name: UnsafeRawBufferPointer) -> Bool {
@@ -204,12 +198,13 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
             let ownNoise = names.withUnsafeBytes { IndexStore.ownNoise(items, nameBuffer: $0) }
             let ids = store.write { store in
                 let ids = names.withUnsafeBytes { store.appendChildren(items, nameBuffer: $0, of: job.id, ownNoise: ownNoise) }
-                for folder in folders where folder.noise {
+                for folder in folders where folder.noise && folder.offset < ids.count {
                     store.flags[Int(ids.lowerBound) + folder.offset] |= IndexStore.Flag.noise
                 }
                 return ids
             }
-            let childJobs = folders.map { Job(id: ids.lowerBound + Int32($0.offset), path: $0.path) }
+            if ids.count != items.count { cancel() }
+            let childJobs = folders.filter { $0.offset < ids.count }.map { Job(id: ids.lowerBound + Int32($0.offset), path: $0.path) }
             finish(job, adding: childJobs, scanned: items.count)
         }
     }

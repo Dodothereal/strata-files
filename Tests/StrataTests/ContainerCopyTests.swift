@@ -6,6 +6,64 @@ import Testing
 /// decides. Nothing it holds may reach outside the copy: no `..`, nothing written through a link, no hard link to a file
 /// elsewhere; and what the container no longer has is removed from the copy alone, never through a link.
 extension ContainerTests {
+    /// Two bounded replies: the tree and a hardlink's independently fetched contents. A mutant that omits the
+    /// second request cannot leave a test thread blocked in accept forever.
+    private static func hardlinkServer(_ streams: [[UInt8]]) throws -> ContainerEngine {
+        let path = "/tmp/strata-hardlink-\(UUID().uuidString.prefix(8)).sock"
+        let listener = socket(AF_UNIX, SOCK_STREAM, 0)
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: Array(path.utf8) + [0]) }
+        let result = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(listener, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        }
+        try #require(result == 0)
+        listen(listener, 2)
+        Thread.detachNewThread {
+            defer { close(listener); unlink(path) }
+            for stream in streams {
+                var ready = pollfd(fd: listener, events: Int16(POLLIN), revents: 0)
+                guard poll(&ready, 1, 2000) > 0 else { return }
+                let client = accept(listener, nil, nil)
+                guard client >= 0 else { return }
+                var on: Int32 = 1
+                setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+                var timeout = timeval(tv_sec: 2, tv_usec: 0)
+                setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+                var request = Data(), buffer = [UInt8](repeating: 0, count: 4096)
+                while !request.contains(Data("\r\n\r\n".utf8)) {
+                    let count = recv(client, &buffer, buffer.count, 0)
+                    if count <= 0 { break }
+                    request.append(contentsOf: buffer[..<count])
+                }
+                let body = stream + [UInt8](repeating: 0, count: 1024)
+                let reply = Array("HTTP/1.1 200 OK\r\nContent-Length: \(body.count)\r\n\r\n".utf8) + body
+                _ = reply.withUnsafeBytes { send(client, $0.baseAddress, $0.count, 0) }
+                close(client)
+            }
+        }
+        return ContainerEngine(socket: path, name: "Fixture", apiVersion: "1.41")
+    }
+
+    @Test(arguments: ["absolute", "stale"])
+    func hardlinksUseContainerPathsAndNeverReuseAnUnfetchedPlaceholder(_ kind: String) async throws {
+        let tree = try TestTree("copy/etc/", "copy/etc/stale", "outside/", "outside/keep")
+        #expect(chmod(tree.url("copy/etc/stale").path, 0) == 0)
+        var stream = Self.tarHeader("etc/", type: UInt8(ascii: "5"), mode: 0o755)
+        stream += Self.tarFile("etc/passwd", "inside subfolder")
+        stream += Self.tarHeader("etc/hard", type: UInt8(ascii: "1"), link: kind == "absolute" ? "/etc/passwd" : "etc/stale")
+        let engine = try Self.hardlinkServer([stream, Self.tarFile("hard", "remote target")])
+        let destination = tree.url("copy/etc")
+        let result = await TransferWorker(label: "strata-test-hardlinks").run {
+            Result { try CopyWriter.writeTree(engine, id: String(repeating: "ab", count: 32), containerPath: "/home/app/etc",
+                                             into: destination, stop: StopFlag()) }
+        }
+        try result.get()
+        #expect(tree.text("copy/etc/hard") == "remote target")
+        #expect(tree.text("copy/etc/passwd") == "inside subfolder")
+        #expect(tree.snapshot() == ["copy/", "copy/etc/", "copy/etc/hard", "copy/etc/passwd", "outside/", "outside/keep"])
+    }
+
     private static let id = String(repeating: "ab", count: 32)
 
     private static func archive(_ stream: [UInt8], beforeReply: (@Sendable () -> Void)? = nil) throws -> ContainerEngine {

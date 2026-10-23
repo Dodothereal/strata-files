@@ -32,7 +32,7 @@ struct StorageContextTests {
         try saved.write(to: first.url("history.sealed"))
         #expect(OperationLog(storage: first).entries.isEmpty)
         #expect(try Data(contentsOf: first.url("history.sealed")) == saved)
-        #expect(tree.snapshot() == ["a.txt", "b.txt", "first/", "first/history.sealed", "second/", "second/history.sealed"])
+        #expect(tree.snapshot() == ["a.txt", "b.txt", "first/", "first/Caches/", "first/history.sealed", "second/", "second/Caches/", "second/history.sealed"])
     }
 
     @Test func storeNamesRemainRelativeAndStreamsKeepTheirContext() throws {
@@ -54,7 +54,7 @@ struct StorageContextTests {
         try sealed.write(to: second.url("other.sealed"))
         #expect(second.read(second.url("other.sealed")) == nil)
         #expect(try Data(contentsOf: second.url("other.sealed")) == sealed)
-        #expect(tree.snapshot() == ["first/", "first/index.sealed", "second/", "second/index.sealed", "second/other.sealed"])
+        #expect(tree.snapshot() == ["first/", "first/Caches/", "first/index.sealed", "second/", "second/Caches/", "second/index.sealed", "second/other.sealed"])
     }
 
     @Test func keyProviderRunsOnceAndUnavailableKeysNeverReplaceFiles() async throws {
@@ -75,10 +75,10 @@ struct StorageContextTests {
             if available {
                 try storage.write(Data("saved".utf8), to: url)
                 #expect(storage.read(url) == Data("saved".utf8))
-                #expect(tree.snapshot() == ["outside.txt", "store/", "store/history.sealed"])
+                #expect(tree.snapshot() == ["outside.txt", "store/", "store/Caches/", "store/history.sealed"])
             } else {
                 #expect(throws: SecureStorage.Failure.self) { try storage.write(Data("saved".utf8), to: url) }
-                #expect(tree.snapshot() == ["outside.txt", "store/", "store/history.sealed -> ../outside.txt"])
+                #expect(tree.snapshot() == ["outside.txt", "store/", "store/Caches/", "store/history.sealed -> ../outside.txt"])
             }
             #expect(calls.withLock { $0 } == 1)
             #expect(tree.text("outside.txt") == "outside.txt")
@@ -110,7 +110,7 @@ struct StorageContextTests {
         #expect(storage.read(file) == contents)
         let rewritten = try Data(contentsOf: file)
         #expect(rewritten.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: 4, as: UInt32.self)) } == 2)
-        #expect(tree.snapshot() == ["store/", "store/history.sealed"])
+        #expect(tree.snapshot() == ["store/", "store/Caches/", "store/history.sealed"])
     }
 
     @Test func historyRemovesOnlyItsOwnLegacyStore() throws {
@@ -120,7 +120,7 @@ struct StorageContextTests {
         #expect(OperationLog(storage: storage).entries.isEmpty)
         #expect(tree.text("outside.txt") == "outside.txt")
         #expect(tree.text("second/history.json") == "second/history.json")
-        #expect(tree.snapshot() == ["first/", "outside.txt", "second/", "second/history.json"])
+        #expect(tree.snapshot() == ["first/", "first/Caches/", "outside.txt", "second/", "second/history.json"])
     }
 
     @Test func historyUndoAndRedoKeepTheOwningStore() async throws {
@@ -137,8 +137,8 @@ struct StorageContextTests {
         try await history.undo(entry, undoManager: undo)
         undo.endUndoGrouping()
         #expect(OperationLog(storage: storage).entries.first?.undone == true)
-        let restored = ["a.txt", "ab.txt", "link -> a.txt", "nested/", "nested/a.txt", "state/", "state/history.sealed"]
-        let renamed = ["ab.txt", "b.txt", "link -> a.txt", "nested/", "nested/a.txt", "state/", "state/history.sealed"]
+        let restored = ["a.txt", "ab.txt", "link -> a.txt", "nested/", "nested/a.txt", "state/", "state/Caches/", "state/history.sealed"]
+        let renamed = ["ab.txt", "b.txt", "link -> a.txt", "nested/", "nested/a.txt", "state/", "state/Caches/", "state/history.sealed"]
         #expect(tree.snapshot() == restored)
         for _ in 0..<2 {
             undo.undo()

@@ -292,10 +292,11 @@ nonisolated package enum CodeLoader {
     private static func binaryPropertyListAsXML(_ url: URL) throws -> String? {
         let (head, _) = try TextFile.readPrefix(url, limit: 8)
         guard head.starts(with: Array("bplist".utf8)) else { return nil }
-        let (data, truncated) = try TextFile.readPrefix(url, limit: 16 << 20)
-        guard !truncated else { throw PreviewError.unsupported }
+        let (data, truncated) = try TextFile.readPrefix(url, limit: 1 << 20)
+        guard !truncated, BinaryPropertyListBudget.permits(data) else { throw PreviewError.unsupported }
         let object = try PropertyListSerialization.propertyList(from: data, format: nil)
         let xml = try PropertyListSerialization.data(fromPropertyList: object, format: .xml, options: 0)
+        guard xml.count <= TextFile.limit else { throw PreviewError.unsupported }
         return String(decoding: xml, as: UTF8.self)
     }
 }

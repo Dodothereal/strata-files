@@ -165,7 +165,7 @@ nonisolated struct RemoteServer: Codable, Equatable, Hashable, Sendable, Identif
     /// shell, single-quoted, which reads the same in sh, bash, zsh, fish and csh only without `'`, `\`, `!` or
     /// control characters: a folder with any of those opens at the login's folder instead.
     func terminalScript(path: String) -> String {
-        var arguments = ["/usr/bin/ssh", "-t", "-o", "ForwardAgent=no"]
+        var arguments = ["/usr/bin/ssh", "-t", "-o", "ForwardAgent=no", "-o", "ForwardX11=no", "-o", "ClearAllForwardings=yes"]
         if let port { arguments += ["-p", String(port)] }
         if let user, !user.isEmpty { arguments += ["-l", user] }
         let quotable = !path.unicodeScalars.contains { "'\\!".unicodeScalars.contains($0) || CharacterSet.controlCharacters.contains($0) }

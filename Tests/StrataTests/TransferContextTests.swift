@@ -44,7 +44,7 @@ struct TransferContextTests {
         }
         #expect(env.history.entries.count == 2)
         #expect(tree.text("a.txt") == "a.txt" && tree.text("ab.txt") == "ab.txt")
-        #expect(tree.snapshot() == ["a.txt", "ab.txt", "out/", "out/a 2.txt", "out/a.txt", "state/", "state/history.sealed"])
+        #expect(tree.snapshot() == ["a.txt", "ab.txt", "out/", "out/a 2.txt", "out/a.txt", "state/", "state/Caches/", "state/history.sealed"])
     }
 
     @Test func transferHistoryAndRepeatedUndoStayWithTheirOwner() async throws {
@@ -59,8 +59,8 @@ struct TransferContextTests {
         undo.endUndoGrouping()
         #expect(job.failures.isEmpty && job.state == .finished)
         let id = try #require(env.history.entries.first?.id)
-        let moved = ["ab.txt", "link -> a.txt", "other/", "other/a.txt", "out/", "out/a.txt", "state/", "state/history.sealed"]
-        let restored = ["a.txt", "ab.txt", "link -> a.txt", "other/", "other/a.txt", "out/", "state/", "state/history.sealed"]
+        let moved = ["ab.txt", "link -> a.txt", "other/", "other/a.txt", "out/", "out/a.txt", "state/", "state/Caches/", "state/history.sealed"]
+        let restored = ["a.txt", "ab.txt", "link -> a.txt", "other/", "other/a.txt", "out/", "state/", "state/Caches/", "state/history.sealed"]
         #expect(tree.snapshot() == moved)
         for _ in 0..<3 {
             undo.undo()
@@ -81,7 +81,7 @@ struct TransferContextTests {
         #expect(tree.text("out/a.txt") == "out/a.txt")
         #expect(tree.text("out/original.txt") == "a.txt")
         #expect(tree.snapshot() == ["ab.txt", "link -> a.txt", "other/", "other/a.txt", "out/", "out/a.txt",
-                                   "out/original.txt", "state/", "state/history.sealed"])
+                                   "out/original.txt", "state/", "state/Caches/", "state/history.sealed"])
     }
 
     @Test func queuedArchivesRecordInTheirOwnersHistory() async throws {
@@ -101,7 +101,7 @@ struct TransferContextTests {
         #expect(Set(OperationLog(storage: env.storage).entries.map(\.id)) == ids)
         #expect(!OperationLog.shared.entries.contains { ids.contains($0.id) })
         #expect(tree.text("out/source/a.txt") == "source/a.txt")
-        #expect(tree.snapshot() == ["ab.txt", "out/", "out/source/", "out/source/a.txt", "source.zip", "source/", "source/a.txt", "state/", "state/history.sealed"].sorted())
+        #expect(tree.snapshot() == ["ab.txt", "out/", "out/source/", "out/source/a.txt", "source.zip", "source/", "source/a.txt", "state/", "state/Caches/", "state/history.sealed"].sorted())
     }
 
     @Test func crossDiskUndoAndRedoUseTheOriginalQueue() async throws {
@@ -123,7 +123,7 @@ struct TransferContextTests {
                 undo.undo()
                 await finishRelatedJobs(env.queue, tree: tree, volume: volume)
                 #expect(env.queue.jobs.count == 2 + 2 * cycle)
-                #expect(tree.snapshot() == ["a.txt", "ab.txt", "state/", "state/history.sealed"])
+                #expect(tree.snapshot() == ["a.txt", "ab.txt", "state/", "state/Caches/", "state/history.sealed"])
                 #expect(!FileManager.default.fileExists(atPath: volume.url("a.txt").path))
                 #expect(env.history.entries.first?.undone == true)
                 undo.redo()
@@ -131,12 +131,12 @@ struct TransferContextTests {
                 #expect(env.queue.jobs.count == 3 + 2 * cycle)
                 #expect(env.history.entries.first?.undone == false)
                 #expect(try String(contentsOf: volume.url("a.txt"), encoding: .utf8) == "a.txt")
-                #expect(tree.snapshot() == ["ab.txt", "state/", "state/history.sealed"])
+                #expect(tree.snapshot() == ["ab.txt", "state/", "state/Caches/", "state/history.sealed"])
             }
             #expect(env.history.entries.count == 1)
             #expect(!OperationLog.shared.entries.contains { $0.id == id })
             #expect(env.queue.jobs.compactMap { $0 as? TransferJob }.allSatisfy { !$0.options.verify })
-            #expect(tree.snapshot() == ["ab.txt", "state/", "state/history.sealed"])
+            #expect(tree.snapshot() == ["ab.txt", "state/", "state/Caches/", "state/history.sealed"])
         } catch {
             await volume.eject()
             throw error
@@ -169,7 +169,7 @@ struct TransferContextTests {
         #expect(owner == nil)
         #expect(job.state == .finished && !job.canRetry)
         #expect(tree.text("out/a.txt") == "a.txt")
-        #expect(tree.snapshot() == ["a.txt", "out/", "out/a.txt", "state/", "state/history.sealed"])
+        #expect(tree.snapshot() == ["a.txt", "out/", "out/a.txt", "state/", "state/Caches/", "state/history.sealed"])
     }
 
     @Test func bothPanesInEveryViewSendOnlyTheirSelectionToTheirOwnQueue() async throws {
@@ -206,7 +206,7 @@ struct TransferContextTests {
             #expect(tree.text("left/b.txt") == "right/b.txt")
             #expect(controller.window?.isVisible == false)
             #expect(tree.snapshot() == ["left/", "left/a.txt", "left/ab.txt", "left/b.txt", "right/", "right/a.txt",
-                                       "right/b.txt", "right/bb.txt", "state/", "state/history.sealed"])
+                                       "right/b.txt", "right/bb.txt", "state/", "state/Caches/", "state/history.sealed"])
         }
     }
 
@@ -233,7 +233,7 @@ struct TransferContextTests {
         #expect(env.queue.jobs.count == 1)
         #expect(env.history.entries.count == 1)
         #expect(tree.text("third/a.txt") == "left/a.txt")
-        #expect(tree.snapshot() == ["left/", "left/a.txt", "left/ab.txt", "right/", "state/", "state/history.sealed", "third/", "third/a.txt"])
+        #expect(tree.snapshot() == ["left/", "left/a.txt", "left/ab.txt", "right/", "state/", "state/Caches/", "state/history.sealed", "third/", "third/a.txt"])
     }
 
     @Test func windowNavigationAndSuggestionsUseTheirOwnVisitHistory() async throws {
@@ -275,8 +275,8 @@ struct TransferContextTests {
         let matches = await suggestions.suggestions(for: "v", in: first.url("start"))
         #expect(matches.contains { $0.url.standardizedFileURL.fileViewKey == first.url("visited").standardizedFileURL.fileViewKey })
         #expect(!matches.contains { $0.url.standardizedFileURL.fileViewKey == second.url("visited").standardizedFileURL.fileViewKey })
-        #expect(first.snapshot() == ["start/", "state/", "visited/"])
-        #expect(second.snapshot() == ["start/", "state/", "visited/"])
+        #expect(first.snapshot() == ["start/", "state/", "state/Caches/", "visited/"])
+        #expect(second.snapshot() == ["start/", "state/", "state/Caches/", "visited/"])
     }
 
     @Test func bothSidebarDropModesUseTheWindowQueue() async throws {
@@ -304,7 +304,7 @@ struct TransferContextTests {
         #expect(env.queue.jobs.count == 2 && env.history.entries.count == 2)
         #expect(env.queue.jobs.allSatisfy { $0.state == .finished && $0.failureCount == 0 })
         #expect(tree.text("places/a.txt") == "a.txt" && tree.text("folders/a.txt") == "a.txt")
-        #expect(tree.snapshot() == ["a.txt", "ab.txt", "folders/", "folders/a.txt", "places/", "places/a.txt", "state/", "state/history.sealed"])
+        #expect(tree.snapshot() == ["a.txt", "ab.txt", "folders/", "folders/a.txt", "places/", "places/a.txt", "state/", "state/Caches/", "state/history.sealed"])
     }
 
     /// A private pasteboard and a copy-only source exercise the native drop delegates without posting a drag or
@@ -363,7 +363,7 @@ struct TransferContextTests {
         while closedBrowser != nil && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
         #expect(closedBrowser == nil)
         #expect(env.queue.jobs.count == 1 && env.queue.jobs.first?.state == .finished)
-        #expect(tree.snapshot() == ["left/", "left/a.txt", "right/", "right/a.txt", "state/", "state/history.sealed"])
+        #expect(tree.snapshot() == ["left/", "left/a.txt", "right/", "right/a.txt", "state/", "state/Caches/", "state/history.sealed"])
     }
 
     @Test func fetchJobsReleaseTheirContinuationWhenFinishedOrCancelled() async throws {
@@ -394,7 +394,7 @@ struct TransferContextTests {
             #expect(job.state == (cancelled ? .cancelled : .finished))
         }
         #expect(env.queue.jobs.count == 2 && !env.queue.hasActiveJobs)
-        #expect(tree.snapshot() == ["state/"])
+        #expect(tree.snapshot() == ["state/", "state/Caches/"])
     }
 
     private func fetchHolding(_ browser: BrowserViewController, then: @escaping () -> Void) -> CopyFetchJob {

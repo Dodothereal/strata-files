@@ -46,7 +46,7 @@ struct RemoteServerTests {
         let server = try #require(parsed("deploy@web-1"))
         let script = server.terminalScript(path: "/srv/my app $(rm -rf ~) `id`")
         // The remote command is one argument for this Mac's shell, with the path single-quoted inside it for the server's.
-        #expect(script.contains("exec '/usr/bin/ssh' '-t' '-o' 'ForwardAgent=no' '-l' 'deploy' '--' 'web-1' "))
+        #expect(script.contains("exec '/usr/bin/ssh' '-t' '-o' 'ForwardAgent=no' '-o' 'ForwardX11=no' '-o' 'ClearAllForwardings=yes' '-l' 'deploy' '--' 'web-1' "))
         #expect(script.contains("'cd '\\''/srv/my app $(rm -rf ~) `id`'\\'' 2>/dev/null; exec $SHELL -l'"))
         // A path that single quotes can't keep the same in every login shell (a quote, a backslash, a !) isn't gone to.
         for path in ["/srv/it's", "/srv/a\\'; id; #", "/srv/hi!", "/srv/new\nline"] {

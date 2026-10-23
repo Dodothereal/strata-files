@@ -1,4 +1,6 @@
 import AppKit
+import ImageIO
+import StrataModel
 import StrataTheme
 
 /// Turns parsed Markdown blocks into an attributed string for a TextKit 1 text view: text blocks draw code
@@ -313,8 +315,14 @@ nonisolated package final class MarkdownRenderer {
 
     /// Local images inline (scaled down to fit); remote ones as their alt text, since previews never hit the network.
     private func image(_ url: URL, alt: String, attributes: [NSAttributedString.Key: Any]) -> NSAttributedString {
-        if url.isFileURL, imageBudget > 0, let image = NSImage(contentsOf: url), image.size.width > 0, image.size.height > 0 {
+        let image: NSImage?
+        if imageBudget > 0 {
             imageBudget -= 1
+            image = localImage(url)
+        } else {
+            image = nil
+        }
+        if let image {
             let scale = min(1, maxImageSize.width / image.size.width, maxImageSize.height / image.size.height)
             let attachment = NSTextAttachment()
             attachment.image = image
@@ -327,6 +335,44 @@ nonisolated package final class MarkdownRenderer {
         var quiet = attributes
         if quiet[.link] == nil { quiet[.foregroundColor] = NSColor.secondaryLabelColor }
         return NSAttributedString(string: alt, attributes: quiet)
+    }
+
+    /// Read only regular files below the document's folder, without following any links. Decode a thumbnail
+    /// after checking the dimensions; neither compressed file size nor display scaling bounds a full decode.
+    package func localImage(_ url: URL, pixelLimit: Int = 40_000_000) -> NSImage? {
+        guard url.isFileURL else { return nil }
+        let base = baseURL.standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+        guard path.hasPrefix(base + "/") else { return nil }
+        let parts = path.dropFirst(base.count + 1).split(separator: "/").map(String.init)
+        guard !parts.isEmpty, let root = try? ChosenFile.openDirectory(baseURL.resolvingSymlinksInPath().path) else { return nil }
+        var folder = root
+        defer { close(folder) }
+        for part in parts.dropLast() {
+            let next = openat(folder, part, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard next >= 0 else { return nil }
+            close(folder)
+            folder = next
+        }
+        let fd = openat(folder, parts[parts.count - 1], O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { return nil }
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        defer { try? handle.close() }
+        var info = stat()
+        let limit = 8 << 20
+        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size <= limit,
+              let data = try? handle.read(upToCount: limit + 1), data.count <= limit,
+              let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+              let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
+              width > 0, height > 0, width <= pixelLimit / height,
+              let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceThumbnailMaxPixelSize: 640,
+              ] as CFDictionary) else { return nil }
+        return NSImage(cgImage: thumbnail, size: NSSize(width: thumbnail.width, height: thumbnail.height))
     }
 
     private func checkbox(_ checked: Bool, paragraph: NSParagraphStyle) -> NSAttributedString {

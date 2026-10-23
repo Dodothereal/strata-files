@@ -92,20 +92,28 @@ nonisolated package enum FileInfoEditing {
 
     /// Locks or unlocks the item (not a link's target).
     package static func setLocked(_ locked: Bool, at path: String) throws {
-        var info = stat()
-        guard lstat(path, &info) == 0 else { throw posixError(path) }
-        let flags = locked ? info.st_flags | UInt32(UF_IMMUTABLE) : info.st_flags & ~UInt32(UF_IMMUTABLE)
-        if lchflags(path, flags) != 0 { throw posixError(path) }
+        try ChosenFile(URL(fileURLWithPath: path)).withDescriptor { fd, info in
+            let flags = locked ? info.st_flags | UInt32(UF_IMMUTABLE) : info.st_flags & ~UInt32(UF_IMMUTABLE)
+            if fchflags(fd, flags) != 0 { throw posixError(path) }
+        }
     }
 
-    /// Changes `who`'s access to the item (not a link's target), keeping everything else about its mode.
+    /// Changes access through the chosen descriptor, keeping everything else about its mode.
     package static func setAccess(_ access: Access, for who: Who, at path: String) throws {
-        var info = stat()
-        guard lstat(path, &info) == 0 else { throw posixError(path) }
-        guard info.st_mode & S_IFMT != S_IFLNK else { throw CocoaError(.fileWriteUnsupportedScheme) }
-        let isFolder = info.st_mode & S_IFMT == S_IFDIR
-        let updated = mode(info.st_mode & 0o7777, setting: access, for: who, isFolder: isFolder)
-        if lchmod(path, updated) != 0 { throw posixError(path) }
+        let chosen = try ChosenFile(URL(fileURLWithPath: path))
+        func updated(_ info: stat) throws -> mode_t {
+            guard info.st_mode & S_IFMT != S_IFLNK else { throw CocoaError(.fileWriteUnsupportedScheme) }
+            return mode(info.st_mode & 0o7777, setting: access, for: who, isFolder: info.st_mode & S_IFMT == S_IFDIR)
+        }
+        do {
+            try chosen.withDescriptor { fd, info in
+                if fchmod(fd, try updated(info)) != 0 { throw posixError(path) }
+            }
+        } catch let error as POSIXError where error.code == .EACCES {
+            try chosen.withParent { parent, name, info in
+                if fchmodat(parent, name, try updated(info), AT_SYMLINK_NOFOLLOW) != 0 { throw posixError(path) }
+            }
+        }
     }
 
     /// The owner's and group's names, for the permissions list.

@@ -64,8 +64,10 @@ nonisolated final class ContainerPromises: NSObject, NSFilePromiseProviderDelega
             do {
                 try await copies.prepareForCopying([source])
                 guard !copies.containsPlaceholder(in: [source]) else { throw CocoaError(.fileReadUnknown) }
-                try FileManager.default.copyItem(at: source, to: url)
-                ContainerCopies.finishCopyingOut(url, from: source)
+                let result = await TransferWorker(label: "dev.strata.file-promise").run {
+                    Result { try TransferEngine.copyForExport(source, to: url) }
+                }
+                try result.get()
             } catch {
                 failure = error
             }

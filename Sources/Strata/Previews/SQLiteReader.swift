@@ -18,6 +18,8 @@ nonisolated package struct SQLiteRows: Sendable {
 /// shared between threads and the file (or its -wal/-shm siblings) is never written or locked.
 nonisolated package enum SQLiteReader {
     package static let rowLimit = 200
+    package static let tableLimit = 500
+    package static let columnLimit = 256
 
     package static func isSQLite(_ url: URL) throws -> Bool {
         let (head, _) = try TextFile.readPrefix(url, limit: 16)
@@ -28,7 +30,7 @@ nonisolated package enum SQLiteReader {
     package static func tables(_ url: URL) throws -> [SQLiteTable] {
         let db = try open(url)
         defer { sqlite3_close_v2(db) }
-        let sql = "SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY type, name COLLATE NOCASE"
+        let sql = "SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' AND length(CAST(name AS BLOB)) <= 1200 ORDER BY type, name COLLATE NOCASE LIMIT \(tableLimit)"
         var entries: [(String, Bool)] = []
         try withBudget(db, 2) {
             try query(db, sql) { statement in
@@ -56,8 +58,8 @@ nonisolated package enum SQLiteReader {
             return SQLiteRows(data: GridData(columns: [], rows: []), error: String(localized: "This table couldn’t be read (\(message(db))).", comment: "Placeholder: SQLite's error message"))
         }
         defer { sqlite3_finalize(statement) }
-        let columnCount = Int(sqlite3_column_count(statement))
-        var columns = (0..<columnCount).map { GridColumn(title: sqlite3_column_name(statement, Int32($0)).map { String(cString: $0) } ?? "") }
+        let columnCount = min(columnLimit, Int(sqlite3_column_count(statement)))
+        var columns = (0..<columnCount).map { GridColumn(title: sqlite3_column_name(statement, Int32($0)).map { String(decoding: UnsafeRawBufferPointer(start: $0, count: strnlen($0, 1200)), as: UTF8.self) } ?? "") }
         var numeric = Array(repeating: true, count: columnCount)
         var rows: [[GridValue]] = []
         while true {
@@ -99,7 +101,7 @@ nonisolated package enum SQLiteReader {
     // MARK: - Helpers
 
     private static func open(_ url: URL) throws -> OpaquePointer? {
-        let fd = Darwin.open(url.path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)
+        let fd = Darwin.open(url.path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else {
             throw PreviewError.message(String(localized: "This database couldn’t be opened."))
         }
@@ -118,7 +120,7 @@ nonisolated package enum SQLiteReader {
             throw PreviewError.message(String(localized: "This database couldn’t be opened."))
         }
         var db: OpaquePointer?
-        let status = sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil)
+        let status = sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI | SQLITE_OPEN_NOFOLLOW, nil)
         guard status == SQLITE_OK else {
             sqlite3_close_v2(db)
             throw PreviewError.message(String(localized: "This database couldn’t be opened."))
@@ -181,8 +183,10 @@ nonisolated package enum SQLiteReader {
         "\"" + identifier.replacingOccurrences(of: "\"", with: "\"\"") + "\""
     }
 
-    private static func text(_ statement: OpaquePointer?, _ column: Int32) -> String? {
-        sqlite3_column_text(statement, column).map { String(cString: $0) }
+    package static func text(_ statement: OpaquePointer?, _ column: Int32) -> String? {
+        guard let bytes = sqlite3_column_text(statement, column) else { return nil }
+        let count = min(1200, Int(sqlite3_column_bytes(statement, column)))
+        return String(decoding: UnsafeBufferPointer(start: bytes, count: count), as: UTF8.self)
     }
 
     private static func message(_ db: OpaquePointer?) -> String {

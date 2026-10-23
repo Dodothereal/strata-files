@@ -68,7 +68,7 @@ struct CreatedFolderOwnershipTests {
             #expect(tree.text("target/a.txt") == "target/a.txt")
             #expect(tree.text("outside/.DS_Store") == "outside/.DS_Store")
             #expect(tree.snapshot() == ["source/", "source/a.txt", "target/", "target/a.txt", "original/",
-                                        replacement, "outside/", "outside/.DS_Store", "state/", "state/history.sealed"].sorted())
+                                        replacement, "outside/", "outside/.DS_Store", "state/", "state/Caches/", "state/history.sealed"].sorted())
         }
     }
 
@@ -107,8 +107,8 @@ struct CreatedFolderOwnershipTests {
         await job.finished()
         undo.endUndoGrouping()
         #expect(job.failures.isEmpty)
-        let atSource = ["neighbor/", "neighbor/keep", "source/", "source/a.txt", "state/", "state/history.sealed"]
-        let atDestination = ["made/", "made/inner/", "made/inner/a.txt", "neighbor/", "neighbor/keep", "source/", "state/", "state/history.sealed"]
+        let atSource = ["neighbor/", "neighbor/keep", "source/", "source/a.txt", "state/", "state/Caches/", "state/history.sealed"]
+        let atDestination = ["made/", "made/inner/", "made/inner/a.txt", "neighbor/", "neighbor/keep", "source/", "state/", "state/Caches/", "state/history.sealed"]
         for _ in 0..<3 {
             undo.undo()
             await FileOps.undoWork?.value
@@ -153,7 +153,7 @@ struct CreatedFolderOwnershipTests {
         let history = OperationLog(storage: env.storage)
         try await history.undo(try #require(history.entries.first), undoManager: nil)
         #expect(tree.text("a.txt") == "made/a.txt" && tree.text("neighbor/keep") == "neighbor/keep")
-        #expect(tree.snapshot() == ["a.txt", "made/", "neighbor/", "neighbor/keep", "state/", "state/history.sealed"])
+        #expect(tree.snapshot() == ["a.txt", "made/", "neighbor/", "neighbor/keep", "state/", "state/Caches/", "state/history.sealed"])
     }
 
     @Test func recreationRecordsOnlyFoldersItMakesAndKeepsTryingWhenRequested() throws {
@@ -197,16 +197,16 @@ struct CreatedFolderOwnershipTests {
                 await FileOps.undoWork?.value
                 for case let transfer as TransferJob in env.queue.jobs { await transfer.finished() }
                 #expect(!FileManager.default.fileExists(atPath: volume.url("made").path))
-                #expect(tree.snapshot() == ["a.txt", "neighbor/", "neighbor/keep", "state/", "state/history.sealed"])
+                #expect(tree.snapshot() == ["a.txt", "neighbor/", "neighbor/keep", "state/", "state/Caches/", "state/history.sealed"])
                 undo.redo()
                 await FileOps.undoWork?.value
                 for case let transfer as TransferJob in env.queue.jobs { await transfer.finished() }
                 #expect(TestTree.listing(of: volume.url("made")) == ["inner/", "inner/a.txt"])
                 #expect(try String(contentsOf: volume.url("made/inner/a.txt"), encoding: .utf8) == "a.txt")
-                #expect(tree.snapshot() == ["neighbor/", "neighbor/keep", "state/", "state/history.sealed"])
+                #expect(tree.snapshot() == ["neighbor/", "neighbor/keep", "state/", "state/Caches/", "state/history.sealed"])
             }
             #expect(env.queue.jobs.compactMap { $0 as? TransferJob }.allSatisfy { $0.failures.isEmpty })
-            #expect(tree.snapshot() == ["neighbor/", "neighbor/keep", "state/", "state/history.sealed"])
+            #expect(tree.snapshot() == ["neighbor/", "neighbor/keep", "state/", "state/Caches/", "state/history.sealed"])
         } catch {
             await volume.eject()
             throw error
@@ -230,6 +230,6 @@ struct CreatedFolderOwnershipTests {
         #expect(tree.text("source/a.txt") == "source/a.txt" && tree.text("target/a.txt") == "target/a.txt")
         #expect(tree.text("outside/.DS_Store") == "outside/.DS_Store")
         #expect(tree.snapshot() == ["original/", "outside/", "outside/.DS_Store", "source/", "source/a.txt",
-                                    "spare -> outside", "state/", "target/", "target/a.txt"])
+                                    "spare -> outside", "state/", "state/Caches/", "target/", "target/a.txt"])
     }
 }

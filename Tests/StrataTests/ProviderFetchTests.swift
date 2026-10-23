@@ -175,8 +175,10 @@ struct ProviderFetchTests {
     }
 
     @Test func largeBrowserReadsUseTheirOwnQueueAndTheExistingSizeBoundary() async throws {
-        let tree = try TestTree("provider/item.txt"), item = tree.url("provider/item.txt")
+        let tree = try TestTree("provider/item.txt")
         for size in [8 << 20, (8 << 20) + 1] {
+            // Foundation caches resource values on a URL; each resized fixture needs a fresh instance.
+            let item = tree.url("provider/item.txt")
             let file = try FileHandle(forWritingTo: item)
             try file.truncate(atOffset: UInt64(size))
             try file.close()

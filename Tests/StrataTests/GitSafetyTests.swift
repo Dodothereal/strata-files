@@ -51,4 +51,35 @@ struct GitSafetyTests {
         #expect(tree.text("repo/file.txt") == "repo/FILE.txt")
         #expect(tree.snapshot().filter { !$0.hasPrefix("repo/.git/") } == ["hook.sh", "repo/", "repo/.gitattributes", "repo/file.txt"])
     }
+    @Test func invalidUTF8FilterNamesFailClosedBeforeGitStatus() async throws {
+        let tree = try TestTree("repo/", "repo/file", "repo/.gitattributes")
+        let executable = try #require(GitRunner.executable)
+        try await git(["init", "-q"], in: tree.url("repo"), executable: executable)
+        try await git(["add", "."], in: tree.url("repo"), executable: executable)
+        try await git(["commit", "-q", "-m", "fixture"], in: tree.url("repo"), executable: executable)
+        let marker = tree.url("ran")
+        let command = "touch " + ShellQuote.quote(marker.path)
+        let config = tree.url("repo/.git/config")
+        var bytes = try Data(contentsOf: config)
+        bytes.append(Data(Array("\n[filter \"evil".utf8) + [0x80] + Array("\"]\n clean = ".utf8)))
+        bytes.append(Data(command.utf8)); bytes.append(10)
+        try bytes.write(to: config)
+        try Data(Array("* filter=evil".utf8) + [0x80, 10]).write(to: tree.url("repo/.gitattributes"))
+        try Data("changed".utf8).write(to: tree.url("repo/file"))
+        let result = await GitRunner.run(["status", "--porcelain=v2", "-z"], in: tree.url("repo"), timeout: 10)
+        #expect(!result.succeeded)
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+        #expect(tree.snapshot().filter { !$0.hasPrefix("repo/.git/") } == ["repo/", "repo/.gitattributes", "repo/file"])
+    }
+
+    @Test func canonicallyEquivalentFilterNamesStayByteDistinct() throws {
+        let composed = "filter.caf\u{00E9}.clean"
+        let decomposed = "filter.cafe\u{0301}.clean"
+        let fields = Data("local\0\(composed)\0local\0\(decomposed)\0".utf8)
+        let arguments = try #require(GitRunner.filterOverrides(fields))
+        let bytes = Set(arguments.map { Data($0.utf8) })
+        #expect(bytes.contains(Data((composed + "=").utf8)))
+        #expect(bytes.contains(Data((decomposed + "=").utf8)))
+    }
+
 }

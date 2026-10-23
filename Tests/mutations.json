@@ -276,9 +276,9 @@
   },
   {
     "file": "Strata/Model/FileInfoEditing.swift",
-    "find": "        if lchflags(path, flags) != 0 { throw posixError(path) }",
-    "replace": "        if chflags(path, flags) != 0 { throw posixError(path) }",
-    "rule": "Locking a link locks what it points to",
+    "find": "if fchflags(fd, flags) != 0 { throw posixError(path) }",
+    "replace": "if chflags(path, flags) != 0 { throw posixError(path) }",
+    "rule": "Security review: locking never follows a chosen link",
     "tests": "MetadataEditTests"
   },
   {
@@ -556,9 +556,9 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Trash.swift",
-    "find": "            do { try FileManager.default.removeItem(at: url) } catch { failures.append((url, error)) }",
-    "replace": "            do { try FileManager.default.removeItem(at: url.resolvingSymlinksInPath()) } catch { failures.append((url, error)) }",
-    "rule": "Delete Immediately follows a link to what it points to",
+    "find": "do { try choice.chosen.get().remove() } catch { failures.append((choice.url, error)) }",
+    "replace": "do { try FileManager.default.removeItem(at: choice.url.resolvingSymlinksInPath()) } catch { failures.append((choice.url, error)) }",
+    "rule": "Security review: Delete Immediately never follows selected links",
     "tests": "DeleteTests"
   },
   {
@@ -585,10 +585,10 @@
   },
   {
     "file": "Strata/Containers/ContainerCopies.swift",
-    "find": "            guard lstat(path, &info) == 0, isFromCopy(path, relative, info) else { return false }",
-    "replace": "            guard lstat(path, &info) == 0 else { return false }",
-    "rule": "Copying out of a copy changes the folder's own items",
-    "tests": "RemoteFilesTests/mergingOut"
+    "find": "for (path, identity) in owned.sorted(by: { $0.key.count < $1.key.count }) {",
+    "replace": "for (path, identity) in TransferEngine.snapshotIdentities(url).sorted(by: { $0.key.count < $1.key.count }) {",
+    "rule": "Security review: copy sanitization changes only receipt-owned items",
+    "tests": "SecurityReviewTests/copiedLinks|RemoteFilesTests/mergingOut"
   },
   {
     "file": "Strata/Containers/ContainerCopies.swift",
@@ -606,9 +606,9 @@
   },
   {
     "file": "Strata/Containers/ContainerDrag.swift",
-    "find": "                try FileManager.default.copyItem(at: source, to: url)",
-    "replace": "                try? FileManager.default.removeItem(at: url); try FileManager.default.copyItem(at: source, to: url)",
-    "rule": "An item dragged out of a container replaces what's at the drop",
+    "find": "Result { try TransferEngine.copyForExport(source, to: url) }",
+    "replace": "Result { try? FileManager.default.removeItem(at: url); try TransferEngine.copyForExport(source, to: url) }",
+    "rule": "Security review: file promises never replace existing drop targets",
     "tests": "ContainerTests/aDraggedOut"
   },
   {
@@ -3911,5 +3911,279 @@
     "replace": "self.preferences = .shared",
     "rule": "Project inspector uses preferences outside its command owner",
     "tests": "FileCommandOwnershipTests/serviceCompositionKeepsQueueDependenciesAndIndependentFactories"
+  },
+  {
+    "file": "Strata/Dev/GitRepository.swift",
+    "rule": "Security review: Git filter names decode exactly",
+    "tests": "SecurityReviewTests/gitFilter",
+    "find": "guard let text = String(bytes: field, encoding: .utf8) else { return nil }",
+    "replace": "guard let text = Optional(String(decoding: field, as: UTF8.self)) else { return nil }"
+  },
+  {
+    "file": "Strata/Dev/GitRepository.swift",
+    "rule": "Security review: background Git disables global drivers too",
+    "tests": "SecurityReviewTests/gitFilter",
+    "find": "            let key = fields[index + 1]",
+    "replace": "            if [\"global\", \"system\", \"command\"].contains(fields[index]) { index += 2; continue }\n            let key = fields[index + 1]"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "rule": "Security review: ZIP metadata links are checked before publication",
+    "tests": "ArchiveSecurityReviewTests/zipMetadata",
+    "find": "        try check(root, control: control, quarantine: quarantine(of: archive))\n        return try place(root, in: folder, as: baseName(archive))",
+    "replace": "        return try place(root, in: folder, as: baseName(archive))"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "rule": "Security review: hidden archive roots stay inside a wrapper",
+    "tests": "ArchiveSecurityReviewTests",
+    "find": "if top.count == 1, !only.lastPathComponent.hasPrefix(\".\") {",
+    "replace": "if top.count == 1 {"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "rule": "Security review: archive locks cannot hide privileged modes",
+    "tests": "ArchiveSecurityReviewTests/lockedArchive",
+    "find": "if info.st_flags & locks != 0, lchflags(path, info.st_flags & ~locks) != 0 {",
+    "replace": "if false {"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "rule": "Security review: archive access lists are stripped",
+    "tests": "ArchiveSecurityReviewTests/lockedArchive",
+    "find": "if acl_set_link_np(path, ACL_TYPE_EXTENDED, empty) != 0, errno != ENOTSUP {",
+    "replace": "if false {"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "rule": "Security review: archive privileged permissions are stripped",
+    "tests": "ArchiveSecurityReviewTests/lockedArchive",
+    "find": "guard lchmod(path, mode) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }",
+    "replace": "guard true else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }"
+  },
+  {
+    "file": "Strata/Containers/ContainerCopies.swift",
+    "rule": "Security review: escaping copied links are dropped without consulting the source",
+    "tests": "SecurityReviewTests/copiedLinks",
+    "find": "if path == top || Archiver.resolve(target, from: relative.split(separator: \"/\").dropLast().map(String.init),\n                                                       in: top, hops: 0, budget: &budget) == nil {",
+    "replace": "if false {"
+  },
+  {
+    "file": "Strata/Transfers/TransferJob.swift",
+    "rule": "Security review: queued copies sanitize before finished",
+    "tests": "SecurityReviewTests",
+    "find": "options.sanitizeCopy = queue?.copies.contains(item.source) == true",
+    "replace": "options.sanitizeCopy = false"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "rule": "Security review: promises and clipboard copies are sanitized",
+    "tests": "ContainerTests/aDraggedOut|RemoteFilesTests/theClipboard",
+    "find": "try ContainerCopies.finishCopyingOut(destination, owned: copied.created)",
+    "replace": "_ = copied.created"
+  },
+  {
+    "file": "Strata/Model/ChosenFile.swift",
+    "rule": "Security review: deletion uses the identity chosen before confirmation",
+    "tests": "SecurityReviewTests/deletionKeepsReplacements",
+    "find": "try Self.remove(in: parent, name: url.lastPathComponent, identity: identity, depth: 0)",
+    "replace": "try Self.remove(in: parent, name: url.lastPathComponent, identity: FileIdentity.read(url.path) ?? identity, depth: 0)"
+  },
+  {
+    "file": "Strata/Model/ChosenFile.swift",
+    "rule": "Security review: a renamed parent refuses deletion",
+    "tests": "SecurityReviewTests/deletionKeepsAnAncestor",
+    "find": "        guard fstat(current, &info) == 0, FileIdentity.from(info) == parentIdentity else { throw POSIXError(.ESTALE) }",
+    "replace": "        _ = fstat(current, &info)"
+  },
+  {
+    "file": "Strata/Model/ChosenFile.swift",
+    "rule": "Security review: metadata descriptors refuse replacements",
+    "tests": "SecurityReviewTests/metadataDescriptors",
+    "find": "guard fstat(fd, &info) == 0, FileIdentity.from(info) == identity else { throw POSIXError(.ESTALE) }\n        return try body(fd, info)",
+    "replace": "guard fstat(fd, &info) == 0 else { throw POSIXError(.ESTALE) }\n        return try body(fd, info)"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "rule": "Security review: SFTP keeps the original until installation succeeds",
+    "tests": "SecurityReviewTests/standardSFTP",
+    "find": "        try rename(path, backup)",
+    "replace": "        try remove(path)"
+  },
+  {
+    "file": "Strata/Remote/RemoteSession.swift",
+    "rule": "Security review: SFTP restores the backup on install failure",
+    "tests": "SecurityReviewTests/standardSFTP",
+    "find": "do { try rename(backup, path) }",
+    "replace": "do { try remove(backup) }"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "rule": "Security review: absolute hardlink targets remain container absolute paths",
+    "tests": "ContainerTests",
+    "find": "hardlinks.append((parts, entry.linkTarget))",
+    "replace": "hardlinks.append((parts, streamName(entry.linkTarget)))"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "rule": "Security review: unfetched hardlink placeholders never supply completed bytes",
+    "tests": "ContainerTests",
+    "edits": [
+      {
+        "find": "&& materialized.contains(targetParts.map(folded).joined(separator: \"/\"))",
+        "replace": "&& true"
+      },
+      {
+        "find": "targetInfo.st_mode & S_IFMT == S_IFREG, !ContainerCopies.isPlaceholderMode(targetInfo.st_mode)",
+        "replace": "targetInfo.st_mode & S_IFMT == S_IFREG"
+      }
+    ]
+  },
+  {
+    "file": "Strata/AI/PlanGenerator.swift",
+    "rule": "Security review: camera metadata is one safe folder name",
+    "tests": "SecurityReviewTests/cameraMetadata",
+    "find": "return FileOps.nameText(model.replacingOccurrences(of: \"/\", with: \"-\").replacingOccurrences(of: \":\", with: \"-\"), english: unknown)",
+    "replace": "return model"
+  },
+  {
+    "file": "Strata/Index/IndexStore.swift",
+    "rule": "Security review: entry counts are bounded before narrowing",
+    "tests": "SecurityReviewTests",
+    "find": "&& entries <= maximumEntries - parent.count && nameBytes <= maximumBytes - names.count",
+    "replace": "&& nameBytes <= maximumBytes - names.count"
+  },
+  {
+    "file": "Strata/Index/IndexStore.swift",
+    "rule": "Security review: name offsets are bounded before narrowing",
+    "tests": "SecurityReviewTests",
+    "find": "&& entries <= maximumEntries - parent.count && nameBytes <= maximumBytes - names.count",
+    "replace": "&& entries <= maximumEntries - parent.count"
+  },
+  {
+    "file": "Strata/Index/IndexPersistence.swift",
+    "rule": "Security review: duplicate persisted siblings are refused",
+    "tests": "IndexPersistenceSafetyTests",
+    "find": "guard names.insert(ContiguousArray(store.names[start..<(start + length)])).inserted else { return false }",
+    "replace": "_ = names.insert(ContiguousArray(store.names[start..<(start + length)]))"
+  },
+  {
+    "file": "Strata/Index/IndexScanner.swift",
+    "rule": "Security review: invalid bulk record lengths report failure",
+    "tests": "SecurityReviewTests/bulkDirectory",
+    "find": "guard length >= 4 + MemoryLayout<attribute_set_t>.size, length <= buffer.count - offset else { return EIO }",
+    "replace": "guard length >= 4 + MemoryLayout<attribute_set_t>.size, length <= buffer.count - offset else { return 0 }"
+  },
+  {
+    "file": "Strata/Previews/BinaryPropertyListBudget.swift",
+    "rule": "Security review: plist expansion is bounded before XML serialization",
+    "tests": "SecurityReviewTests/binaryPlist",
+    "find": "var remaining = limit - 256",
+    "replace": "var remaining = limit * 8"
+  },
+  {
+    "file": "Strata/Previews/MarkdownRenderer.swift",
+    "rule": "Security review: markdown refuses references outside its document folder",
+    "tests": "SecurityReviewTests/markdownImages",
+    "find": "let base = baseURL.standardizedFileURL.path",
+    "replace": "let base = url.deletingLastPathComponent().standardizedFileURL.path"
+  },
+  {
+    "file": "Strata/Previews/MarkdownRenderer.swift",
+    "rule": "Security review: markdown image dimensions are checked before decoding",
+    "tests": "SecurityReviewTests/markdownImages",
+    "find": "width > 0, height > 0, width <= pixelLimit / height,",
+    "replace": "width > 0, height > 0,"
+  },
+  {
+    "file": "Strata/Previews/MarkdownRenderer.swift",
+    "rule": "Security review: markdown image bytes have a separate bound",
+    "tests": "SecurityReviewTests/markdownImages",
+    "find": "let limit = 8 << 20",
+    "replace": "let limit = 9 << 20"
+  },
+  {
+    "file": "Strata/Previews/MarkdownRenderer.swift",
+    "rule": "Security review: failed image references consume the image budget",
+    "tests": "SecurityReviewTests/markdownImages",
+    "find": "imageBudget -= 1",
+    "replace": "imageBudget -= 0"
+  },
+  {
+    "file": "Strata/Previews/SQLiteReader.swift",
+    "rule": "Security review: database menus stay bounded",
+    "tests": "SQLitePreviewSafetyTests/menusColumns",
+    "find": "package static let tableLimit = 500",
+    "replace": "package static let tableLimit = 501"
+  },
+  {
+    "file": "Strata/Previews/SQLiteReader.swift",
+    "rule": "Security review: database columns stay bounded",
+    "tests": "SQLitePreviewSafetyTests/menusColumns",
+    "find": "min(columnLimit, Int(sqlite3_column_count(statement)))",
+    "replace": "Int(sqlite3_column_count(statement))"
+  },
+  {
+    "file": "Strata/Previews/SQLiteReader.swift",
+    "rule": "Security review: database text is bounded before String creation",
+    "tests": "SQLitePreviewSafetyTests/menusColumns",
+    "find": "min(1200, Int(sqlite3_column_bytes(statement, column)))",
+    "replace": "Int(sqlite3_column_bytes(statement, column))"
+  },
+  {
+    "file": "Strata/Previews/SQLiteReader.swift",
+    "rule": "Security review: SQLite reopening never follows directory links",
+    "tests": "SQLitePreviewSafetyTests/databaseLinks",
+    "find": "SQLITE_OPEN_READONLY | SQLITE_OPEN_URI | SQLITE_OPEN_NOFOLLOW",
+    "replace": "SQLITE_OPEN_READONLY | SQLITE_OPEN_URI"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "rule": "Security review: remote tree traversal has a depth bound",
+    "tests": "SecurityReviewTests/remoteTree",
+    "find": "guard depth < treeDepthLimit else",
+    "replace": "guard depth <= treeDepthLimit else"
+  },
+  {
+    "file": "Strata/Remote/RemoteServer.swift",
+    "rule": "Security review: Terminal sessions disable inherited forwarding",
+    "tests": "SecurityReviewTests/terminalSessions",
+    "find": "var arguments = [\"/usr/bin/ssh\", \"-t\", \"-o\", \"ForwardAgent=no\", \"-o\", \"ForwardX11=no\", \"-o\", \"ClearAllForwardings=yes\"]",
+    "replace": "var arguments = [\"/usr/bin/ssh\", \"-t\", \"-o\", \"ForwardAgent=no\"]"
+  },
+  {
+    "file": "Strata/AppUpdates/AppUpdateCheck.swift",
+    "rule": "Security review: app feeds cannot target private IPv4 addresses",
+    "tests": "AppUpdateTests/feedsAreHTTPS",
+    "find": " || bytes[0] == 10",
+    "replace": ""
+  },
+  {
+    "file": "Strata/Model/SecureStorage.swift",
+    "rule": "Security review: storage permissions never follow a planted directory link",
+    "tests": "SecurityReviewTests/storageFolders",
+    "find": "let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)",
+    "replace": "let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_CLOEXEC)"
+  },
+  {
+    "file": "Strata/Previews/ArchiveLister.swift",
+    "rule": "Security review: archive parsing honors cancellation",
+    "tests": "SecurityReviewTests/archiveParsing",
+    "find": "while !remaining.isEmpty {\n            try Task.checkCancellation()",
+    "replace": "while !remaining.isEmpty {"
+  },
+  {
+    "file": "Strata/Dev/GitRepository.swift",
+    "find": "drivers.insert(Data(key[..<dot].utf8))",
+    "replace": "drivers.insert(Data(String(key[..<dot]).precomposedStringWithCanonicalMapping.utf8))",
+    "rule": "Security review: canonically equivalent Git filter names stay byte distinct",
+    "tests": "GitSafetyTests/canonicallyEquivalent"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "find": "\"--no-same-permissions\", \"--mac-metadata\",",
+    "replace": "\"--no-same-permissions\",",
+    "rule": "Security review: guarded ZIP extraction preserves Mac resource forks",
+    "tests": "ArchiveSecurityReviewTests/macMetadata"
   }
 ]

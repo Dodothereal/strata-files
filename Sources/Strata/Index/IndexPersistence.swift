@@ -156,9 +156,12 @@ nonisolated package enum IndexPersistence {
         var linked = [Bool](repeating: false, count: count)
         for i in 0..<count where store.flags[i] & IndexStore.Flag.deleted == 0 {
             var child = store.firstChild[i]
+            var names = Set<ContiguousArray<UInt8>>()
             while child >= 0 {
                 let id = Int(child)
                 guard !linked[id], store.flags[id] & IndexStore.Flag.deleted == 0, store.parent[id] == Int32(i) else { return false }
+                let start = Int(store.nameStart[id]), length = Int(store.nameLength[id])
+                guard names.insert(ContiguousArray(store.names[start..<(start + length)])).inserted else { return false }
                 linked[id] = true
                 child = store.nextSibling[id]
             }

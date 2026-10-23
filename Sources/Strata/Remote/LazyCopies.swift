@@ -50,8 +50,7 @@ nonisolated enum LazyCopies {
                 folder = another
             }
             let staged = folder.appending(path: url.lastPathComponent)
-            guard (try? fm.copyItem(at: url, to: staged)) != nil else { return nil }
-            ContainerCopies.finishCopyingOut(staged, from: url)
+            guard (try? TransferEngine.copyForExport(url, to: staged)) != nil else { return nil }
             return lstat(staged.path, &info) == 0 ? staged : nil
         }
     }

@@ -62,6 +62,7 @@ let appModelSources = [
 ]
 
 let modelSources = [
+    "ChosenFile.swift",
     "FileIdentity.swift",
     "FileInfoEditing.swift",
     "FolderSizer.swift",
@@ -113,7 +114,7 @@ let package = Package(
         ),
         .target(
             name: "StrataPreviews",
-            dependencies: ["StrataSupport", "StrataTheme"],
+            dependencies: ["StrataSupport", "StrataTheme", "StrataModel"],
             path: "Sources/Strata/Previews",
             swiftSettings: strataSwiftSettings
         ),

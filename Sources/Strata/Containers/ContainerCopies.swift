@@ -392,49 +392,37 @@ nonisolated enum ContainerCopies {
         Archiver.removeTree(folder)
     }
 
-    /// Items copied out of a copy (a container's, a server's) become ordinary files: Strata's bookkeeping (which
-    /// container a folder is, folders' dates) stays behind, and they're yours to change (in the copy they're
-    /// read-only). Links that would lead outside what was copied are dropped: written by another machine, they'd
-    /// otherwise point into this Mac's own folders from wherever the copy lands.
-    ///
-    /// With `source` (what `url` was copied from), only what came from it is touched: copied into a folder that was
-    /// already there (a merge), the folder's own items, links included, stay exactly as they were.
-    static func finishCopyingOut(_ url: URL, from source: URL? = nil) {
-        let names = [sourceAttribute, engineAttribute, "dev.strata.modified"]
+    /// Only entries recorded by the transfer worker are changed. The source can disappear after a copy; its
+    /// continued existence is neither proof of destination ownership nor a condition for dropping unsafe links.
+    static func finishCopyingOut(_ url: URL, owned: [String: FileIdentity]) throws {
         let top = url.path
-        let fm = FileManager.default
-        func isFromCopy(_ path: String, _ relative: String, _ info: stat) -> Bool {
-            guard let source else { return true }
-            let counterpart = relative.isEmpty ? source.path : source.path + "/" + relative
-            var theirs = stat()
-            guard lstat(counterpart, &theirs) == 0, theirs.st_mode & S_IFMT == info.st_mode & S_IFMT else { return false }
-            guard info.st_mode & S_IFMT == S_IFLNK else { return true }
-            let target = try? fm.destinationOfSymbolicLink(atPath: path)
-            return target != nil && target == (try? fm.destinationOfSymbolicLink(atPath: counterpart))
-        }
-        func leadsOutside(_ path: String, _ relative: String) -> Bool {
-            guard !relative.isEmpty,
-                  let target = try? FileManager.default.destinationOfSymbolicLink(atPath: path) else { return true }
-            let parent = relative.split(separator: "/").dropLast().map(String.init)
-            var budget = 4096
-            return Archiver.resolve(target, from: parent, in: top, hops: 0, budget: &budget) == nil
-        }
-        /// False for what isn't the copy's (nothing under it is looked at either).
-        func finish(_ path: String, _ relative: String) -> Bool {
-            var info = stat()
-            guard lstat(path, &info) == 0, isFromCopy(path, relative, info) else { return false }
-            let kind = info.st_mode & S_IFMT
-            if kind == S_IFLNK, leadsOutside(path, relative) {
-                unlink(path)
-                return false
+        for (path, identity) in owned.sorted(by: { $0.key.count < $1.key.count }) {
+            guard path == top || path.hasPrefix(top + "/"), FileIdentity.read(path) == identity else { continue }
+            let chosen = try ChosenFile(URL(fileURLWithPath: path), resolveParent: false)
+            guard chosen.identity == identity else { continue }
+            try chosen.withDescriptor { fd, info in
+                let kind = info.st_mode & S_IFMT
+                if kind == S_IFLNK {
+                    let relative = String(path.dropFirst(min(path.count, top.count + 1)))
+                    var budget = 4096
+                    let target = try FileManager.default.destinationOfSymbolicLink(atPath: path)
+                    if path == top || Archiver.resolve(target, from: relative.split(separator: "/").dropLast().map(String.init),
+                                                       in: top, hops: 0, budget: &budget) == nil {
+                        try chosen.remove()
+                    }
+                } else if kind == S_IFREG || kind == S_IFDIR {
+                    if kind == S_IFDIR {
+                        for name in [sourceAttribute, engineAttribute, "dev.strata.modified"] {
+                            if fremovexattr(fd, name, 0) != 0, errno != ENOATTR, errno != ENOTSUP {
+                                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                            }
+                        }
+                    }
+                    if info.st_mode & S_IWUSR == 0, fchmod(fd, (info.st_mode & 0o7777) | S_IWUSR) != 0 {
+                        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                    }
+                }
             }
-            if kind == S_IFDIR { for name in names { removexattr(path, name, XATTR_NOFOLLOW) } }
-            if kind == S_IFDIR || kind == S_IFREG, info.st_mode & 0o200 == 0 { chmod(path, (info.st_mode & 0o7777) | 0o200) }
-            return true
-        }
-        guard finish(top, ""), let walker = fm.enumerator(atPath: top) else { return }
-        while let relative = walker.nextObject() as? String {
-            if !finish(top + "/" + relative, relative) { walker.skipDescendants() }
         }
     }
 

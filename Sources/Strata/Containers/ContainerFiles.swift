@@ -670,12 +670,13 @@ nonisolated enum CopyWriter {
         }
         /// Every item written, by its folded path (see `folded`), with its spelling.
         var seen: [String: String] = [:]
+        var materialized = Set<String>()
         var hardlinks: [(parts: [String], target: String)] = []
         /// Folders' dates in the container, set once everything is written into them.
         var folderDates: [(parts: [String], date: Date?)] = []
         var reader = TarReader()
         var root: String?
-        var file: (fd: Int32, parent: Int32, temp: String, name: String, entry: TarEntry)?
+        var file: (fd: Int32, parent: Int32, temp: String, name: String, entry: TarEntry, key: String)?
         let base = containerPath == "/" ? "" : containerPath
 
         /// The folder for `parts` (made if needed, never through a link), with the stack kept to that path.
@@ -743,18 +744,19 @@ nonisolated enum CopyWriter {
                     case .hardlink:
                         // Linked to its first name once the stream is through (hardlinks carry no data).
                         seen[key] = path
-                        hardlinks.append((parts, streamName(entry.linkTarget)))
+                        hardlinks.append((parts, entry.linkTarget))
                     case .file:
                         seen[key] = path
                         var info = stat()
                         if fstatat(parent, last, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFREG, !ContainerCopies.isPlaceholderMode(info.st_mode),
                            Int64(info.st_size) == entry.size, Int(info.st_mtimespec.tv_sec) == ContainerTime.seconds(entry.modified) {
+                            materialized.insert(key)
                             return  // Already here.
                         }
                         let temp = tempPrefix + UUID().uuidString
                         let out = openat(parent, temp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
                         guard out >= 0 else { throw CocoaError(.fileWriteNoPermission) }
-                        file = (out, parent, temp, last, entry)
+                        file = (out, parent, temp, last, entry, key)
                         try markDownloaded(out)
                     case .other:
                         return
@@ -771,7 +773,9 @@ nonisolated enum CopyWriter {
                     if fstatat(open.parent, open.name, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFDIR {
                         removeAt(open.parent, open.name)
                     }
-                    if renameat(open.parent, open.temp, open.parent, open.name) != 0 { unlinkat(open.parent, open.temp, 0) }
+                    if renameat(open.parent, open.temp, open.parent, open.name) == 0 {
+                        materialized.insert(open.key)
+                    } else { unlinkat(open.parent, open.temp, 0) }
                 }
             }
             return !reader.isFinished
@@ -782,26 +786,39 @@ nonisolated enum CopyWriter {
         stack.forEach { close($0.fd) }
         stack.removeAll()
         for link in hardlinks {
-            guard let targetRest = relative(link.target, to: rootName) else { continue }
-            let targetParts = targetRest.split(separator: "/").map(String.init)
-            guard !targetParts.isEmpty, targetParts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) }) else { continue }
+            // Absolute targets refer to the container root, not the basename of this copied subfolder.
+            let target = containerPath == "/" ? streamName(link.target) : link.target
+            let targetRest = target.hasPrefix("/") ? nil : relative(target, to: rootName)
+            guard target.hasPrefix("/") || targetRest != nil else { continue }
+            let targetParts = targetRest?.split(separator: "/").map(String.init) ?? []
+            if targetRest != nil {
+                guard !targetParts.isEmpty, targetParts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) }) else { continue }
+            }
+            let currentTarget = !targetParts.isEmpty
+                && targetParts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) })
+                && materialized.contains(targetParts.map(folded).joined(separator: "/"))
             seen[link.parts.map(folded).joined(separator: "/")] = link.parts.joined(separator: "/")
             let linkDir = try folderFD(link.parts.dropLast()[...])
             let name = link.parts[link.parts.count - 1]
             var linked = false
-            if let targetDir = openPath(rootFD, targetParts.dropLast()[...]) {
-                removeAt(linkDir, name)
-                linked = linkat(targetDir, targetParts[targetParts.count - 1], linkDir, name, 0) == 0
+            if currentTarget, let targetDir = openPath(rootFD, targetParts.dropLast()[...]) {
+                var targetInfo = stat()
+                let targetName = targetParts[targetParts.count - 1]
+                if fstatat(targetDir, targetName, &targetInfo, AT_SYMLINK_NOFOLLOW) == 0,
+                   targetInfo.st_mode & S_IFMT == S_IFREG, !ContainerCopies.isPlaceholderMode(targetInfo.st_mode) {
+                    removeAt(linkDir, name)
+                    linked = linkat(targetDir, targetName, linkDir, name, 0) == 0
+                }
                 if targetDir != rootFD { close(targetDir) }
             }
             if !linked {
                 // Its first name is outside this folder: fetch it on its own.
                 removeAt(linkDir, name)
                 let path = base + "/" + link.parts.joined(separator: "/")
-                if (try? makePlaceholder(name, fd: linkDir, size: 0, mode: 0, modified: nil)) != nil {
-                    try fetchFile(engine, id: id, containerPath: path, into: linkDir, name: name, stop: stop)
-                }
+                try makePlaceholder(name, fd: linkDir, size: 0, mode: 0, modified: nil)
+                try fetchFile(engine, id: id, containerPath: path, into: linkDir, name: name, stop: stop)
             }
+            materialized.insert(link.parts.map(folded).joined(separator: "/"))
         }
         stack.forEach { close($0.fd) }
         stack.removeAll()

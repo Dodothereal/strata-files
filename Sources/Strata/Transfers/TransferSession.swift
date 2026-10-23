@@ -115,6 +115,7 @@ nonisolated struct TransferItemResult: Sendable {
     var sourceRemoved = false
     /// What the item is where it landed (see `LandedFiles`), read as it was put there: for undo.
     var landed: FileIdentity?
+    var created: [String: FileIdentity] = [:]
 }
 
 /// State for one `copyfile` call, reached from the C callback through its context pointer.

@@ -26,12 +26,14 @@ struct MetadataEditTests {
 
     // MARK: - Compress
 
-    @Test func compressingAddsOneArchiveAndNeverReplacesOne() throws {
+    @Test func compressingAddsOneArchiveAndNeverReplacesOne() async throws {
         let tree = try TestTree("a.txt", "b/", "b/inner.txt", "a.txt.zip", "Archive.zip")
         let before = tree.snapshot()
-        let one = try Archiver.compress([tree.url("a.txt")], control: Archiver.Control())
+        let single = [tree.url("a.txt")]
+        let one = try await TestWork.run { try Archiver.compress(single, control: Archiver.Control()) }
         #expect(one.lastPathComponent == "a.txt 2.zip")
-        let several = try Archiver.compress([tree.url("a.txt"), tree.url("b")], control: Archiver.Control())
+        let selection = [tree.url("a.txt"), tree.url("b")]
+        let several = try await TestWork.run { try Archiver.compress(selection, control: Archiver.Control()) }
         #expect(several.lastPathComponent == "Archive 2.zip")
         #expect(tree.snapshot() == (before + ["a.txt 2.zip", "Archive 2.zip"]).sorted())
         // What was there and what was compressed are as they were.
@@ -39,14 +41,18 @@ struct MetadataEditTests {
         #expect(tree.text("b/inner.txt") == "b/inner.txt")
     }
 
-    @Test func aLinkIsArchivedAsALink() throws {
+    @Test func aLinkIsArchivedAsALink() async throws {
         let tree = try TestTree("target/", "target/big.txt", "link -> target", "out/")
-        let archive = try Archiver.compress([tree.url("link")], control: Archiver.Control())
-        let unzip = Process()
-        unzip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        unzip.arguments = ["-x", "-k", archive.path, tree.url("out").path]
-        try unzip.run()
-        unzip.waitUntilExit()
+        let links = [tree.url("link")], destination = tree.url("out")
+        try await TestWork.run {
+            let archive = try Archiver.compress(links, control: Archiver.Control())
+            let unzip = Process()
+            unzip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+            unzip.arguments = ["-x", "-k", archive.path, destination.path]
+            try unzip.run()
+            unzip.waitUntilExit()
+            guard unzip.terminationStatus == 0 else { throw CocoaError(.fileReadCorruptFile) }
+        }
         // Inside the zip: the link, not the folder it points to.
         #expect(tree.snapshot() == ["link -> target", "link.zip", "out/", "out/link -> target", "target/", "target/big.txt"])
     }
@@ -73,6 +79,10 @@ struct MetadataEditTests {
         #expect(mode(tree.url("file.txt").path) == 0o664)
         try FileInfoEditing.setAccess(.none, for: .everyone, at: tree.url("folder").path)
         #expect(mode(tree.url("folder").path) & 0o7 == 0)
+        chmod(tree.url("file.txt").path, 0)
+        try FileInfoEditing.setAccess(.readWrite, for: .owner, at: tree.url("file.txt").path)
+        try FileInfoEditing.setAccess(.readWrite, for: .group, at: tree.url("file.txt").path)
+        try FileInfoEditing.setAccess(.readOnly, for: .everyone, at: tree.url("file.txt").path)
         // Nothing inside the folder changes, and a link's target is never reached.
         #expect(mode(tree.url("folder/inner.txt").path) == 0o644)
         #expect(throws: (any Error).self) { try FileInfoEditing.setAccess(.none, for: .owner, at: tree.url("link").path) }

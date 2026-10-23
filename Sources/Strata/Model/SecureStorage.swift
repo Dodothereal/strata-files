@@ -61,6 +61,7 @@ nonisolated package enum SecureStorage {
             self.keyProvider = keyProvider
             temporary = false
             Self.prepare(directory)
+            Self.prepare(caches)
         }
 
         package init(directory: URL, caches: URL, key: SymmetricKey?, temporary: Bool = false) {
@@ -69,12 +70,23 @@ nonisolated package enum SecureStorage {
             keyProvider = { key }
             self.temporary = temporary
             Self.prepare(directory)
+            Self.prepare(caches)
         }
 
         private static func prepare(_ directory: URL) {
-            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
-                                                     attributes: [.posixPermissions: 0o700])
-            chmod(directory.path, 0o700)
+            var fd = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+            guard fd >= 0 else { return }
+            defer { close(fd) }
+            let path = ChosenFile.systemSpelling(directory.path)
+            for component in path.split(separator: "/") {
+                let name = String(component)
+                if mkdirat(fd, name, 0o700) != 0, errno != EEXIST { return }
+                let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                guard child >= 0 else { return }
+                close(fd)
+                fd = child
+            }
+            fchmod(fd, 0o700)
         }
 
         fileprivate var key: SymmetricKey? {
@@ -136,6 +148,8 @@ nonisolated package enum SecureStorage {
         let item: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: account,
             kSecAttrLabel: service,
+            kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            kSecAttrSynchronizable: false,
             kSecAttrDescription: String(localized: "Encrypts Strata's search index and history",
                                         comment: "Keychain item description, shown in Keychain Access"),
             kSecValueData: key.withUnsafeBytes { Data($0) },

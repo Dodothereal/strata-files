@@ -91,7 +91,13 @@ nonisolated package enum ArchiveLister {
         var compressed: Int64?
         var uncompressedTotal: Int64?
         var seen = 0
-        for line in output.split(separator: "\n", omittingEmptySubsequences: true) {
+        var remaining = output[...]
+        while !remaining.isEmpty {
+            try Task.checkCancellation()
+            let end = remaining.firstIndex(of: "\n") ?? remaining.endIndex
+            let line = remaining[..<end]
+            remaining = end == remaining.endIndex ? "" : remaining[remaining.index(after: end)...]
+            if entries.count >= entryLimit { seen += 1; break }
             let parsed = kind == .zip ? parseZipInfo(line) : parseTar(line, now: now)
             if let parsed {
                 seen += 1
@@ -263,77 +269,138 @@ nonisolated package enum ProcessRunner {
 
     package static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval) async throws -> Result {
         let box = ProcessBox()
-        return try await withTaskCancellationHandler {
-            try box.run(executable, arguments, timeout: timeout)
+        let result = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Result, Error>) in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    continuation.resume(with: Swift.Result { try box.run(executable, arguments, timeout: timeout) })
+                }
+            }
         } onCancel: {
             box.terminate()
         }
+        try Task.checkCancellation()
+        return result
     }
 
-    /// Owns the process so the cancellation handler and the timeout can stop it from other threads.
+    /// The child stays unreaped until the same lock that guards signaling clears its PID. Foundation's Process
+    /// reaps independently, which cannot provide that guarantee for a delayed SIGKILL.
     private final class ProcessBox: @unchecked Sendable {
         private let lock = NSLock()
-        private var process: Process?
+        private var pid: pid_t?
         private var timedOut = false
         private var cancelled = false
 
         func run(_ executable: String, _ arguments: [String], timeout: TimeInterval) throws -> Result {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = arguments
-            // A UTF-8 locale keeps non-ASCII names intact; English month names keep tar dates parseable.
-            process.environment = ["LC_ALL": "en_US.UTF-8", "LANG": "en_US.UTF-8", "PATH": "/usr/bin:/bin"]
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = FileHandle.nullDevice
-            process.standardInput = FileHandle.nullDevice
-            let alreadyCancelled = lock.withLock { () -> Bool in
-                self.process = process
-                return cancelled
-            }
-            if alreadyCancelled { throw CancellationError() }
-            try Task.checkCancellation()
-            try process.run()
-            if lock.withLock({ cancelled }) {
-                process.terminate()
+            let reader = try lock.withLock {
+                guard !cancelled else { throw CancellationError() }
+                let child = try Self.launch(executable, arguments)
+                pid = child.pid
+                return FileHandle(fileDescriptor: child.output, closeOnDealloc: true)
             }
             let deadline = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                lock.withLock { self.timedOut = true }
+                guard let self, lock.withLock({ () -> Bool in
+                    guard pid != nil else { return false }
+                    timedOut = true
+                    return true
+                }) else { return }
                 terminate()
             }
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: deadline)
             defer { deadline.cancel() }
-
-            var output = Data()
-            var truncated = false
-            let reader = pipe.fileHandleForReading
-            while let chunk = try? reader.read(upToCount: 1 << 16), !chunk.isEmpty {
-                output.append(chunk)
-                if output.count > ProcessRunner.outputLimit {
-                    truncated = true
-                    terminate()
-                    break
+            var output = Data(), truncated = false
+            do {
+                while let chunk = try reader.read(upToCount: 1 << 16), !chunk.isEmpty {
+                    let room = ProcessRunner.outputLimit - output.count
+                    output.append(chunk.prefix(room))
+                    if chunk.count > room { truncated = true; terminate(); break }
                 }
+            } catch {
+                truncated = true
+                terminate()
             }
             try? reader.close()
-            process.waitUntilExit()
-            try Task.checkCancellation()
-            let didTimeOut = lock.withLock { timedOut }
-            return Result(output: output, status: process.terminationStatus, timedOut: didTimeOut, truncated: truncated)
+            var status: Int32 = 0
+            while true {
+                let finished = lock.withLock { () -> Bool in
+                    guard let pid else { return true }
+                    let waited = waitpid(pid, &status, WNOHANG)
+                    if waited == pid || (waited < 0 && errno != EINTR) {
+                        if waited < 0 { status = -1 }
+                        self.pid = nil
+                        return true
+                    }
+                    return false
+                }
+                if finished { break }
+                usleep(1000)
+            }
+            let code = status < 0 ? -1 : status & 0x7f == 0 ? (status >> 8) & 0xff : status & 0x7f
+            return Result(output: output, status: code, timedOut: lock.withLock { timedOut }, truncated: truncated)
         }
 
         func terminate() {
-            let process = lock.withLock { () -> Process? in
+            let child = lock.withLock { () -> pid_t? in
                 cancelled = true
-                return self.process
+                guard let pid else { return nil }
+                _ = kill(-pid, SIGTERM)
+                return pid
             }
-            guard let process, process.isRunning else { return }
-            process.terminate()
-            let pid = process.processIdentifier
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.2) {
-                if process.isRunning { _ = kill(pid, SIGKILL) }
+            guard let child else { return }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                guard let self else { return }
+                self.lock.withLock {
+                    guard self.pid == child else { return }
+                    _ = kill(-child, SIGKILL)
+                }
             }
+        }
+
+        /// A separate process group lets cancellation stop decompressors too. All other inherited descriptors
+        /// close on exec; stdin and stderr go to /dev/null and only stdout reaches the bounded reader.
+        private static func launch(_ executable: String, _ arguments: [String]) throws -> (pid: pid_t, output: Int32) {
+            var descriptors = [Int32](repeating: -1, count: 2)
+            guard pipe(&descriptors) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            var succeeded = false
+            defer {
+                close(descriptors[1])
+                if !succeeded { close(descriptors[0]) }
+            }
+            fcntl(descriptors[0], F_SETFD, FD_CLOEXEC)
+            fcntl(descriptors[1], F_SETFD, FD_CLOEXEC)
+            var actions: posix_spawn_file_actions_t?
+            var attributes: posix_spawnattr_t?
+            func checked(_ code: Int32) throws {
+                if code != 0 { throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO) }
+            }
+            try checked(posix_spawn_file_actions_init(&actions))
+            defer { posix_spawn_file_actions_destroy(&actions) }
+            try checked(posix_spawnattr_init(&attributes))
+            defer { posix_spawnattr_destroy(&attributes) }
+            try checked(posix_spawn_file_actions_adddup2(&actions, descriptors[1], STDOUT_FILENO))
+            try checked(posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0))
+            try checked(posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0))
+            try checked(posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETPGROUP)))
+            try checked(posix_spawnattr_setpgroup(&attributes, 0))
+            var child: pid_t = 0
+            try cStrings([executable] + arguments) { argv in
+                try cStrings(["LC_ALL=en_US.UTF-8", "LANG=en_US.UTF-8", "PATH=/usr/bin:/bin"]) { environment in
+                    try checked(posix_spawn(&child, executable, &actions, &attributes, argv, environment))
+                }
+            }
+            succeeded = true
+            return (child, descriptors[0])
+        }
+
+        private static func cStrings<T>(_ values: [String], _ body: (UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) throws -> T) throws -> T {
+            var pointers: [UnsafeMutablePointer<CChar>?] = []
+            defer { pointers.forEach { free($0) } }
+            for value in values {
+                guard !value.contains("\0") else { throw POSIXError(.EINVAL) }
+                guard let pointer = strdup(value) else { throw POSIXError(.ENOMEM) }
+                pointers.append(pointer)
+            }
+            pointers.append(nil)
+            return try pointers.withUnsafeMutableBufferPointer { try body($0.baseAddress!) }
         }
     }
 }

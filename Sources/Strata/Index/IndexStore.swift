@@ -106,12 +106,26 @@ nonisolated package final class IndexStore: @unchecked Sendable {
         package var roots: [(id: Int32, path: String)] = []
 
         package var count: Int { parent.count }
+        package var entryLimit = Int(Int32.max)
+        package var nameByteLimit = Int(UInt32.max)
+        package var capacityExceeded = false
+
+        package func canAppend(entries: Int, nameBytes: Int) -> Bool {
+            let maximumEntries = min(max(0, entryLimit), Int(Int32.max))
+            let maximumBytes = min(max(0, nameByteLimit), Int(UInt32.max))
+            return entries >= 0 && nameBytes >= 0 && parent.count <= maximumEntries && names.count <= maximumBytes
+                && entries <= maximumEntries - parent.count && nameBytes <= maximumBytes - names.count
+        }
 
         // MARK: - Building (inside a write scope)
 
         package mutating func addRoot(path: String, mtime: UInt32) -> Int32 {
-            let id = Int32(parent.count)
             let bytes = Array(path.utf8)
+            guard canAppend(entries: 1, nameBytes: min(bytes.count, Int(UInt16.max))) else {
+                capacityExceeded = true
+                return -1
+            }
+            let id = Int32(parent.count)
             append(parent: -1, name: bytes[...], flags: Flag.directory, size: 0, files: 0, mtime: mtime)
             roots.append((id, path))
             return id
@@ -123,6 +137,20 @@ nonisolated package final class IndexStore: @unchecked Sendable {
         package mutating func appendChildren(_ items: [ScannedItem], nameBuffer: UnsafeRawBufferPointer, of parentID: Int32,
                                      ownNoise: [Bool]? = nil) -> Range<Int32> {
             let first = Int32(parent.count)
+            var bytesNeeded = 0
+            for item in items {
+                guard item.nameOffset >= 0, item.nameLength >= 0, item.nameOffset <= nameBuffer.count,
+                      item.nameLength <= nameBuffer.count - item.nameOffset,
+                      min(item.nameLength, Int(UInt16.max)) <= nameByteLimit - min(nameByteLimit, bytesNeeded) else {
+                    capacityExceeded = true
+                    return first..<first
+                }
+                bytesNeeded += min(item.nameLength, Int(UInt16.max))
+            }
+            guard canAppend(entries: items.count, nameBytes: bytesNeeded) else {
+                capacityExceeded = true
+                return first..<first
+            }
             let noise = ownNoise ?? Self.ownNoise(items, nameBuffer: nameBuffer)
             var inherited = flags[Int(parentID)] & (Flag.hidden | Flag.noise)
             // The insides of apps and similar sealed packages aren't the user's files: keep them out of search.
@@ -254,6 +282,10 @@ nonisolated package final class IndexStore: @unchecked Sendable {
         /// A copy without deleted entries (ids change; parents still precede children). Callers hold the read lock.
         package func compacted() -> IndexStore {
             var fresh = Storage()
+            fresh.entryLimit = entryLimit
+            fresh.nameByteLimit = nameByteLimit
+            // Live entries are a subset of this already bounded store; narrowing their new offsets is safe.
+            guard parent.count <= Int(Int32.max), names.count <= Int(UInt32.max) else { return IndexStore() }
             var map = [Int32](repeating: -1, count: count)
             let live = flags.indices.filter { flags[$0] & Flag.deleted == 0 }
             fresh.reserve(entries: live.count)

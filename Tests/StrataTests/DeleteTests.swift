@@ -6,7 +6,7 @@ import Testing
 struct DeleteTests {
     private func delete(_ urls: [URL]) async -> (refused: [URL], failures: [(url: URL, error: Error)]) {
         let plan = BrowserViewController.deletionPlan(urls)
-        return (plan.refused, await BrowserViewController.deleteAll(plan.candidates))
+        return (plan.refused, await BrowserViewController.deleteAll(plan.choices))
     }
 
     @Test func onlyTheSelectedItemsGo() async throws {
@@ -21,7 +21,7 @@ struct DeleteTests {
         let tree = try TestTree("a/", "a/b/", "a/b/c.txt", "a/d.txt", "e.txt")
         let plan = BrowserViewController.deletionPlan([tree.url("a/b/c.txt"), tree.url("a"), tree.url("a/b")])
         #expect(plan.candidates.map(\.lastPathComponent) == ["a"])
-        let failures = await BrowserViewController.deleteAll(plan.candidates)
+        let failures = await BrowserViewController.deleteAll(plan.choices)
         #expect(failures.isEmpty)
         #expect(tree.snapshot() == ["e.txt"])
     }

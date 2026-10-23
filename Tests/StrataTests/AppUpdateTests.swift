@@ -90,10 +90,11 @@ struct AppUpdateTests {
     // MARK: Feed addresses
 
     @Test func feedsAreHTTPSAndNotThisMac() {
-        for allowed in ["https://example.com/a.xml", "https://10.0.0.5/a.xml", "https://[2001:db8::1]/a.xml"] {
+        for allowed in ["https://example.com/a.xml", "https://[2001:db8::1]/a.xml"] {
             #expect(FeedAddress.isAllowed(URL(string: allowed)!), "\(allowed)")
         }
-        for refused in ["http://example.com/a.xml", "https://localhost/a.xml", "https://127.0.0.1/a.xml", "https://169.254.169.254/",
+        for refused in ["https://10.0.0.5/a.xml", "https://172.16.0.1/", "https://172.31.255.255/", "https://192.168.1.1/",
+                        "https://[fc00::1]/", "https://[fdff::1]/", "https://[::ffff:192.168.1.1]/", "http://example.com/a.xml", "https://localhost/a.xml", "https://127.0.0.1/a.xml", "https://169.254.169.254/",
                         "https://[::1]/a.xml", "https://[fe80::1]/a.xml", "https://[::ffff:127.0.0.1]/", "https://0.0.0.0/", "file:///etc/hosts",
                         // Spellings the resolver reads as this Mac.
                         "https://127.1/", "https://2130706433/", "https://0x7f.0.0.1/", "https://0177.0.0.1/", "https://localhost./",

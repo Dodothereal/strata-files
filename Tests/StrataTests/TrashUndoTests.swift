@@ -77,7 +77,11 @@ struct TrashUndoTests {
         defer { tree.removeFromTrash() }
         try await FileOps.trashInBackground([tree.url("a.txt"), tree.url("b.txt")], undo: nil)
         let trashed = try #require(entry(for: tree))
-        #expect(OperationLog.shared.canUndo(trashed))
+        let canUndo = OperationLog.shared.canUndo(trashed)
+        let details = canUndo ? "" : trashed.pairs.map { pair in
+            "Recorded: \(trashed.identities[pair[1]] ?? "missing"); current: \(OperationLog.identity(pair[1]) ?? "missing"); original: \(OperationLog.identity(pair[0]) ?? "absent"); path: \(pair[1])"
+        }.joined(separator: "\n")
+        #expect(canUndo, Comment(rawValue: details))
         try await OperationLog.shared.undo(trashed, undoManager: nil)
         #expect(tree.snapshot() == ["a.txt", "b.txt", "c.txt"])
         #expect(OperationLog.shared.entries.first { $0.id == trashed.id }?.undone == true)

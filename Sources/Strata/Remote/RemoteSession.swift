@@ -161,18 +161,45 @@ nonisolated final class SFTPBackend: RemoteBackend {
                 if client.canReplace {
                     try client.replace(path, with: temp)
                 } else {
-                    // Without one-step replacing: a file (or link) in the way goes first. Never a folder.
-                    if let existing = try? client.lstat(path) {
-                        guard !existing.isDirectory else { throw RemoteError.exists(RemotePath.name(path)) }
-                        try client.removeFile(path)
-                    }
-                    try client.rename(temp, to: path)
+                    try Self.replaceWithoutExtension(path, with: temp, existingDirectory: {
+                        do { return try client.lstat(path).isDirectory }
+                        catch SFTPError.status(SFTPError.noSuchFile, _) { return nil }
+                    }, rename: { try client.rename($0, to: $1) }, remove: { try client.removeFile($0) })
                 }
             } catch {
-                try? client.removeFile(temp)
+                if !(error is UploadRecovery) { try? client.removeFile(temp) }
                 throw error
             }
         }
+    }
+
+    struct UploadRecovery: LocalizedError {
+        let original: String
+        let upload: String
+        let cause: Error
+        var errorDescription: String? { cause.localizedDescription }
+        var recoverySuggestion: String? {
+            String(localized: "The original was kept at “\(original)”. The completed upload was kept at “\(upload)”.",
+                   comment: "An SFTP upload failed and rollback failed too; the two server paths let the user recover both complete files")
+        }
+    }
+
+    /// Standard SFTP rename cannot replace a name. Retain the old item until the completed upload lands,
+    /// restore it on failure, and keep both recovery files when the server cannot complete the rollback.
+    static func replaceWithoutExtension(_ path: String, with temp: String, existingDirectory: () throws -> Bool?,
+                                       rename: (String, String) throws -> Void, remove: (String) throws -> Void) throws {
+        guard let isDirectory = try existingDirectory() else { return try rename(temp, path) }
+        guard !isDirectory else { throw RemoteError.exists(RemotePath.name(path)) }
+        let backup = RemotePath.join(RemotePath.parent(path), ".strata-backup-" + UUID().uuidString)
+        try rename(path, backup)
+        do { try rename(temp, path) }
+        catch {
+            let cause = error
+            do { try rename(backup, path) }
+            catch { throw UploadRecovery(original: backup, upload: temp, cause: cause) }
+            throw cause
+        }
+        try? remove(backup)
     }
 
     func makeFolder(_ path: String) async throws {

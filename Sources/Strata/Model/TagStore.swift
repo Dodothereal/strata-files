@@ -35,7 +35,7 @@ extension Notification.Name {
     static let tagsLoaded = Notification.Name("StrataTagsLoaded")
 }
 
-/// Finder tags: read from the extended attribute Finder keeps them in, written through the system (so Finder,
+/// Finder tags: read and written through the extended attribute Finder keeps them in (so Finder,
 /// Spotlight and the old color labels agree) with each tag's own color kept. Reads are cached per item, since every
 /// visible cell asks; a folder's tags are read off the main thread when it loads, and changes are always worked out from
 /// what's on disk now, never from the cache.
@@ -170,7 +170,10 @@ final class TagStore {
         for (url, tags) in changes {
             let path = url.standardizedFileURL.path
             guard Self.canTag(url) else { continue }
-            let before = Self.read(path, labels: labels)
+            guard let chosen = try? ChosenFile(url) else {
+                failures.append((url, POSIXError(.ESTALE)))
+                continue
+            }
             // Duplicates and empty names are dropped; the first spelling wins.
             var seen = Set<String>()
             let wanted = tags.compactMap { tag -> FinderTag? in
@@ -178,14 +181,17 @@ final class TagStore {
                 guard !name.isEmpty, seen.insert(name.lowercased()).inserted else { return nil }
                 return FinderTag(name: name, color: tag.color)
             }
-            guard wanted != before else { continue }
             do {
-                try (url as NSURL).setResourceValue(wanted.map(\.name), forKey: .tagNamesKey)
-                // The system colors tags from this Mac's own list; a tag whose color lives only on the file (from
-                // another Mac, a zip, a share) keeps it.
-                if Self.read(path, labels: labels) != wanted { try Self.write(wanted, to: path) }
+                let previousTags = try chosen.withDescriptor { fd, info -> [FinderTag]? in
+                    guard info.st_mode & S_IFMT != S_IFLNK else { throw CocoaError(.fileWriteUnsupportedScheme) }
+                    let before = Self.read(fd, labels: labels)
+                    guard wanted != before else { return nil }
+                    try Self.write(wanted, to: fd)
+                    return before
+                }
+                guard let previousTags else { continue }
                 cache[path] = nil
-                previous.append((url, FileIdentity.read(path), before))
+                previous.append((url, chosen.identity, previousTags))
                 changed.append(url)
             } catch {
                 failures.append((url, error))
@@ -246,6 +252,15 @@ final class TagStore {
         return parse(data.prefix(read), labels: labels)
     }
 
+    nonisolated private static func read(_ fd: Int32, labels: [String]) -> [FinderTag] {
+        let size = fgetxattr(fd, attribute, nil, 0, 0, 0)
+        guard size > 0, size <= maxAttributeSize else { return [] }
+        var data = Data(count: size)
+        let read = data.withUnsafeMutableBytes { fgetxattr(fd, attribute, $0.baseAddress, size, 0, 0) }
+        guard read > 0 else { return [] }
+        return parse(data.prefix(read), labels: labels)
+    }
+
     nonisolated static func parse(_ data: Data, labels: [String]) -> [FinderTag] {
         guard let strings = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String] else { return [] }
         var seen = Set<String>()
@@ -267,10 +282,10 @@ final class TagStore {
     }
 
     /// Writes "Name\nColor" strings directly (never through a link), to keep colors the system wouldn't know.
-    nonisolated private static func write(_ tags: [FinderTag], to path: String) throws {
+    nonisolated private static func write(_ tags: [FinderTag], to fd: Int32) throws {
         let strings = tags.map { "\($0.name)\n\($0.color)" }
         let data = try PropertyListSerialization.data(fromPropertyList: strings, format: .binary, options: 0)
-        let result = data.withUnsafeBytes { setxattr(path, attribute, $0.baseAddress, data.count, 0, XATTR_NOFOLLOW) }
+        let result = data.withUnsafeBytes { fsetxattr(fd, attribute, $0.baseAddress, data.count, 0, 0) }
         if result != 0 { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
     }
 }

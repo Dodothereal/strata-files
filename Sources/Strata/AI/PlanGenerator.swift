@@ -631,7 +631,11 @@ nonisolated enum PlanExpander {
                 : item.ext.isEmpty ? FileOps.nameText(String(localized: "No Extension", comment: "Name of a new folder for items without a name extension"),
                                                       english: "No Extension")
                 : item.ext.uppercased()
-        case .camera: return item.cameraModel
+        case .camera:
+            guard let model = item.cameraModel else { return nil }
+            let unknown = FileOps.nameText(String(localized: "Unknown camera", comment: "Put in a new name when a photo has no camera model"),
+                                            english: "Unknown camera")
+            return FileOps.nameText(model.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-"), english: unknown)
         case .kind:
             if item.isFolder {
                 return FileOps.nameText(String(localized: "Folders", comment: "Name of a new folder that folders are grouped into"), english: "Folders")

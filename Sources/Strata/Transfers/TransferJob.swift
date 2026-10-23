@@ -275,8 +275,11 @@ final class TransferJob {
                     }
                     let item = self.items[index]
                     let ownership = self.landed.identity(at: item.destination)
-                    let options = self.options, control = self.control, progress = self.progress
-                    let result = await self.worker.run {
+                    var options = self.options
+                    options.sanitizeCopy = self.queue?.copies.contains(item.source) == true
+                    options.sanitizationBoundary = self.sanitizationBoundary(for: item)
+                    let control = self.control, progress = self.progress
+                    let result = await self.worker.run { [options] in
                         TransferEngine.retry(index, item, landed: ownership, failures: list, options: options, control: control, progress: progress)
                     }
                     self.apply(result, to: index, isRetry: true)
@@ -316,12 +319,22 @@ final class TransferJob {
             if control.isCancelled { break }
             guard await prepare(index) else { continue }
             let item = items[index], current = index
-            let options = options, control = control, progress = progress
-            let result = await worker.run {
+            var options = options
+            options.sanitizeCopy = queue?.copies.contains(item.source) == true
+            options.sanitizationBoundary = sanitizationBoundary(for: item)
+            let control = control, progress = progress
+            let result = await worker.run { [options] in
                 TransferEngine.perform(current, item, options: options, control: control, progress: progress)
             }
             apply(result, to: current, isRetry: false)
         }
+    }
+
+    private func sanitizationBoundary(for item: TransferItem) -> URL {
+        // A merge runs its children as separate items; links may still refer to siblings inside the chosen tree.
+        items.first { parent in
+            sources.contains(parent.source) && (parent.source == item.source || item.source.path.hasPrefix(parent.source.path + "/"))
+        }?.destination ?? item.destination
     }
 
     // MARK: - Planning
@@ -571,16 +584,6 @@ final class TransferJob {
     }
 
     private func finish() {
-        // Copied out of a container or a server: ordinary files from now on. What a cancelled or failed item left
-        // behind too (its links mustn't lead anywhere either); only what came from the copy is touched.
-        let copies = queue?.copies ?? .live
-        if sources.contains(where: copies.contains) {
-            let made = items.filter { [.done, .partial, .failed, .cancelled].contains($0.outcome) && copies.contains($0.source) }
-                .map { (source: $0.source, destination: $0.destination) }
-            DispatchQueue.global(qos: .utility).async {
-                for item in made { ContainerCopies.finishCopyingOut(item.destination, from: item.source) }
-            }
-        }
         if let disk = heldDisk {
             queue?.releaseDisk(disk, for: self)
             heldDisk = nil

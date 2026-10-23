@@ -465,7 +465,7 @@ struct RemoteFilesTests {
         try fm.createSymbolicLink(atPath: out.appending(path: "copied/sub/up-and-in").path, withDestinationPath: "../sub/file.txt")
         try fm.createSymbolicLink(atPath: out.appending(path: "copied/escape").path, withDestinationPath: "../../../.ssh/id_rsa")
         try fm.createSymbolicLink(atPath: out.appending(path: "copied/sub/absolute").path, withDestinationPath: "/etc/passwd")
-        ContainerCopies.finishCopyingOut(out.appending(path: "copied"))
+        try ContainerCopies.finishCopyingOut(out.appending(path: "copied"), owned: TransferEngine.snapshotIdentities(out.appending(path: "copied")))
         let left = Set((fm.enumerator(atPath: out.appending(path: "copied").path)?.allObjects as? [String]) ?? [])
         #expect(left == ["sub", "sub/file.txt", "inside", "sub/up-and-in"])
     }
@@ -512,7 +512,10 @@ struct RemoteFilesTests {
         try fm.createDirectory(at: destination.appending(path: "src"), withIntermediateDirectories: true)
         try fm.copyItem(at: source.appending(path: "src/new.txt"), to: destination.appending(path: "src/new.txt"))
         try fm.copyItem(at: source.appending(path: "src/planted"), to: destination.appending(path: "src/planted"))
-        ContainerCopies.finishCopyingOut(destination, from: source)
+        let owned = ["src", "src/new.txt", "src/planted"].reduce(into: [String: FileIdentity]()) {
+            $0[destination.appending(path: $1).path] = FileIdentity.read(destination.appending(path: $1).path)
+        }
+        try ContainerCopies.finishCopyingOut(destination, owned: owned)
         let left = Set((fm.enumerator(atPath: destination.path)?.allObjects as? [String]) ?? [])
         #expect(left == ["own", "own/dotfiles", "shared", "locked.txt", "src", "src/new.txt"])
         let mode = try fm.attributesOfItem(atPath: destination.appending(path: "locked.txt").path)[.posixPermissions] as? Int

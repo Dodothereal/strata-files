@@ -4,6 +4,37 @@ import Testing
 @testable import Strata
 
 struct SQLitePreviewSafetyTests {
+    @Test func menusColumnsAndCellDecodingHaveIndependentBounds() throws {
+        let tree = try TestTree()
+        let url = tree.url("bounded.db")
+        let views = (0..<510).map { "CREATE VIEW v\($0) AS SELECT 1;" }.joined()
+        let columns = (0..<300).map { "0 AS c\($0)" }.joined(separator: ",")
+        try database(url, sql: views + "CREATE VIEW wide AS SELECT \(columns);")
+        let before = try Data(contentsOf: url)
+        #expect(try SQLiteReader.tables(url).count == 500)
+        #expect(try SQLiteReader.rows(url, table: "wide").data.columns.count == 256)
+        var db: OpaquePointer?, statement: OpaquePointer?
+        try #require(sqlite3_open(url.path, &db) == SQLITE_OK)
+        defer { sqlite3_close(db) }
+        try #require(sqlite3_prepare_v2(db, "SELECT hex(zeroblob(1000000))", -1, &statement, nil) == SQLITE_OK)
+        defer { sqlite3_finalize(statement) }
+        try #require(sqlite3_step(statement) == SQLITE_ROW)
+        #expect(SQLiteReader.text(statement, 0)?.utf8.count == 1200)
+        #expect(try Data(contentsOf: url) == before)
+        #expect(tree.snapshot() == ["bounded.db"])
+    }
+
+    @Test func databaseLinksAreRefusedWithoutChangingTheirTargets() throws {
+        let tree = try TestTree("link.db -> ./real.db")
+        try database(tree.url("real.db"), sql: "CREATE TABLE kept(value)")
+        try tree.add(["parent -> ."])
+        let before = try Data(contentsOf: tree.url("real.db"))
+        #expect(throws: (any Error).self) { try SQLiteReader.tables(tree.url("parent/real.db")) }
+        #expect(throws: (any Error).self) { try SQLiteReader.tables(tree.url("link.db")) }
+        #expect(try Data(contentsOf: tree.url("real.db")) == before)
+        #expect(tree.snapshot() == ["link.db -> ./real.db", "parent -> .", "real.db"])
+    }
+
     private func database(_ url: URL, sql: String) throws {
         var db: OpaquePointer?
         try #require(sqlite3_open(url.path, &db) == SQLITE_OK)

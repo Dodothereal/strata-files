@@ -259,7 +259,7 @@ struct EdgeCaseSafetyTests {
         let tree = try TestTree("copied/", "copied/sub/", "copied/sub/b.txt", "copied/lib/", "copied/lib/c.txt")
         try FileManager.default.createSymbolicLink(atPath: tree.url("copied/sub/a").path, withDestinationPath: try #require(targetInSameSubtree))
         try FileManager.default.createSymbolicLink(atPath: tree.url("copied/sub/escape").path, withDestinationPath: "../../outside.txt")
-        ContainerCopies.finishCopyingOut(tree.url("copied/sub"))
+        try ContainerCopies.finishCopyingOut(tree.url("copied/sub"), owned: TransferEngine.snapshotIdentities(tree.url("copied/sub")))
         #expect(tree.snapshot() == ["copied/", "copied/lib/", "copied/lib/c.txt", "copied/sub/", "copied/sub/a -> b.txt", "copied/sub/b.txt"])
     }
 

@@ -28,7 +28,7 @@ nonisolated enum Archiver {
         var complete = false
 
         /// Entries the extraction will report, for progress.
-        var progressTotal: Int { needsSecureTool ? entries : files }
+        var progressTotal: Int { entries }
     }
 
     /// Progress and cancellation, shared with the job that runs it.
@@ -156,8 +156,7 @@ nonisolated enum Archiver {
             if kind == .tar, let arrow = name.range(of: " -> ") { name = name[..<arrow.lowerBound] }
             // Entries from MS-DOS and Windows zips have no Unix type ("?rw-------", os "fat"): they can't be links, so
             // they're plain files, or folders when the name ends in "/".
-            var type = fields[0].first
-            if kind == .zip, type == "?", fields[2] != "unx" { type = name.hasSuffix("/") ? "d" : "-" }
+            let type = fields[0].first
             if type == "-", !name.hasPrefix("__MACOSX/") { result.files += 1 }
             // zipinfo marks encrypted entries with a capital T or B ("TX", "Bx").
             if kind == .zip, let flag = fields[4].first, flag == "T" || flag == "B" { result.encrypted = true }
@@ -193,7 +192,7 @@ nonisolated enum Archiver {
         try unpack(archive, kind: kind, inspection: inspection, into: root, control: control)
         let top = try fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
         guard let only = top.first else { throw Failure(message: String(localized: "“\(archive.lastPathComponent)” is empty.")) }
-        if top.count == 1 {
+        if top.count == 1, !only.lastPathComponent.hasPrefix(".") {
             // What's placed is that one item, so links inside it must stay inside it, and it can't be a link itself.
             guard !isSymlink(only) else {
                 throw Failure(message: String(localized: "“\(archive.lastPathComponent)” holds only a link, so it wasn’t extracted."))
@@ -252,19 +251,14 @@ nonisolated enum Archiver {
         // `root`'s parent is a private folder; `root` itself becomes the extracted folder, so it gets usual permissions.
         try fm.createDirectory(at: root, withIntermediateDirectories: false)
         do {
-            if kind == .zip, !inspection.needsSecureTool {
-                // Archive Utility's own tool: puts back the resource forks and attributes zips keep in __MACOSX.
-                try run("/usr/bin/ditto", ["-x", "-k", "-V", archive.path, root.path], control: control,
-                        counts: { $0.hasPrefix("copying file") }, watching: disk)
-            } else {
-                // A passphrase is given so bsdtar never waits for one (there's no terminal to type it into); a protected
-                // archive then fails at once. Its file flags aren't restored: a locked file couldn't be cleaned up.
-                try run("/usr/bin/tar", ["-x", "-v", "--no-fflags", "--passphrase", "-", "-f", archive.path, "-C", root.path],
-                        control: control, counts: { $0.hasPrefix("x ") }, watching: disk)
-                chmod(root.path, 0o700)
-                // bsdtar leaves a zip's sequestered attributes as plain files.
-                if kind == .zip { removeTree(root.appending(path: "__MACOSX")) }
-            }
+            // Listings are only estimates. Creator flags, AppleDouble metadata and filenames can disagree with
+            // a text listing, so every format uses the extractor that refuses to write through archive symlinks.
+            // Mac metadata carries resource forks; check still strips locks, privileged modes and ACLs before publication.
+            try run("/usr/bin/tar", ["-x", "-v", "--no-fflags", "--no-same-owner", "--no-same-permissions", "--mac-metadata",
+                                    "--passphrase", "-", "-f", archive.path, "-C", root.path],
+                    control: control, counts: { $0.hasPrefix("x ") }, watching: disk)
+            try checkedPermissions(root.path, 0o700)
+            if kind == .zip { removeTree(root.appending(path: "__MACOSX")) }
         } catch let failure as Failure where failure.message == passwordMarker {
             throw passwordProtected(archive)
         }
@@ -289,16 +283,16 @@ nonisolated enum Archiver {
         let rootPath = boundary.path
         var info = stat()
         guard lstat(rootPath, &info) == 0 else { throw Failure(message: String(localized: "The extracted files couldn’t be checked.")) }
-        clearAccessList(rootPath)
+        try clearFlagsAndAccessList(rootPath)
         switch info.st_mode & S_IFMT {
         case S_IFREG:
-            if info.st_mode & (S_ISUID | S_ISGID) != 0 || (quarantine != nil && info.st_mode & S_IWUSR == 0) {
-                chmod(rootPath, (info.st_mode & ~(S_ISUID | S_ISGID) & 0o7777) | (quarantine != nil ? S_IWUSR : 0))
+            if info.st_mode & (S_ISUID | S_ISGID | S_ISVTX) != 0 || (quarantine != nil && info.st_mode & S_IWUSR == 0) {
+                try checkedPermissions(rootPath, (info.st_mode & ~(S_ISUID | S_ISGID | S_ISVTX) & 0o7777) | (quarantine != nil ? S_IWUSR : 0))
             }
             if let quarantine { try markQuarantined(rootPath, quarantine) }
             return
         case S_IFDIR:
-            chmod(rootPath, (info.st_mode & 0o7777 & ~(S_ISUID | S_ISGID)) | S_IRWXU)
+            try checkedPermissions(rootPath, (info.st_mode & 0o7777 & ~(S_ISUID | S_ISGID | S_ISVTX)) | S_IRWXU)
             if let quarantine { try markQuarantined(rootPath, quarantine) }
         default:
             throw Failure(message: String(localized: "The archive holds nothing that can be extracted safely."))
@@ -320,7 +314,7 @@ nonisolated enum Archiver {
             guard lstat(path, &info) == 0 else {
                 throw Failure(message: String(localized: "“\(relative)” in the archive couldn’t be checked, so nothing was extracted."))
             }
-            clearAccessList(path)
+            try clearFlagsAndAccessList(path)
             switch info.st_mode & S_IFMT {
             case S_IFLNK:
                 let parent = relative.split(separator: "/").dropLast().map(String.init)
@@ -332,11 +326,11 @@ nonisolated enum Archiver {
                 if let quarantine { try markQuarantined(path, quarantine) }
             case S_IFDIR:
                 // Readable and enterable, so the walk sees what's inside (and the folder can be removed later).
-                chmod(path, (info.st_mode & 0o7777 & ~(S_ISUID | S_ISGID)) | S_IRWXU)
+                try checkedPermissions(path, (info.st_mode & 0o7777 & ~(S_ISUID | S_ISGID | S_ISVTX)) | S_IRWXU)
                 if let quarantine { try markQuarantined(path, quarantine) }
             case S_IFREG:
-                if info.st_mode & (S_ISUID | S_ISGID) != 0 || (quarantine != nil && info.st_mode & S_IWUSR == 0) {
-                    chmod(path, (info.st_mode & ~(S_ISUID | S_ISGID) & 0o7777) | (quarantine != nil ? S_IWUSR : 0))
+                if info.st_mode & (S_ISUID | S_ISGID | S_ISVTX) != 0 || (quarantine != nil && info.st_mode & S_IWUSR == 0) {
+                    try checkedPermissions(path, (info.st_mode & ~(S_ISUID | S_ISGID | S_ISVTX) & 0o7777) | (quarantine != nil ? S_IWUSR : 0))
                 }
                 if let quarantine { try markQuarantined(path, quarantine) }
             default:
@@ -384,10 +378,22 @@ nonisolated enum Archiver {
 
     /// Drops an access list the archive restored (one that denies deleting would make the items impossible to undo or
     /// clean up). Never through a link.
-    private static func clearAccessList(_ path: String) {
-        guard let empty = acl_init(0) else { return }
+    private static func checkedPermissions(_ path: String, _ mode: mode_t) throws {
+        guard lchmod(path, mode) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+    }
+
+    private static func clearFlagsAndAccessList(_ path: String) throws {
+        var info = stat()
+        guard lstat(path, &info) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        let locks = UInt32(UF_IMMUTABLE | UF_APPEND)
+        if info.st_flags & locks != 0, lchflags(path, info.st_flags & ~locks) != 0 {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        guard let empty = acl_init(0) else { throw POSIXError(.ENOMEM) }
         defer { acl_free(UnsafeMutableRawPointer(empty)) }
-        _ = acl_set_link_np(path, ACL_TYPE_EXTENDED, empty)
+        if acl_set_link_np(path, ACL_TYPE_EXTENDED, empty) != 0, errno != ENOTSUP {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
     }
 
     private static let quarantineAttribute = "com.apple.quarantine"

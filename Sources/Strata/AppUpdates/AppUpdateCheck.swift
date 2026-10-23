@@ -163,11 +163,13 @@ nonisolated enum FeedAddress {
         switch address {
         case .v4(let v4):
             let bytes = withUnsafeBytes(of: v4.s_addr) { Array($0) }
-            return bytes[0] == 0 || bytes[0] == 127 || (bytes[0] == 169 && bytes[1] == 254)
+            return bytes[0] == 0 || bytes[0] == 127 || bytes[0] == 10
+                || (bytes[0] == 172 && (16...31).contains(bytes[1]))
+                || (bytes[0] == 192 && bytes[1] == 168) || (bytes[0] == 169 && bytes[1] == 254)
         case .v6(let v6):
             let bytes = withUnsafeBytes(of: v6) { Array($0) }
             if bytes.dropLast().allSatisfy({ $0 == 0 }) { return true }
-            if bytes[0] == 0xfe, bytes[1] & 0xc0 == 0x80 { return true }
+            if bytes[0] & 0xfe == 0xfc || (bytes[0] == 0xfe && bytes[1] & 0xc0 == 0x80) { return true }
             let embedsV4 = bytes[0..<10].allSatisfy { $0 == 0 } && ((bytes[10] == 0xff && bytes[11] == 0xff) || (bytes[10] == 0 && bytes[11] == 0))
             guard embedsV4 else { return false }
             return isLocal(.v4(in_addr(s_addr: bytes[12..<16].withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) })))

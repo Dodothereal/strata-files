@@ -64,7 +64,8 @@ extension BrowserViewController {
     /// be deleted is listed. `noTrash`: they were headed for the Trash, but their disk has none.
     static func confirmDelete(_ urls: [URL], in window: NSWindow?, noTrash: Bool = false,
                               copies: CopyProviders = .live, then done: @escaping () -> Void) {
-        let (candidates, refused) = deletionPlan(urls, copies: copies)
+        let plan = deletionPlan(urls, copies: copies)
+        let (candidates, refused) = (plan.candidates, plan.refused)
         guard let first = candidates.first else {
             if let item = refused.first {
                 let alert = NSAlert()
@@ -75,6 +76,7 @@ extension BrowserViewController {
             }
             return
         }
+        let chosen = plan.choices
         let alert = NSAlert()
         if noTrash {
             alert.messageText = candidates.count == 1 ? String(localized: "“\(first.lastPathComponent)” will be deleted immediately.")
@@ -98,7 +100,7 @@ extension BrowserViewController {
         present(alert, in: window) { response in
             guard response == .alertFirstButtonReturn else { return }
             Task {
-                let failures = await deleteAll(candidates)
+                let failures = await deleteAll(chosen)
                 if candidates.contains(where: Trash.isInTrash) { NotificationCenter.default.post(name: .trashChanged, object: nil) }
                 done()
                 if !failures.isEmpty { report(failures, .delete, in: window) }
@@ -109,7 +111,13 @@ extension BrowserViewController {
     /// What deleting `urls` for good deletes, and what it refuses. Disks, Trashes, and items in folders you can't change
     /// are refused up front: deleting one would remove its contents before failing on the item itself. Items inside
     /// other selected items are left to their parent.
-    static func deletionPlan(_ urls: [URL], copies: CopyProviders = .live) -> (candidates: [URL], refused: [URL]) {
+    struct DeletionPlan {
+        let candidates: [URL]
+        let refused: [URL]
+        let choices: [DeletionRequest]
+    }
+
+    static func deletionPlan(_ urls: [URL], copies: CopyProviders = .live) -> DeletionPlan {
         var refused: [URL] = []
         let candidates = outermost(urls).filter { url in
             // A Trash is emptied, never deleted itself.
@@ -119,7 +127,7 @@ extension BrowserViewController {
             if fixed || !changeable { refused.append(url) }
             return !fixed && changeable
         }
-        return (candidates, refused)
+        return DeletionPlan(candidates: candidates, refused: refused, choices: candidates.map(DeletionRequest.init))
     }
 
     /// What couldn't be done, for `report`: a whole sentence for one item (by name) and one for several (a count).
@@ -209,11 +217,21 @@ extension BrowserViewController {
         return missing
     }
 
+    nonisolated struct DeletionRequest: Sendable {
+        let url: URL
+        let chosen: Result<ChosenFile, Error>
+
+        init(_ url: URL) {
+            self.url = url
+            chosen = Result { try ChosenFile(url) }
+        }
+    }
+
     @concurrent
-    static func deleteAll(_ urls: [URL]) async -> [(url: URL, error: Error)] {
+    static func deleteAll(_ choices: [DeletionRequest]) async -> [(url: URL, error: Error)] {
         var failures: [(url: URL, error: Error)] = []
-        for url in urls {
-            do { try FileManager.default.removeItem(at: url) } catch { failures.append((url, error)) }
+        for choice in choices {
+            do { try choice.chosen.get().remove() } catch { failures.append((choice.url, error)) }
         }
         return failures
     }

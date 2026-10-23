@@ -138,7 +138,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         let fresh = IndexStore()
         fresh.write { $0.reserve(entries: IndexStore.estimatedEntries(under: config.roots)) }
         let scanner = IndexScanner(store: fresh, excluded: config.excluded, noiseFolders: config.noise)
-        let roots = fresh.write { fresh in config.roots.map { (fresh.addRoot(path: $0, mtime: 0), $0) } }
+        let roots = fresh.write { fresh in config.roots.map { (fresh.addRoot(path: $0, mtime: 0), $0) }.filter { $0.0 >= 0 } }
         onPhase?(.scanning(items: 0))
         scanning.withLock { $0 = true }
         defer { scanning.withLock { $0 = false } }
@@ -369,6 +369,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             guard !additions.isEmpty else { return firstNew }
             changed = true
             let ids = names.withUnsafeBytes { store.appendChildren(additions, nameBuffer: $0, of: id, ownNoise: additionNoise) }
+            guard ids.count == additions.count else { interrupted = true; return firstNew }
             for (offset, item) in additions.enumerated() where item.isDirectory && !item.isMountPoint {
                 let childPath = prefix + String(decoding: names[item.nameOffset..<(item.nameOffset + item.nameLength)], as: UTF8.self)
                 let childID = ids.lowerBound + Int32(offset)
