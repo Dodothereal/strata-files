@@ -49,7 +49,7 @@ jobs:
         run: swift build --product Strata
 
       - name: Test
-        run: python3 scripts/run-test-check.py --output-directory "$RUNNER_TEMP/strata-test-diagnostics/normal" -- swift test
+        run: python3 scripts/run-test-check.py --output-directory "$RUNNER_TEMP/strata-test-diagnostics/normal" -- swift test --no-parallel
 
       - name: Preserve test diagnostics
         if: always()
@@ -79,7 +79,7 @@ jobs:
       - name: Test with Address Sanitizer
         env:
           ASAN_OPTIONS: handle_abort=1
-        run: python3 scripts/run-test-check.py --output-directory "$RUNNER_TEMP/strata-test-diagnostics/address" -- swift test --sanitize address --scratch-path .build/sanitizers/address --disable-automatic-resolution --jobs 4
+        run: python3 scripts/run-test-check.py --output-directory "$RUNNER_TEMP/strata-test-diagnostics/address" -- swift test --no-parallel --sanitize address --scratch-path .build/sanitizers/address --disable-automatic-resolution --jobs 4
 
       - name: Preserve test diagnostics
         if: always()
