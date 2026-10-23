@@ -102,7 +102,6 @@ private struct PrefToggle: View {
 
 private struct GeneralSettings: View {
     @State private var returnOpens = Prefs.shared.returnOpens
-    @State private var atHome = Prefs.shared.newWindowsAtHome
     @State private var isFileViewer = FileViewer.isStrata
 
     var body: some View {
@@ -122,10 +121,7 @@ private struct GeneralSettings: View {
                     Text("Renames the selection (like Finder)").tag(false)
                     Text("Opens the selection").tag(true)
                 }
-                Picker("New windows open", selection: Binding(get: { atHome }, set: { atHome = $0; Prefs.shared.newWindowsAtHome = $0 })) {
-                    Text("Where you left off").tag(false)
-                    Text("Your home folder").tag(true)
-                }
+                NewWindowFolderSettings(preferences: .shared)
             }
             Section("New Files") {
                 NewFileExtensionField()

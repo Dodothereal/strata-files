@@ -59,6 +59,8 @@ final class Prefs {
         static let returnOpens = "returnOpens"
         static let terminal = "terminalApp"
         static let newWindowsAtHome = "newWindowsAtHome"
+        static let newWindowLocation = "newWindowLocation"
+        static let customWindowFolder = "customWindowFolder"
         static let viewMode = "viewMode"
         static let gridIconSize = "gridIconSize"
         static let verifyCopies = "verifyCopies"
@@ -219,9 +221,25 @@ final class Prefs {
         set { defaults.set(newValue, forKey: Key.verifyCopies) }
     }
 
-    var newWindowsAtHome: Bool {
-        get { defaults.bool(forKey: Key.newWindowsAtHome) }
-        set { defaults.set(newValue, forKey: Key.newWindowsAtHome) }
+    var newWindowLocation: NewWindowLocation {
+        get {
+            if let raw = defaults.string(forKey: Key.newWindowLocation), let choice = NewWindowLocation(rawValue: raw) {
+                return choice
+            }
+            return defaults.bool(forKey: Key.newWindowsAtHome) ? .home : .lastVisited
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.newWindowLocation) }
+    }
+
+    var customWindowFolder: URL? {
+        get {
+            guard let path = defaults.string(forKey: Key.customWindowFolder), path.hasPrefix("/") else { return nil }
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        set {
+            if let newValue, newValue.isFileURL { defaults.set(newValue.path, forKey: Key.customWindowFolder) }
+            else { defaults.removeObject(forKey: Key.customWindowFolder) }
+        }
     }
 
     let terminals: [(name: String, bundleID: String)] = [

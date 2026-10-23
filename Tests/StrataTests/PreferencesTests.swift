@@ -23,6 +23,55 @@ struct PreferencesTests {
         #expect(Prefs.shared === Prefs.shared)
     }
 
+    @Test func newWindowLocationsPreserveLegacyChoicesAndPersistCustomFolders() throws {
+        let domain = try Domain()
+        let other = try Domain()
+        let prefs = domain.preferences
+        #expect(prefs.newWindowLocation == .lastVisited)
+        #expect(prefs.customWindowFolder == nil)
+        domain.defaults.set(true, forKey: "newWindowsAtHome")
+        #expect(prefs.newWindowLocation == .home)
+        domain.defaults.set("unknown", forKey: "newWindowLocation")
+        #expect(prefs.newWindowLocation == .home)
+        domain.defaults.set(false, forKey: "newWindowsAtHome")
+        #expect(prefs.newWindowLocation == .lastVisited)
+        let chosen = URL(fileURLWithPath: "/Volumes/Work/项目 folder", isDirectory: true)
+        prefs.customWindowFolder = chosen
+        prefs.newWindowLocation = .custom
+        let reopened = Prefs(defaults: try #require(UserDefaults(suiteName: domain.name)), domainName: domain.name)
+        #expect(reopened.newWindowLocation == .custom)
+        #expect(reopened.customWindowFolder == chosen)
+        reopened.newWindowLocation = .home
+        #expect(reopened.customWindowFolder == chosen)
+        #expect(other.preferences.newWindowLocation == .lastVisited)
+        #expect(other.preferences.customWindowFolder == nil)
+        domain.defaults.set("relative/path", forKey: "customWindowFolder")
+        #expect(prefs.customWindowFolder == nil)
+        prefs.customWindowFolder = URL(string: "https://example.com/folder")
+        #expect(prefs.customWindowFolder == nil)
+    }
+
+    @Test func newWindowLocationUsesTheChosenPolicyAndFallsBackWithoutChangingIt() throws {
+        let tree = try TestTree("home/", "last/", "current/", "custom/", "file", "alias -> custom", "broken -> missing")
+        let home = tree.url("home")
+        let last = tree.url("last")
+        let current = tree.url("current")
+        let custom = tree.url("custom")
+        for choice in NewWindowLocation.allCases {
+            let folder = choice.folder(custom: custom, last: last, current: current, home: home)
+            #expect(folder == (choice == .home ? home : choice == .custom ? custom : current))
+        }
+        #expect(NewWindowLocation.lastVisited.folder(custom: custom, last: last, home: home) == last)
+        #expect(NewWindowLocation.custom.folder(custom: custom, last: last, home: home) == custom)
+        #expect(NewWindowLocation.custom.folder(custom: tree.url("alias"), last: last, home: home) == tree.url("alias"))
+        for missing in [nil, tree.url("missing"), tree.url("file"), tree.url("broken"), URL(string: "sftp://host/folder")] {
+            #expect(NewWindowLocation.custom.folder(custom: missing, last: last, current: current, home: home) == home)
+        }
+        #expect(NewWindowLocation.custom.folder(custom: custom, last: last, home: home, available: { _ in false }) == home)
+        #expect(NewWindowLocation.lastVisited.folder(custom: custom, last: nil, home: home) == home)
+        #expect(tree.snapshot() == ["alias -> custom", "broken -> missing", "current/", "custom/", "file", "home/", "last/"])
+    }
+
     @Test func creatingPreferencesDoesNotRegisterProcessWideDefaults() throws {
         let name = "StrataPreferencesRegistrationTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: name))

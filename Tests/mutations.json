@@ -4269,5 +4269,26 @@
     "tests": "DirectoryEntryNameTests|ChosenFileFollowupTests",
     "find": "return String(bytes: bytes, encoding: .utf8)",
     "replace": "return String(decoding: bytes, as: UTF8.self)"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "outlineView.reloadData(forRowIndexes: exceptRenaming([row]), columnIndexes: [column])",
+    "replace": "outlineView.reloadData(forRowIndexes: [row], columnIndexes: [column])",
+    "rule": "Inline rename metadata: folder size updates cannot commit a partial name",
+    "tests": "DirectoryReadSessionTests"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "find": "outlineView.reloadData(forRowIndexes: exceptRenaming(folders), columnIndexes: [column])",
+    "replace": "outlineView.reloadData(forRowIndexes: folders, columnIndexes: [column])",
+    "rule": "Inline rename metadata: index updates cannot commit a partial name",
+    "tests": "DirectoryReadSessionTests"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "outlineView.reloadData(forRowIndexes: exceptRenaming([row]), columnIndexes: columns)",
+    "replace": "outlineView.reloadData(forRowIndexes: [row], columnIndexes: columns)",
+    "rule": "Inline rename metadata: media updates cannot commit a partial name",
+    "tests": "DirectoryReadSessionTests"
   }
 ]

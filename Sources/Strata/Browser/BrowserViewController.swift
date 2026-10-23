@@ -761,7 +761,7 @@ final class BrowserViewController: NSViewController {
         guard let node = node(for: url) else { return }
         let row = outlineView.row(forItem: node)
         let column = outlineView.column(withIdentifier: .size)
-        if row >= 0, column >= 0 { outlineView.reloadData(forRowIndexes: [row], columnIndexes: [column]) }
+        if row >= 0, column >= 0 { outlineView.reloadData(forRowIndexes: exceptRenaming([row]), columnIndexes: [column]) }
         treemapController?.updateSize(folderSize(url)?.bytes, for: url)
         if mode == .grid { gridController?.reloadItems([url]) }
         if ordering.choice?.key == .size { scheduleResort() }
@@ -775,7 +775,7 @@ final class BrowserViewController: NSViewController {
             let column = outlineView.tableColumns[$0]
             return !column.isHidden && ListColumn(rawValue: column.identifier.rawValue)?.isMedia == true
         })
-        if row >= 0, !columns.isEmpty { outlineView.reloadData(forRowIndexes: [row], columnIndexes: columns) }
+        if row >= 0, !columns.isEmpty { outlineView.reloadData(forRowIndexes: exceptRenaming([row]), columnIndexes: columns) }
         if ordering.choice?.key.isMedia == true { scheduleResort() }
     }
 

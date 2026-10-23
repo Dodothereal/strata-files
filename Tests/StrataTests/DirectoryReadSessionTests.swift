@@ -507,6 +507,60 @@ struct DirectoryReadSessionTests {
         #expect(tree.snapshot() == ["else.txt", "folder/", "folder/keep.txt", "folder/new.txt", "folder/old.txt"])
     }
 
+    private enum RenamePlace: CaseIterable {
+        case firstPane, secondPane, expandedFirstPane, expandedSecondPane
+        var expanded: Bool { self == .expandedFirstPane || self == .expandedSecondPane }
+        var paneIndex: Int { self == .secondPane || self == .expandedSecondPane ? 1 : 0 }
+    }
+
+    @Test(arguments: ["size", "index", "media"], RenamePlace.allCases)
+    private func metadataDoesNotEndAnInlineRename(update: String, place: RenamePlace) async throws {
+        let prefix = place.expanded ? "parent/" : ""
+        let tree = try TestTree("\(prefix)folder/child.txt", "\(prefix)folder-other/", "\(prefix)movie.mov")
+        let before = tree.snapshot()
+        let reads = Reads()
+        defer { reads.stop() }
+        let controller = window(tree.root, second: tree.root, reads: reads)
+        defer { controller.window?.contentViewController = nil }
+        let browser = controller.panes[place.paneIndex].browser
+        let entries = try ["folder", "folder-other", "movie.mov"].map { try #require(FileEntry(url: tree.url(prefix + $0))) }
+        let roots = place.expanded ? [try #require(FileEntry(url: tree.url("parent")))] : entries
+        for pane in controller.panes { pane.browser.setMode(.list, remember: false) }
+        try await reads.request(0).finish(.success(roots))
+        try await reads.request(1).finish(.success(roots))
+        for pane in controller.panes { await pane.browser.directoryReads.task?.value }
+        if place.expanded {
+            let parent = try #require(browser.allRows.first)
+            browser.outlineView.expandItem(parent)
+            let child = try await reads.request(2)
+            let work = browser.loading.loadChildren(of: parent, showHidden: false, applications: .standard) { _ in }
+            child.finish(.success(entries))
+            await work.value
+        }
+        let entry = entries[update == "media" ? 2 : 0]
+        browser.outlineView.tableColumn(withIdentifier: .init("duration"))?.isHidden = false
+        browser.select([entry.url])
+        browser.renameSelection(nil)
+        let field = try #require(browser.renamingField)
+        let editor = try #require(field.currentEditor() as? NSTextView)
+        field.stringValue = "partially typed"
+        editor.string = "partially typed"
+        switch update {
+        case "index": browser.indexChanged()
+        case "media": browser.mediaInfo.onUpdate?(entry)
+        default: browser.sizer.onUpdate?(entry.url)
+        }
+        #expect(field.currentEditor() === editor)
+        #expect(browser.renamingField === field)
+        #expect(editor.string == "partially typed")
+        field.stringValue = entry.name
+        editor.string = entry.name
+        controller.window?.makeFirstResponder(browser.outlineView)
+        await browser.commandWork?.value
+        #expect(controller.window?.isVisible == false)
+        #expect(tree.snapshot() == before)
+    }
+
     @Test func endingAnInlineEditCannotApplyAListingSupersededByAnotherRead() async throws {
         let tree = try TestTree("old.txt", "stale.txt", "current.txt")
         let reads = Reads()

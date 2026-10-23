@@ -424,7 +424,7 @@ extension BrowserViewController {
             (outlineView.item(atRow: row) as? FileNode)?.entry.isDirectory == true
         })
         if column >= 0, !folders.isEmpty {
-            outlineView.reloadData(forRowIndexes: folders, columnIndexes: [column])
+            outlineView.reloadData(forRowIndexes: exceptRenaming(folders), columnIndexes: [column])
         }
         if ordering.choice?.key == .size { scheduleResort() }
         if effectiveMode == .treemap { pushContent(animated: true) }

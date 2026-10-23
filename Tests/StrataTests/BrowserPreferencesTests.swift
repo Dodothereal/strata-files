@@ -55,6 +55,31 @@ struct BrowserPreferencesTests {
         (view as? T).map { [$0] } ?? view.subviews.flatMap { views($0, of: type) }
     }
 
+    @Test func appStartupAndNewWindowsUseTheirOwnersLocationPreference() throws {
+        let tree = try TestTree("first/", "second/", "last/", "current/")
+        let first = try Environment(), second = try Environment()
+        first.preferences.newWindowLocation = .custom
+        first.preferences.customWindowFolder = tree.url("first")
+        second.preferences.newWindowLocation = .custom
+        second.preferences.customWindowFolder = tree.url("second")
+        for (environment, expected) in [(first, tree.url("first")), (second, tree.url("second"))] {
+            let app = AppDelegate(browserServices: environment.services)
+            #expect(app.newWindowLocation().path == expected.path)
+            #expect(app.newWindowLocation(current: tree.url("current")).path == expected.path)
+            environment.preferences.customWindowFolder = tree.url("missing")
+            #expect(app.newWindowLocation(current: tree.url("current")) == Places.home)
+            #expect(environment.preferences.newWindowLocation == .custom)
+            #expect(environment.preferences.customWindowFolder?.path == tree.url("missing").path)
+            environment.preferences.newWindowLocation = .lastVisited
+            environment.preferences.lastLocation = tree.url("last")
+            #expect(app.newWindowLocation().path == tree.url("last").path)
+            #expect(app.newWindowLocation(current: tree.url("current")).path == tree.url("current").path)
+            environment.preferences.newWindowLocation = .home
+            #expect(app.newWindowLocation(current: tree.url("current")) == Places.home)
+        }
+        #expect(tree.snapshot() == ["current/", "first/", "last/", "second/"])
+    }
+
     private func nameCell(_ browser: BrowserViewController) throws -> NameCellView {
         let node = try #require(browser.allRows.first)
         let column = try #require(browser.outlineView.tableColumn(withIdentifier: .init("name")))

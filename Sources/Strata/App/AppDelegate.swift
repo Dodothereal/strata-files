@@ -221,10 +221,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    /// Where a new window opens: Settings ▸ "New windows open" (where you left off, or home).
+    /// Session restoration keeps its saved locations; this choice applies to newly created windows.
     private var startLocation: URL {
-        let last = Prefs.shared.lastLocation.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
-        return Prefs.shared.newWindowsAtHome ? Places.home : last ?? Places.home
+        newWindowLocation()
+    }
+
+    func newWindowLocation(current: URL? = nil) -> URL {
+        let preferences = browserServices.preferences
+        return preferences.newWindowLocation.folder(custom: preferences.customWindowFolder,
+                                                     last: preferences.lastLocation, current: current, home: Places.home)
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -329,7 +334,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func newWindow(_ sender: Any?) {
         let current = (NSApp.keyWindow?.windowController as? BrowserWindowController)?.location
-        openWindow(at: Prefs.shared.newWindowsAtHome ? Places.home : current ?? Places.home)
+        openWindow(at: newWindowLocation(current: current))
     }
 
     private lazy var dockMenu = DockMenu(favorites: Places.favorites, newWindow: { [weak self] in
