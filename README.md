@@ -99,23 +99,32 @@ using the palette for selections and accents. You can also adjust row density an
 
 ## Made for developers
 
-Strata knows your projects. Every file shows its git status, the current branch sits in the path bar, and the
-inspector recognizes Node, Rust, Swift, .NET, Python, Go and more. It lists a project's scripts and frees up the
-space taken by build folders like `node_modules` in a click (they go to the Trash, so nothing is lost). Code,
-Markdown, HTML, JSON, CSV, SQLite databases and archives preview right in the inspector, beautifully.
+### Repositories
 
-Containers too. With Docker Desktop, OrbStack, Colima, Podman or Rancher Desktop running, **Containers** in the sidebar
-shows your containers as folders. Open one to browse its files like any folder (read-only, read from the container as
-you go), copy things out, or open a terminal in it. Start, stop, restart or pause them from the context menu or the
-inspector, which also shows a container's image, ports and mounts, and a project's Compose services. A Compose project's
-containers come together as a stack: start, stop or restart it at once, and open its project folder in your terminal
-or code editor.
+- **Git at a glance.** File status appears beside each file, and the current branch stays in the path bar.
+- **Project tools in the inspector.** Strata recognizes Node, Rust, Swift, .NET, Python, Go and more. Run a project's
+  scripts or reclaim space from build folders such as `node_modules`; cleanup sends them to the Trash.
+- **Previews alongside your files.** Read code, Markdown, HTML, JSON, CSV, SQLite databases and archives in the inspector.
 
-Servers too. Connect to Server (⌥⌘K) opens SFTP servers and S3 buckets (Amazon S3, Cloudflare R2, Backblaze B2,
-Wasabi, MinIO…) and keeps them under **Servers** in the sidebar. Their folders work like any folder: every view, Quick
-Look, copying things out, dropping files in, renaming and deleting, and moves within a server stay on the server. SFTP
-goes through your own SSH setup (`~/.ssh/config`, keys, the agent, ProxyJump) and Open in Terminal gives you a shell
-there; an S3 secret key stays in your keychain.
+### Servers
+
+**Connect to Server (⌥⌘K)** adds connections under **Servers** in the sidebar.
+
+- **SFTP** uses your SSH setup: `~/.ssh/config`, keys, the agent and ProxyJump. Open in Terminal starts a shell on the server.
+- **S3** supports Amazon S3, Cloudflare R2, Backblaze B2, Wasabi, MinIO and compatible services. Secret keys stay in your keychain.
+- **Familiar file commands** work across every view, including Quick Look, copying files in and out, renaming and deleting.
+  Moves within a server stay on that server.
+
+### Containers
+
+Works with **Docker Desktop, OrbStack, Colima, Podman and Rancher Desktop**.
+
+- **Browse and copy files out.** Containers appear as folders in the sidebar. Browse their files read-only, fetch contents
+  as needed, or open a terminal inside a container.
+- **Manage containers in place.** Start, stop, restart or pause them from the context menu or inspector. See their images,
+  ports, mounts and Compose services.
+- **Control Compose stacks.** Start, stop or restart a project's containers together, and open the project in your terminal
+  or code editor.
 
 <table>
   <tr>
