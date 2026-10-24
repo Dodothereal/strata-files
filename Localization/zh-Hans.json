@@ -313,6 +313,7 @@
       "other": "以及另外%lld个"
     },
     "Another “strata” is installed.": "已安装另一个“strata”。",
+    "Any Kind": "所有类型",
     "App Store": "App Store",
     "App Updates": "App更新",
     "Appearance": "外观",
@@ -426,6 +427,7 @@
     "Check for updates automatically": "自动检查更新",
     "Check for Updates…": "检查更新…",
     "Check Now": "立即检查",
+    "Check the size and date filters. Download origin cannot be combined with name patterns, exclusions or folder filters.": "请检查大小和日期筛选条件。下载来源不能与名称模式、排除条件或文件夹筛选条件组合使用。",
     "Checked %@ of %lld size groups.": {
       "other": "已检查%@/%lld个大小分组。"
     },
@@ -601,7 +603,10 @@
     "Don’t Add": "不添加",
     "Download and install updates automatically": "自动下载并安装更新",
     "Download Now": "现在下载",
+    "Download origin uses Spotlight and requires saved source metadata.": "下载来源搜索使用 Spotlight，需要已保存的来源元数据。",
     "Downloaded": "已下载",
+    "Downloaded From": "下载来源",
+    "downloaded from “%@”": "下载自“%@”",
     "Downloading": "正在下载",
     "Downloads": "下载",
     "Drag into the Full Disk Access list": "拖到“完全磁盘访问权限”列表中",
@@ -667,6 +672,7 @@
     "Files over 5 GB can’t be uploaded to a bucket yet.": "暂不支持将超过5 GB的文件上传到存储桶。",
     "Filter": "过滤",
     "Filters loaded items only.": "仅筛选已加载的项目。",
+    "Filters…": "筛选条件…",
     "Find": "查找",
     "Find:": "查找：",
     "Finder tags (via Spotlight)": "Finder标签（通过Spotlight）",

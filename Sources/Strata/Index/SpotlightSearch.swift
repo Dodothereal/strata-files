@@ -10,11 +10,28 @@ nonisolated package struct SpotlightQuery: Equatable, Sendable {
     package var words: [String] = []
     package var extensions: [String] = []
     package var conditions: [Condition] = []
+    package var unsupportedSourceFilters = false
+
+    package static func acceptsSourceNames(_ text: String) -> Bool {
+        let metadata: Set<String> = ["source", "from", "tag", "kind", "type", "is", "ext", "extension", "size", "modified", "mod", "date", "dm",
+                                     "camera", "device", "author", "by", "artist", "width", "height", "pages", "duration", "length"]
+        let terms = SearchTerms.split(text)
+        guard terms.allSatisfy(\.isComplete) else { return false }
+        let names = terms.filter { !metadata.contains($0.key ?? "") }.map(\.raw).joined(separator: " ")
+        let query = IndexQuery.parse(names)
+        return query.regex == nil && !query.invalidRegex && !query.caseSensitive && query.pathTerms.isEmpty
+            && query.scopePath == nil && query.scopeNames.isEmpty && query.excludedTerms.isEmpty
+    }
 
     /// One metadata test: text found in any of `attributes`, or a number compared with `value`.
     package struct Condition: Equatable, Sendable {
         package enum Test: Equatable, Sendable {
             case contains(String)
+            case anyContains(String)
+            case anyEquals(String)
+            case suffixes([String])
+            case integer(Comparison, Int64)
+            case date(Comparison, Date)
             case equals(String)
             case compare(Comparison, Double)
         }
@@ -29,21 +46,34 @@ nonisolated package struct SpotlightQuery: Equatable, Sendable {
         package let label: String
         /// `kind:` only narrows a metadata search; on its own it's the index's job.
         package var isKind = false
+        package var isNarrowing = false
     }
 
     /// Nil when nothing in `text` needs Spotlight.
     package static func parse(_ text: String) -> SpotlightQuery? {
         var query = SpotlightQuery()
-        for token in tokens(naturalForm(text) ?? text) {
+        let input = naturalForm(text) ?? text
+        for token in SearchTerms.split(input).map(\.value) {
             let lower = token.lowercased()
             // The index's own options mean nothing to Spotlight (it ignores case anyway).
             if lower.hasPrefix("case:") || lower.hasPrefix("regex:") || lower.hasPrefix("re:") { continue }
             if lower.hasPrefix("tag:") {
                 let value = String(token.dropFirst(4))
                 if !value.isEmpty { query.tags.append(value) }
-            } else if lower.hasPrefix("ext:") {
-                query.extensions += token.dropFirst(4).split(separator: ",").map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ". ")) }
+            } else if lower.hasPrefix("ext:") || lower.hasPrefix("extension:") {
+                query.extensions += token.drop(while: { $0 != ":" }).dropFirst().split(whereSeparator: { ",;|".contains($0) }).map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ". ")) }
                     .filter { !$0.isEmpty }
+            } else if ["size", "modified", "mod", "date", "dm"].contains(token.firstIndex(of: ":").map { token[..<$0].lowercased() } ?? "") {
+                let index = IndexQuery.parse(token)
+                func append(_ attribute: String, _ test: Condition.Test) {
+                    var condition = Condition(attributes: [attribute], test: test, label: token)
+                    condition.isNarrowing = true
+                    query.conditions.append(condition)
+                }
+                if let min = index.minSize { append("kMDItemFSSize", .integer(.greaterOrEqual, min)) }
+                if let max = index.maxSize { append("kMDItemFSSize", .integer(.lessOrEqual, max)) }
+                if let after = index.modifiedAfter { append("kMDItemFSContentChangeDate", .date(.greaterOrEqual, Date(timeIntervalSince1970: Double(after)))) }
+                if let before = index.modifiedBefore { append("kMDItemFSContentChangeDate", .date(.less, Date(timeIntervalSince1970: Double(before)))) }
             } else if let condition = condition(token) {
                 query.conditions.append(condition)
             } else {
@@ -52,12 +82,15 @@ nonisolated package struct SpotlightQuery: Equatable, Sendable {
         }
         // An artist is music's: without a kind, fonts and templates (which have "authors") would match too.
         if query.conditions.contains(where: { $0.attributes.contains("kMDItemComposer") }), !query.conditions.contains(where: \.isKind) {
-            var audio = Condition(attributes: ["kMDItemContentTypeTree"], test: .equals("public.audio"),
+            var audio = Condition(attributes: ["kMDItemContentTypeTree"], test: .anyEquals("public.audio"),
                                   label: String(localized: "audio", comment: "Search summary: kind of files"))
             audio.isKind = true
             query.conditions.insert(audio, at: 0)
         }
-        return query.tags.isEmpty && !query.conditions.contains(where: { !$0.isKind }) ? nil : query
+        if query.conditions.contains(where: { $0.attributes.contains("kMDItemWhereFroms") }) {
+            query.unsupportedSourceFilters = !acceptsSourceNames(input)
+        }
+        return query.tags.isEmpty && !query.conditions.contains(where: { !$0.isKind && !$0.isNarrowing }) ? nil : query
     }
 
     /// `key:value` for the metadata keys, or nil.
@@ -67,6 +100,9 @@ nonisolated package struct SpotlightQuery: Equatable, Sendable {
         let value = String(token[token.index(after: colon)...])
         guard !value.isEmpty else { return nil }
         switch key {
+        case "source", "from":
+            return Condition(attributes: ["kMDItemWhereFroms"], test: .anyContains(value),
+                             label: String(localized: "downloaded from “\(value)”", comment: "Search summary: the file’s saved download source"))
         case "camera", "device":
             return Condition(attributes: ["kMDItemAcquisitionModel", "kMDItemAcquisitionMake"], test: .contains(value),
                              label: String(localized: "camera “\(value)”", comment: "Search summary: taken with a camera, like “camera “iPhone””"))
@@ -109,11 +145,22 @@ nonisolated package struct SpotlightQuery: Equatable, Sendable {
                 "documents": "public.content", "doc": "public.content",
                 "font": "public.font", "fonts": "public.font",
             ]
-            // A kind Spotlight has no type for narrows nothing (rather than becoming a name to look for).
+            // Keep the index's extension-based kinds useful alongside download metadata too.
             guard let type = types[value.lowercased()] else {
-                var none = Condition(attributes: [], test: .equals(""), label: "")
-                none.isKind = true
-                return none
+                let parsed = IndexQuery.parse(token)
+                var extensions = parsed.extensions
+                if let kind = parsed.kind { extensions.formUnion(IndexSearch.extensions(for: kind)) }
+                let condition: Condition
+                if parsed.kind == .folder {
+                    condition = Condition(attributes: ["kMDItemContentType"], test: .equals("public.folder"), label: value)
+                } else if parsed.kind == .file {
+                    condition = Condition(attributes: ["kMDItemContentTypeTree"], test: .anyEquals("public.data"), label: value)
+                } else {
+                    condition = Condition(attributes: ["kMDItemFSName"], test: .suffixes(extensions.sorted()), label: value)
+                }
+                var narrowing = condition
+                narrowing.isKind = true
+                return narrowing
             }
             // For the results summary.
             let label = switch type {
@@ -127,7 +174,7 @@ nonisolated package struct SpotlightQuery: Equatable, Sendable {
             case "public.font": String(localized: "fonts", comment: "Search summary: kind of files")
             default: String(localized: "documents", comment: "Search summary: kind of files")
             }
-            var condition = Condition(attributes: ["kMDItemContentTypeTree"], test: .equals(type), label: label)
+            var condition = Condition(attributes: ["kMDItemContentTypeTree"], test: .anyEquals(type), label: label)
             condition.isKind = true
             return condition
         default:
@@ -204,6 +251,9 @@ nonisolated package struct SpotlightQuery: Equatable, Sendable {
                 Range(found.range(at: index), in: trimmed).map { String(trimmed[$0]) } ?? ""
             }
         }
+        if let parts = match(#"(?:files?\s+)?downloaded\s+from\s+(.+)"#) {
+            return "source:" + quote(parts[1])
+        }
         // "taken with" or "shot on" a camera (not "photos on desktop", "pictures by date", "taken on June 3").
         let notCameras: Set<String> = ["desktop", "date", "name", "size", "kind", "the", "this", "last", "my", "today", "yesterday",
                                        "mac", "disk", "drive", "screen", "folder"]
@@ -234,7 +284,8 @@ nonisolated package struct SpotlightQuery: Equatable, Sendable {
 
     /// Every condition at once. Values are passed as arguments, never pasted into the format.
     package var predicate: NSPredicate {
-        var parts = tags.map { NSPredicate(format: "%K ==[c] %@", "kMDItemUserTags", $0) }
+        guard !unsupportedSourceFilters else { return NSPredicate(value: false) }
+        var parts = tags.map { NSPredicate(format: "ANY %K ==[c] %@", "kMDItemUserTags", $0) }
         parts += words.map { NSPredicate(format: "%K CONTAINS[cd] %@", NSMetadataItemFSNameKey, $0) }
         if !extensions.isEmpty {
             parts.append(Self.any(extensions.map { NSPredicate(format: "%K ENDSWITH[c] %@", NSMetadataItemFSNameKey, "." + $0) }))
@@ -243,6 +294,14 @@ nonisolated package struct SpotlightQuery: Equatable, Sendable {
             parts.append(Self.any(condition.attributes.map { attribute in
                 switch condition.test {
                 case .contains(let text): NSPredicate(format: "%K CONTAINS[cd] %@", attribute, text)
+                case .anyContains(let text): NSPredicate(format: "ANY %K CONTAINS[cd] %@", attribute, text)
+                case .anyEquals(let text): NSPredicate(format: "ANY %K == %@", attribute, text)
+                case .suffixes(let extensions):
+                    Self.any(extensions.map { NSPredicate(format: "%K ENDSWITH[c] %@", attribute, "." + $0) })
+                case .integer(let comparison, let number):
+                    NSPredicate(format: "%K \(comparison.rawValue) %@", attribute, NSNumber(value: number))
+                case .date(let comparison, let date):
+                    NSPredicate(format: "%K \(comparison.rawValue) %@", attribute, date as NSDate)
                 case .equals(let value): NSPredicate(format: "%K == %@", attribute, value)
                 case .compare(let comparison, let number):
                     NSPredicate(format: "%K \(comparison.rawValue) %@", attribute, NSNumber(value: number))
@@ -268,7 +327,8 @@ nonisolated package struct SpotlightQuery: Equatable, Sendable {
             let list = ListFormatter.localizedString(byJoining: tags.map { "“\($0)”" })
             parts.append(String(localized: "Tagged \(list)", comment: "Search summary: with Finder tags, like “Tagged “Red” and “Work””"))
         }
-        parts += conditions.map(\.label).filter { !$0.isEmpty }
+        var shown = Set<String>()
+        parts += conditions.map(\.label).filter { !$0.isEmpty && shown.insert($0).inserted }
         if !words.isEmpty {
             let list = ListFormatter.localizedString(byJoining: words.map { "“\($0)”" })
             parts.append(String(localized: "named \(list)", comment: "Search summary: names containing words, like “named “report””"))
@@ -282,31 +342,6 @@ nonisolated package struct SpotlightQuery: Equatable, Sendable {
     /// A tag as a query term, quoted and escaped so any name round-trips (`tag:"Client \"A\""`).
     package static func term(forTag name: String) -> String {
         "tag:\"" + name.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
-    }
-
-    /// Words, with "quoted phrases" kept together (`tag:"Client X"`); inside quotes, \" and \\ stand for themselves.
-    private static func tokens(_ text: String) -> [String] {
-        var tokens: [String] = []
-        var current = ""
-        var quoted = false
-        var escaped = false
-        for character in text {
-            if escaped {
-                current.append(character)
-                escaped = false
-            } else if quoted, character == "\\" {
-                escaped = true
-            } else if character == "\"" {
-                quoted.toggle()
-            } else if character.isWhitespace, !quoted {
-                if !current.isEmpty { tokens.append(current) }
-                current = ""
-            } else {
-                current.append(character)
-            }
-        }
-        if !current.isEmpty { tokens.append(current) }
-        return tokens
     }
 }
 

@@ -313,6 +313,7 @@
       "other": "ほか%lld件"
     },
     "Another “strata” is installed.": "別の「strata」がインストールされています。",
+    "Any Kind": "すべての種類",
     "App Store": "App Store",
     "App Updates": "アプリのアップデート",
     "Appearance": "外観",
@@ -426,6 +427,7 @@
     "Check for updates automatically": "アップデートを自動的に確認",
     "Check for Updates…": "アップデートを確認…",
     "Check Now": "今すぐ確認",
+    "Check the size and date filters. Download origin cannot be combined with name patterns, exclusions or folder filters.": "サイズと日付のフィルタを確認してください。ダウンロード元は、名前のパターン、除外条件、フォルダのフィルタとは組み合わせられません。",
     "Checked %@ of %lld size groups.": {
       "other": "%2$lld個のサイズグループのうち%1$@個を確認しました。"
     },
@@ -601,7 +603,10 @@
     "Don’t Add": "追加しない",
     "Download and install updates automatically": "アップデートを自動的にダウンロードしてインストール",
     "Download Now": "今すぐダウンロード",
+    "Download origin uses Spotlight and requires saved source metadata.": "ダウンロード元の検索にはSpotlightを使用し、保存されたダウンロード元のメタデータが必要です。",
     "Downloaded": "ダウンロード済み",
+    "Downloaded From": "ダウンロード元",
+    "downloaded from “%@”": "「%@」からダウンロード",
     "Downloading": "ダウンロード中",
     "Downloads": "ダウンロード",
     "Drag into the Full Disk Access list": "「フルディスクアクセス」のリストにドラッグ",
@@ -667,6 +672,7 @@
     "Files over 5 GB can’t be uploaded to a bucket yet.": "5 GBを超えるファイルは、まだバケットにアップロードできません。",
     "Filter": "フィルタ",
     "Filters loaded items only.": "読み込み済みの項目のみを絞り込みます。",
+    "Filters…": "フィルタ…",
     "Find": "検索",
     "Find:": "検索:",
     "Finder tags (via Spotlight)": "Finderタグ（Spotlight経由）",

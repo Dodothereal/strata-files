@@ -313,6 +313,7 @@
       "other": "以及另外%lld個"
     },
     "Another “strata” is installed.": "已安裝另一個「strata」。",
+    "Any Kind": "所有類型",
     "App Store": "App Store",
     "App Updates": "App更新",
     "Appearance": "外觀",
@@ -426,6 +427,7 @@
     "Check for updates automatically": "自動檢查更新",
     "Check for Updates…": "檢查更新⋯",
     "Check Now": "立即檢查",
+    "Check the size and date filters. Download origin cannot be combined with name patterns, exclusions or folder filters.": "請檢查大小和日期篩選條件。下載來源無法與名稱模式、排除條件或檔案夾篩選條件搭配使用。",
     "Checked %@ of %lld size groups.": {
       "other": "已檢查%@/%lld個大小群組。"
     },
@@ -601,7 +603,10 @@
     "Don’t Add": "不要加入",
     "Download and install updates automatically": "自動下載並安裝更新",
     "Download Now": "立即下載",
+    "Download origin uses Spotlight and requires saved source metadata.": "下載來源搜尋使用 Spotlight，需要已儲存的來源中繼資料。",
     "Downloaded": "已下載",
+    "Downloaded From": "下載來源",
+    "downloaded from “%@”": "下載自「%@」",
     "Downloading": "下載中",
     "Downloads": "下載項目",
     "Drag into the Full Disk Access list": "拖到「完全取用磁碟」列表中",
@@ -667,6 +672,7 @@
     "Files over 5 GB can’t be uploaded to a bucket yet.": "暫不支援將超過5 GB的檔案上傳到儲存貯體。",
     "Filter": "篩選",
     "Filters loaded items only.": "僅篩選已載入的項目。",
+    "Filters…": "篩選條件…",
     "Find": "尋找",
     "Find:": "尋找：",
     "Finder tags (via Spotlight)": "Finder標籤（透過Spotlight）",

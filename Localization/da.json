@@ -386,6 +386,7 @@
       "other": "og %lld til"
     },
     "Another “strata” is installed.": "En anden “strata” er installeret.",
+    "Any Kind": "Alle typer",
     "App Store": "App Store",
     "App Updates": "Appopdateringer",
     "Appearance": "Udseende",
@@ -504,6 +505,7 @@
     "Check for updates automatically": "Søg automatisk efter opdateringer",
     "Check for Updates…": "Søg efter opdateringer…",
     "Check Now": "Søg nu",
+    "Check the size and date filters. Download origin cannot be combined with name patterns, exclusions or folder filters.": "Kontrollér filtrene for størrelse og dato. Downloadkilden kan ikke kombineres med navnemønstre, udeladelser eller mappefiltre.",
     "Checked %@ of %lld size groups.": {
       "one": "%@ af %lld størrelsesgruppe kontrolleret.",
       "other": "%@ af %lld størrelsesgrupper kontrolleret."
@@ -689,7 +691,10 @@
     "Don’t Add": "Tilføj ikke",
     "Download and install updates automatically": "Hent og installer opdateringer automatisk",
     "Download Now": "Hent nu",
+    "Download origin uses Spotlight and requires saved source metadata.": "Downloadkilden bruger Spotlight og kræver gemte metadata om kilden.",
     "Downloaded": "Hentet",
+    "Downloaded From": "Hentet fra",
+    "downloaded from “%@”": "hentet fra “%@”",
     "Downloading": "Henter",
     "Downloads": "Overførsler",
     "Drag into the Full Disk Access list": "Træk ind på listen »Fuld diskadgang«",
@@ -758,6 +763,7 @@
     "Files over 5 GB can’t be uploaded to a bucket yet.": "Filer over 5 GB kan endnu ikke uploades til en bucket.",
     "Filter": "Filter",
     "Filters loaded items only.": "Filtrerer kun indlæste emner.",
+    "Filters…": "Filtre…",
     "Find": "Søg",
     "Find:": "Søg efter:",
     "Finder tags (via Spotlight)": "Finder-mærker (via Spotlight)",

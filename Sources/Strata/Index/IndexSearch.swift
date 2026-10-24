@@ -165,21 +165,7 @@ nonisolated package struct IndexQuery: Sendable {
     private static let buildFolderWords: Set<String> = ["target", "dist", "build", "bin", "obj", "out", "coverage"]
 
     package static func tokenize(_ text: String) -> [String] {
-        var tokens: [String] = []
-        var current = ""
-        var quoted = false
-        for character in text {
-            if character == "\"" {
-                quoted.toggle()
-            } else if character.isWhitespace && !quoted {
-                if !current.isEmpty { tokens.append(current) }
-                current = ""
-            } else {
-                current.append(character)
-            }
-        }
-        if !current.isEmpty { tokens.append(current) }
-        return tokens
+        SearchTerms.split(text).map(\.value)
     }
 
     private static func value(of token: String, keys: [String]) -> String? {
@@ -239,6 +225,13 @@ nonisolated package struct IndexQuery: Sendable {
     }
 
     private static func dateRange(_ value: String, now: Date) -> (UInt32?, UInt32?) {
+        func instant(_ value: String) -> UInt32? {
+            ISO8601DateFormatter().date(from: value.uppercased()).map(indexStamp)
+        }
+        if let range = value.range(of: "..") {
+            let after = String(value[..<range.lowerBound]), before = String(value[range.upperBound...])
+            return (instant(after) ?? day(after).map(indexStamp), instant(before) ?? day(before).map(indexStamp))
+        }
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
         func stamp(_ date: Date) -> UInt32 { indexStamp(date) }
@@ -260,6 +253,7 @@ nonisolated package struct IndexQuery: Sendable {
                 // `<7d` means "less than 7 days old"; `>30d` means "older than 30 days".
                 return op.hasPrefix("<") ? (boundary, nil) : (nil, boundary)
             }
+            if let stamp = instant(amount) { return op.hasPrefix("<") ? (nil, stamp) : (stamp, nil) }
             if let date = day(amount) {
                 return op.hasPrefix("<") ? (nil, stamp(date)) : (stamp(date), nil)
             }

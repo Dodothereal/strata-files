@@ -92,6 +92,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         split.scopeBar.onScopeChange = { [weak self] everywhere in self?.changeSearchScope(everywhere: everywhere) }
         split.scopeBar.onSave = { [weak self] in self?.saveSearch() }
         split.scopeBar.onMatchCase = { [weak self] on in self?.setSearchCase(on) }
+        split.scopeBar.onFilters = { [weak self] anchor in
+            guard let self, case .search(let text, _) = self.destination else { return }
+            SearchFiltersController(query: text, context: SearchFilterContext(self)).show(from: anchor)
+        }
         NotificationCenter.default.addObserver(self, selector: #selector(indexPhaseChanged), name: .indexPhaseDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)

@@ -386,6 +386,7 @@
       "other": "és még %lld"
     },
     "Another “strata” is installed.": "Egy másik „strata” parancs van telepítve.",
+    "Any Kind": "Bármilyen típus",
     "App Store": "App Store",
     "App Updates": "Appfrissítések",
     "Appearance": "Megjelenés",
@@ -504,6 +505,7 @@
     "Check for updates automatically": "Frissítések automatikus keresése",
     "Check for Updates…": "Frissítések keresése…",
     "Check Now": "Ellenőrzés most",
+    "Check the size and date filters. Download origin cannot be combined with name patterns, exclusions or folder filters.": "Ellenőrizze a méret- és dátumszűrőket. A letöltés forrása nem kombinálható névmintákkal, kizárásokkal vagy mappaszűrőkkel.",
     "Checked %@ of %lld size groups.": {
       "one": "%2$lld méretcsoportból %1$@ ellenőrizve.",
       "other": "%2$lld méretcsoportból %1$@ ellenőrizve."
@@ -689,7 +691,10 @@
     "Don’t Add": "Ne adja hozzá",
     "Download and install updates automatically": "Frissítések automatikus letöltése és telepítése",
     "Download Now": "Letöltés most",
+    "Download origin uses Spotlight and requires saved source metadata.": "A letöltés forrásának keresése a Spotlightot használja, és mentett forrásmetaadatokat igényel.",
     "Downloaded": "Letöltve",
+    "Downloaded From": "Letöltés forrása",
+    "downloaded from “%@”": "letöltve innen: „%@”",
     "Downloading": "Letöltés folyamatban",
     "Downloads": "Letöltések",
     "Drag into the Full Disk Access list": "Húzza a Teljes lemezhozzáférés listába",
@@ -758,6 +763,7 @@
     "Files over 5 GB can’t be uploaded to a bucket yet.": "5 GB-nál nagyobb fájlok egyelőre nem tölthetők fel tárolóba.",
     "Filter": "Szűrő",
     "Filters loaded items only.": "Csak a betöltött elemeket szűri.",
+    "Filters…": "Szűrők…",
     "Find": "Keresés",
     "Find:": "Keresés:",
     "Finder tags (via Spotlight)": "Finder-címkék (a Spotlighton keresztül)",

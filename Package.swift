@@ -87,6 +87,7 @@ let indexSources = [
     "IndexStore.swift",
     "IndexWorker.swift",
     "SpotlightSearch.swift",
+    "SearchTerms.swift",
 ]
 
 let package = Package(

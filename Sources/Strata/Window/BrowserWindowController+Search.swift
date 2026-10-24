@@ -186,6 +186,12 @@ extension BrowserWindowController {
     private func searchSpotlight(_ query: SpotlightQuery, in scope: URL?, pane p: Pane, generation: Int, target: Destination) async {
         p.folderSearch?.cancel()
         p.folderSearch = nil
+        guard !query.unsupportedSourceFilters else {
+            p.browser.showMessage(symbol: "line.3.horizontal.decrease", title: String(localized: "Filters…"),
+                                  message: String(localized: "Check the size and date filters. Download origin cannot be combined with name patterns, exclusions or folder filters."))
+            showSummary("", for: p)
+            return
+        }
         let result = await SpotlightSearch.run(query.predicate, scope: scope)
         let entries = await Self.entries(result.urls)
         guard generation == p.searchGeneration, p.destination == target else { return }

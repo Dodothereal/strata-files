@@ -386,6 +386,7 @@
       "other": "ve %lld tane daha"
     },
     "Another “strata” is installed.": "Başka bir “strata” yüklü.",
+    "Any Kind": "Herhangi bir tür",
     "App Store": "App Store",
     "App Updates": "Uygulama Güncellemeleri",
     "Appearance": "Görünüm",
@@ -504,6 +505,7 @@
     "Check for updates automatically": "Güncellemeleri otomatik olarak denetle",
     "Check for Updates…": "Güncellemeleri Denetle…",
     "Check Now": "Şimdi Denetle",
+    "Check the size and date filters. Download origin cannot be combined with name patterns, exclusions or folder filters.": "Boyut ve tarih filtrelerini kontrol edin. İndirme kaynağı; ad kalıpları, hariç tutmalar veya klasör filtreleriyle birleştirilemez.",
     "Checked %@ of %lld size groups.": {
       "one": "%2$lld büyüklük grubundan %1$@ tanesi denetlendi.",
       "other": "%2$lld büyüklük grubundan %1$@ tanesi denetlendi."
@@ -689,7 +691,10 @@
     "Don’t Add": "Ekleme",
     "Download and install updates automatically": "Güncellemeleri otomatik olarak indir ve yükle",
     "Download Now": "Şimdi İndir",
+    "Download origin uses Spotlight and requires saved source metadata.": "İndirme kaynağı araması Spotlight kullanır ve kaynağa ait kayıtlı üst veriler gerektirir.",
     "Downloaded": "İndirildi",
+    "Downloaded From": "İndirildiği kaynak",
+    "downloaded from “%@”": "“%@” kaynağından indirildi",
     "Downloading": "İndiriliyor",
     "Downloads": "İndirilenler",
     "Drag into the Full Disk Access list": "Tam Disk Erişimi listesine sürükleyin",
@@ -758,6 +763,7 @@
     "Files over 5 GB can’t be uploaded to a bucket yet.": "5 GB’tan büyük dosyalar henüz bir bucket’a yüklenemiyor.",
     "Filter": "Filtre",
     "Filters loaded items only.": "Yalnızca yüklenmiş öğeleri filtreler.",
+    "Filters…": "Filtreler…",
     "Find": "Bul",
     "Find:": "Bul:",
     "Finder tags (via Spotlight)": "Finder etiketleri (Spotlight ile)",

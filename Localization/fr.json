@@ -386,6 +386,7 @@
       "other": "et %lld autres"
     },
     "Another “strata” is installed.": "Une autre commande « strata » est installée.",
+    "Any Kind": "Tous les types",
     "App Store": "App Store",
     "App Updates": "Mises à jour des apps",
     "Appearance": "Apparence",
@@ -504,6 +505,7 @@
     "Check for updates automatically": "Rechercher automatiquement les mises à jour",
     "Check for Updates…": "Rechercher des mises à jour…",
     "Check Now": "Rechercher maintenant",
+    "Check the size and date filters. Download origin cannot be combined with name patterns, exclusions or folder filters.": "Vérifiez les filtres de taille et de date. L’origine du téléchargement ne peut pas être combinée avec des motifs de nom, des exclusions ou des filtres de dossier.",
     "Checked %@ of %lld size groups.": {
       "one": "Groupes de taille vérifiés : %@ sur %lld.",
       "other": "Groupes de taille vérifiés : %@ sur %lld."
@@ -689,7 +691,10 @@
     "Don’t Add": "Ne pas ajouter",
     "Download and install updates automatically": "Télécharger et installer automatiquement les mises à jour",
     "Download Now": "Télécharger maintenant",
+    "Download origin uses Spotlight and requires saved source metadata.": "L’origine du téléchargement utilise Spotlight et nécessite des métadonnées enregistrées sur la source.",
     "Downloaded": "Téléchargé",
+    "Downloaded From": "Téléchargé depuis",
+    "downloaded from “%@”": "téléchargé depuis « %@ »",
     "Downloading": "Téléchargement",
     "Downloads": "Téléchargements",
     "Drag into the Full Disk Access list": "Faites glisser dans la liste Accès complet au disque",
@@ -758,6 +763,7 @@
     "Files over 5 GB can’t be uploaded to a bucket yet.": "Les fichiers de plus de 5 Go ne peuvent pas encore être envoyés dans un compartiment.",
     "Filter": "Filtre",
     "Filters loaded items only.": "Filtre uniquement les éléments chargés.",
+    "Filters…": "Filtres…",
     "Find": "Rechercher",
     "Find:": "Rechercher :",
     "Finder tags (via Spotlight)": "Tags du Finder (via Spotlight)",

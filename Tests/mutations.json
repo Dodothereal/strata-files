@@ -4909,5 +4909,26 @@
     "replace": "true,",
     "rule": "Session navigation never starts a remote search automatically",
     "tests": "SessionNavigationTests/serverHistoryUsesItsOwnersCacheAndReopeningNeverStartsALogin"
+  },
+  {
+    "file": "Strata/Window/SearchFilterDraft.swift",
+    "find": "pane.navigationRevision == revision,",
+    "replace": "true,",
+    "rule": "Search filters never apply after leaving and returning to the original search",
+    "tests": "SearchFiltersTests/filtersApplyThroughNativeControlsToTheOriginalSearchOnly"
+  },
+  {
+    "file": "Strata/Index/SpotlightSearch.swift",
+    "find": "case .anyContains(let text): NSPredicate(format: \"ANY %K CONTAINS[cd] %@\", attribute, text)",
+    "replace": "case .anyContains: NSPredicate(value: false)",
+    "rule": "Search filters match the saved source inside its metadata array",
+    "tests": "SearchFiltersTests/sourceSearchUsesArrayMetadataAndLiteralValues"
+  },
+  {
+    "file": "Strata/Index/IndexSearch.swift",
+    "find": "return (instant(after) ?? day(after).map(indexStamp), instant(before) ?? day(before).map(indexStamp))",
+    "replace": "return (instant(after) ?? day(after).map(indexStamp), nil)",
+    "rule": "Search filters keep the exclusive upper date boundary",
+    "tests": "SearchFiltersTests/sourceCombinesWithNameKindExtensionSizeAndDate"
   }
 ]

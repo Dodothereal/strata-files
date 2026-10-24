@@ -386,6 +386,7 @@
       "other": "y %lld más"
     },
     "Another “strata” is installed.": "Hay otro comando «strata» instalado.",
+    "Any Kind": "Cualquier tipo",
     "App Store": "App Store",
     "App Updates": "Actualizaciones de apps",
     "Appearance": "Aspecto",
@@ -504,6 +505,7 @@
     "Check for updates automatically": "Buscar actualizaciones automáticamente",
     "Check for Updates…": "Buscar actualizaciones…",
     "Check Now": "Buscar ahora",
+    "Check the size and date filters. Download origin cannot be combined with name patterns, exclusions or folder filters.": "Comprueba los filtros de tamaño y fecha. El origen de descarga no se puede combinar con patrones de nombre, exclusiones ni filtros de carpeta.",
     "Checked %@ of %lld size groups.": {
       "one": "Comprobado %@ de %lld grupo por tamaño.",
       "other": "Comprobados %@ de %lld grupos por tamaño."
@@ -689,7 +691,10 @@
     "Don’t Add": "No añadir",
     "Download and install updates automatically": "Descargar e instalar actualizaciones automáticamente",
     "Download Now": "Descargar ahora",
+    "Download origin uses Spotlight and requires saved source metadata.": "El origen de descarga usa Spotlight y requiere metadatos guardados sobre la fuente.",
     "Downloaded": "Descargado",
+    "Downloaded From": "Descargado de",
+    "downloaded from “%@”": "descargado de «%@»",
     "Downloading": "Descargando",
     "Downloads": "Descargas",
     "Drag into the Full Disk Access list": "Arrastra a la lista de Acceso total al disco",
@@ -758,6 +763,7 @@
     "Files over 5 GB can’t be uploaded to a bucket yet.": "Los archivos de más de 5 GB todavía no se pueden subir a un bucket.",
     "Filter": "Filtro",
     "Filters loaded items only.": "Filtra solo los elementos cargados.",
+    "Filters…": "Filtros…",
     "Find": "Buscar",
     "Find:": "Buscar:",
     "Finder tags (via Spotlight)": "Etiquetas de Finder (mediante Spotlight)",

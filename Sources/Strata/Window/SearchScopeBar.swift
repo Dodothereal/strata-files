@@ -6,11 +6,13 @@ final class SearchScopeBar: NSSplitViewItemAccessoryViewController {
     var onSave: (() -> Void)?
     /// Match Case was switched (the search's `case:`).
     var onMatchCase: ((Bool) -> Void)?
+    var onFilters: ((NSView) -> Void)?
 
     private let scope = NSSegmentedControl()
     private let matchCase = NSButton(checkboxWithTitle: String(localized: "Match Case"), target: nil, action: nil)
     private let summary = NSTextField(labelWithString: "")
     private let save = NSButton()
+    private let filters = NSButton()
 
     override func loadView() {
         scope.segmentStyle = .automatic
@@ -41,9 +43,17 @@ final class SearchScopeBar: NSSplitViewItemAccessoryViewController {
         save.target = self
         save.action = #selector(saveClicked)
 
+        filters.title = String(localized: "Filters…")
+        filters.image = NSImage(systemSymbolName: "line.3.horizontal.decrease", accessibilityDescription: nil)
+        filters.imagePosition = .imageLeading
+        filters.bezelStyle = .accessoryBarAction
+        filters.controlSize = .small
+        filters.target = self
+        filters.action = #selector(filtersClicked)
+
         let spacer = NSView()
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
-        let stack = NSStackView(views: [scope, matchCase, summary, spacer, save])
+        let stack = NSStackView(views: [scope, matchCase, summary, spacer, filters, save])
         stack.spacing = 10
         stack.edgeInsets = NSEdgeInsets(top: 6, left: 14, bottom: 6, right: 14)
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -98,4 +108,6 @@ final class SearchScopeBar: NSSplitViewItemAccessoryViewController {
     @objc private func saveClicked() {
         onSave?()
     }
+
+    @objc private func filtersClicked() { onFilters?(filters) }
 }
