@@ -21,6 +21,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     let services: BrowserServices
+    lazy var navigationGestures = BrowserNavigation(owner: self)
     private(set) var panes: [Pane]
     /// The pane with focus; navigation, search and the inspector act on it.
     private(set) var pane: Pane
@@ -58,7 +59,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         panes = [first]
         pane = first
         split = MainSplitViewController(firstPane: first.host)
-        let window = NSWindow(
+        let window = BrowserWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
@@ -69,6 +70,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         window.isRestorable = false
         super.init(window: window)
 
+        window.navigation = navigationGestures
         window.delegate = self
         window.contentViewController = split
         window.setContentSize(NSSize(width: 1240, height: 780))
@@ -308,6 +310,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                     failed: @escaping (Error) -> Void) -> Task<Void, Never> {
         guard !isClosed else { return Task {} }
         if let originPane, !panes.contains(where: { $0 === originPane }) { return Task {} }
+        navigationGestures.cancel()
         let origin = originPane ?? pane
         let work = origin.opening.open(notice: notice, operation: operation) { [weak self, weak origin] result in
             guard let self, !isClosed, let origin, panes.contains(where: { $0 === origin }) else { return }
@@ -472,15 +475,30 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc func goBack(_ sender: Any?) {
-        guard let previous = pane.backStack.popLast() else { return }
+        _ = navigateHistory(.back, in: pane)
+    }
+
+    @discardableResult func navigateHistory(_ direction: BrowserNavigation.Direction, in owner: Pane) -> Bool {
+        guard !isClosed, window?.attachedSheet == nil, panes.contains(where: { $0 === owner }) else { return false }
+        guard direction == .back ? !owner.backStack.isEmpty : !owner.forwardStack.isEmpty else { return false }
+        activate(owner)
+        guard pane === owner, !isClosed else { return false }
+        if direction == .forward { return stepForward() }
+        guard let previous = pane.backStack.popLast() else { return false }
         pane.forwardStack.append(destination)
         go(previous, select: childToSelect(in: previous, from: destination), recordHistory: false)
+        return true
     }
 
     @objc func goForward(_ sender: Any?) {
-        guard let next = pane.forwardStack.popLast() else { return }
+        _ = navigateHistory(.forward, in: pane)
+    }
+
+    private func stepForward() -> Bool {
+        guard let next = pane.forwardStack.popLast() else { return false }
         pane.backStack.append(destination)
         go(next, select: childToSelect(in: next, from: destination), recordHistory: false)
+        return true
     }
 
     @objc func goToEnclosingFolder(_ sender: Any?) {
@@ -588,6 +606,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - Window
 
     func windowWillClose(_ notification: Notification) {
+        navigationGestures.cancel()
         isClosed = true
         panes.forEach { $0.stopBackgroundWork() }
         onClose?()
@@ -603,6 +622,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         GitStatusStore.shared.invalidate(containing: location)
         panes.forEach { $0.browser.rereadTags() }
     }
+
+    func windowDidResignKey(_ notification: Notification) { navigationGestures.cancel() }
 
     @objc private func gitStatusChanged(_ notification: Notification) {
         updateGitChrome()

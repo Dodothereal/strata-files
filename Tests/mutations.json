@@ -4846,5 +4846,12 @@
     "replace": "            guard status == .cloudOnly || status == .providerOnly else { throw POSIXError(.EINVAL) }",
     "rule": "Cloud downloads never interpret a remote URL as a local file",
     "tests": "CloudFoldersTests/remoteURLsCannot"
+  },
+  {
+    "file": "Strata/Window/BrowserNavigation.swift",
+    "find": "!owner.isClosed, attempt == id,",
+    "replace": "!owner.isClosed,",
+    "rule": "Navigation gestures ignore a cancelled attempt after the window loses key status",
+    "tests": "PointerNavigationTests/cancelledAndStaleSwipes"
   }
 ]
