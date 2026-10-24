@@ -17,6 +17,7 @@ package enum RichPreview {
         case .code(let language): CodePreviewView(url: url, mode: .source(language))
         case .json: CodePreviewView(url: url, mode: .json)
         case .markdown: MarkdownPreviewView(url: url)
+        case .html: HTMLPreviewView(url: url)
         case .delimited(let separator): DelimitedPreviewView(url: url, separator: separator)
         case .sqlite: SQLitePreviewView(url: url)
         case .archive(let kind): ArchivePreviewView(url: url, kind: kind)
@@ -31,6 +32,7 @@ nonisolated package enum PreviewFormat: Sendable {
     case code(Language)
     case json
     case markdown
+    case html
     /// CSV/TSV; a nil separator is detected from the content.
     case delimited(separator: UInt8?)
     case sqlite
@@ -40,7 +42,9 @@ nonisolated package enum PreviewFormat: Sendable {
         if let contentType, contentType.conforms(to: .directory) || contentType.conforms(to: .package) { return nil }
         let name = url.lastPathComponent.lowercased()
         let ext = url.pathExtension.lowercased()
-        if Self.markdownExtensions.contains(ext) {
+        if ["html", "htm", "xhtml"].contains(ext) {
+            self = .html
+        } else if Self.markdownExtensions.contains(ext) {
             self = .markdown
         } else if Self.jsonExtensions.contains(ext) || name == "package.resolved" || name == ".babelrc" {
             self = .json

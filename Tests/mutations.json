@@ -4684,5 +4684,68 @@
     "replace": "if !key.contains(\"/\") { lease.receipts[key] = (identity, directory) }",
     "rule": "Space preview providers: export cleanup keeps receipts for every created descendant",
     "tests": "PreviewProviderContentTests/providerExportReceiptsRemoveOnlyTheirCreatedFilesAndCancellationLeavesNoPartialExport"
+  },
+  {
+    "file": "Strata/Previews/HTMLWebSession.swift",
+    "find": "configuration.defaultWebpagePreferences.allowsContentJavaScript = false",
+    "replace": "configuration.defaultWebpagePreferences.allowsContentJavaScript = true",
+    "rule": "HTML preview: WebKit keeps content JavaScript disabled",
+    "tests": "HTMLPreviewTests/actualWebKitRendersLocalCSSAndImagesWithoutExecutingContentScripts"
+  },
+  {
+    "file": "Strata/Previews/HTMLWebSession.swift",
+    "find": "configuration.userContentController.add(rules)",
+    "replace": "_ = rules",
+    "rule": "HTML preview: network rules block resources independently of document CSP",
+    "tests": "HTMLPreviewTests/compiledNetworkRulesBlockRequestsEvenWithoutTheDocumentsCSP"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewDocument.swift",
+    "find": "let fd = openat(parent, parts.last!, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)",
+    "replace": "let fd = openat(parent, parts.last!, O_RDONLY | O_NONBLOCK | O_CLOEXEC)",
+    "rule": "HTML preview: asset reads never follow a replacement or escaping leaf link",
+    "tests": "HTMLPreviewTests/resourceReaderUsesOnlyBoundedRegularAssetsWithinItsChosenFolder"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewDocument.swift",
+    "find": "part != \".\", part != \"..\", part.utf8.count <= 255",
+    "replace": "part != \".\", part.utf8.count <= 255",
+    "rule": "HTML preview: decoded dot-dot components cannot read outside the chosen folder",
+    "tests": "HTMLPreviewTests/encodedTraversalAuthoritiesAndSpecialFilesAreRefusedWithoutReadingThem"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewDocument.swift",
+    "find": "guard attempts.count < Self.requestLimit, attempts.insert(raw).inserted else",
+    "replace": "guard attempts.insert(raw).inserted else",
+    "rule": "HTML preview: asset attempts stop at their count budget",
+    "tests": "HTMLPreviewTests/documentReplacementOrEditingAndAssetByteAndCountLimitsFailClosed"
+  },
+  {
+    "file": "Strata/Previews/HTMLWebSession.swift",
+    "find": "guard let self, !closed, !Task.isCancelled, requests[key] != nil else { return }",
+    "replace": "guard let self else { return }",
+    "rule": "HTML preview: cancelled scheme tasks receive no late response callbacks",
+    "tests": "HTMLPreviewTests/stoppedAndReentrantSchemeTasksCannotReceiveLateCallbacks"
+  },
+  {
+    "file": "Strata/Previews/HTMLWebSession.swift",
+    "find": "guard resource.data.count <= remainingBytes else",
+    "replace": "guard true else",
+    "rule": "HTML preview: cached resources cannot bypass the total delivery budget",
+    "tests": "HTMLPreviewTests/repeatedResourceRequestsAndTotalDeliveryAreBoundedEvenForCachedAssets"
+  },
+  {
+    "file": "Strata/Previews/HTMLWebSession.swift",
+    "find": "guard remainingRequests > 0 else",
+    "replace": "guard true else",
+    "rule": "HTML preview: repeated resource requests stop at the session request budget",
+    "tests": "HTMLPreviewTests/repeatedResourceRequestsAndTotalDeliveryAreBoundedEvenForCachedAssets"
+  },
+  {
+    "file": "Strata/Previews/HTMLWebSession.swift",
+    "find": "if link, [\"https\", \"http\"].contains",
+    "replace": "if [\"https\", \"http\"].contains",
+    "rule": "HTML preview: automatic navigations never open an external browser",
+    "tests": "HTMLPreviewTests/navigationAllowsOnlyInitialDocumentClickedAnchorsAndExplicitWebLinks"
   }
 ]

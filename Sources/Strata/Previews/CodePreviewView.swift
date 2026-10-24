@@ -25,6 +25,15 @@ package final class CodePreviewView: PreviewView {
         }
     }
 
+    /// Render text supplied by an owner that pins the chosen file through its read.
+    package init(source: @escaping @concurrent @Sendable () async throws -> TextFile, language: Language) {
+        super.init(frame: .zero)
+        configure()
+        load({ try await CodeLoader.load(try await source(), language: language) }) { [weak self] document in
+            self?.show(document)
+        }
+    }
+
     package required init?(coder: NSCoder) { fatalError() }
 
     private func configure() {
@@ -224,6 +233,16 @@ nonisolated package enum CodeLoader {
                 errorLine = line
             }
         }
+        return try render(text, language: language, truncated: truncated, note: note, errorLine: errorLine)
+    }
+
+    @concurrent package static func load(_ file: TextFile, language: Language) async throws -> CodeDocument {
+        try render(file.text, language: language, truncated: file.isTruncated)
+    }
+
+    private static func render(_ original: String, language: Language, truncated: Bool, note originalNote: String? = nil,
+                               errorLine: Int? = nil) throws -> CodeDocument {
+        var text = original, note = originalNote
         if text.hasSuffix("\n") { text.removeLast() }
         guard !text.isEmpty else { throw PreviewError.empty }
         if let shortened = shortenLongLines(text) {

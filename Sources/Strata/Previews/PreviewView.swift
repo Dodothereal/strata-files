@@ -139,6 +139,7 @@ package final class PreviewFooter: NSView {
     private let leading = NSTextField(labelWithString: "")
     private let trailing = NSTextField(labelWithString: "")
     private let separator = NSBox()
+    private var height: NSLayoutConstraint!
     private lazy var leadingWidth = slack(for: leading, priority: .defaultHigh + 1)
     private lazy var trailingWidth = slack(for: trailing, priority: .defaultLow + 2)
 
@@ -162,8 +163,9 @@ package final class PreviewFooter: NSView {
         trailing.setContentCompressionResistancePriority(.defaultLow + 1, for: .horizontal)
         separator.translatesAutoresizingMaskIntoConstraints = false
         addSubview(separator)
+        height = heightAnchor.constraint(equalToConstant: 26)
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 26),
+            height,
             separator.leadingAnchor.constraint(equalTo: leadingAnchor),
             separator.trailingAnchor.constraint(equalTo: trailingAnchor),
             separator.topAnchor.constraint(equalTo: topAnchor),
@@ -201,7 +203,12 @@ package final class PreviewFooter: NSView {
         // NSTextField's intrinsic width can round a hair short and truncate; leave a little room when there is some.
         leadingWidth.constant = ceil(leading.intrinsicContentSize.width) + 2
         trailingWidth.constant = ceil(trailing.intrinsicContentSize.width) + 2
-        isHidden = false
+        collapse(false)
+    }
+
+    package func collapse(_ collapsed: Bool) {
+        height.constant = collapsed ? 0 : 26
+        isHidden = collapsed
     }
 
     private func slack(for label: NSTextField, priority: NSLayoutConstraint.Priority) -> NSLayoutConstraint {

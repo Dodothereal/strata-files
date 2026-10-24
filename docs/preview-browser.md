@@ -182,3 +182,54 @@ appearance. GUI checks must not manipulate the installed Strata or change the us
 - Final optimized regressions pass all 15 tests in four suites, including preview commands, provider link
   availability, both archive/provider clipboard Paste/Undo/Redo cases and archive History extraction. Production
   sources stayed frozen throughout this final run. All six implementation stages are complete.
+
+## HTML documents
+
+HTML, HTM and XHTML now open in a rendered Preview, with a native Preview / Source switch and an explicit Open in
+Browser action. Vue, Svelte, PHP and other templates retain their source-code previews. The shared rich-preview
+route makes this available in Space, Columns, Gallery and Get Info. Source uses the existing syntax highlighter;
+its file descriptor is opened relative to the captured selection and refuses replacement files or links.
+
+The renderer uses an ephemeral WebKit data store with content JavaScript disabled. A compiled content blocker
+rejects resources outside the private document scheme, independently of the document's Content Security Policy.
+Only the initial main document and clicked same-document anchors navigate inside it; clicked HTTP(S) links can open
+externally. Forms, downloads, embedded pages, popups, file pickers, automatic redirects and other URI schemes are
+refused. Competing base/refresh/DNS metadata and resource hints are removed before parsing. Local stylesheet links
+retain their media condition. No production JavaScript is injected.
+
+WebKit never receives file URLs or broad filesystem access. Its custom scheme reads only the selected document's
+folder, through no-follow descriptors and bounded reads. Selecting HTML in a provider or archive does not fetch its
+surrounding assets. Already-local CSS and raster images can load; images become bounded static PNG thumbnails.
+External fonts, SVG asset files, data URLs and online resources stay blocked. Inline document markup and authored
+colors are retained. The panel, native controls and Source mode use the existing Strata theme.
+
+The document input limit is 512 KiB. Assets allow 32 distinct attempts and 8 MiB in all, including image conversion;
+CSS is limited to 256 KiB, image input to 4 MiB and eight million pixels each, with sixteen million pixels in all.
+Raster thumbnails are at most 2,048 pixels on an edge. A WebKit session also caps all requests, including repeated
+cached resources, at 32 and total response delivery at 9.5 MiB. A stalled render switches to Source after eight
+seconds. Oversized or unsupported documents use bounded Source with no unrestricted Quick Look fallback.
+
+Cancellation stops the current WebKit lifetime, suppresses late scheme callbacks and rejects changed files.
+Reattachment starts a fresh lifetime. Theme changes preserve the current web view, Source text and selection.
+The browser action keeps the originally selected file and refuses a replacement; interactive pages run only when
+the user explicitly opens them externally.
+
+HTML verification includes real WebKit DOM/style/image checks, all palette/light/dark/contrast combinations, stopped
+and reentrant scheme tasks, reattachment, file replacements, FIFOs, escaping links, URL decoding, byte/count/pixel
+budgets and Source fallback. A loopback-only HTTP fixture proves network refusal with a separate positive-control
+server; the blocker is also tested without the document CSP. Initial fixture failures came from answering before a
+complete HTTP request was read on a nonblocking accepted socket. The fixture now reads complete bounded headers on
+its background queue with a timeout, and never mixes control connections with forbidden-resource connections.
+No network assertion was relaxed. All nine HTML security mutations were caught; the network mutation was caught
+again against the corrected fixture after its unchanged baseline passed.
+
+Final HTML verification passes the complete Debug suite under Address Sanitizer and the complete optimized Release
+suite: 1,004 tests in 118 suites each, with no sanitizer diagnostics. The focused HTML/theme selection passes 16
+tests; the source-highlighter/JSON/text safety selection passes 22. All nine new mutations were caught, and the
+corrected network fixture independently caught the missing-blocker mutation again. All 22 catalogs contain 1,440
+complete strings; 44 Python regressions and the destructive-action (122 functions), theme (61 reviewed exceptions)
+and whitespace audits pass. No C archive helper code changed in this feature.
+
+The signed Debug bundle is `build/Strata-HTML.app`, keeping the previously running build untouched. App and Sparkle
+share the Developer ID team; deep signature verification, 22 unique bundled localizations, archive-helper listing
+and exact-member reading pass. Startup and foreground activation were verified by the new app's actual process ID.
