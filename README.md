@@ -11,6 +11,18 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/cristipufu/strata-files/releases/latest"><img src="https://img.shields.io/github/v/release/cristipufu/strata-files?style=flat&amp;label=release&amp;color=8150cf" alt="Latest release" height="20"></a>
+  <a href="#get-strata"><img src="https://img.shields.io/badge/macOS-26%2B-555555?style=flat&amp;logo=apple&amp;logoColor=white" alt="Requires macOS 26 or later" height="20"></a>
+  <a href="#get-strata"><img src="https://img.shields.io/badge/Apple%20silicon-555555?style=flat" alt="For Macs with Apple silicon" height="20"></a>
+</p>
+
+<!-- readme-languages:start -->
+<p align="center">
+  <strong>English</strong> · <a href="docs/readme/README.ja.md">日本語</a> · <a href="docs/readme/README.ko.md">한국어</a> · <a href="docs/readme/README.ru.md">Русский</a> · <a href="docs/readme/README.uk.md">Українська</a> · <a href="docs/readme/README.zh-Hans.md">简体中文</a> · <a href="docs/readme/README.zh-Hant.md">繁體中文</a>
+</p>
+<!-- readme-languages:end -->
+
+<p align="center">
   <img src="docs/screenshots/themes.png" alt="Strata with demo folders in Blue, Teal, Sand, Purple and native System Light" width="900">
 </p>
 
@@ -90,12 +102,18 @@ with a keystroke, or compare and sync them.
 
 ## Your colors. Still your Mac.
 
-Choose **System** for the Mac’s own colors, or one of eight presets: **Graphite, Blue, Green, Purple, Sand, Teal,
-Rose and Amber**. Each has a light and dark palette, with coordinated colors across the file views, sidebar,
-inspector, toolbar and secondary windows. Native macOS controls and familiar behavior stay intact.
+<p align="center"><img src="docs/screenshots/appearance.webp" alt="Appearance settings showing all fourteen color themes and System" width="632"></p>
+
+Choose **System** for the Mac’s own colors, or one of fourteen presets: **Graphite, Blue, Green, Purple, Sand, Teal,
+Rose, Amber, Slate, Sage, Coral, Plum, Ice and Midnight**. Each has a light and dark palette, with coordinated colors
+across the file views, sidebar, inspector, toolbar and secondary windows. Native macOS controls and familiar behavior
+stay intact.
 
 Find them in **Settings ▸ Appearance ▸ Color theme**. Turn **Window tint** off to keep native backgrounds while
 using the palette for selections and accents. You can also adjust row density and the size of file names.
+
+Want to contribute a palette? Add a JSON theme file and its translated name, then rebuild; no Swift changes are
+needed. The [theme guide](docs/themes.md) explains the format and the light/dark and accessibility checks.
 
 ## Made for developers
 
@@ -154,7 +172,7 @@ Works with **Docker Desktop, OrbStack, Colima, Podman and Rancher Desktop**.
 | **Your sidebar** | Drag folders into Favorites, reorder them, and eject disks right from the sidebar, or switch it to a tree of every folder. Windows and tabs come back where you left them. |
 | **Path bar** | Type a path, `github/acme`, or just a folder's name: matching folders are suggested as you type. |
 | **Workspaces** | Save a set of tabs and panes, with their views, and reopen them together from the sidebar, ⌘K or `strata -w`. Folders on network shares and servers connect again. |
-| **Ask Strata** | Describe a bulk change ("rename these photos by date taken") and review the plan before anything happens. Runs on your Mac: built-in rules handle common requests, and Apple Intelligence handles the rest. |
+| **Ask Strata** | Describe a bulk change (`rename these photos by date taken`) and review the plan before anything happens. Runs on your Mac: built-in rules handle common requests, and Apple Intelligence handles the rest. |
 | **Summaries** | Get the gist of a PDF or document in the inspector: a short summary written by Apple Intelligence, or the key sentences without it. Nothing ever leaves your Mac. |
 | **Command line** | Install it from Settings, then `strata .` opens the current folder and `strata -s "invoice pdf"` searches from your terminal. |
 
@@ -182,6 +200,11 @@ permissions, network connections and your controls.
 Strata comes in 22 languages and follows your Mac's (or pick one in Settings ▸ General). Each language is one plain
 JSON file in [Localization](Localization): improving a translation or adding a language is a pull request, no Xcode
 needed. [Localization/README.md](Localization/README.md) has the four steps.
+
+The README translations share this English source and are generated from catalogs. See the
+[README translation guide](docs/readme-localization.md) to update one or add another language.
+
+<a id="get-strata"></a>
 
 ## Get Strata
 

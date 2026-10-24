@@ -1,0 +1,28 @@
+name: README translations
+
+on:
+  push:
+    branches: [main]
+    paths: ["README.md", "docs/readme/**", "docs/readme-localization.md", "Localization/*.json",
+            "scripts/readme-localize.py", "scripts/site-localize.py", "Tests/test_readme_localization.py",
+            ".github/workflows/readmes.yml"]
+  pull_request:
+    paths: ["README.md", "docs/readme/**", "docs/readme-localization.md", "Localization/*.json",
+            "scripts/readme-localize.py", "scripts/site-localize.py", "Tests/test_readme_localization.py",
+            ".github/workflows/readmes.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the README generator
+        run: python3 -m unittest discover -s Tests -p 'test_readme_localization.py'
+      - name: Require complete and current README translations
+        run: python3 scripts/readme-localize.py check
