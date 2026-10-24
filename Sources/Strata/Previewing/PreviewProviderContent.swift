@@ -60,16 +60,18 @@ import Foundation
     func perform(_ action: PreviewAction, target: PreviewCommandTarget, session: PreviewSession,
                  completion: @escaping (FileEntry, PreviewArchiveLease?) -> Void) {
         guard !closed, target.matches(session), let entry = target.entry, copies.contains(entry.url), !entry.isSymlink else { return }
-        let previous = task
+        let previousTask = task ?? precedingRead, previousCommand = commandTask
         task = nil
+        precedingRead = nil
         cancel()
-        precedingRead = previous
+        precedingRead = previousTask
         let id = request, copies = copies
         let parent = try? ChosenFile(entry.url.deletingLastPathComponent())
         isLoading = true
         error = nil
         commandTask = Task { [weak self, weak session] in
-            await previous?.value
+            await previousTask?.value
+            await previousCommand?.value
             let result: Result<(FileEntry, PreviewArchiveLease?), Error>
             do {
                 try Task.checkCancellation()

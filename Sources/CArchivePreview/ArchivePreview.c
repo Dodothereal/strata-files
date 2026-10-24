@@ -158,10 +158,17 @@ int strata_archive_preview_worker(void) {
         if (!raw) { result = unsafe_error; goto done; }
         size_t raw_length = strnlen(raw, 4098);
         if (raw_length > 4096) { result = limit_error; goto done; }
+        const int relative_root = raw_length && raw[0] == '.';
         /* tar commonly prefixes ./; normalize only those whole components. */
         while (raw_length >= 2 && raw[0] == '.' && raw[1] == '/') { raw += 2; raw_length -= 2; }
         while (raw_length && raw[raw_length-1] == '/') --raw_length;
-        if (!raw_length) { if (archive_read_data_skip(a) < 0) goto done; continue; }
+        if (!raw_length || (raw_length == 1 && raw[0] == '.')) {
+            /* A relative root directory carries no member data. Files and links cannot use this exemption. */
+            if (!relative_root || archive_entry_filetype(entry) != S_IFDIR ||
+                archive_entry_symlink(entry) || archive_entry_hardlink(entry)) { result = unsafe_error; goto done; }
+            if (archive_read_data_skip(a) < 0) { result = failure(a); goto done; }
+            continue;
+        }
         char path[4097]; memcpy(path, raw, raw_length); path[raw_length] = 0;
         if (!valid_path(path, raw_length)) { result = unsafe_error; goto done; }
         int chosen = !extracting || (raw_length == path_length && !memcmp(path, selected, path_length)) ||

@@ -6,6 +6,7 @@ import Foundation
     private let clipboardRoot: URL
     private var previewID = UUID()
     private var commandID = UUID()
+    private weak var archiveAccess: PreviewArchiveAccess?
     private(set) var task: Task<Void, Never>?
     private(set) var commandTask: Task<Void, Never>?
     private(set) var lease: PreviewArchiveLease?
@@ -28,6 +29,7 @@ import Foundation
         guard case .member(_, let path) = session.selected?.source, let item = session.selected,
               !item.isDirectory, let source = session.archiveAccess.source else { return }
         let id = previewID, generation = session.generation, access = session.archiveAccess, root = previewRoot
+        archiveAccess = access
         isLoading = true
         task = Task { [weak self, weak session] in
             let result: Result<PreviewArchiveLease, Error>
@@ -38,6 +40,7 @@ import Foundation
             guard let self, let session, !Task.isCancelled, previewID == id,
                   !session.isClosed, session.generation == generation, session.selected === item else { return }
             task = nil
+            archiveAccess = nil
             isLoading = false
             switch result {
             case .success(let lease): self.lease = lease; onReady?(item, lease)
@@ -51,14 +54,16 @@ import Foundation
     func export(_ target: PreviewCommandTarget, session: PreviewSession, completion: @escaping (PreviewArchiveLease) -> Void) {
         guard target.matches(session), case .member(_, let path) = target.item?.source,
               let source = session.archiveAccess.source else { return }
-        let previous = task
+        let previousTask = task, previousCommand = commandTask
         cancel()
         let id = commandID, access = session.archiveAccess, root = clipboardRoot, directory = target.item?.isDirectory == true
+        archiveAccess = access
         isLoading = true
         error = nil
         commandTask = Task { [weak self, weak session] in
-            // A cancelled password sheet finishes before another request may present one.
-            await previous?.value
+            // Finish both the selected preview and any older export before starting another command.
+            await previousTask?.value
+            await previousCommand?.value
             let result: Result<PreviewArchiveLease, Error>
             do {
                 try Task.checkCancellation()
@@ -67,6 +72,7 @@ import Foundation
             } catch { result = .failure(error) }
             guard let self, let session, !Task.isCancelled, commandID == id, target.matches(session) else { return }
             commandTask = nil
+            archiveAccess = nil
             isLoading = false
             switch result {
             case .success(let lease):
@@ -84,11 +90,15 @@ import Foundation
     }
 
     func cancel() {
+        let access = archiveAccess
+        archiveAccess = nil
         previewID = UUID()
         commandID = UUID()
         task?.cancel(); task = nil
         commandTask?.cancel(); commandTask = nil
         isLoading = false
+        // Release the sheet on this actor before a replacement can request another password.
+        access?.cancelPassword?()
         onChange?()
     }
 

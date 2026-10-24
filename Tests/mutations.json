@@ -4747,5 +4747,54 @@
     "replace": "if [\"https\", \"http\"].contains",
     "rule": "HTML preview: automatic navigations never open an external browser",
     "tests": "HTMLPreviewTests/navigationAllowsOnlyInitialDocumentClickedAnchorsAndExplicitWebLinks"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveContent.swift",
+    "find": "        access?.cancelPassword?()",
+    "replace": "        // Password dismissal omitted.",
+    "rule": "Preview follow-up: archive cancellation releases its password request synchronously",
+    "tests": "PreviewCancellationTests/archiveCancellationClearsThePasswordRequestBeforeReturningOrReplacingIt"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveContent.swift",
+    "find": "            await previousCommand?.value",
+    "replace": "            // The preceding export is not drained.",
+    "rule": "Preview follow-up: replacement archive exports wait for the preceding command",
+    "tests": "PreviewCancellationTests/replacementArchiveCommandsDrainThePreviousCommandBeforeReadingAgain"
+  },
+  {
+    "file": "Strata/Previewing/PreviewProviderContent.swift",
+    "find": "            await previousCommand?.value",
+    "replace": "            // The preceding provider command is not drained.",
+    "rule": "Preview follow-up: replacement provider copies wait for the preceding command",
+    "tests": "PreviewCancellationTests/replacementProviderCommandsDrainThePreviousCommandBeforePreparingAgain"
+  },
+  {
+    "file": "Strata/Previewing/PreviewProviderContent.swift",
+    "find": "        task = nil\n        precedingRead = nil\n        cancel()",
+    "replace": "        task = nil\n        cancel()",
+    "rule": "Preview follow-up: replacement commands keep their shared automatic read alive",
+    "tests": "PreviewCancellationTests/replacementProviderCommandsKeepTheirSharedAutomaticReadAlive"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "if (!raw_length || (raw_length == 1 && raw[0] == '.')) {",
+    "replace": "if (!raw_length) {",
+    "rule": "Preview follow-up: ordinary tar and cpio dot-root directories remain previewable",
+    "tests": "PreviewArchiveRootTests"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "!relative_root || archive_entry_filetype(entry) != S_IFDIR ||\n                archive_entry_symlink(entry) || archive_entry_hardlink(entry)",
+    "replace": "!relative_root",
+    "rule": "Preview follow-up: dot-root exemptions never hide files links or special entries",
+    "tests": "PreviewArchiveRootTests/rootAliasesNeverHideFilesLinksOrAbsolutePaths"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "const int relative_root = raw_length && raw[0] == '.';",
+    "replace": "const int relative_root = 1;",
+    "rule": "Preview follow-up: an absolute root cannot borrow the relative-root exemption",
+    "tests": "PreviewArchiveRootTests/rootAliasesNeverHideFilesLinksOrAbsolutePaths"
   }
 ]

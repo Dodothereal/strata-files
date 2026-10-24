@@ -270,3 +270,32 @@ checks pass. The layout checks remain headless and do not claim live compositor 
 The signed Debug bundle is `build/Strata-Preview-Layout.app`. Deep signature verification passes, and the app
 and Sparkle share the Developer ID team. Bundle checks confirm 22 unique localizations, the license notice and
 archive helper, a real archive metadata listing and exact-member reading without changing the source archive.
+
+## Preview cancellation and root-directory follow-up
+
+Archive selection cancellation dismisses its own password request synchronously on the main actor, before a new
+selection or command can ask again. The content owner keeps only a weak reference to that archive access and
+clears it before callbacks. Normal sheet cancellation retains its alert-identity guard.
+
+Replacement archive exports and provider commands wait for both the preceding selection read and command to
+finish. Provider commands retain an already pending automatic file read across repeated Copy requests, while
+Cancel and closure still cancel that read. Only the latest command can publish an export.
+
+Archive workers ignore relative root directory aliases such as `.` and `./.`. The exemption checks the entry type
+and rejects links, special entries and absolute roots, including during selective reads. It preserves libarchive's
+classification of legacy empty slash-terminated directory headers. Real system-generated CPIO and tar fixtures
+exercise listing and exact-member reading without changing their source archives.
+
+The regressions reproduced the password ownership race, overlapping commands and rejected tar/CPIO root entries
+before the fixes. Headless tests use held continuations and independent preview environments. They check immediate
+password release for Cancel, selection replacement, commands and closure; serial command replacement; preserved
+shared reads; exact exported contents; scratch cleanup; and unchanged neighboring files. Seven matching mutations
+cover these rules.
+
+Final verification passes all 1,019 tests in 121 suites under Debug Address Sanitizer and optimized Release.
+The focused archive/provider selection passes 43 tests, including all eight new regressions. All seven follow-up
+mutations were caught. A separately instrumented copy of the real C worker passes 63 requests under combined
+Address Sanitizer and Undefined Behavior Sanitizer, including ordinary and unsafe root aliases, real CPIO,
+passwords, malformed requests, byte limits and AppleDouble resource forks, with no sanitizer diagnostics.
+All 22 catalogs remain complete at 1,440 strings; 44 Python regressions, the destructive-action audit (122 mapped
+functions), the theme audit (61 reviewed exceptions) and whitespace checks pass. Checks remain headless.
