@@ -887,6 +887,7 @@
       "other": "要将%lld个构建文件夹移到废纸篓吗？"
     },
     "Move copied items here": "将拷贝的项目移到这里",
+    "Move Down": "下移",
     "Move extras to the Trash": "将多余的项目移到废纸篓",
     "Move into Current Folder": "移到当前文件夹",
     "Move into “%@”": "移到“%@”中",
@@ -896,6 +897,7 @@
     "Move to the Trash": "移到废纸篓",
     "Move to Trash": "移到废纸篓",
     "Move to Trash (in the Trash: Put Back)": "移到废纸篓（在废纸篓中：放回原处）",
+    "Move Up": "上移",
     "Move “%@” to the Trash?": "要将“%@”移到废纸篓吗？",
     "Moved %lld items to %@": {
       "other": "已将%lld个项目移到%@"
@@ -1208,6 +1210,7 @@
     "Rose": "玫瑰色",
     "Run %@ in Terminal": "在终端中运行%@",
     "Run in Terminal": "在终端中运行",
+    "Run Next": "接下来运行",
     "Run “%@” in Terminal": "在终端中运行“%@”",
     "Running": "正在运行",
     "Rust source": "Rust源代码",

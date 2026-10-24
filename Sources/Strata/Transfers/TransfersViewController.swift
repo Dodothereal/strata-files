@@ -1,7 +1,7 @@
 import AppKit
 
-/// The Transfers popover: one row per job, newest first, with progress and controls. Finished jobs stay until
-/// "Clear" is clicked.
+/// The Transfers popover: running jobs, waiting jobs in priority order, then recent finished jobs, with controls.
+/// Finished jobs stay until "Clear" is clicked.
 final class TransfersViewController: NSViewController {
     static let width: CGFloat = 360
     private static let maxListHeight: CGFloat = 440
@@ -113,7 +113,7 @@ final class TransfersViewController: NSViewController {
     /// Brings the rows in line with the queue and resizes to fit (up to a scrolling maximum).
     func reload() {
         guard isViewLoaded else { return }
-        let jobs = Array(queue.jobs.reversed())
+        let jobs = queue.displayJobs
         let ids = Set(jobs.map(ObjectIdentifier.init))
         for (id, row) in rows where !ids.contains(id) {
             row.removeFromSuperview()
@@ -145,6 +145,8 @@ final class TransfersViewController: NSViewController {
     private func makeRow(_ job: any QueueJob) -> TransferRowView {
         let row = TransferRowView(job: job)
         row.onReveal = { [weak self] job in self?.reveal(job) }
+        row.canOrder = { [weak self] job, order in self?.queue.canReorder(job, order) ?? false }
+        row.onOrder = { [weak self] job, order in self?.queue.reorder(job, order) }
         rows[ObjectIdentifier(job)] = row
         return row
     }
@@ -161,9 +163,11 @@ final class TransfersViewController: NSViewController {
 }
 
 /// One job: icon, title, progress bar, status line, and its buttons.
-final class TransferRowView: NSView {
+final class TransferRowView: NSView, NSMenuItemValidation {
     let job: any QueueJob
     var onReveal: ((any QueueJob) -> Void)?
+    var canOrder: ((any QueueJob, TransferOrder) -> Bool)?
+    var onOrder: ((any QueueJob, TransferOrder) -> Void)?
     var showsSeparator = true {
         didSet { if showsSeparator != oldValue { needsDisplay = true } }
     }
@@ -176,6 +180,7 @@ final class TransferRowView: NSView {
     private lazy var cancelButton = makeButton("xmark.circle.fill", "Stop", #selector(cancel(_:)))
     private lazy var retryButton = makeButton("arrow.clockwise.circle.fill", "Retry Failed", #selector(retry(_:)))
     private lazy var revealButton = makeButton("magnifyingglass.circle.fill", "Show in Folder", #selector(reveal(_:)))
+    private lazy var nextButton = makeButton("arrow.up.circle", "Run Next", #selector(runNext(_:)))
 
     init(job: any QueueJob) {
         self.job = job
@@ -198,7 +203,7 @@ final class TransferRowView: NSView {
         progress.maxValue = 1
         progress.isIndeterminate = false
 
-        let buttons = NSStackView(views: [pauseButton, retryButton, cancelButton, revealButton])
+        let buttons = NSStackView(views: [nextButton, pauseButton, retryButton, cancelButton, revealButton])
         buttons.spacing = 4
         buttons.setHuggingPriority(.required, for: .horizontal)
         buttons.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -313,6 +318,7 @@ final class TransferRowView: NSView {
         cancelButton.isHidden = !job.canCancel
         retryButton.isHidden = !job.canRetry
         revealButton.isHidden = state.isActive || (job.createdItems.isEmpty && state != .finished)
+        nextButton.isHidden = canOrder?(job, .next) != true
     }
 
     private func statusText() -> NSAttributedString {
@@ -345,6 +351,28 @@ final class TransferRowView: NSView {
     @objc private func cancel(_ sender: Any?) { job.cancel() }
     @objc private func retry(_ sender: Any?) { job.retryFailed() }
     @objc private func reveal(_ sender: Any?) { onReveal?(job) }
+    @objc private func runNext(_ sender: Any?) { onOrder?(job, .next) }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard TransferOrder.allCases.contains(where: { canOrder?(job, $0) == true }) else { return nil }
+        let menu = NSMenu()
+        for order in TransferOrder.allCases {
+            let item = NSMenuItem(title: order.title, action: #selector(orderSelected(_:)), keyEquivalent: "")
+            item.tag = order.rawValue; item.target = self
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard let order = TransferOrder(rawValue: menuItem.tag) else { return false }
+        return canOrder?(job, order) == true
+    }
+
+    @objc private func orderSelected(_ sender: NSMenuItem) {
+        guard let order = TransferOrder(rawValue: sender.tag) else { return }
+        onOrder?(job, order)
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         guard showsSeparator else { return }

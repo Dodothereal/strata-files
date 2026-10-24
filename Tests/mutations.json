@@ -4930,5 +4930,33 @@
     "replace": "return (instant(after) ?? day(after).map(indexStamp), nil)",
     "rule": "Search filters keep the exclusive upper date boundary",
     "tests": "SearchFiltersTests/sourceCombinesWithNameKindExtensionSizeAndDate"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "priority($0) < priority($1)",
+    "replace": "priority($0) > priority($1)",
+    "rule": "Queue order uses the current priority when a disk becomes free",
+    "tests": "QueueOrderingTests/reorderedCrossDiskMovesKeepConflictsHistoryAndUndoWithTheirChosenItems"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "guard job.state == .queued else { return nil }",
+    "replace": "guard job.state.isActive else { return nil }",
+    "rule": "Queue order never reorders active jobs through a native control",
+    "tests": "QueueOrderingTests/nativeQueueControlsReorderArchivesAndRefuseStaleOrForeignJobs"
+  },
+  {
+    "file": "Strata/Transfers/TransferOrdering.swift",
+    "find": "case .later: return position + 1 < waiting.count ? waiting[position + 1] : nil",
+    "replace": "case .later: return nil",
+    "rule": "Queue order moves a waiting job later without changing another job",
+    "tests": "QueueOrderingTests/reorderedCrossDiskMovesKeepConflictsHistoryAndUndoWithTheirChosenItems|QueueOrderingTests/nativeQueueControlsReorderArchivesAndRefuseStaleOrForeignJobs"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "find": "let next = archiveJobs.first(where: { !$0.isBrowse && $0.state == .queued })",
+    "replace": "let next = archiveJobs.last(where: { !$0.isBrowse && $0.state == .queued })",
+    "rule": "Queue order gives a prioritized archive the next archive slot",
+    "tests": "QueueOrderingTests/runNextArchiveReallyRunsBeforeAnEarlierQueuedArchive"
   }
 ]

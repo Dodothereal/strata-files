@@ -887,6 +887,7 @@
       "other": "%lld個のビルドフォルダをゴミ箱に入れますか?"
     },
     "Move copied items here": "コピーした項目をここに移動",
+    "Move Down": "下へ移動",
     "Move extras to the Trash": "余分な項目をゴミ箱に入れる",
     "Move into Current Folder": "現在のフォルダに移動",
     "Move into “%@”": "「%@」に移動",
@@ -896,6 +897,7 @@
     "Move to the Trash": "ゴミ箱に入れる",
     "Move to Trash": "ゴミ箱に入れる",
     "Move to Trash (in the Trash: Put Back)": "ゴミ箱に入れる（ゴミ箱内では: 戻す）",
+    "Move Up": "上へ移動",
     "Move “%@” to the Trash?": "「%@」をゴミ箱に入れますか?",
     "Moved %lld items to %@": {
       "other": "%lld項目を%@に移動しました"
@@ -1208,6 +1210,7 @@
     "Rose": "ローズ",
     "Run %@ in Terminal": "%@をターミナルで実行",
     "Run in Terminal": "ターミナルで実行",
+    "Run Next": "次に実行",
     "Run “%@” in Terminal": "「%@」をターミナルで実行",
     "Running": "実行中",
     "Rust source": "Rustソース",

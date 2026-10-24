@@ -983,6 +983,7 @@
       "other": "Mover %lld pastas de compilação para o Lixo?"
     },
     "Move copied items here": "Mover os elementos copiados para aqui",
+    "Move Down": "Mover para baixo",
     "Move extras to the Trash": "Mover os excedentes para o Lixo",
     "Move into Current Folder": "Mover para a pasta atual",
     "Move into “%@”": "Mover para “%@”",
@@ -992,6 +993,7 @@
     "Move to the Trash": "Mover para o Lixo",
     "Move to Trash": "Mover para o Lixo",
     "Move to Trash (in the Trash: Put Back)": "Mover para o Lixo (no Lixo: Pôr de volta)",
+    "Move Up": "Mover para cima",
     "Move “%@” to the Trash?": "Mover “%@” para o Lixo?",
     "Moved %lld items to %@": {
       "one": "%lld elemento movido para %@",
@@ -1319,6 +1321,7 @@
     "Rose": "Rosa",
     "Run %@ in Terminal": "Executar %@ no Terminal",
     "Run in Terminal": "Executar no Terminal",
+    "Run Next": "Executar a seguir",
     "Run “%@” in Terminal": "Executar “%@” no Terminal",
     "Running": "Em execução",
     "Rust source": "Código-fonte Rust",

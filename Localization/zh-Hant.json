@@ -887,6 +887,7 @@
       "other": "要將%lld個建置檔案夾丟到垃圾桶嗎？"
     },
     "Move copied items here": "將拷貝的項目搬移至此",
+    "Move Down": "下移",
     "Move extras to the Trash": "將多餘的項目丟到垃圾桶",
     "Move into Current Folder": "搬移到目前的檔案夾",
     "Move into “%@”": "搬移到「%@」中",
@@ -896,6 +897,7 @@
     "Move to the Trash": "丟到垃圾桶",
     "Move to Trash": "丟到垃圾桶",
     "Move to Trash (in the Trash: Put Back)": "丟到垃圾桶（在垃圾桶中：還原）",
+    "Move Up": "上移",
     "Move “%@” to the Trash?": "要將「%@」丟到垃圾桶嗎？",
     "Moved %lld items to %@": {
       "other": "已將%lld個項目搬移到%@"
@@ -1208,6 +1210,7 @@
     "Rose": "玫瑰色",
     "Run %@ in Terminal": "在終端機中執行%@",
     "Run in Terminal": "在終端機中執行",
+    "Run Next": "接著執行",
     "Run “%@” in Terminal": "在終端機中執行「%@」",
     "Running": "執行中",
     "Rust source": "Rust原始碼",

@@ -983,6 +983,7 @@
       "other": "%lld buildmappen naar prullenmand verplaatsen?"
     },
     "Move copied items here": "Verplaats gekopieerde onderdelen hierheen",
+    "Move Down": "Omlaag",
     "Move extras to the Trash": "Verplaats overtollige naar prullenmand",
     "Move into Current Folder": "Verplaats naar huidige map",
     "Move into “%@”": "Verplaats naar “%@”",
@@ -992,6 +993,7 @@
     "Move to the Trash": "Verplaats naar prullenmand",
     "Move to Trash": "Verplaats naar prullenmand",
     "Move to Trash (in the Trash: Put Back)": "Verplaats naar prullenmand (in de prullenmand: Zet terug)",
+    "Move Up": "Omhoog",
     "Move “%@” to the Trash?": "“%@” naar prullenmand verplaatsen?",
     "Moved %lld items to %@": {
       "one": "%lld onderdeel verplaatst naar %@",
@@ -1319,6 +1321,7 @@
     "Rose": "Roze",
     "Run %@ in Terminal": "Voer %@ uit in Terminal",
     "Run in Terminal": "Voer uit in Terminal",
+    "Run Next": "Als volgende uitvoeren",
     "Run “%@” in Terminal": "Voer “%@” uit in Terminal",
     "Running": "Actief",
     "Rust source": "Rust-bronbestand",

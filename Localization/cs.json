@@ -1079,6 +1079,7 @@
       "other": "Přesunout %lld složek sestavení do koše?"
     },
     "Move copied items here": "Přesunout sem zkopírované položky",
+    "Move Down": "Posunout dolů",
     "Move extras to the Trash": "Přesouvat nadbytečné položky do koše",
     "Move into Current Folder": "Přesunout do aktuální složky",
     "Move into “%@”": "Přesunout do „%@“",
@@ -1088,6 +1089,7 @@
     "Move to the Trash": "Přesunout do koše",
     "Move to Trash": "Přesunout do koše",
     "Move to Trash (in the Trash: Put Back)": "Přesunout do koše (v koši: Vrátit zpět)",
+    "Move Up": "Posunout nahoru",
     "Move “%@” to the Trash?": "Přesunout „%@“ do koše?",
     "Moved %lld items to %@": {
       "one": "Přesunuta %lld položka do %@",
@@ -1430,6 +1432,7 @@
     "Rose": "Růžová",
     "Run %@ in Terminal": "Spustit %@ v Terminálu",
     "Run in Terminal": "Spustit v Terminálu",
+    "Run Next": "Spustit jako další",
     "Run “%@” in Terminal": "Spustit „%@“ v Terminálu",
     "Running": "Běží",
     "Rust source": "Zdrojový kód Rust",

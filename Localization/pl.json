@@ -1175,6 +1175,7 @@
       "other": "Przenieść %lld folderu budowania do Kosza?"
     },
     "Move copied items here": "Przenieś tutaj skopiowane rzeczy",
+    "Move Down": "Przenieś w dół",
     "Move extras to the Trash": "Przenoś nadmiarowe rzeczy do Kosza",
     "Move into Current Folder": "Przenieś do bieżącego folderu",
     "Move into “%@”": "Przenieś do „%@”",
@@ -1184,6 +1185,7 @@
     "Move to the Trash": "Przenieś do Kosza",
     "Move to Trash": "Przenieś do Kosza",
     "Move to Trash (in the Trash: Put Back)": "Przenieś do Kosza (w Koszu: Przywróć z Kosza)",
+    "Move Up": "Przenieś w górę",
     "Move “%@” to the Trash?": "Przenieść „%@” do Kosza?",
     "Moved %lld items to %@": {
       "one": "Przeniesiono %lld rzecz do %@",
@@ -1541,6 +1543,7 @@
     "Rose": "Różany",
     "Run %@ in Terminal": "Uruchom %@ w Terminalu",
     "Run in Terminal": "Uruchom w Terminalu",
+    "Run Next": "Uruchom jako następne",
     "Run “%@” in Terminal": "Uruchom „%@” w Terminalu",
     "Running": "Działa",
     "Rust source": "Kod źródłowy Rust",

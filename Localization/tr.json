@@ -983,6 +983,7 @@
       "other": "%lld derleme klasörü Çöp Sepeti’ne taşınsın mı?"
     },
     "Move copied items here": "Kopyalanan öğeleri buraya taşı",
+    "Move Down": "Aşağı taşı",
     "Move extras to the Trash": "Fazlalıkları Çöp Sepeti’ne taşı",
     "Move into Current Folder": "Geçerli Klasöre Taşı",
     "Move into “%@”": "“%@” içine taşı",
@@ -992,6 +993,7 @@
     "Move to the Trash": "Çöp Sepeti’ne taşı",
     "Move to Trash": "Çöp Sepeti’ne Taşı",
     "Move to Trash (in the Trash: Put Back)": "Çöp Sepeti’ne Taşı (Çöp Sepeti’nde: Yerine Koy)",
+    "Move Up": "Yukarı taşı",
     "Move “%@” to the Trash?": "“%@” Çöp Sepeti’ne taşınsın mı?",
     "Moved %lld items to %@": {
       "one": "%lld öğe şuraya taşındı: %@",
@@ -1319,6 +1321,7 @@
     "Rose": "Gülkurusu",
     "Run %@ in Terminal": "%@ komutunu Terminal’de çalıştır",
     "Run in Terminal": "Terminal’de Çalıştır",
+    "Run Next": "Sıradaki olarak çalıştır",
     "Run “%@” in Terminal": "“%@” komutunu Terminal’de çalıştır",
     "Running": "Çalışıyor",
     "Rust source": "Rust kaynak kodu",

@@ -983,6 +983,7 @@
       "other": "%lld Build-Ordner in den Papierkorb legen?"
     },
     "Move copied items here": "Kopierte Objekte hierher bewegen",
+    "Move Down": "Nach unten",
     "Move extras to the Trash": "Überzählige in den Papierkorb legen",
     "Move into Current Folder": "In aktuellen Ordner bewegen",
     "Move into “%@”": "Nach „%@“ bewegen",
@@ -992,6 +993,7 @@
     "Move to the Trash": "In den Papierkorb legen",
     "Move to Trash": "In den Papierkorb legen",
     "Move to Trash (in the Trash: Put Back)": "In den Papierkorb legen (im Papierkorb: Zurücklegen)",
+    "Move Up": "Nach oben",
     "Move “%@” to the Trash?": "„%@“ in den Papierkorb legen?",
     "Moved %lld items to %@": {
       "one": "%lld Objekt nach %@ bewegt",
@@ -1319,6 +1321,7 @@
     "Rose": "Rosé",
     "Run %@ in Terminal": "%@ im Terminal ausführen",
     "Run in Terminal": "Im Terminal ausführen",
+    "Run Next": "Als Nächstes ausführen",
     "Run “%@” in Terminal": "„%@“ im Terminal ausführen",
     "Running": "Läuft",
     "Rust source": "Rust-Quellcode",

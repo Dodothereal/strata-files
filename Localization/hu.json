@@ -983,6 +983,7 @@
       "other": "Áthelyez %lld build-mappát a Kukába?"
     },
     "Move copied items here": "Másolt elemek áthelyezése ide",
+    "Move Down": "Lejjebb",
     "Move extras to the Trash": "A fölösleges elemek áthelyezése a Kukába",
     "Move into Current Folder": "Áthelyezés az aktuális mappába",
     "Move into “%@”": "Áthelyezés ide: „%@”",
@@ -992,6 +993,7 @@
     "Move to the Trash": "Áthelyezés a Kukába",
     "Move to Trash": "Áthelyezés a Kukába",
     "Move to Trash (in the Trash: Put Back)": "Áthelyezés a Kukába (a Kukában: Visszatevés)",
+    "Move Up": "Feljebb",
     "Move “%@” to the Trash?": "Áthelyezi a Kukába ezt: „%@”?",
     "Moved %lld items to %@": {
       "one": "%lld elem áthelyezve ide: %@",
@@ -1319,6 +1321,7 @@
     "Rose": "Rózsaszín",
     "Run %@ in Terminal": "%@ futtatása a Terminálban",
     "Run in Terminal": "Futtatás a Terminálban",
+    "Run Next": "Futtatás következőként",
     "Run “%@” in Terminal": "„%@” futtatása a Terminálban",
     "Running": "Fut",
     "Rust source": "Rust-forráskód",

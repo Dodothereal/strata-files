@@ -983,6 +983,7 @@
       "other": "Vil du flytte %lld byggemapper til papirkurven?"
     },
     "Move copied items here": "Flytt kopierte objekter hit",
+    "Move Down": "Flytt ned",
     "Move extras to the Trash": "Flytt overflødige til papirkurven",
     "Move into Current Folder": "Flytt til gjeldende mappe",
     "Move into “%@”": "Flytt til «%@»",
@@ -992,6 +993,7 @@
     "Move to the Trash": "Flytt til papirkurven",
     "Move to Trash": "Flytt til papirkurven",
     "Move to Trash (in the Trash: Put Back)": "Flytt til papirkurven (i papirkurven: Legg tilbake)",
+    "Move Up": "Flytt opp",
     "Move “%@” to the Trash?": "Vil du flytte «%@» til papirkurven?",
     "Moved %lld items to %@": {
       "one": "Flyttet %lld objekt til %@",
@@ -1319,6 +1321,7 @@
     "Rose": "Rosa",
     "Run %@ in Terminal": "Kjør %@ i Terminal",
     "Run in Terminal": "Kjør i Terminal",
+    "Run Next": "Kjør som neste",
     "Run “%@” in Terminal": "Kjør «%@» i Terminal",
     "Running": "Kjører",
     "Rust source": "Rust-kildekode",

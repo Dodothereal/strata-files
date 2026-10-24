@@ -983,6 +983,7 @@
       "other": "Placer %lld dossiers de compilation dans la corbeille ?"
     },
     "Move copied items here": "Déplacer ici les éléments copiés",
+    "Move Down": "Descendre",
     "Move extras to the Trash": "Placer les éléments en trop dans la corbeille",
     "Move into Current Folder": "Déplacer dans le dossier actuel",
     "Move into “%@”": "Déplacer dans « %@ »",
@@ -992,6 +993,7 @@
     "Move to the Trash": "Placer dans la corbeille",
     "Move to Trash": "Placer dans la corbeille",
     "Move to Trash (in the Trash: Put Back)": "Placer dans la corbeille (dans la corbeille : Remettre)",
+    "Move Up": "Monter",
     "Move “%@” to the Trash?": "Placer « %@ » dans la corbeille ?",
     "Moved %lld items to %@": {
       "one": "%lld élément déplacé vers %@",
@@ -1319,6 +1321,7 @@
     "Rose": "Rose",
     "Run %@ in Terminal": "Exécuter %@ dans Terminal",
     "Run in Terminal": "Exécuter dans Terminal",
+    "Run Next": "Exécuter ensuite",
     "Run “%@” in Terminal": "Exécuter « %@ » dans Terminal",
     "Running": "Actif",
     "Rust source": "Source Rust",

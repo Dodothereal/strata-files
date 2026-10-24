@@ -887,6 +887,7 @@
       "other": "빌드 폴더 %lld개를 휴지통으로 이동하겠습니까?"
     },
     "Move copied items here": "복사한 항목을 여기로 이동",
+    "Move Down": "아래로 이동",
     "Move extras to the Trash": "남는 항목을 휴지통으로 이동",
     "Move into Current Folder": "현재 폴더로 이동",
     "Move into “%@”": "‘%@’(으)로 이동",
@@ -896,6 +897,7 @@
     "Move to the Trash": "휴지통으로 이동",
     "Move to Trash": "휴지통으로 이동",
     "Move to Trash (in the Trash: Put Back)": "휴지통으로 이동(휴지통에서는 되돌려 놓기)",
+    "Move Up": "위로 이동",
     "Move “%@” to the Trash?": "‘%@’을(를) 휴지통으로 이동하겠습니까?",
     "Moved %lld items to %@": {
       "other": "%lld개 항목을 %@(으)로 이동함"
@@ -1208,6 +1210,7 @@
     "Rose": "로즈",
     "Run %@ in Terminal": "터미널에서 %@ 실행",
     "Run in Terminal": "터미널에서 실행",
+    "Run Next": "다음으로 실행",
     "Run “%@” in Terminal": "터미널에서 ‘%@’ 실행",
     "Running": "실행 중",
     "Rust source": "Rust 소스",

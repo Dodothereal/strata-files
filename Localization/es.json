@@ -983,6 +983,7 @@
       "other": "¿Trasladar %lld carpetas de compilación a la Papelera?"
     },
     "Move copied items here": "Mover aquí los ítems copiados",
+    "Move Down": "Bajar",
     "Move extras to the Trash": "Trasladar los sobrantes a la Papelera",
     "Move into Current Folder": "Mover a la carpeta actual",
     "Move into “%@”": "Mover a «%@»",
@@ -992,6 +993,7 @@
     "Move to the Trash": "Trasladar a la Papelera",
     "Move to Trash": "Trasladar a la Papelera",
     "Move to Trash (in the Trash: Put Back)": "Trasladar a la Papelera (en la Papelera: Recuperar)",
+    "Move Up": "Subir",
     "Move “%@” to the Trash?": "¿Trasladar «%@» a la Papelera?",
     "Moved %lld items to %@": {
       "one": "%lld ítem movido a %@",
@@ -1319,6 +1321,7 @@
     "Rose": "Rosa",
     "Run %@ in Terminal": "Ejecutar %@ en Terminal",
     "Run in Terminal": "Ejecutar en Terminal",
+    "Run Next": "Ejecutar a continuación",
     "Run “%@” in Terminal": "Ejecutar «%@» en Terminal",
     "Running": "En ejecución",
     "Rust source": "Código fuente Rust",

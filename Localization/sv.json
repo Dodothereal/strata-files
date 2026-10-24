@@ -983,6 +983,7 @@
       "other": "Vill du flytta %lld byggmappar till papperskorgen?"
     },
     "Move copied items here": "Flytta kopierade objekt hit",
+    "Move Down": "Flytta ned",
     "Move extras to the Trash": "Flytta överflödiga till papperskorgen",
     "Move into Current Folder": "Flytta till aktuell mapp",
     "Move into “%@”": "Flytta till ”%@”",
@@ -992,6 +993,7 @@
     "Move to the Trash": "Flytta till papperskorgen",
     "Move to Trash": "Flytta till papperskorgen",
     "Move to Trash (in the Trash: Put Back)": "Flytta till papperskorgen (i papperskorgen: Lägg tillbaka)",
+    "Move Up": "Flytta upp",
     "Move “%@” to the Trash?": "Vill du flytta ”%@” till papperskorgen?",
     "Moved %lld items to %@": {
       "one": "Flyttade %lld objekt till %@",
@@ -1319,6 +1321,7 @@
     "Rose": "Rosa",
     "Run %@ in Terminal": "Kör %@ i Terminal",
     "Run in Terminal": "Kör i Terminal",
+    "Run Next": "Kör härnäst",
     "Run “%@” in Terminal": "Kör ”%@” i Terminal",
     "Running": "Igång",
     "Rust source": "Rust-källkod",

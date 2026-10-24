@@ -11,11 +11,12 @@ final class TransferQueue {
     static let jobDidFinishNotification = Notification.Name("StrataTransferJobDidFinish")
 
     private(set) var jobs: [any QueueJob] = []
+    private var priority: [ObjectIdentifier] = []
     /// Called alongside `didChangeNotification`, for a single owner that prefers a closure.
     var onChange: (() -> Void)?
 
     private var busyDisks: [dev_t: ObjectIdentifier] = [:]
-    private var waiters: [(job: ObjectIdentifier, order: Int, disk: dev_t, continuation: CheckedContinuation<Bool, Never>)] = []
+    private var waiters: [(job: ObjectIdentifier, disk: dev_t, continuation: CheckedContinuation<Bool, Never>)] = []
     private var ticker: Task<Void, Never>?
     private var notifyScheduled = false
 
@@ -119,7 +120,7 @@ final class TransferQueue {
     }
 
     private func startNextArchiveJob() {
-        let archiveJobs = jobs.compactMap { $0 as? ArchiveJob }
+        let archiveJobs = prioritizedJobs.compactMap { $0 as? ArchiveJob }
         // Opening an archive to browse is something you're waiting on: it doesn't queue behind a long Extract.
         for job in archiveJobs where job.isBrowse && job.state == .queued { job.start(on: self) }
         guard !archiveJobs.contains(where: { !$0.isBrowse && ($0.state == .running || $0.state == .scanning) }),
@@ -146,12 +147,60 @@ final class TransferQueue {
     /// Removes finished, failed and cancelled jobs from the list.
     func clearFinished() {
         jobs.removeAll { !$0.state.isActive }
+        let kept = Set(jobs.map(ObjectIdentifier.init))
+        priority.removeAll { !kept.contains($0) }
         notify()
+    }
+
+    private var prioritizedJobs: [any QueueJob] {
+        var remaining: [ObjectIdentifier: any QueueJob] = [:]
+        for job in jobs { remaining[ObjectIdentifier(job)] = job }
+        let ordered = priority.compactMap { remaining.removeValue(forKey: $0) }
+        return ordered + jobs.filter { remaining[ObjectIdentifier($0)] != nil }
+    }
+
+    /// Running work stays visible first; waiting rows show the order the scheduler will use.
+    var displayJobs: [any QueueJob] {
+        jobs.filter { $0.state.isActive && $0.state != .queued }
+            + prioritizedJobs.filter { $0.state == .queued }
+            + jobs.reversed().filter { !$0.state.isActive }
+    }
+
+    private enum Lane: Equatable { case archives, disk(dev_t) }
+
+    private func lane(of job: any QueueJob, waitingDisks: [ObjectIdentifier: dev_t]) -> Lane? {
+        guard job.state == .queued else { return nil }
+        if let archive = job as? ArchiveJob { return archive.isBrowse ? nil : .archives }
+        guard job is TransferJob, let disk = waitingDisks[ObjectIdentifier(job)] else { return nil }
+        return .disk(disk)
+    }
+
+    private func orderDestination(_ job: any QueueJob, _ order: TransferOrder) -> Int? {
+        let jobs = prioritizedJobs
+        var disks: [ObjectIdentifier: dev_t] = [:]
+        for waiter in waiters { disks[waiter.job] = waiter.disk }
+        guard let index = jobs.firstIndex(where: { $0 === job }), let lane = lane(of: job, waitingDisks: disks) else { return nil }
+        return TransferOrdering.destination(for: index, among: jobs.indices.filter { self.lane(of: jobs[$0], waitingDisks: disks) == lane }, order: order)
+    }
+
+    func canReorder(_ job: any QueueJob, _ order: TransferOrder) -> Bool { orderDestination(job, order) != nil }
+
+    /// Revalidate at dispatch: a menu may outlive the wait, cancellation or removal of its job.
+    @discardableResult
+    func reorder(_ job: any QueueJob, _ order: TransferOrder) -> Bool {
+        var jobs = prioritizedJobs
+        guard let target = orderDestination(job, order), let source = jobs.firstIndex(where: { $0 === job }) else { return false }
+        let chosen = jobs.remove(at: source)
+        jobs.insert(chosen, at: target)
+        priority = jobs.map(ObjectIdentifier.init)
+        notify()
+        return true
     }
 
     func remove(_ job: any QueueJob) {
         guard !job.state.isActive else { return }
         jobs.removeAll { $0 === job }
+        priority.removeAll { $0 == ObjectIdentifier(job) }
         notify()
     }
 
@@ -204,18 +253,20 @@ final class TransferQueue {
             busyDisks[disk] = ObjectIdentifier(job)
             return true
         }
-        let order = jobs.firstIndex { $0 === job } ?? jobs.count
         return await withCheckedContinuation { continuation in
-            waiters.append((ObjectIdentifier(job), order, disk, continuation))
+            waiters.append((ObjectIdentifier(job), disk, continuation))
         }
     }
 
     func releaseDisk(_ disk: dev_t, for job: TransferJob) {
         guard busyDisks[disk] == ObjectIdentifier(job) else { return }
         busyDisks[disk] = nil
-        // First come, first served: the job enqueued earliest goes next.
+        // Read the current priority, including choices made after these jobs began waiting.
         let candidates = waiters.indices.filter { waiters[$0].disk == disk }
-        if let next = candidates.min(by: { waiters[$0].order < waiters[$1].order }) {
+        var positions: [ObjectIdentifier: Int] = [:]
+        for (index, job) in prioritizedJobs.enumerated() { positions[ObjectIdentifier(job)] = index }
+        func priority(_ index: Int) -> Int { positions[waiters[index].job] ?? jobs.count }
+        if let next = candidates.min(by: { priority($0) < priority($1) }) {
             let waiter = waiters.remove(at: next)
             busyDisks[disk] = waiter.job
             waiter.continuation.resume(returning: true)

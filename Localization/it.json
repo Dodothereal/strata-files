@@ -983,6 +983,7 @@
       "other": "Spostare %lld cartelle di build nel Cestino?"
     },
     "Move copied items here": "Sposta qui gli elementi copiati",
+    "Move Down": "Sposta giù",
     "Move extras to the Trash": "Sposta gli elementi in più nel Cestino",
     "Move into Current Folder": "Sposta nella cartella attuale",
     "Move into “%@”": "Sposta in “%@”",
@@ -992,6 +993,7 @@
     "Move to the Trash": "Sposta nel Cestino",
     "Move to Trash": "Sposta nel Cestino",
     "Move to Trash (in the Trash: Put Back)": "Sposta nel Cestino (nel Cestino: Ripristina)",
+    "Move Up": "Sposta su",
     "Move “%@” to the Trash?": "Spostare “%@” nel Cestino?",
     "Moved %lld items to %@": {
       "one": "%lld elemento spostato in %@",
@@ -1319,6 +1321,7 @@
     "Rose": "Rosa",
     "Run %@ in Terminal": "Esegui %@ nel Terminale",
     "Run in Terminal": "Esegui nel Terminale",
+    "Run Next": "Esegui per primo",
     "Run “%@” in Terminal": "Esegui “%@” nel Terminale",
     "Running": "In esecuzione",
     "Rust source": "Sorgente Rust",

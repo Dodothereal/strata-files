@@ -1079,6 +1079,7 @@
       "other": "Muți %lld de dosare de compilare în Coș?"
     },
     "Move copied items here": "Mută aici articolele copiate",
+    "Move Down": "Mută mai jos",
     "Move extras to the Trash": "Mută articolele în plus în Coș",
     "Move into Current Folder": "Mută în dosarul curent",
     "Move into “%@”": "Mută în „%@”",
@@ -1088,6 +1089,7 @@
     "Move to the Trash": "Mută în Coș",
     "Move to Trash": "Mută în Coș",
     "Move to Trash (in the Trash: Put Back)": "Mută în Coș (în Coș: Pune înapoi)",
+    "Move Up": "Mută mai sus",
     "Move “%@” to the Trash?": "Muți „%@” în Coș?",
     "Moved %lld items to %@": {
       "one": "%lld articol mutat în %@",
@@ -1430,6 +1432,7 @@
     "Rose": "Roz",
     "Run %@ in Terminal": "Rulează %@ în Terminal",
     "Run in Terminal": "Rulează în Terminal",
+    "Run Next": "Execută în continuare",
     "Run “%@” in Terminal": "Rulează „%@” în Terminal",
     "Running": "Rulează",
     "Rust source": "Sursă Rust",
