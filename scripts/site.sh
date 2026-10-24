@@ -4,6 +4,7 @@
 #
 #   scripts/site.sh            # build/site
 #   scripts/site.sh --serve    # and serve it at http://localhost:8000
+#   scripts/site.sh --refresh-readme  # also update the shared README WebP images
 #
 # Needs cwebp (brew install webp, or apt-get install webp).
 set -euo pipefail
@@ -40,20 +41,28 @@ webp=(-quiet -q 86 -alpha_q 85 -m 6 -sharp_yuv -metadata none)
 for shot in "${shots[@]}"; do
   IFS=: read -r source name widths <<< "$shot"
   options=("${webp[@]}")
+  largest_width=0
   sizes=(800 1100)
   # Preserve the opening screenshot's text and gradients exactly; size it for phones and Retina screens.
   if [[ "$source" == "themes" ]]; then
     options=(-quiet -lossless -z 9 -exact -metadata none)
     sizes=(800 1100 1400 2360)
-  elif [[ "$source" =~ ^(quicklook|grid|list|columns|gallery|treemap|disk-usage|dual)$ ]]; then
-    options=(-quiet -lossless -z 9 -exact -metadata icc)
-    sizes=(800 1100 1400)
+  elif [[ "$source" =~ ^(quicklook|grid|list|columns|gallery|disk-usage|dual)$ ]]; then
+    # Two pixels per point at the largest displayed width, keeping full alpha precision and source color profiles.
+    options=(-quiet -q 95 -alpha_q 100 -m 6 -sharp_yuv -metadata icc)
+    largest_width=2120
+    sizes=(480 800 1100 1400)
   fi
-  cwebp "${options[@]}" "docs/screenshots/$source.png" -o "$out/screenshots/$name.webp"
+  primary=("${options[@]}")
+  if [[ "$largest_width" -gt 0 ]]; then primary+=(-resize "$largest_width" 0); fi
+  cwebp "${primary[@]}" "docs/screenshots/$source.png" -o "$out/screenshots/$name.webp"
   if [[ "$widths" == *800* ]]; then
     for width in "${sizes[@]}"; do
       cwebp "${options[@]}" -resize "$width" 0 "docs/screenshots/$source.png" -o "$out/screenshots/$name-$width.webp"
     done
+  fi
+  if [[ "${1:-}" == "--refresh-readme" && "$source" =~ ^(quicklook|grid|list|columns|gallery|treemap|disk-usage|dual)$ ]]; then
+    cp "$out/screenshots/$name.webp" "docs/screenshots/$source.webp"
   fi
 done
 
