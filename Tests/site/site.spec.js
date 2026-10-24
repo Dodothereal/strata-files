@@ -30,12 +30,18 @@ for (const width of [320, 390, 768, 1440]) {
     await page.goto('/');
     await expect(page.locator('[data-download]').first()).toHaveAttribute('href', /\/v0\.6\.4\/Strata\.dmg$/);
     await expect.poll(() => page.evaluate(() => window.analyticsLoaded)).toBe(true);
+    const viewTabs = page.getByRole('tablist', { name: 'Views', exact: true }).getByRole('tab');
+    await expect(viewTabs).toHaveText(['Icons ⌘1', 'List ⌘2', 'Columns ⌘3', 'Gallery ⌘4', 'Disk Usage ⌘5', 'Dual Pane ⌘\\']);
     for (const root of await page.locator('[data-tabs]').all()) {
       const tabs = root.getByRole('tab');
       for (const tab of await tabs.all()) {
         await tab.click();
         await expect(tab).toHaveAttribute('aria-selected', 'true');
-        await expect(page.locator('#' + await tab.getAttribute('aria-controls'))).toBeVisible();
+        const panel = page.locator('#' + await tab.getAttribute('aria-controls'));
+        await expect(panel).toBeVisible();
+        await panel.scrollIntoViewIfNeeded();
+        await expect.poll(() => panel.locator('img').evaluateAll(images =>
+          images.length > 0 && images.every(image => image.complete && image.naturalWidth > 0))).toBe(true);
       }
       await tabs.first().focus();
       await page.keyboard.press('ArrowRight');

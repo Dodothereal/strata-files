@@ -6,9 +6,24 @@ Its PNG is shared by the README and the website; the build creates responsive lo
 at 800, 1100, 1400, 2360 and the original 3960 pixels. The homepage preload and image use the same
 responsive candidates so only the appropriate size is downloaded.
 
-The Quick Look image uses headless AppKit rendering with Acme Studio demo files, showing the main browser behind
-the preview window. Its shared source is `docs/screenshots/quicklook.png`; the website build creates 800, 1100 and
-1400-pixel WebP versions. Keep it immediately after Disk Usage in both the README and the homepage.
+The Quick Look image uses live Strata windows with Acme Studio demo files. Native window captures retain the real
+controls, materials, borders and shadows at their screen positions; the selected Brand Assets folder stays visible
+above the preview. Its shared source is `docs/screenshots/quicklook.png`; the website build creates lossless WebP
+versions at 800, 1100, 1400 and the original 2904 pixels. Keep it immediately after Disk Usage in both the README and
+the homepage.
+
+The Views tabs and README show all five views plus Dual Pane, captured from the same live app and Acme Studio
+demo files. Columns opens Photos → Selects → Autumn Campaign with a photo selected at the deepest level.
+Native window borders, shadows and color profiles are retained; the website creates lossless 800, 1100, 1400 and
+2704-pixel versions. List and Disk Usage use their own captures rather than a column browser or a simulated map.
+The Disk Usage section shares that same native map. Demo photographs are from
+[Unsplash](https://unsplash.com/license), including
+[Alpine Morning](https://images.unsplash.com/photo-1464822759023-fed622ff2c3b),
+[Lake Reflection](https://images.unsplash.com/photo-1470770841072-f978cf4d019e),
+[Golden Hour](https://images.unsplash.com/photo-1500530855697-b586d89ba3ee),
+[Forest Trail](https://images.unsplash.com/photo-1448375240586-882707db888b),
+[Ocean Light](https://images.unsplash.com/photo-1507525428034-b723cf961d3e) and
+[Mountain Pass](https://images.unsplash.com/photo-1501785888041-af3ef285b470).
 
 Run the same checks locally as the Website workflow:
 

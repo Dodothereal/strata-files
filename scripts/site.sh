@@ -26,6 +26,10 @@ shots=(
   "treemap:strata-disk-usage-map:1400,800"
   "quicklook:strata-quick-look-folders-archives:1400,800"
   "grid:strata-icon-view-thumbnails:1400,800"
+  "list:strata-list-view-folders-sizes:1400,800"
+  "columns:strata-column-view:1400,800"
+  "gallery:strata-gallery-view:1400,800"
+  "disk-usage:strata-disk-usage-view:1400,800"
   "dual:strata-dual-pane:1400,800"
   "devmode:strata-git-status-code-preview:1400,800"
   "project:strata-project-inspector:1400,800"
@@ -41,6 +45,9 @@ for shot in "${shots[@]}"; do
   if [[ "$source" == "themes" ]]; then
     options=(-quiet -lossless -z 9 -exact -metadata none)
     sizes=(800 1100 1400 2360)
+  elif [[ "$source" =~ ^(quicklook|grid|list|columns|gallery|treemap|disk-usage|dual)$ ]]; then
+    options=(-quiet -lossless -z 9 -exact -metadata icc)
+    sizes=(800 1100 1400)
   fi
   cwebp "${options[@]}" "docs/screenshots/$source.png" -o "$out/screenshots/$name.webp"
   if [[ "$widths" == *800* ]]; then

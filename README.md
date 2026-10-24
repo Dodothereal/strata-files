@@ -65,7 +65,7 @@ your folders as a map, then use **Large Files** and **Duplicates** in the sideba
 Press **Space** on a folder or archive to look inside. Browse the list or thumbnails and preview files alongside,
 without leaving your current folder. Filter, sort, and open or copy just what you need.
 
-<p align="center"><img src="docs/screenshots/quicklook.png" alt="Quick Look above the main Strata window, browsing Brand Assets and previewing a Markdown brand guide" width="820"></p>
+<p align="center"><img src="docs/screenshots/quicklook.png" alt="Quick Look above the main browser, listing folder contents and previewing a Markdown file" width="820"></p>
 
 ## Five views. Two panes.
 
@@ -75,8 +75,16 @@ with a keystroke, or compare and sync them.
 
 <table>
   <tr>
-    <td><img src="docs/screenshots/grid.png" alt="Icon view with image thumbnails"></td>
-    <td><img src="docs/screenshots/dual.png" alt="Dual pane with a project and a folder of images"></td>
+    <td><strong>Icons · ⌘1</strong><br><img src="docs/screenshots/grid.png" alt="Icon view with image thumbnails"></td>
+    <td><strong>List · ⌘2</strong><br><img src="docs/screenshots/list.png" alt="List view with live folder sizes"></td>
+  </tr>
+  <tr>
+    <td><strong>Columns · ⌘3</strong><br><img src="docs/screenshots/columns.png" alt="Column view expanded through nested folders with an image preview"></td>
+    <td><strong>Gallery · ⌘4</strong><br><img src="docs/screenshots/gallery.png" alt="Gallery view with a large photo preview and thumbnail filmstrip"></td>
+  </tr>
+  <tr>
+    <td><strong>Disk Usage · ⌘5</strong><br><img src="docs/screenshots/disk-usage.png" alt="Disk Usage view mapping folders by size"></td>
+    <td><strong>Dual Pane · ⌘\</strong><br><img src="docs/screenshots/dual.png" alt="Dual Pane with project files and photos side by side"></td>
   </tr>
 </table>
 
