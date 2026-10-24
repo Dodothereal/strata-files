@@ -66,6 +66,9 @@ final class Prefs {
         static let gridIconSize = "gridIconSize"
         static let previewViewMode = "previewViewMode"
         static let previewIconSize = "previewIconSize"
+        static let previewWindowSize = "previewWindowSize"
+        static let previewBrowserFraction = "previewBrowserFraction"
+        static let previewColumnWidths = "previewColumnWidths"
         static let verifyCopies = "verifyCopies"
         static let favoritePaths = "favoritePaths"
         static let reopenWindows = "reopenWindows"
@@ -170,6 +173,40 @@ final class Prefs {
             defaults.set(newValue.isFinite ? min(max(newValue, 32), 256) : 80, forKey: Key.previewIconSize)
             notifications.post(name: .previewOptionsChanged, object: nil)
         }
+    }
+
+    var previewWindowSize: NSSize? {
+        get {
+            guard let values = defaults.array(forKey: Key.previewWindowSize) as? [Double], values.count == 2 else { return nil }
+            let size = NSSize(width: values[0], height: values[1])
+            return PreviewLayout.validSize(size) ? size : nil
+        }
+        set {
+            if let size = newValue, PreviewLayout.validSize(size) {
+                defaults.set([size.width, size.height], forKey: Key.previewWindowSize)
+            } else { defaults.removeObject(forKey: Key.previewWindowSize) }
+        }
+    }
+
+    var previewBrowserFraction: CGFloat {
+        get {
+            let value = defaults.object(forKey: Key.previewBrowserFraction) as? Double ?? PreviewLayout.defaultBrowserFraction
+            return value.isFinite && value > 0 && value < 1 ? value : PreviewLayout.defaultBrowserFraction
+        }
+        set {
+            guard newValue.isFinite, newValue > 0, newValue < 1 else { return }
+            defaults.set(newValue, forKey: Key.previewBrowserFraction)
+        }
+    }
+
+    var previewColumnWidths: [String: Double] {
+        get {
+            (defaults.dictionary(forKey: Key.previewColumnWidths) ?? [:]).compactMapValues {
+                guard let value = $0 as? Double, value.isFinite, (64...320).contains(value) else { return nil }
+                return value
+            }
+        }
+        set { defaults.set(newValue.filter { $0.value.isFinite && (64...320).contains($0.value) }, forKey: Key.previewColumnWidths) }
     }
 
     var iconViewOptions: IconViewOptions {

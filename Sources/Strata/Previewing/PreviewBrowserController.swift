@@ -1,7 +1,7 @@
 import AppKit
 import StrataPreviews
 
-/// Native, independent browsing inside a Space preview. AppKit owns expansion, selection and split-view sizing.
+/// Independent browsing inside a Space preview, with native expansion and selection and an owned pane layout.
 @MainActor final class PreviewBrowserController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
     let session: PreviewSession
     let outline = PreviewOutlineView()
@@ -20,10 +20,9 @@ import StrataPreviews
     private let thumbnails: FileThumbnails
     private let copies: CopyProviders
     private let scroll = NSScrollView()
-    private let split = NSSplitViewController()
-    private let treeItem: NSSplitViewItem
+    let split: PreviewSplitViewController
     private let treeController: NSViewController
-    private let treeHost = NSView()
+    private let treeHost = PreviewListHost()
     private let path = NSTextField(labelWithString: "")
     private let status = NSTextField(labelWithString: "")
     private let progress = NSProgressIndicator()
@@ -34,6 +33,8 @@ import StrataPreviews
     private let kindColumn = NSTableColumn(identifier: .init("previewKind"))
     private let dateColumn = NSTableColumn(identifier: .init("previewDate"))
     private var applying = false
+    private var fittingColumns = false
+    private var columnWidths: [String: Double]
     private var shownGeneration = -1
     var focusView: NSView { if mode == .icons, let grid { return grid.collection }; return outline }
 
@@ -42,6 +43,7 @@ import StrataPreviews
         self.preferences = preferences
         self.thumbnails = thumbnails
         self.copies = copies
+        columnWidths = preferences.previewColumnWidths
         providerContent = PreviewProviderContent(copies: copies)
         measurement = PreviewMeasurement(copies: copies)
         archiveContent = PreviewArchiveContent(copies: copies)
@@ -49,16 +51,11 @@ import StrataPreviews
         let tree = NSViewController()
         tree.view = treeHost
         treeController = tree
-        treeItem = NSSplitViewItem(viewController: tree)
-        super.init(nibName: nil, bundle: nil)
         let preview = NSViewController()
         preview.view = fileView
-        treeItem.minimumThickness = 240
-        treeItem.canCollapse = true
-        let previewItem = NSSplitViewItem(viewController: preview)
-        previewItem.minimumThickness = 220
-        split.addSplitViewItem(treeItem)
-        split.addSplitViewItem(previewItem)
+        split = PreviewSplitViewController(browser: tree, detail: preview, preferences: preferences)
+        super.init(nibName: nil, bundle: nil)
+        treeHost.onLayout = { [weak self] in self?.fitColumns() }
         session.onChange = { [weak self] in self?.changed($0) }
         archiveContent.onChange = { [weak self] in self?.updateFooter() }
         measurement.onChange = { [weak self] in self?.updateFooter() }
@@ -159,6 +156,7 @@ import StrataPreviews
         dateColumn.title = String(localized: "Date Modified", comment: "Column title")
         nameColumn.minWidth = 120
         nameColumn.width = 240
+        nameColumn.resizingMask = .autoresizingMask
         sizeColumn.width = 80
         kindColumn.width = 110
         dateColumn.width = 140
@@ -166,6 +164,14 @@ import StrataPreviews
         for column in [nameColumn, sizeColumn, kindColumn, dateColumn] {
             outline.addTableColumn(column)
             ThemeStyle.bind(column)
+        }
+        for column in [sizeColumn, kindColumn, dateColumn] {
+            let titleWidth = (column.title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)]).width
+            column.minWidth = max(64, ceil(titleWidth) + 24)
+            column.maxWidth = max(column.minWidth, 320)
+            column.width = max(column.minWidth, columnWidths[column.identifier.rawValue] ?? column.width)
+            columnWidths[column.identifier.rawValue] = column.width
+            column.resizingMask = .userResizingMask
         }
         for (column, key) in [(nameColumn, PreviewListing.Key.name), (sizeColumn, .size), (kindColumn, .kind), (dateColumn, .modified)] {
             column.sortDescriptorPrototype = NSSortDescriptor(key: key.rawValue, ascending: key == .name || key == .kind)
@@ -203,11 +209,31 @@ import StrataPreviews
 
     override func viewDidLayout() {
         super.viewDidLayout()
-        let width = scroll.contentSize.width
-        dateColumn.isHidden = width < 540
-        kindColumn.isHidden = width < 660
-        let fixed = sizeColumn.width + (dateColumn.isHidden ? 0 : dateColumn.width) + (kindColumn.isHidden ? 0 : kindColumn.width)
-        nameColumn.width = max(nameColumn.minWidth, width - fixed - 4)
+        fitColumns()
+    }
+
+    private func fitColumns() {
+        guard !fittingColumns, outline.numberOfColumns > 0, scroll.contentSize.width > 0 else { return }
+        fittingColumns = true
+        defer { fittingColumns = false }
+        let width = scroll.contentSize.width, spacing = outline.intercellSpacing.width
+        let preferredSize = columnWidths[sizeColumn.identifier.rawValue] ?? sizeColumn.width
+        let size = min(preferredSize, max(sizeColumn.minWidth, width - nameColumn.minWidth - spacing * 3))
+        let columns = PreviewLayout.columns(width: width, spacing: spacing, size: size,
+                                           kind: columnWidths[kindColumn.identifier.rawValue] ?? kindColumn.width,
+                                           date: columnWidths[dateColumn.identifier.rawValue] ?? dateColumn.width)
+        sizeColumn.width = columns.size
+        dateColumn.isHidden = columns.date == nil
+        kindColumn.isHidden = columns.kind == nil
+        nameColumn.width = columns.name
+    }
+
+    func outlineViewColumnDidResize(_ notification: Notification) {
+        guard !fittingColumns, let column = notification.userInfo?["NSTableColumn"] as? NSTableColumn,
+              [sizeColumn, kindColumn, dateColumn].contains(column) else { return }
+        columnWidths[column.identifier.rawValue] = column.width
+        preferences.previewColumnWidths = columnWidths
+        fitColumns()
     }
 
     private func changed(_ change: PreviewSession.Change) {
@@ -220,7 +246,7 @@ import StrataPreviews
                 controls.search.stringValue = ""
                 gridScope = nil
             }
-            treeItem.isCollapsed = !session.isContainer
+            split.showBrowser(session.isContainer)
             controls.search.isEnabled = session.isContainer
             updateMode()
             refreshTree()

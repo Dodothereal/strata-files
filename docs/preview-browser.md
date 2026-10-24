@@ -233,3 +233,40 @@ and whitespace audits pass. No C archive helper code changed in this feature.
 The signed Debug bundle is `build/Strata-HTML.app`, keeping the previously running build untouched. App and Sparkle
 share the Developer ID team; deep signature verification, 22 unique bundled localizations, archive-helper listing
 and exact-member reading pass. Startup and foreground activation were verified by the new app's actual process ID.
+
+## Window and pane sizing
+
+The preview starts at a 1,000 × 640 content size with 40% for browsing and 60% for the selected item's preview.
+Manual window resizing is saved after the native resize ends. Reopening centers the panel on the source browser's
+display and fits its remembered size within that display's available area. Display fitting never overwrites the
+saved size. Preferences remain with the originating BrowserServices environment.
+
+A native NSSplitView retains its divider interaction and accessibility. Its small owning controller lays out the
+two child controllers and remembers intentional divider changes; it preserves the chosen fraction during window
+resizing. The list and preview keep 280-point and 320-point minimum widths. A single-file preview temporarily hides
+the list and fills the window without changing the remembered folder/archive split.
+
+Pure size validation, display fitting, pane limits and column-space decisions live in PreviewLayout. Window
+lifecycle belongs to PreviewCoordinator; native divider interaction belongs to PreviewSplitViewController. The
+preview browser applies the column decision without changing its session, file selection or originating browser.
+No file commands or background reads own layout preferences.
+
+Name absorbs available list width. Size stays visible; Date Modified and then Kind appear only when Name retains
+a useful width. Metadata columns use localized header minimums and remember manual widths. A narrow panel can
+compress Size without discarding its preferred width for the next wider layout. Surfaces, native controls and
+file typography continue to use the existing theme and owning preferences.
+
+Seven native/pure regressions cover malformed preferences, smaller displays, independent environments, window
+restoration, native divider changes, narrow/wide columns, temporary full-width file previews, selection preservation
+and release of the split controller and its layout callback. These are headless layout checks.
+
+Layout verification passes all 1,011 tests in 119 suites under Debug Address Sanitizer and optimized Release.
+The seven layout regressions also pass under the sanitizer after strengthening the narrow-window case to force
+the preview to its minimum width and verify the saved fraction survives that clamp. No sanitizer diagnostics or
+layout constraint warnings were reported. All 22 catalogs contain 1,440 complete strings; 44 Python regressions,
+the destructive-action audit (122 mapped functions), the theme audit (61 reviewed exceptions) and whitespace
+checks pass. The layout checks remain headless and do not claim live compositor verification.
+
+The signed Debug bundle is `build/Strata-Preview-Layout.app`. Deep signature verification passes, and the app
+and Sparkle share the Developer ID team. Bundle checks confirm 22 unique localizations, the license notice and
+archive helper, a real archive metadata listing and exact-member reading without changing the source archive.

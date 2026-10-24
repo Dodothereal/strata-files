@@ -35,7 +35,6 @@ import Quartz
     isolated deinit { close() }
 
     func show(_ entry: FileEntry, from browser: BrowserViewController, present: Bool = true) {
-        let created = content == nil
         if content == nil {
             let session = PreviewSession(reader: directories, isPlaceholder: { [copies] in copies.isPlaceholder($0) })
             session.archiveAccess.requestPassword = { [weak self] name in
@@ -44,12 +43,18 @@ import Quartz
             }
             session.archiveAccess.cancelPassword = { [weak self] in self?.passwordPrompt.cancel() }
             let content = PreviewBrowserController(session: session, preferences: preferences, thumbnails: thumbnails, copies: copies)
-            let panel = PreviewPanel(contentRect: NSRect(x: 0, y: 0, width: 940, height: 600),
+            let panel = PreviewPanel(contentRect: NSRect(origin: .zero, size: PreviewLayout.defaultSize),
                                      styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-            panel.minSize = NSSize(width: 600, height: 360)
             panel.isReleasedWhenClosed = false
             panel.hidesOnDeactivate = true
             panel.contentViewController = content
+            let screen = browser.viewIfLoaded?.window?.screen ?? NSScreen.main
+            let available = screen.map { panel.contentRect(forFrameRect: $0.visibleFrame).size } ?? PreviewLayout.defaultSize
+            panel.contentMinSize = PreviewLayout.contentSize(PreviewLayout.minimumSize, available: available)
+            panel.setContentSize(PreviewLayout.contentSize(preferences.previewWindowSize, available: available))
+            if let frame = screen?.visibleFrame {
+                panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.midY - panel.frame.height / 2))
+            }
             panel.delegate = self
             panel.onClose = { [weak self] in self?.close() }
             content.outline.onClose = { [weak self] in self?.close() }
@@ -65,7 +70,6 @@ import Quartz
         content?.session.show(entry, showHidden: preferences.showHidden, applications: browser.applicationFolders)
         if present {
             if let panel {
-                if created { panel.center() }
                 guard presentPanel(panel, browser.focusView) else { return close() }
             }
             if panel?.isVisible == true, content?.session.isContainer == true { panel?.makeFirstResponder(content?.focusView) }
@@ -166,6 +170,11 @@ import Quartz
         panel?.delegate = nil
         panel = nil
         close()
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        guard let panel, notification.object as? NSWindow === panel else { return }
+        preferences.previewWindowSize = panel.contentRect(forFrameRect: panel.frame).size
     }
 }
 
