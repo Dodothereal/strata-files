@@ -14,6 +14,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 | Empty Trash | `Trash.empty`, `Trash.folders` | `DeleteTests/emptyingATrashDeletesWhatsInItAndNothingElse`, `aTrashThatIsALinkIsNeverFollowed`, `aLockedItemInTheTrashIsReportedAndTheRestGo`; `DeleteScopeTests/emptyTrashOnlyEverEmptiesTrashFolders`, `noOtherFolderCountsAsATrash` |
 | Put Back | `putBack`, `Trash.location`, `FileOps.removeEmptyFolders` | `PutBackTests/*`; `TrashUndoTests/onlyEmptyFoldersGoWhenTheirItemsDo`, `undoingAPutBackRemovesOnlyTheFoldersItMadeOnceEmpty` |
 | Drop on the sidebar's Trash | `SidebarViewController.canTrash` | `DropTests/theSidebarsTrashTakesOnlyWhatCanBeTrashed` |
+| Customizable toolbar file commands | `BrowserToolbar.commands`, `BrowserWindowController.performToolbarCommand`, `toolbarCommandAvailable`, `commandTarget` | `ToolbarCustomizationTests/toolbarTrashKeepsTheActivePanesExactSelectionInEveryViewAndUndoRestoresIt`, `removedAndForeignItemsAndNativeEditingCannotTriggerFileCommands` (both panes, all five views, look-alike neighbors and same-name files elsewhere, immediate focus changes, History Undo, removed/foreign items and native editing); mutations: “Toolbar command ownership” |
 | Commands on localized names (every view, results and both panes) | `FileEntry.url`, `BrowserViewController.selectedURLs`; labels use `FileEntry.displayName` | `LocalizedNamesTests/everyViewRenamesTheSelectedURLRatherThanItsTranslatedLabelAndUndoRestoresIt`, `resultsAndBothPanesKeepDifferentItemsWithTheSameLabel`; `SelectionTargetsTests/*` |
 | Commands in the combined Applications listing | `ApplicationsFolders`, `DirectoryLoader.load`, `ColumnBrowserViewController.reveal` and `continueReveal`; entries retain physical URLs | `ApplicationsFoldersTests/*` (duplicate names, exact root, both source folders changing, every view, expanded folders, deeper columns, copy to the other pane and rename/undo) |
 
@@ -166,6 +167,7 @@ on any function that is in neither this table nor a mutation.
 | `Model/Places :: eject`; `Sidebar/SidebarViewController :: menuNeedsUpdate`, `ejectItem`; `Window/BrowserWindowController :: focusSearch`, `ejectVolume`, `validateMenuItem` | Hand a disk to macOS to eject. Nothing of the user's changes. |
 | `Dock/DockSearch :: restartDock` | Relaunches the Dock (`killall Dock`). No files. |
 | `Index/IndexStore :: remove`, `unlink` | An in-memory tree, not files. |
+| `Toolbar/BrowserToolbar :: toolbarDidRemoveItem` | AppKit removed a toolbar control; this clears references to its UI object. No files. Native removal and persistence are tested in `ToolbarCustomizationTests`. |
 | `Dev/GitRepository :: execute` | Runs git with the arguments `runBlocking` hardened (mutated); git's own commands here (`status`, `config`, `ls-files`) change nothing. |
 | `Dev/ProjectActions :: openCommandFile` | Writes its own script into a fresh folder in the temporary directory; what the script runs is tested (`theTerminalScriptQuotesEverything`). |
 | `Previews/ArchiveLister :: run` | Lists an archive (`zipinfo -l`, `tar -tvf`); writes nothing. |
@@ -253,6 +255,7 @@ belong to.
 | `Transfers/TransferEngine :: fail`, `copy`, `copyfile`, `rename`, `trash`, `removeIfPresent`, `removeSource`; `Transfers/TransferSession :: repairOwnedDirectory` | `TransferTests/*` |
 | `Transfers/TransferQueue :: start` (undo's moves) | `TrashUndoTests/undoingAMoveJobMovesBackOnlyItsOwnItems`, `AcrossDisksTests/*`, `TransferTests/sameDiskUndoStepsNeverAdoptItemsReplacedBeforeRegistration` (captured identity, conflicts, replacements, failed moves and repeated Undo/Redo) |
 | `Views/ClickToRename :: clicked` | `InlineRenameTests/*` |
+| `Toolbar/BrowserToolbar :: toolbarDidRemoveItem` | `ToolbarCustomizationTests/*`; removes UI references only, not files; see the exemption above. |
 | `Window/Workspaces :: rename`, `askToRename` (a workspace's name, saved settings) | `WorkspaceTests/*` |
 
 | `Model/ChosenFile :: remove` | `SecurityReviewTests/deletionKeepsReplacementsAcrossTheConfirmation`, `deletionKeepsAnAncestorReplacedByAnotherDirectoryOrLink`; `DeleteTests/*` |

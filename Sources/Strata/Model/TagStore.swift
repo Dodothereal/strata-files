@@ -47,6 +47,7 @@ final class TagStore {
     nonisolated private static let maxAttributeSize = 64 << 10
     nonisolated private static let maxTags = 100
     private var cache: [String: [FinderTag]] = [:]
+    private var stale: Set<String> = []
     private static let recentKey = "recentTags"
 
     struct Failure: LocalizedError {
@@ -61,21 +62,22 @@ final class TagStore {
         }
     }
 
-    /// Folders whose tags are being read in the background: their items show none until then, rather than each cell
-    /// reading on the main thread (slow on network disks).
+    /// Folders whose tags are being read in the background: keep their last known values until then, rather than
+    /// each cell reading on the main thread (slow on network disks).
     private var loading: Set<String> = []
 
-    /// Cached tags only: sorting must never read extended attributes inside its comparator.
+    /// Last known tags only: sorting must never read extended attributes inside its comparator.
     func cachedTags(for url: URL) -> [FinderTag] { cache[url.standardizedFileURL.path] ?? [] }
 
     /// `url`'s tags, in the order they were added.
     func tags(for url: URL) -> [FinderTag] {
         let path = url.standardizedFileURL.path
-        if let cached = cache[path] { return cached }
-        if loading.contains(url.deletingLastPathComponent().standardizedFileURL.path) { return [] }
-        if cache.count > 20_000 { cache.removeAll(keepingCapacity: true) }
+        if let cached = cache[path], !stale.contains(path) { return cached }
+        if loading.contains(url.deletingLastPathComponent().standardizedFileURL.path) { return cache[path] ?? [] }
+        if cache.count > 20_000 { cache.removeAll(keepingCapacity: true); stale.removeAll(keepingCapacity: true) }
         let tags = Self.read(path, labels: NSWorkspace.shared.fileLabels)
         cache[path] = tags
+        stale.remove(path)
         return tags
     }
 
@@ -89,7 +91,7 @@ final class TagStore {
         let labels = NSWorkspace.shared.fileLabels
         return Task {
             let tags = await Self.readAll(paths, labels: labels)
-            for (path, list) in tags { cache[path] = list }
+            for (path, list) in tags { cache[path] = list; stale.remove(path) }
             loading.subtract(folders)
             NotificationCenter.default.post(name: .tagsLoaded, object: nil)
         }
@@ -103,12 +105,13 @@ final class TagStore {
         return result
     }
 
-    /// Forgets cached tags for items in `folder` (all of them when nil), so they're read again.
+    /// Marks a folder's tags for rereading. Keep their last known values for sorting and background reads: browsing
+    /// an ancestor in another window must not temporarily turn every descendant into an untagged item.
     func invalidate(_ folder: URL?) {
-        guard let folder else { return cache.removeAll() }
+        guard let folder else { cache.removeAll(); stale.removeAll(); return }
         let path = folder.standardizedFileURL.path
         let prefix = path == "/" ? "/" : path + "/"
-        cache = cache.filter { !$0.key.hasPrefix(prefix) }
+        stale.formUnion(cache.keys.filter { $0.hasPrefix(prefix) })
     }
 
     /// Whether `url` can carry tags from Strata: not a link (its target's tags would change instead), and not inside an
@@ -196,6 +199,7 @@ final class TagStore {
                 }
                 guard let previousTags else { continue }
                 cache[path] = nil
+                stale.remove(path)
                 previous.append((url, chosen.identity, previousTags))
                 changed.append(url)
             } catch {

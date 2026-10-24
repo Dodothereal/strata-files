@@ -337,16 +337,25 @@ extension BrowserWindowController {
 
 extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .sidebarMode, .sidebarTrackingSeparator, .back, .forward, .flexibleSpace, .pathBar, .flexibleSpace, .viewMode,
-         .dualPane, .share, .search, .transfers, .inspectorTrackingSeparator, .toggleInspector]
+        BrowserToolbar.defaults
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
+        BrowserToolbar.allowed
     }
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        if let command = BrowserToolbar.command(id) {
+            let item = NSToolbarItem(itemIdentifier: id)
+            item.label = command.title
+            item.paletteLabel = command.title
+            item.toolTip = command.title
+            item.image = command.image
+            item.target = self
+            item.action = #selector(performToolbarCommand(_:))
+            return item
+        }
         switch id {
         case .back, .forward:
             let isBack = id == .back
@@ -364,7 +373,8 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
         case .pathBar:
             let item = NSToolbarItem(itemIdentifier: id)
             item.label = String(localized: "Location", comment: "Toolbar item: the path bar")
-            item.view = pathBar
+            if flag { item.view = pathBar }
+            else { item.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil) }
             item.visibilityPriority = .high
             return item
         case .sidebarMode:
@@ -382,14 +392,14 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
             item.subitems[1].toolTip = String(localized: "Every folder, as a tree", comment: "Tooltip of the sidebar's Folders switch")
             item.selectedIndex = services.preferences.sidebarShowsTree ? 1 : 0
             item.visibilityPriority = .low
-            sidebarModeItem = item
+            if flag { sidebarModeItem = item }
             return item
         case .viewMode:
             let item = BrowserViewMode.makeToolbarItem(id, target: self, action: #selector(viewModeChanged(_:)))
             item.selectedIndex = browser.effectiveMode.position
             item.isEnabled = !browser.isShowingResults
             item.visibilityPriority = .high
-            viewModeItem = item
+            if flag { viewModeItem = item }
             return item
         case .dualPane:
             let item = NSToolbarItem(itemIdentifier: id)
@@ -400,7 +410,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
             item.target = self
             item.action = #selector(toggleDualPane(_:))
             item.isBordered = true
-            dualPaneItem = item
+            if flag { dualPaneItem = item }
             return item
         case .share:
             let item = NSSharingServicePickerToolbarItem(itemIdentifier: id)
@@ -419,7 +429,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
             item.searchField.placeholderString = String(localized: "Search", comment: "Placeholder of the toolbar search field")
             item.searchField.delegate = self
             item.preferredWidthForSearchField = 200
-            searchItem = item
+            if flag { searchItem = item }
             return item
         default:
             return nil
@@ -427,6 +437,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        if let command = BrowserToolbar.command(item.itemIdentifier) { return toolbarCommandAvailable(command) }
         switch item.itemIdentifier {
         case .back: return validateMenuItem(StrataCommand.goBack.menuItem())
         case .forward: return validateMenuItem(StrataCommand.goForward.menuItem())

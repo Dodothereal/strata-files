@@ -33,6 +33,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     var viewModeItem: NSToolbarItemGroup?
     var sidebarModeItem: NSToolbarItemGroup?
     var dualPaneItem: NSToolbarItem?
+    private var toolbarCustomization: BrowserToolbar?
     private var responderObservation: NSKeyValueObservation?
     /// Index changes re-run searches no more often than `indexRefreshInterval`.
     var indexRefreshScheduled = false
@@ -74,10 +75,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         window.delegate = self
         window.contentViewController = split
         window.setContentSize(NSSize(width: 1240, height: 780))
-        let toolbar = NSToolbar(identifier: "dev.strata.main")
+        let toolbar = NSToolbar(identifier: services.preferences.domainName + ".main")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         window.toolbar = toolbar
+        toolbarCustomization = BrowserToolbar(toolbar, preferences: services.preferences)
         if !window.setFrameAutosaveName("StrataBrowserWindow") { window.center() }
 
         configure(first)
@@ -527,8 +529,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     @objc func goApplications(_ sender: Any?) { navigate(to: URL(fileURLWithPath: "/Applications")) }
     @objc func goRecents(_ sender: Any?) { go(.recents) }
     func showDuplicates() { go(.duplicates) }
-    @objc func goToFolder(_ sender: Any?) { pathBar.beginEditing() }
-    @objc func focusSearch(_ sender: Any?) { searchItem?.beginSearchInteraction() }
+    @objc func goToFolder(_ sender: Any?) {
+        revealToolbarItem(.pathBar)
+        pathBar.beginEditing()
+    }
+    @objc func focusSearch(_ sender: Any?) {
+        revealToolbarItem(.search)
+        if case .search(let text, _) = destination { setSearchField(text) }
+        searchItem?.beginSearchInteraction()
+    }
 
     /// Ask Strata needs something to work on: a selection, or a folder with items.
     private var canAskStrata: Bool {

@@ -117,7 +117,7 @@ extension BrowserWindowController {
         }
     }
 
-    private func commandTarget(_ command: StrataCommand) -> NSObject? {
+    func commandTarget(_ command: StrataCommand) -> NSObject? {
         switch command.owner {
         case .browser: browser
         case .window: self
@@ -126,7 +126,7 @@ extension BrowserWindowController {
         }
     }
 
-    private func validateCommand(_ command: StrataCommand, item: NSMenuItem) -> Bool {
+    func validateCommand(_ command: StrataCommand, item: NSMenuItem) -> Bool {
         guard let target = commandTarget(command), target.responds(to: command.action) else { return false }
         if let validator = target as? NSMenuItemValidation { return validator.validateMenuItem(item) }
         return true

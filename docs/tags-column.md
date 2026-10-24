@@ -11,3 +11,6 @@ Sorting reads the tag cache, never extended attributes from inside a comparison.
 the background; choosing Tags for search results reads their metadata in one background batch. Later completions
 update the order while retaining selection and expanded rows. Native inline renaming defers row movement until the
 editor finishes. Deeper Columns retain their selection when their cached tag order changes.
+
+Invalidation keeps the last known tag names while a background read is pending. Browsing an ancestor in another
+window therefore cannot temporarily clear a ready tag sort. A foreground read still refreshes an invalidated item.

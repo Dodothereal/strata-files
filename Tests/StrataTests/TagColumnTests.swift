@@ -11,6 +11,26 @@ struct TagColumnTests {
         #expect(result == 0)
     }
 
+
+    @Test func invalidationKeepsLastKnownSortValuesUntilFreshTagsArrive() async throws {
+        let tree = try TestTree("folder/a")
+        let entry = try #require(FileEntry(url: tree.url("folder/a"))), store = TagStore()
+        try write(["Alpha"], to: entry.url)
+        await store.load([entry], in: tree.url("folder")).value
+        store.invalidate(tree.root)
+        #expect(store.cachedTags(for: entry.url).map(\.name) == ["Alpha"])
+        try write(["Beta"], to: entry.url)
+        #expect(store.tags(for: entry.url).map(\.name) == ["Beta"])
+        #expect(store.cachedTags(for: entry.url).map(\.name) == ["Beta"])
+        store.invalidate(tree.root)
+        try write(["Gamma"], to: entry.url)
+        await store.load([entry], in: tree.url("folder")).value
+        #expect(store.cachedTags(for: entry.url).map(\.name) == ["Gamma"])
+        store.invalidate(nil)
+        #expect(store.cachedTags(for: entry.url).isEmpty)
+        #expect(tree.snapshot() == ["folder/", "folder/a"])
+    }
+
     @Test func nativeColumnShowsCustomNamesAndKeepsItsSavedVisibility() async throws {
         let tree = try TestTree("a", "b")
         let state = try TestTree()
@@ -54,6 +74,8 @@ struct TagColumnTests {
         browser.loadViewIfNeeded()
         browser.showGroups([(title: "Group", detail: "", entries: entries)], summary: "Group")
         browser.select([entries[0].url], scroll: false)
+        // The shared cache can be invalidated by another browser between await and this actor turn.
+        for entry in entries { _ = TagStore.shared.tags(for: entry.url) }
         browser.applySort(.tags, ascending: true)
         let group = try #require(browser.allRows.first)
         #expect(group.children?.map(\.entry.name) == ["z", "a"])

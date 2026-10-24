@@ -129,6 +129,8 @@ struct CloudFoldersTests {
         environment.preferences.favoritePaths = [tree.url("Library/CloudStorage/Drive-first").path]
         let sidebar = SidebarViewController(services: environment.services)
         sidebar.loadViewIfNeeded()
+        NotificationCenter.default.removeObserver(sidebar)
+        NSWorkspace.shared.notificationCenter.removeObserver(sidebar)
         await sidebar.cloudRead?.value
         let urls = try Self.folderRows(sidebar).compactMap(\.url?.path)
         #expect(urls.filter { $0 == tree.url("Library/CloudStorage/Drive-first").standardizedFileURL.path }.count == 1)

@@ -81,6 +81,8 @@ final class Prefs {
         static let sortColumn = "sortColumn"
         static let sortAscending = "sortAscending"
         static let hiddenListColumns = "hiddenListColumns"
+        static let toolbarItems = "toolbarItems"
+        static let toolbarDisplayMode = "toolbarDisplayMode"
         static let knownListColumns = "knownListColumns"
         static let dockSearch = "dockSearch"
         static let collapsedSidebarSections = "collapsedSidebarSections"
@@ -309,6 +311,20 @@ final class Prefs {
     var terminalURL: URL? {
         let ids = (terminal.map { [$0] } ?? []) + terminals.map(\.bundleID)
         return ids.lazy.compactMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }.first
+    }
+
+    /// Native toolbar layouts use this environment rather than AppKit's process-wide defaults.
+    var toolbarItems: [String]? {
+        get { defaults.stringArray(forKey: Key.toolbarItems) }
+        set { defaults.set(newValue, forKey: Key.toolbarItems) }
+    }
+
+    var toolbarDisplayMode: Int {
+        get {
+            let value = defaults.integer(forKey: Key.toolbarDisplayMode)
+            return (1...3).contains(value) ? value : 2
+        }
+        set { defaults.set((1...3).contains(newValue) ? newValue : 2, forKey: Key.toolbarDisplayMode) }
     }
 
     /// List sort from the last session. Unknown or missing values are Name, ascending.

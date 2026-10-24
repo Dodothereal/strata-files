@@ -120,6 +120,8 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
   Active work retains its queue through completion; finished jobs must not form a queue/job retain cycle.
   Queue-held completion callbacks keep panes weak, and one-shot fetch actions release their captures on every
   terminal path. Test teardown while finished jobs remain in the queue.
+- Run the debug and sanitizer suites sequentially. Both use the real Trash; simultaneous runners can reuse a pending
+  Redo's old Trash path and correctly trigger a refusal.
 - Tests that use the real Trash remove exactly what they put there (`tree.removeFromTrash()`). Never empty the real
   Trash: cleanup must match the saved file identity, because a restored item's old Trash path can be reused by
   another file. Cover that reuse explicitly; a historical path alone is not ownership. Keep parked originals alive
@@ -160,6 +162,8 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
 - Run the complete debug suite under Address Sanitizer when changing unsafe memory, parsing, indexing or callback
   lifetimes. Use a separate build directory so ordinary and instrumented artifacts stay separate:
   `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --sanitize address --scratch-path .build/sanitizers/address --disable-automatic-resolution --jobs 4`.
+  Locally, add `--no-parallel` for the full AppKit sanitizer suite to avoid overlapping hundreds of native window
+  fixtures. Tests that coordinate concurrent requests still exercise their own tasks together.
   CI runs this as a separate job on pull requests and main; Release repeats it before signing, including on tags.
   Investigate sanitizer diagnostics instead of suppressing them, retrying until green or skipping affected tests.
   Sanitizers do not instrument prebuilt system frameworks or prove unexecuted paths safe. Optimized persistence

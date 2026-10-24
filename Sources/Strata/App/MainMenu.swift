@@ -85,6 +85,7 @@ enum MainMenu {
             StrataCommand.focusSearch.menuItem(),
             StrataCommand.reloadFolder.menuItem(),
             .separator(),
+            item("Customize Toolbar…", #selector(BrowserWindowController.customizeToolbar(_:))),
             item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control], symbol: "arrow.up.left.and.arrow.down.right"),
         ]))
         main.addItem(submenu("Go", [

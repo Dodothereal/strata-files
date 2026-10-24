@@ -4860,5 +4860,26 @@
     "replace": "case .tags: result = .orderedSame",
     "rule": "Tags sort uses the tag names instead of the file names",
     "tests": "BrowserOrderingTests/everySortKeyUsesItsValueAndDirection|TagColumnTests"
+  },
+  {
+    "file": "Strata/Toolbar/BrowserToolbar.swift",
+    "find": "window?.toolbar?.items.contains(where: { $0 === sender }) == true,",
+    "replace": "true,",
+    "rule": "Toolbar command ownership rejects removed and foreign items",
+    "tests": "ToolbarCustomizationTests/removedAndForeignItems"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController+Palette.swift",
+    "find": "case .browser: browser",
+    "replace": "case .browser: panes[0].browser",
+    "rule": "Toolbar command ownership uses the active pane selection",
+    "tests": "ToolbarCustomizationTests/toolbarTrashKeepsTheActivePanesExactSelection"
+  },
+  {
+    "file": "Strata/Model/TagStore.swift",
+    "find": "stale.formUnion(cache.keys.filter { $0.hasPrefix(prefix) })",
+    "replace": "cache = cache.filter { !$0.key.hasPrefix(prefix) }",
+    "rule": "Tags cache keeps last known metadata during an ancestor refresh",
+    "tests": "TagColumnTests/invalidationKeepsLastKnownSortValuesUntilFreshTagsArrive"
   }
 ]
