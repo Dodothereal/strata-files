@@ -5,10 +5,16 @@ import SwiftUI
 /// translation). macOS applies it when Strata next starts, so it offers to restart.
 struct LanguageSection: View {
     /// The languages in the app (from its Localization files), English first.
-    private static let languages: [String] = {
-        let shipped = Bundle.main.localizations.filter { $0 != "Base" }
-        return shipped.sorted { a, b in a == "en" || (b != "en" && name(a).localizedCaseInsensitiveCompare(name(b)) == .orderedAscending) }
-    }()
+    private static let languages = availableLanguages(in: .main)
+
+    static func availableLanguages(in bundle: Bundle) -> [String] {
+        // Bundle can report a language from both Info.plist and its .lproj folder.
+        let shipped = Set(bundle.localizations).subtracting(["Base"])
+        return shipped.sorted { a, b in
+            if a == "en" || b == "en" { return a == "en" && b != "en" }
+            return name(a).localizedCaseInsensitiveCompare(name(b)) == .orderedAscending
+        }
+    }
 
     @State private var chosen = Prefs.shared.language
 
