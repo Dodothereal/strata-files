@@ -6,7 +6,7 @@ final class CloudBadge: NSImageView, ColorThemeUpdating {
     var status: CloudStatus? {
         didSet {
             guard status != oldValue else { return }
-            let shown = status.flatMap { $0 == .downloaded ? nil : $0 }
+            let shown = status.flatMap { $0 == .downloaded || $0 == .local ? nil : $0 }
             image = shown.flatMap { NSImage(systemSymbolName: $0.symbolName, accessibilityDescription: $0.label) }
             isHidden = shown == nil
             toolTip = shown?.label

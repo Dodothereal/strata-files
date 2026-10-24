@@ -45,6 +45,7 @@ let themeSources = [
 let appModelSources = [
     "ApplicationsFolders.swift",
     "ArchiveCache.swift",
+    "CloudFolders.swift",
     "CloudStatus.swift",
     "CreatedFolders.swift",
     "DSStore.swift",

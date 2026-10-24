@@ -118,7 +118,7 @@ final class GridItemView: NSView, ColorThemeUpdating {
 
     /// Name, tags and detail, for VoiceOver.
     private var accessibilityText: String {
-        let cloud = cloudBadge.status.flatMap { $0 == .downloaded ? nil : $0.label }
+        let cloud = cloudBadge.status.flatMap { $0 == .downloaded || $0 == .local ? nil : $0.label }
         let tagList = tags.isEmpty ? nil
             : String(localized: "tags \(tags.map(\.shownName).joined(separator: ", "))",
                      comment: "Accessibility, after an item's name; the placeholder is a list of tag names")

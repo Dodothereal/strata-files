@@ -193,7 +193,7 @@ extension BrowserViewController {
         if !selectedApps.isEmpty { addMenuCommand(.checkAppsForUpdates, title: appUpdatesTitle, to: menu) }
         // iCloud Drive and File Provider folders: bring items here, or free their space.
         let cloud = selectedCloudStatuses
-        if !inTrash, cloud.contains(.cloudOnly) { addTitledMenuItem(String(localized: "Download Now"), #selector(downloadNow(_:)), "icloud.and.arrow.down", to: menu) }
+        if !inTrash, !downloadableCloudURLs.isEmpty { addTitledMenuItem(String(localized: "Download Now"), #selector(downloadNow(_:)), "icloud.and.arrow.down", to: menu) }
         if !inTrash, cloud.contains(.downloaded) { addTitledMenuItem(String(localized: "Remove Download"), #selector(removeDownload(_:)), "icloud.slash", to: menu) }
         addMenuCommand(.toggleQuickLook, to: menu)
         // The system's own item: it keeps its picker alive and shows the share sheet next to the menu. Not for a

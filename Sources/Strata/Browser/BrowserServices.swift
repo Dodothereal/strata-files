@@ -7,7 +7,8 @@ final class BrowserServices {
 
     private static func application() -> BrowserServices {
         BrowserServices(transfers: .shared, visits: .shared, windows: .native, remote: .shared,
-                        containers: .shared, containerStore: .shared, clipboard: .shared)
+                        containers: .shared, containerStore: .shared, clipboard: .shared,
+                        cloudFolders: CloudFolders.discover)
     }
 
     /// Build an independent environment as a unit. Its queue, History, providers and preferences agree from birth;
@@ -36,11 +37,13 @@ final class BrowserServices {
                            remoteBrowsing: RemoteBrowsing? = nil,
                            mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
                            thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
+                           cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
                            openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil) -> BrowserServices {
         BrowserServices(transfers: transfers, visits: visits, directories: directories, windows: windows,
                         availableCapacity: availableCapacity, remote: remote, remoteBrowsing: remoteBrowsing,
                         containers: containers, containerStore: containerStore, clipboard: clipboard,
-                        mediaReader: mediaReader, thumbnails: thumbnails, itemInfo: itemInfo, openContainer: openContainer)
+                        mediaReader: mediaReader, thumbnails: thumbnails, itemInfo: itemInfo,
+                        cloudFolders: cloudFolders, openContainer: openContainer)
     }
 
     let preferences: Prefs
@@ -61,6 +64,7 @@ final class BrowserServices {
     let containerStore: ContainerStore
     let copies: CopyProviders
     let clipboard: Clipboard
+    let cloudFolders: @Sendable () async -> [CloudFolder]
     let openContainer: @MainActor @Sendable (String) async throws -> URL
     let directories: DirectoryReader
     let mediaReader: MediaInfoLoader.Reader
@@ -75,6 +79,7 @@ final class BrowserServices {
                  containers: ContainerFiles, containerStore: ContainerStore, clipboard: Clipboard,
                  mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
                  thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
+                 cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
                  openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil) {
         self.preferences = transfers.preferences
         self.transfers = transfers
@@ -86,6 +91,7 @@ final class BrowserServices {
         self.containerStore = containerStore
         self.copies = transfers.copies
         self.clipboard = clipboard
+        self.cloudFolders = cloudFolders
         self.openContainer = openContainer ?? { id in
             guard let engine = containerStore.engine, let container = containerStore.container(id: id) else { throw ContainerAPIError.notFound }
             return try await containers.open(container, on: engine)

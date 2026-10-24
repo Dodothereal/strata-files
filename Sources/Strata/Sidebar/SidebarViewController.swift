@@ -79,6 +79,8 @@ final class SidebarViewController: NSViewController {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    isolated deinit { cloudRead?.cancel() }
+
     var onSelect: ((SidebarTarget) -> Void)?
     /// "Open in New Tab" from the context menu.
     var onOpenInNewTab: ((URL) -> Void)?
@@ -105,6 +107,8 @@ final class SidebarViewController: NSViewController {
         return nil
     }
     private var sections: [SidebarSection] = []
+    private var cloudFolders: [CloudFolder] = []
+    private(set) var cloudRead: Task<Void, Never>?
     /// Sections being opened and closed to match what you chose, not by you.
     private var applyingCollapsed = false
     private var suppressSelection = false
@@ -163,10 +167,12 @@ final class SidebarViewController: NSViewController {
         }
         view = container
         reload()
+        refreshCloudFolders()
         showMode()
         preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
 
         let center = NSWorkspace.shared.notificationCenter
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshCloudFolders), name: NSApplication.didBecomeActiveNotification, object: nil)
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
         preferences.notifications.addObserver(self, selector: #selector(volumesChanged), name: .savedSearchesChanged, object: nil)
@@ -221,8 +227,11 @@ final class SidebarViewController: NSViewController {
             item.help = engine.name
             return item
         }
+        let cloud = cloudFolders.filter { !pinned.contains($0.url.standardizedFileURL.path) }.map {
+            SidebarItem(Place(title: $0.title, url: $0.url, symbol: "icloud"))
+        }
         sections.append(SidebarSection(id: "locations", title: String(localized: "Locations", comment: "Sidebar section title: disks and the Trash"),
-                                       items: Places.volumes().map(SidebarItem.init) + [containers].compactMap { $0 }
+                                       items: Places.volumes().map(SidebarItem.init) + cloud + [containers].compactMap { $0 }
             + [SidebarItem(title: String(localized: "Trash", comment: "Sidebar item: the Trash"), target: .folder(Trash.home), symbol: Self.trashSymbol)]))
         // Servers you've connected to: an SFTP server or a bucket each, green while connected.
         let servers = services.remote.servers.all.map { server -> SidebarItem in
@@ -304,7 +313,19 @@ final class SidebarViewController: NSViewController {
         suppressSelection = false
     }
 
-    @objc private func volumesChanged() { reload() }
+    @objc func refreshCloudFolders() {
+        cloudRead?.cancel()
+        let read = services.cloudFolders
+        cloudRead = Task { [weak self] in
+            let folders = await read()
+            guard !Task.isCancelled, let self, cloudFolders != folders else { return }
+            cloudFolders = folders
+            tree.cloudFolders = folders
+            reload()
+        }
+    }
+
+    @objc private func volumesChanged() { reload(); refreshCloudFolders() }
 
     /// The Containers item comes and goes with the engine; containers starting and stopping don't touch the sidebar.
     private var showsContainers = false

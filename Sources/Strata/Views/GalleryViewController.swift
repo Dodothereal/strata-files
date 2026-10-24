@@ -396,7 +396,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
             }
         }
         // Folders and apps show their icon; an item only in the cloud isn't downloaded just to be looked at.
-        guard !entry.isFolder, canThumbnail, CloudStore.shared.status(for: entry.url) != .cloudOnly else { return }
+        guard !entry.isFolder, canThumbnail, CloudStore.shared.status(for: entry.url)?.isPlaceholder != true else { return }
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.previewed == entry, self.thumbnails.canThumbnail(entry) else { return }

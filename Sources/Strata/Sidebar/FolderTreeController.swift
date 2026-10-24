@@ -46,6 +46,9 @@ final class FolderTreeController: NSViewController {
     private let copies: CopyProviders
     private let containerStore: ContainerStore
     var clipboard: Clipboard
+    var cloudFolders: [CloudFolder] = [] {
+        didSet { if cloudFolders != oldValue { volumesChanged() } }
+    }
 
     init(transfers: TransferQueue = .shared, preferences: Prefs = .shared, remote: RemoteServices = .shared,
          copies: CopyProviders? = nil, containerStore: ContainerStore = .shared,
@@ -163,6 +166,9 @@ final class FolderTreeController: NSViewController {
         for volume in Places.volumes() {
             let url = volume.url.standardizedFileURL
             fresh.append(reuse(url, .folder) { FolderNode(url: url, title: volume.title, symbol: volume.symbol) })
+        }
+        for folder in cloudFolders where !fresh.contains(where: { $0.url.fileViewKey == folder.url.fileViewKey }) {
+            fresh.append(reuse(folder.url, .folder) { FolderNode(url: folder.url, title: folder.title, symbol: "icloud") })
         }
         // Saved servers: each opens its files (its row's URL is its copy's top, named by its ID).
         for server in remote.servers.all {

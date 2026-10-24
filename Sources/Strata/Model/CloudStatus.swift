@@ -5,6 +5,10 @@ import Foundation
 nonisolated enum CloudStatus: Sendable, Equatable {
     /// Only in the cloud (Download Now brings it here).
     case cloudOnly
+    /// A File Provider placeholder. Its provider owns upload state and eviction.
+    case providerOnly
+    /// Local File Provider content; this does not assert it has finished uploading.
+    case local
     case downloading
     case uploading
     /// Here, not uploaded yet (its download can't be removed until it is).
@@ -18,15 +22,31 @@ nonisolated enum CloudStatus: Sendable, Equatable {
     ]
 
     /// The item's state, or nil when it isn't a cloud item.
-    static func read(_ url: URL) -> CloudStatus? {
+    static func read(_ url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> CloudStatus? {
+        var info = stat()
+        guard lstat(url.path, &info) == 0, [S_IFREG, S_IFDIR].contains(info.st_mode & S_IFMT) else { return nil }
         // A fresh URL: resource values are cached per URL object, and these change while you watch.
         let fresh = URL(fileURLWithPath: url.path)
-        guard let values = try? fresh.resourceValues(forKeys: keys), values.isUbiquitousItem == true else { return nil }
-        if values.ubiquitousItemIsDownloading == true { return .downloading }
-        if values.ubiquitousItemIsUploading == true { return .uploading }
-        if values.ubiquitousItemDownloadingStatus == .notDownloaded { return .cloudOnly }
-        if values.ubiquitousItemIsUploaded == false { return .waitingToUpload }
-        return .downloaded
+        guard let values = try? fresh.resourceValues(forKeys: keys) else { return nil }
+        guard values.isUbiquitousItem == true else {
+            guard CloudFolders.providerRoot(for: url, home: home) != nil else { return nil }
+            return providerStatus(flags: info.st_flags)
+        }
+        return ubiquitousStatus(downloading: values.ubiquitousItemIsDownloading, uploading: values.ubiquitousItemIsUploading,
+                                downloadStatus: values.ubiquitousItemDownloadingStatus, uploaded: values.ubiquitousItemIsUploaded)
+    }
+
+    static func ubiquitousStatus(downloading: Bool?, uploading: Bool?, downloadStatus: URLUbiquitousItemDownloadingStatus?,
+                                 uploaded: Bool?) -> CloudStatus {
+        if downloading == true { return .downloading }
+        if uploading == true { return .uploading }
+        if downloadStatus == .notDownloaded { return .cloudOnly }
+        if uploaded == false { return .waitingToUpload }
+        return uploaded == true ? .downloaded : .local
+    }
+
+    static func providerStatus(flags: UInt32) -> CloudStatus {
+        flags & UInt32(SF_DATALESS) != 0 ? .providerOnly : .local
     }
 
     /// Whether `folder` holds cloud items: iCloud Drive, a File Provider folder (`~/Library/CloudStorage`), or anything
@@ -34,13 +54,15 @@ nonisolated enum CloudStatus: Sendable, Equatable {
     static func isCloudFolder(_ folder: URL) -> Bool {
         let path = folder.standardizedFileURL.path
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        if path.hasPrefix(home + "/Library/Mobile Documents") || path.hasPrefix(home + "/Library/CloudStorage") { return true }
+        if CloudFolders.contains(folder, in: URL(fileURLWithPath: home + "/Library/Mobile Documents"))
+            || CloudFolders.contains(folder, in: URL(fileURLWithPath: home + "/Library/CloudStorage")) { return true }
         return (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isUbiquitousItemKey]))?.isUbiquitousItem == true
     }
 
     var symbolName: String {
         switch self {
-        case .cloudOnly: "icloud"
+        case .cloudOnly, .providerOnly: "icloud"
+        case .local: "arrow.down.circle"
         case .downloading: "icloud.and.arrow.down"
         case .uploading, .waitingToUpload: "icloud.and.arrow.up"
         case .downloaded: "checkmark.icloud"
@@ -50,7 +72,8 @@ nonisolated enum CloudStatus: Sendable, Equatable {
     var label: String {
         switch self {
         // Neutral words: the same states appear in Dropbox, OneDrive and Google Drive folders.
-        case .cloudOnly: String(localized: "Only in the cloud", comment: "Cloud status of an item")
+        case .cloudOnly, .providerOnly: String(localized: "Only in the cloud", comment: "Cloud status of an item")
+        case .local: String(localized: "Downloaded", comment: "Cloud status: local content; does not assert an upload has completed")
         case .downloading: String(localized: "Downloading", comment: "Cloud status of an item")
         case .uploading: String(localized: "Uploading", comment: "Cloud status of an item")
         case .waitingToUpload: String(localized: "Waiting to upload", comment: "Cloud status of an item")
@@ -60,15 +83,68 @@ nonisolated enum CloudStatus: Sendable, Equatable {
 
     /// Whether it's mid-transfer (worth checking again soon).
     var isActive: Bool { self == .downloading || self == .uploading || self == .waitingToUpload }
+    var isPlaceholder: Bool { self == .cloudOnly || self == .providerOnly }
 }
 
 /// Asks the cloud provider to bring items here, or to free their space (they stay in the cloud). Each returns the items
 /// it couldn't ask about, with why (an item not uploaded yet can't have its download removed).
 enum CloudActions {
-    static func download(_ urls: [URL]) -> [(URL, Error)] {
-        urls.compactMap { url in
-            do { try FileManager.default.startDownloadingUbiquitousItem(at: url) } catch { return (url, error) }
-            return nil
+    nonisolated struct Download: Sendable {
+        let chosen: ChosenFile
+        let provider: Bool
+
+        init(_ url: URL, status: CloudStatus?) throws {
+            guard url.isFileURL, status == .cloudOnly || status == .providerOnly else { throw POSIXError(.EINVAL) }
+            chosen = try ChosenFile(url, resolveParent: false)
+            provider = status == .providerOnly
+            try chosen.withDescriptor { _, info in
+                guard info.st_mode & S_IFMT == S_IFREG || (!provider && info.st_mode & S_IFMT == S_IFDIR) else {
+                    throw POSIXError(.ENOTSUP)
+                }
+            }
+        }
+
+        func perform(request: (ChosenFile, Bool) throws -> Void) throws {
+            try chosen.withDescriptor { _, _ in try request(chosen, provider) }
+        }
+
+        static func request(_ chosen: ChosenFile, provider: Bool) throws {
+            let url = chosen.url
+            if !provider {
+                try FileManager.default.startDownloadingUbiquitousItem(at: url)
+                return
+            }
+            // File coordination asks the installed provider to materialize the file before handing it to a reader.
+            // NSFileProviderManager itself is restricted to the provider's own app and extensions.
+            let coordinator = NSFileCoordinator()
+            var coordinationError: NSError?
+            var readError: (any Error)?
+            var accessed = false
+            coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { visible in
+                accessed = true
+                do {
+                    guard visible.standardizedFileURL == url.standardizedFileURL else { throw POSIXError(.ESTALE) }
+                    try chosen.withDescriptor { _, info in
+                        guard info.st_flags & UInt32(SF_DATALESS) == 0 else { throw POSIXError(.EAGAIN) }
+                    }
+                } catch { readError = error }
+            }
+            if let error = coordinationError { throw error }
+            if let error = readError { throw error }
+            guard accessed else { throw POSIXError(.EIO) }
+        }
+    }
+
+    static func download(_ choices: [Download]) async -> [(URL, Error)] {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                let failures: [(URL, Error)] = choices.compactMap { choice in
+                    do { try choice.perform(request: Download.request) }
+                    catch { return (choice.chosen.url, error) }
+                    return nil
+                }
+                continuation.resume(returning: failures)
+            }
         }
     }
 
@@ -84,10 +160,19 @@ enum CloudActions {
     }
 
     /// Asks for each item's space to be freed, going on past failures. `evict` is the system's (a test's records).
-    static func removeDownload(_ urls: [URL],
+    static func removeDownload(_ urls: [URL], status: (URL) -> CloudStatus? = { CloudStatus.read($0) },
                                evict: (URL) throws -> Void = { try FileManager.default.evictUbiquitousItem(at: $0) }) -> [(URL, Error)] {
-        urls.compactMap { url in
-            do { try evict(url) } catch { return (url, error) }
+        let choices = urls.map { url in (url, Result { try ChosenFile(url, resolveParent: false) }) }
+        return choices.compactMap { url, choice in
+            do {
+                let chosen = try choice.get()
+                guard status(url) == .downloaded else { throw POSIXError(.EPERM) }
+                try chosen.withDescriptor { _, info in
+                    guard info.st_mode & S_IFMT != S_IFLNK else { throw POSIXError(.EPERM) }
+                }
+                // An open target can make the provider refuse eviction; keep the chosen parent, release the leaf.
+                try evict(url)
+            } catch { return (url, error) }
             return nil
         }
     }

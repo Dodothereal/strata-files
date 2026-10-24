@@ -627,8 +627,8 @@
   },
   {
     "file": "Strata/Model/CloudStatus.swift",
-    "find": "            do { try evict(url) } catch { return (url, error) }",
-    "replace": "            do { try evict(url) } catch { return nil }",
+    "find": "            } catch { return (url, error) }",
+    "replace": "            } catch { return nil }",
     "rule": "Remove Download hides an item it couldn't free",
     "tests": "DeleteScopeTests/removeDownloadAsks"
   },
@@ -4796,5 +4796,55 @@
     "replace": "const int relative_root = 1;",
     "rule": "Preview follow-up: an absolute root cannot borrow the relative-root exemption",
     "tests": "PreviewArchiveRootTests/rootAliasesNeverHideFilesLinksOrAbsolutePaths"
+  },
+  {
+    "file": "Strata/Model/CloudStatus.swift",
+    "find": "            try chosen.withDescriptor { _, _ in try request(chosen, provider) }",
+    "replace": "            try request(chosen, provider)",
+    "rule": "Cloud downloads keep the chosen file and parent across delayed work",
+    "tests": "CloudFoldersTests/aDownload|CloudFoldersTests/downloadsRefuse"
+  },
+  {
+    "file": "Strata/Model/CloudStatus.swift",
+    "find": "            guard url.isFileURL, status == .cloudOnly || status == .providerOnly else { throw POSIXError(.EINVAL) }",
+    "replace": "            guard url.isFileURL, status != nil else { throw POSIXError(.EINVAL) }",
+    "rule": "Cloud downloads refuse local files before requesting materialization",
+    "tests": "CloudFoldersTests/downloadsRefuse"
+  },
+  {
+    "file": "Strata/Model/CloudStatus.swift",
+    "find": "                guard status(url) == .downloaded else { throw POSIXError(.EPERM) }",
+    "replace": "                // Broken: trust the previous upload state.",
+    "rule": "Cloud eviction rechecks upload state before freeing local content",
+    "tests": "CloudFoldersTests/evictionRechecks"
+  },
+  {
+    "file": "Strata/Model/CloudStatus.swift",
+    "edits": [
+      {
+        "find": "        let choices = urls.map { url in (url, Result { try ChosenFile(url, resolveParent: false) }) }",
+        "replace": "        let choices = urls.map { ($0, $0) }"
+      },
+      {
+        "find": "                let chosen = try choice.get()",
+        "replace": "                let chosen = try ChosenFile(choice, resolveParent: false)"
+      }
+    ],
+    "rule": "Cloud eviction captures the whole chosen batch before contacting the provider",
+    "tests": "CloudFoldersTests/evictionRechecks"
+  },
+  {
+    "file": "Strata/Model/CloudStatus.swift",
+    "find": "        return uploaded == true ? .downloaded : .local",
+    "replace": "        return .downloaded",
+    "rule": "Cloud eviction never treats missing upload metadata as a completed upload",
+    "tests": "CloudFoldersTests/missingUploadMetadata"
+  },
+  {
+    "file": "Strata/Model/CloudStatus.swift",
+    "find": "            guard url.isFileURL, status == .cloudOnly || status == .providerOnly else { throw POSIXError(.EINVAL) }",
+    "replace": "            guard status == .cloudOnly || status == .providerOnly else { throw POSIXError(.EINVAL) }",
+    "rule": "Cloud downloads never interpret a remote URL as a local file",
+    "tests": "CloudFoldersTests/remoteURLsCannot"
   }
 ]

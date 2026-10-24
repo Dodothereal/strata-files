@@ -112,7 +112,8 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 
 | Action | Code | Tests |
 |---|---|---|
-| Remove Download | `CloudActions.removable`, `removeDownload` (the system's evict injected) | `DeleteScopeTests/removeDownloadFreesOnlyWhatsAlsoInTheCloud`, `removeDownloadAsksToFreeExactlyTheItemsChosen` |
+| Remove Download | `CloudActions.removable`, `removeDownload` (the system's evict injected); capture the batch before requests, verify ownership and current upload state | `DeleteScopeTests/removeDownloadFreesOnlyWhatsAlsoInTheCloud`, `removeDownloadAsksToFreeExactlyTheItemsChosen`; `CloudFoldersTests/evictionRechecksUploadStateAndTheWholeChosenBatch`, `missingUploadMetadataNeverOffersEviction` |
+| Download Now | `CloudActions.Download`: capture the item and parent before dispatch, refuse links and replacements; coordinate File Provider file reads on a worker | `CloudFoldersTests/aDownloadKeepsItsChosenFileAcrossDelayedWork`, `downloadsRefuseLinksLocalItemsAndRedirectedParents`, `coordinatedDownloadReadsOnlyTheChosenRegularFile` |
 
 ## The `strata` command, Strata's own data
 
@@ -231,7 +232,7 @@ belong to.
 | `Dock/DockSearch :: restartDock` (`killall Dock`: the Dock relaunches, no files) | `DockSearchTests/*` for what's changed in its list |
 | `Index/IndexStore :: remove`, `unlink` (an in-memory tree, not files) | `PathQueryTests/*` |
 | `Model/ArchiveCache :: finish`, `touch` | `CacheRemovalTests/aNewCopyReplacesOnlyOlderCopiesOfTheSameArchive`, `pruningTakesOnlyStaleCopies` |
-| `Model/CloudStatus :: removeDownload` | `DeleteScopeTests/removeDownloadAsksToFreeExactlyTheItemsChosen`, `removeDownloadFreesOnlyWhatsAlsoInTheCloud` |
+| `Model/CloudStatus :: removeDownload` | `DeleteScopeTests/removeDownloadAsksToFreeExactlyTheItemsChosen`, `removeDownloadFreesOnlyWhatsAlsoInTheCloud`; `CloudFoldersTests/evictionRechecksUploadStateAndTheWholeChosenBatch` |
 | `Model/CreatedFolders :: makeMissing` | `CreatedFolderOwnershipTests/recreationRecordsOnlyFoldersItMakesAndKeepsTryingWhenRequested`, `redoUpdatesOwnershipForLiveAndSavedHistory`, `crossDiskUndoFinishesBeforeRemovingItsCreatedFolders` |
 | `Model/FileInfoEditing :: setComment`, `setLocked`, `setAccess` | `MetadataEditTests/aCommentChangesOnlyTheComment`, `lockingTouchesOnlyThatItem`, `permissionsChangeOnlyThatAccessOnThatItem` |
 | `Model/FileOps :: rename`, `moveAll`, `moveItem`, `newFolder`, `newFile`, `trash`, `trashItems`, `removeEmptyFolders`, `registerMoveUndo` | `InlineRenameTests/*`, `RenameTests/*`, `NewFileTests/*`, `TrashUndoTests/*`, `AcrossDisksTests/*` |

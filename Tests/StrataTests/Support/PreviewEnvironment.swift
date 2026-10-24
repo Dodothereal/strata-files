@@ -13,7 +13,8 @@ final class PreviewEnvironment {
 
     init(_ tree: TestTree, reader: DirectoryReader? = nil, windows: BrowserWindows = .headless,
          makeThumbnails: ((CopyProviders, ContainerStore) -> FileThumbnails)? = nil,
-         providers: [any CopyProvider]? = nil) throws {
+         providers: [any CopyProvider]? = nil,
+         cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] }) throws {
         _ = NSApplication.shared
         defaults = try #require(UserDefaults(suiteName: domain))
         preferences = Prefs(defaults: defaults, domainName: domain, notifications: NotificationCenter())
@@ -33,7 +34,7 @@ final class PreviewEnvironment {
         services = BrowserServices.configured(transfers: transfers, visits: Frecency(preferences: defaults), windows: windows,
                                               remote: remote, containers: containers, containerStore: containerStore,
                                               clipboard: Clipboard(pasteboard: pasteboard), directories: reader,
-                                              thumbnails: makeThumbnails?(copies, containerStore))
+                                              thumbnails: makeThumbnails?(copies, containerStore), cloudFolders: cloudFolders)
     }
 
     isolated deinit {

@@ -56,7 +56,7 @@ struct DeleteScopeTests {
         #expect(removable == [tree.url("a.txt"), tree.url("folder")])
         // Exactly those are asked for, in order, going on past one that fails.
         var asked: [URL] = []
-        let failures = CloudActions.removeDownload(removable + [tree.url("ab.txt")]) { url in
+        let failures = CloudActions.removeDownload(removable + [tree.url("ab.txt")], status: status) { url in
             asked.append(url)
             if url == tree.url("a.txt") { throw CocoaError(.fileWriteUnknown) }
         }
