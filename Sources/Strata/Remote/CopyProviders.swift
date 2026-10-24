@@ -5,6 +5,7 @@ import Foundation
 nonisolated protocol CopyProvider: Sendable {
     func contains(_ url: URL) -> Bool
     func isPlaceholder(_ url: URL) -> Bool
+    func previewFolder(_ folder: URL) async throws
     func refresh(_ folder: URL) async
     func invalidate(_ folder: URL) async
     func reveal(_ url: URL) async -> Bool
@@ -16,9 +17,14 @@ nonisolated protocol CopyProvider: Sendable {
     func sourceName(_ url: URL) -> String?
 }
 
+extension CopyProvider {
+    func previewFolder(_ folder: URL) async throws { await refresh(folder) }
+}
+
 /// Routes each URL to its owner. The order is stable: explicit reads finish one provider before starting the next,
 /// and the first owner of a path handles it exactly once. Independent environments can supply their own providers.
 nonisolated struct CopyProviders: Sendable {
+    static let previewEntryLimit = 50_000
     static let live = CopyProviders(servers: .shared, containers: .shared)
     private let providers: [any CopyProvider]
     let remoteCopies: RemoteCopyStore
@@ -67,6 +73,7 @@ nonisolated struct CopyProviders: Sendable {
     func stageForClipboard(_ urls: [URL]) -> [URL] {
         LazyCopies.stageForClipboard(urls, copies: self, root: clipboardRoot)
     }
+    func previewFolder(_ folder: URL) async throws { try await provider(for: folder)?.previewFolder(folder) }
     func refresh(_ folder: URL) async { await provider(for: folder)?.refresh(folder) }
     func invalidate(_ folder: URL) async { await provider(for: folder)?.invalidate(folder) }
     func reveal(_ url: URL) async -> Bool { await provider(for: url)?.reveal(url) ?? false }
@@ -113,6 +120,7 @@ nonisolated struct ServerCopyProvider: CopyProvider {
     let files: RemoteFiles
     func contains(_ url: URL) -> Bool { files.copies.contains(url) }
     func isPlaceholder(_ url: URL) -> Bool { files.copies.isPlaceholder(url) }
+    func previewFolder(_ folder: URL) async throws { try await files.previewFolder(folder) }
     func refresh(_ folder: URL) async { await files.refresh(folder) }
     func invalidate(_ folder: URL) async { await files.invalidate(folder) }
     func reveal(_ url: URL) async -> Bool { await files.reveal(url) }
@@ -128,6 +136,7 @@ private nonisolated struct ContainerCopyProvider: CopyProvider {
     let files: ContainerFiles
     func contains(_ url: URL) -> Bool { files.copies.contains(url) }
     func isPlaceholder(_ url: URL) -> Bool { files.copies.isPlaceholder(url) }
+    func previewFolder(_ folder: URL) async throws { try await files.previewFolder(folder) }
     func refresh(_ folder: URL) async { await files.refresh(folder) }
     func invalidate(_ folder: URL) async { await files.invalidate(folder) }
     func reveal(_ url: URL) async -> Bool { await files.reveal(url) }

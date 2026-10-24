@@ -453,11 +453,13 @@ nonisolated enum TransferEngine {
     }
 
     /// File promises and clipboard staging use the same creation receipts as queued transfers.
-    static func copyForExport(_ source: URL, to destination: URL) throws {
-        let copied = copy(source, to: destination, clone: true, control: TransferControl(), progress: TransferProgress())
+    @discardableResult
+    static func copyForExport(_ source: URL, to destination: URL, control: TransferControl = TransferControl()) throws -> [String: FileIdentity] {
+        let copied = copy(source, to: destination, clone: true, control: control, progress: TransferProgress())
         do {
             guard copied.fatal == nil, copied.errors.isEmpty, !copied.cancelled else { throw CocoaError(.fileWriteUnknown) }
             try ContainerCopies.finishCopyingOut(destination, owned: copied.created)
+            return copied.created
         } catch {
             removeIfPresent(destination, in: destination, created: copied.created)
             throw error

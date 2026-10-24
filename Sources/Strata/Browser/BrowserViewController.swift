@@ -858,14 +858,7 @@ final class BrowserViewController: NSViewController {
             return
         }
         if selectedEntries.count == 1, let entry = selectedEntries.first {
-            if !entry.isDirectory, services.copies.isPlaceholder(entry.url) {
-                openQuickLook { [weak self] in
-                    guard let self else { return }
-                    services.previews.show(entry, from: self)
-                }
-            } else {
-                services.previews.show(entry, from: self)
-            }
+            services.previews.show(entry, from: self)
         } else if let panel = QLPreviewPanel.shared() {
             openQuickLook { [weak self] in
                 guard let self else { return }

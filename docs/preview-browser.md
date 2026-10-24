@@ -144,3 +144,41 @@ appearance. GUI checks must not manipulate the installed Strata or change the us
   and 44 Python regressions, all 22 catalogs (1,435 strings), both source audits and the whitespace check pass.
   Review fixes keep archive-limit notices visible during metadata loading, count invalid directory records against
   the entry budget, refuse host-cache measurements for providers, and prevent closed measurement owners restarting.
+
+- Provider previews implemented and reviewed. Native server and container folders have a metadata-only listing
+  path that does not schedule eager downloads. Container content listings require shell metadata; unavailable
+  metadata does not fall back to streaming the whole folder as an archive. Existing engine/stack roots retain
+  their metadata-only refresh. Listing requests coalesce within their owner, reject more than 50,000 entries before
+  applying placeholders, pin the cache folder identity, and drain before that copy is removed.
+- Selecting a provider file automatically fetches only that regular file, with a known size at most 32 MiB.
+  Folders and links never take that path; larger files offer explicit Open. Cancel, selection changes, navigation
+  and pane closure invalidate the request. A fetched archive starts its independent archive listing, and a fresh
+  fetched file receives a current command identity. Notifications match the owning provider and exact source path.
+- Explicit Copy may prepare the chosen folder, then uses the transfer engine to create a private clipboard export.
+  It verifies recursive placeholder absence before publication, keeps creation receipts for cleanup, respects a
+  newer clipboard choice and retains published exports beyond panel closure. Paste and Move copies staging files;
+  conflict handling, History and Undo remain with the owning queue. No preview command changes the remote source.
+- Review fixes keep an explicit file command attached to an already pending automatic read without discarding its
+  target, suppress notification adoption during that command, and clean unpublished exports when a pane closes or
+  its clipboard changes. Provider failures stay in the native themed footer. No new color exceptions were added.
+- Focused provider verification: the initial 20 new provider tests and broader 39-test selection pass. These cover real
+  native provider metadata paths, held cancellation/disconnects, source isolation, oversized listings, exact Copy,
+  export receipt cleanup, clipboard changes, normal Paste/Undo, fetched archives and every view in both panes.
+- Final review also disables Open for unsupported provider file links, while retaining folder-link navigation and
+  normal local-link behavior. A plain command-availability regression covers all three cases.
+- The finished Debug suite passes 988 tests in 117 suites. The full Release and Debug Address Sanitizer runs pass
+  987 tests in 117 suites before the final pure link-action availability change; that change has its own passing
+  sanitizer regression. The two clipboard-export tests also pass under the sanitizer with Redo assertions, returning
+  their own copies from Trash to their temporary trees before cleanup.
+- One initial Debug run failed the existing archive extraction/History test. Its original assertion omitted the
+  extraction error; the assertion now includes that diagnostic. The failure did not reproduce in 20 independent
+  focused attempts or the subsequent complete Debug run. Its cause remains unconfirmed; no assertion was weakened
+  and no production extraction change was made on that evidence.
+- All eight provider mutations are caught, bringing the staged feature verification to 51 caught mutations. All
+  22 catalogs contain 1,436 complete strings. The 44 Python regressions, destructive-action audit (122 functions),
+  theme audit (61 reviewed exceptions) and whitespace check pass. The Debug app bundle contains 22 unique
+  localizations, its license notice and both helpers; signature verification and real bundled archive listing and
+  exact-member reading pass without changing the source archive. The app was not launched.
+- Final optimized regressions pass all 15 tests in four suites, including preview commands, provider link
+  availability, both archive/provider clipboard Paste/Undo/Redo cases and archive History extraction. Production
+  sources stayed frozen throughout this final run. All six implementation stages are complete.

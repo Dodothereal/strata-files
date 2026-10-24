@@ -9,7 +9,7 @@ import UniformTypeIdentifiers
         case member(ArchiveNode, path: [String])
     }
 
-    let source: Source
+    private(set) var source: Source
     weak var parent: PreviewItem?
     var children: [PreviewItem]?
 
@@ -58,6 +58,11 @@ import UniformTypeIdentifiers
             let type: UTType = isDirectory ? .folder : UTType(filenameExtension: (name as NSString).pathExtension) ?? .data
             return type.localizedDescription ?? name
         }
+    }
+
+    func fetched(_ entry: FileEntry) {
+        guard case .file(let old) = source, old.url.path.utf8.elementsEqual(entry.url.path.utf8) else { return }
+        source = .file(entry)
     }
 
     func archiveChildren() -> [PreviewItem]? {

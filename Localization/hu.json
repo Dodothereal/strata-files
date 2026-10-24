@@ -1111,6 +1111,7 @@
     "Open Selection": "Kijelölés megnyitása",
     "Open selection": "Kijelölés megnyitása",
     "Open the project folder in your terminal": "A projekt mappájának megnyitása a terminálban",
+    "Open this file to download it. It’s too large for an automatic preview.": "A fájl letöltéséhez nyissa meg. Túl nagy az automatikus előnézethez.",
     "Open With": "Megnyitás ezzel",
     "Open “%@” to search it": "A kereséshez nyissa meg: „%@”",
     "Open “Reveal in Finder” in Strata": "A „Megjelenítés a Finderben” a Stratában nyíljon meg",

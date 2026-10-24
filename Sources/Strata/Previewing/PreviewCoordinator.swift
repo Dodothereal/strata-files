@@ -37,7 +37,7 @@ import Quartz
     func show(_ entry: FileEntry, from browser: BrowserViewController, present: Bool = true) {
         let created = content == nil
         if content == nil {
-            let session = PreviewSession(reader: directories)
+            let session = PreviewSession(reader: directories, isPlaceholder: { [copies] in copies.isPlaceholder($0) })
             session.archiveAccess.requestPassword = { [weak self] name in
                 guard let prompt = self?.passwordPrompt else { return nil }
                 return await prompt.request(name, in: self?.panel)
@@ -84,6 +84,10 @@ import Quartz
         guard let browser = owner, browser.navigationRevision == ownerRevision,
               let content, content.canPerform(action, target: target), target.matches(content.session) else { return }
         switch action {
+        case .copy where target.entry.map({ copies.contains($0.url) }) == true:
+            performProvider(action, target: target, browser: browser, content: content)
+        case .open where target.entry.map({ copies.contains($0.url) && !$0.isFolder }) == true:
+            performProvider(action, target: target, browser: browser, content: content)
         case .copy where target.entry == nil:
             let clipboardChange = clipboard.pasteboard.changeCount
             content.copyArchiveMember(target) { [weak self, weak content, weak browser] lease in
@@ -120,6 +124,21 @@ import Quartz
             guard let entry = target.entry else { return }
             close()
             browser.delegate?.browser(browser, reveal: entry.url)
+        }
+    }
+
+    private func performProvider(_ action: PreviewAction, target: PreviewCommandTarget, browser: BrowserViewController,
+                                 content: PreviewBrowserController) {
+        let clipboardChange = clipboard.pasteboard.changeCount
+        content.providerContent.perform(action, target: target, session: content.session) { [weak self, weak content, weak browser] entry, lease in
+            guard let self, let content, let browser, owner === browser, self.content === content,
+                  browser.navigationRevision == ownerRevision, target.isActive(in: content.session) else { return }
+            if action == .copy {
+                guard clipboard.pasteboard.changeCount == clipboardChange, let lease else { return }
+                lease.keepForClipboard()
+                clipboard.write([lease.url], cut: false)
+            } else { openFile(entry.url) }
+            content.session.fetched(entry)
         }
     }
 

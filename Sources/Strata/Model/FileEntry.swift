@@ -158,7 +158,7 @@ nonisolated enum DirectoryLoader {
     static func loadPreview(_ directory: URL, showHidden: Bool, applications: ApplicationsFolders,
                             copies: CopyProviders, limit: Int) async throws -> [FileEntry] {
         try Task.checkCancellation()
-        if copies.contains(directory) { await copies.refresh(directory) }
+        if copies.contains(directory) { try await copies.previewFolder(directory) }
         try Task.checkCancellation()
         return try previewEntries(directory, showHidden: showHidden, applications: applications, limit: limit)
     }

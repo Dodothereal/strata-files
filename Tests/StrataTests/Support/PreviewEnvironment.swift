@@ -12,7 +12,8 @@ final class PreviewEnvironment {
     let services: BrowserServices
 
     init(_ tree: TestTree, reader: DirectoryReader? = nil, windows: BrowserWindows = .headless,
-         makeThumbnails: ((CopyProviders, ContainerStore) -> FileThumbnails)? = nil) throws {
+         makeThumbnails: ((CopyProviders, ContainerStore) -> FileThumbnails)? = nil,
+         providers: [any CopyProvider]? = nil) throws {
         _ = NSApplication.shared
         defaults = try #require(UserDefaults(suiteName: domain))
         preferences = Prefs(defaults: defaults, domainName: domain, notifications: NotificationCenter())
@@ -24,7 +25,9 @@ final class PreviewEnvironment {
         let remote = RemoteServices(preferences: preferences, credentials: credentials,
                                     copyRoot: tree.url("environment/servers"), notifications: NotificationCenter())
         let containers = ContainerFiles(copies: ContainerCopyStore(root: tree.url("environment/containers")))
-        let copies = CopyProviders(servers: remote.files, containers: containers, clipboardRoot: tree.url("environment/clipboard"))
+        let copies = providers.map { CopyProviders($0, remoteCopies: remote.copies, containerCopies: containers.copies,
+                                                  clipboardRoot: tree.url("environment/clipboard")) }
+            ?? CopyProviders(servers: remote.files, containers: containers, clipboardRoot: tree.url("environment/clipboard"))
         let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies)
         let containerStore = ContainerStore()
         services = BrowserServices.configured(transfers: transfers, visits: Frecency(preferences: defaults), windows: windows,

@@ -37,14 +37,15 @@ actor ContainerFiles {
     private let now: @Sendable () -> Date
     private let removeCopy: @Sendable (URL) async -> Void
     private var removals: [String: Task<Void, Never>] = [:]
+    private let readPreviewListing: @Sendable (ContainerSource, String) async throws -> ContainerListingResult
     private let readListing: @Sendable (ContainerSource, String) async throws -> ContainerListingResult
     private let readFile: @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void
     private let readTree: @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void
 
     init(copies: ContainerCopyStore = ContainerCopies.store, now: @escaping @Sendable () -> Date = { Date() },
-         readListing: @escaping @Sendable (ContainerSource, String) async throws -> ContainerListingResult = {
-        try await ContainerFiles.loadListing($0, path: $1)
-    }, readFile: @escaping @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void = { source, path, url, stop in
+         readListing: (@Sendable (ContainerSource, String) async throws -> ContainerListingResult)? = nil,
+         readPreviewListing: (@Sendable (ContainerSource, String) async throws -> ContainerListingResult)? = nil,
+         readFile: @escaping @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void = { source, path, url, stop in
         try await blocking { try CopyWriter.fetchFile(source.engine, id: source.id, containerPath: path, to: url, stop: stop) }
     }, readTree: @escaping @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void = { source, path, url, stop in
         try await blocking { try CopyWriter.writeTree(source.engine, id: source.id, containerPath: path, into: url, stop: stop) }
@@ -54,11 +55,13 @@ actor ContainerFiles {
         self.removeCopy = removeCopy ?? { url in
             _ = try? await blocking { copies.remove(url) }
         }
-        self.readListing = readListing
+        self.readListing = readListing ?? { try await ContainerFiles.loadListing($0, path: $1) }
+        self.readPreviewListing = readPreviewListing ?? readListing ?? { try await ContainerFiles.loadPreviewListing($0, path: $1) }
         self.readFile = readFile
         self.readTree = readTree
     }
 
+    private var previews = CopyFetches()
     private var listings = CopyListings()
     private(set) var fetches = CopyFetches()
     /// Placeholders' permissions in the container, from their listing (a secret only its owner may read isn't fetched
@@ -221,10 +224,14 @@ actor ContainerFiles {
         let fetching = fetches.tasks(under: path)
         background.forEach { $0.cancel() }
         fetching.forEach { $0.cancel() }
+        let previewing = previews.tasks(under: path)
+        previewing.forEach { $0.cancel() }
         let listing = listings.tasks(under: path)
         for task in background { await task.value }
         for task in fetching { _ = try? await task.value }
         for task in listing { _ = await task.value }
+        for task in previewing { _ = try? await task.value }
+        previews.forget(under: path)
         fetches.forget(under: path)
         listings.forget(under: path)
         modes = modes.filter { !inside($0.key) }
@@ -470,9 +477,14 @@ nonisolated enum CopyWriter {
     /// items no longer there removed. Names the copy's disk can't tell apart from an earlier one are left out. A link
     /// leading to a folder gets that folder made (empty, inside `top`) so it shows and opens as one. Returns
     /// placeholders to fetch right away.
-    static func apply(_ entries: [ListedEntry], contents: [String: Data], to folder: URL, containerPath: String, top: URL? = nil) throws -> [URL] {
+    static func apply(_ entries: [ListedEntry], contents: [String: Data], to folder: URL, containerPath: String, top: URL? = nil,
+                      expected: FileIdentity? = nil) throws -> [URL] {
         let fd = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw CocoaError(.fileReadNoPermission) }
+        if let expected {
+            var opened = stat()
+            guard fstat(fd, &opened) == 0, FileIdentity.from(opened) == expected else { close(fd); throw POSIXError(.ESTALE) }
+        }
         defer {
             // Writing in it changed its date; the container's comes back.
             restoreTimes(fd)
@@ -997,4 +1009,48 @@ nonisolated enum CopyWriter {
             unlinkat(fd, name, 0)
         }
     }
+}
+
+extension ContainerFiles {
+    func previewFolder(_ folder: URL) async throws {
+        try Task.checkCancellation()
+        let real = folder.resolvingSymlinksInPath().standardizedFileURL
+        // Engine and stack roots contain only container metadata; their normal refresh never fetches file contents.
+        if copies.engineFolder(real) != nil || copies.isStack(real) { await refresh(real); try Task.checkCancellation(); return }
+        guard let (source, top) = copies.copy(containing: real), let path = ContainerCopies.containerPath(of: real, top: top),
+              !closing.contains(top.standardizedFileURL.path) else { throw CancellationError() }
+        let chosen = try ChosenFile(real)
+        let request = previews.request(real.path) {
+            Task {
+                let listing = try await self.readPreviewListing(source, path)
+                try Task.checkCancellation()
+                guard !self.closing.contains(top.standardizedFileURL.path),
+                      self.copies.copy(containing: real)?.source.id == source.id else { throw CancellationError() }
+                guard listing.entries.count <= CopyProviders.previewEntryLimit else { throw CocoaError(.fileReadTooLarge) }
+                let entries = listing.entries
+                let stopped = StopFlag()
+                try await withTaskCancellationHandler {
+                    try await blocking {
+                        guard !stopped.isSet else { throw CancellationError() }
+                        try chosen.withParent { _, _, _ in }
+                        _ = try CopyWriter.apply(entries, contents: [:], to: real, containerPath: path, top: top, expected: chosen.identity)
+                    }
+                    try Task.checkCancellation()
+                } onCancel: { stopped.set() }
+                if self.modes.count > 200_000 { self.modes.removeAll() }
+                for entry in entries where entry.kind == .file && ContainerCopies.isSafeName(entry.name) {
+                    self.modes[real.appendingPathComponent(entry.name).path] = entry.mode
+                }
+            }
+        }
+        defer { previews.finish(request) }
+        try await withTaskCancellationHandler {
+            try await request.task.value
+            try Task.checkCancellation()
+        } onCancel: {
+            Task { await self.cancelPreview(request) }
+        }
+    }
+
+    private func cancelPreview(_ request: CopyFetches.Request) { previews.cancel(request) }
 }

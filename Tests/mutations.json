@@ -4620,5 +4620,69 @@
     "replace": "guard true else",
     "rule": "Space preview sizes: a cancelled walk keeps running and reports a finished size",
     "tests": "PreviewMeasurementTests"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "FileIdentity.from(opened) == expected",
+    "replace": "true",
+    "rule": "Space preview providers: metadata refuses a replaced cache folder before changing anything",
+    "tests": "PreviewProviderListingTests/aReplacedCacheFolderIsRefusedBeforeAnyMetadataIsChanged"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "guard entries.count <= CopyProviders.previewEntryLimit else",
+    "replace": "guard true else",
+    "rule": "Space preview providers: oversized server metadata refuses before placeholder creation",
+    "tests": "PreviewProviderListingTests/anOversizedServerListingRefusesBeforeChangingItsCache"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "CopyWriter.apply(entries, contents: [:], to: real, containerPath: path, top: top, expected: chosen.identity)",
+    "replace": "CopyWriter.apply(entries, contents: listing.contents, to: real, containerPath: path, top: top, expected: chosen.identity)",
+    "rule": "Space preview providers: listing container contents never materializes eager files",
+    "tests": "PreviewProviderListingTests/containerPreviewUsesTheInjectedMetadataReaderWithoutItsEagerContentsOrFileReaders"
+  },
+  {
+    "file": "Strata/Previewing/PreviewProviderContent.swift",
+    "find": "$0 >= 0 && $0 <= limit",
+    "replace": "$0 >= 0",
+    "rule": "Space preview providers: automatic selection refuses files over its byte budget",
+    "tests": "PreviewProviderContentTests/automaticReadBudgetAcceptsItsBoundaryAndNeverFetchesFoldersOrLinks|PreviewProviderContentTests/automaticReadsRefuseLargeFilesButAnExplicitOpenFetchesOnlyThatFile"
+  },
+  {
+    "file": "Strata/Previewing/PreviewProviderContent.swift",
+    "rule": "Space preview providers: Cancel rejects a late success even in the same session",
+    "tests": "PreviewProviderContentTests/cancellingAReadRejectsItsLateSuccessInTheSameSession",
+    "edits": [
+      {
+        "find": "guard let self, let session, !Task.isCancelled, request == id, !session.isClosed,\n                  session.generation == generation, session.selected === item else { return }",
+        "replace": "guard let self, let session, !session.isClosed,\n                  session.generation == generation, session.selected === item else { return }"
+      },
+      {
+        "find": "try await copies.fetch([entry.url])\n                try Task.checkCancellation()",
+        "replace": "try await copies.fetch([entry.url])"
+      }
+    ]
+  },
+  {
+    "file": "Strata/Previewing/PreviewCoordinator.swift",
+    "find": "guard clipboard.pasteboard.changeCount == clipboardChange, let lease else",
+    "replace": "guard let lease else",
+    "rule": "Space preview providers: a delayed Copy cannot replace a newer clipboard",
+    "tests": "PreviewProviderContentTests/aLateCopyCannotOverwriteANewerClipboardOrOutliveItsPane"
+  },
+  {
+    "file": "Strata/Previewing/PreviewProviderContent.swift",
+    "find": "try await copies.prepareForCopying([entry.url])",
+    "replace": "try await copies.prepareForCopying([entry.url.deletingLastPathComponent()])",
+    "rule": "Space preview providers: explicit Copy prepares only the chosen item and never its siblings",
+    "tests": "PreviewProviderContentTests/copyingAChosenProviderFolderProducesAnOwnedExportAndNormalPasteUndo"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "find": "lease.receipts[key] = (identity, directory)",
+    "replace": "if !key.contains(\"/\") { lease.receipts[key] = (identity, directory) }",
+    "rule": "Space preview providers: export cleanup keeps receipts for every created descendant",
+    "tests": "PreviewProviderContentTests/providerExportReceiptsRemoveOnlyTheirCreatedFilesAndCancellationLeavesNoPartialExport"
   }
 ]

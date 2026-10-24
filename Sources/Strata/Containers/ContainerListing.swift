@@ -224,3 +224,12 @@ extension ContainerFiles {
         }
     }
 }
+
+extension ContainerFiles {
+    /// A stopped container needs a recursive archive stream to list a folder. Space never requests that stream.
+    nonisolated static func loadPreviewListing(_ source: ContainerSource, path: String) async throws -> ContainerListingResult {
+        let entries = try await blocking { try ContainerListing.viaShell(source.engine, id: source.id, path: path) }
+        guard entries.count <= CopyProviders.previewEntryLimit else { throw CocoaError(.fileReadTooLarge) }
+        return ContainerListingResult(entries: entries, contents: [:], freshFor: freshFor)
+    }
+}

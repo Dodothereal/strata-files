@@ -212,6 +212,9 @@ struct PreviewArchiveTests {
         #expect(TestTree.listing(of: tree.url("destination")) == ["keep"])
         #expect(tree.text("destination/keep") == "destination/keep" && tree.text("sibling") == "sibling")
         #expect(TestTree.listing(of: copied) == ["note.txt"])
+        undo.redo()
+        await FileOps.undoWork?.value
+        #expect(tree.text("destination/a/note.txt") == "chosen")
         withExtendedLifetime(environment) {}
     }
 }

@@ -1011,6 +1011,7 @@
     "Open Selection": "選択項目を開く",
     "Open selection": "選択項目を開く",
     "Open the project folder in your terminal": "プロジェクトフォルダをターミナルで開く",
+    "Open this file to download it. It’s too large for an automatic preview.": "このファイルを開くとダウンロードできます。自動プレビューには大きすぎます。",
     "Open With": "このアプリケーションで開く",
     "Open “%@” to search it": "検索するには「%@」を開いてください",
     "Open “Reveal in Finder” in Strata": "「Finderに表示」をStrataで開く",

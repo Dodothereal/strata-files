@@ -153,6 +153,28 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
         }
     }
 
+    /// Provider exports share the same private root and identity-owned lifetime as archive members.
+    @concurrent static func exporting(_ source: URL, in base: URL) async throws -> PreviewArchiveLease {
+        try Task.checkCancellation()
+        let lease = try PreviewArchiveLease(base: base, name: source.lastPathComponent)
+        let control = TransferControl()
+        let created = try await withTaskCancellationHandler {
+            try await blocking { try TransferEngine.copyForExport(source, to: lease.url, control: control) }
+        } onCancel: { control.cancel() }
+        let prefix = lease.root.standardizedFileURL.path + "/"
+        for (path, identity) in created {
+            let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
+            guard normalized.hasPrefix(prefix) else { throw POSIXError(.EINVAL) }
+            let key = String(normalized.dropFirst(prefix.count))
+            var info = stat()
+            let directory = lstat(path, &info) == 0 && FileIdentity.from(info) == identity && info.st_mode & S_IFMT == S_IFDIR
+            lease.receipts[key] = (identity, directory)
+        }
+        try Task.checkCancellation()
+        try lease.verify()
+        return lease
+    }
+
     /// Create missing application-owned staging ancestors without following a replaced component.
     private static func prepare(_ base: URL) throws -> Int32 {
         guard base.isFileURL, base.path.hasPrefix("/") else { throw POSIXError(.EINVAL) }

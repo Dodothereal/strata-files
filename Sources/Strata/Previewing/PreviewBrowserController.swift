@@ -5,6 +5,7 @@ import StrataPreviews
 @MainActor final class PreviewBrowserController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
     let session: PreviewSession
     let outline = PreviewOutlineView()
+    let providerContent: PreviewProviderContent
     let measurement: PreviewMeasurement
     let archiveContent: PreviewArchiveContent
     let fileView: PreviewFileView
@@ -41,6 +42,7 @@ import StrataPreviews
         self.preferences = preferences
         self.thumbnails = thumbnails
         self.copies = copies
+        providerContent = PreviewProviderContent(copies: copies)
         measurement = PreviewMeasurement(copies: copies)
         archiveContent = PreviewArchiveContent(copies: copies)
         fileView = PreviewFileView(thumbnails: thumbnails, copies: copies)
@@ -60,6 +62,9 @@ import StrataPreviews
         session.onChange = { [weak self] in self?.changed($0) }
         archiveContent.onChange = { [weak self] in self?.updateFooter() }
         measurement.onChange = { [weak self] in self?.updateFooter() }
+        providerContent.onChange = { [weak self] in self?.updateFooter() }
+        providerContent.onReady = { [weak self] entry in self?.session.fetched(entry) }
+        NotificationCenter.default.addObserver(self, selector: #selector(providerFilesFetched(_:)), name: .containerFilesFetched, object: nil)
         archiveContent.onReady = { [weak self] item, lease in
             guard let self, session.selected === item, !session.isClosed else { return }
             fileView.show(item, root: session.root, materialized: lease.url)
@@ -68,7 +73,19 @@ import StrataPreviews
 
     required init?(coder: NSCoder) { fatalError() }
 
-    isolated deinit { preferences.notifications.removeObserver(self) }
+    isolated deinit {
+        preferences.notifications.removeObserver(self)
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func providerFilesFetched(_ notification: Notification) {
+        guard !session.isClosed, !providerContent.isLoading, providerContent.commandTask == nil,
+              let urls = notification.object as? [URL],
+              let entry = session.selected?.entry ?? (session.selected == nil ? session.root : nil),
+              copies.contains(entry.url), urls.contains(where: { $0.path.utf8.elementsEqual(entry.url.path.utf8) }),
+              !copies.isPlaceholder(entry.url), let fresh = FileEntry(url: entry.url) else { return }
+        session.fetched(fresh)
+    }
 
     override func loadView() {
         view = NSView()
@@ -210,13 +227,23 @@ import StrataPreviews
             fileView.show(nil, root: session.root)
             archiveContent.select(in: session)
             measurement.update(session)
+            providerContent.select(session)
             view.window?.title = session.root?.displayName ?? ""
         case .children:
             refreshTree()
+        case .content:
+            fileView.show(session.selected, root: session.root)
+            commandTarget = nil
+            if let item = session.selected {
+                let row = outline.row(forItem: item)
+                if row >= 0 { outline.reloadData(forRowIndexes: [row], columnIndexes: IndexSet(integersIn: 0..<outline.numberOfColumns)) }
+            }
+            grid?.updateAppearance()
         case .selection:
             fileView.show(session.selected, root: session.root)
             archiveContent.select(in: session)
             measurement.update(session)
+            providerContent.select(session)
             if mode == .icons { grid?.select(session.selected) }
         }
         if commandTarget?.isActive(in: session) != true {
@@ -290,13 +317,15 @@ import StrataPreviews
         }
         fileView.setSizeSummary(measurement.text)
         measureButton.isHidden = !measurement.canCalculate
-        cancelButton.isHidden = !session.isLoading && !archiveContent.isLoading && !measurement.isLoading
-        if session.isLoading || archiveContent.isLoading || measurement.isLoading {
+        cancelButton.isHidden = !session.isLoading && !archiveContent.isLoading && !measurement.isLoading && !providerContent.isLoading
+        if session.isLoading || archiveContent.isLoading || measurement.isLoading || providerContent.isLoading {
             progress.startAnimation(nil)
             status.stringValue = measurement.isLoading ? String(localized: "Calculating…") : String(localized: "Loading…")
         } else {
             progress.stopAnimation(nil)
-            if let error = measurement.error ?? archiveContent.error ?? session.error {
+            if let error = providerContent.error {
+                status.stringValue = error
+            } else if let error = measurement.error ?? archiveContent.error ?? session.error {
                 status.stringValue = error.localizedDescription
             } else if let size = measurement.text, session.selected != nil || session.archive == nil {
                 status.stringValue = size + (session.archive?.note.map { " · " + $0 } ?? "")
@@ -316,6 +345,7 @@ import StrataPreviews
 
     @objc func cancelPreviewLoading(_ sender: Any?) {
         archiveContent.cancel()
+        providerContent.cancel()
         measurement.cancel()
         session.cancelLoading()
         updateFooter()
@@ -325,6 +355,7 @@ import StrataPreviews
         session.close()
         fileView.close()
         archiveContent.close()
+        providerContent.close()
         measurement.close()
         grid?.close()
         gridScope = nil

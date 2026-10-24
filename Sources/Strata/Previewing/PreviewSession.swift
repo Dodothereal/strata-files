@@ -9,9 +9,11 @@ import StrataPreviews
         case root
         case children(PreviewItem)
         case selection
+        case content
     }
 
     private let reader: DirectoryReader
+    private let isPlaceholder: @Sendable (URL) -> Bool
     private let archiveReader: ArchiveReader?
     let archiveAccess: PreviewArchiveAccess
     private let rootRead: DirectoryReadSession
@@ -39,8 +41,10 @@ import StrataPreviews
         return root.isFolder || (!root.isDirectory && ArchiveKind(fileName: root.name) != nil)
     }
 
-    init(reader: DirectoryReader, archiveReader: ArchiveReader? = nil, archiveAccess: PreviewArchiveAccess = PreviewArchiveAccess()) {
+    init(reader: DirectoryReader, archiveReader: ArchiveReader? = nil, archiveAccess: PreviewArchiveAccess = PreviewArchiveAccess(),
+         isPlaceholder: @escaping @Sendable (URL) -> Bool = { _ in false }) {
         let reader = reader.forPreview
+        self.isPlaceholder = isPlaceholder
         self.reader = reader
         self.archiveReader = archiveReader
         self.archiveAccess = archiveAccess
@@ -67,7 +71,7 @@ import StrataPreviews
                 catch { self.error = error }
                 onChange?(.root)
             }
-        } else if !entry.isDirectory, !entry.isSymlink, let kind = ArchiveKind(fileName: entry.name) {
+        } else if !entry.isDirectory, !entry.isSymlink, !isPlaceholder(entry.url), let kind = ArchiveKind(fileName: entry.name) {
             isLoading = true
             let read = archiveReader
             let access = archiveAccess
@@ -113,6 +117,16 @@ import StrataPreviews
         rootIdentity = nil
         error = nil
         isLoading = false
+    }
+
+    func fetched(_ entry: FileEntry) {
+        guard !isClosed else { return }
+        if selected == nil, root?.url.path.utf8.elementsEqual(entry.url.path.utf8) == true {
+            show(entry, showHidden: showHidden, applications: applications)
+        } else if let selected, selected.entry?.url.path.utf8.elementsEqual(entry.url.path.utf8) == true {
+            selected.fetched(entry)
+            onChange?(.content)
+        }
     }
 
     func cancelLoading() {

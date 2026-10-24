@@ -95,7 +95,7 @@ struct TransferContextTests {
         let extract = ArchiveJob(.extract(archive, into: tree.url("out")), undo: nil)
         env.queue.add(extract)
         await extract.finished()
-        #expect(extract.state == .finished)
+        #expect(extract.state == .finished, "\(extract.errorMessage ?? "No extraction error reported")")
         #expect(env.history.entries.count == 2)
         let ids = Set(env.history.entries.map(\.id))
         #expect(Set(OperationLog(storage: env.storage).entries.map(\.id)) == ids)
