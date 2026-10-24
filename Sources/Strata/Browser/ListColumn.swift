@@ -1,7 +1,7 @@
 import AppKit
 
 enum ListColumn: String, CaseIterable {
-    case modified, created, added, size, kind
+    case modified, created, added, size, kind, tags
     case fileExtension = "extension"
     case dimensions, width, height, duration
 
@@ -12,6 +12,7 @@ enum ListColumn: String, CaseIterable {
         case .added: String(localized: "Date Added")
         case .size: String(localized: "Size")
         case .kind: String(localized: "Kind")
+        case .tags: String(localized: "Tags")
         case .fileExtension: String(localized: "Extension", comment: "List column: the file name extension")
         case .dimensions: String(localized: "Dimensions", comment: "List column: image or movie dimensions in pixels")
         case .width: String(localized: "Width", comment: "List column: image or movie width in pixels")
@@ -21,11 +22,11 @@ enum ListColumn: String, CaseIterable {
     }
 
     var isMedia: Bool { [.dimensions, .width, .height, .duration].contains(self) }
-    var ascending: Bool { [.kind, .fileExtension].contains(self) }
+    var ascending: Bool { [.kind, .fileExtension, .tags].contains(self) }
     var preferredWidth: CGFloat {
         switch self {
         case .modified, .created, .added: 170
-        case .kind: 150
+        case .kind, .tags: 150
         case .dimensions: 130
         default: 84
         }
@@ -33,13 +34,13 @@ enum ListColumn: String, CaseIterable {
     var minWidth: CGFloat {
         switch self {
         case .modified, .created, .added: 110
-        case .kind, .dimensions: 80
+        case .kind, .tags, .dimensions: 80
         default: 60
         }
     }
     var alignment: NSTextAlignment { [.size, .width, .height, .duration].contains(self) ? .right : .left }
 
-    static let initiallyHidden: Set<String> = ["created", "added", "extension", "dimensions", "width", "height", "duration"]
+    static let initiallyHidden: Set<String> = ["tags", "created", "added", "extension", "dimensions", "width", "height", "duration"]
 
     /// New optional columns start hidden even for someone who already chose their columns in an older release.
     static func hidden(stored: [String]?, known: [String]?) -> Set<String> {

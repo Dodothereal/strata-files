@@ -1,7 +1,7 @@
 import Foundation
 
 enum SortKey: String, CaseIterable {
-    case name, modified, created, added, size, kind, dimensions, width, height, duration
+    case name, modified, created, added, size, kind, tags, dimensions, width, height, duration
     case fileExtension = "extension"
 
     var isMedia: Bool {
@@ -25,10 +25,12 @@ final class BrowserOrdering {
         let childFolderSizes: (URL) -> [String: Int64]
         let media: (FileEntry) -> MediaInfo?
         let requestMedia: (FileEntry) -> Void
+        var tags: (URL) -> [String] = { _ in [] }
     }
 
     @MainActor private final class Pass {
         var sizes: [String: Int64] = [:]
+        var tags: [URL: [String]] = [:]
         var parents: Set<URL> = []
         var changedParents: [FileNode] = []
     }
@@ -84,6 +86,12 @@ final class BrowserOrdering {
             pass.sizes[key] = bytes
             return bytes
         }
+        func tags(_ entry: FileEntry) -> [String] {
+            if let cached = pass.tags[entry.url] { return cached }
+            let names = tagNames(entry)
+            pass.tags[entry.url] = names
+            return names
+        }
         func visit(_ level: inout [FileNode]) {
             if choice.key.isMedia { for node in level { metadata.requestMedia(node.entry) } }
             if choice.key == .size {
@@ -94,7 +102,7 @@ final class BrowserOrdering {
                     }
                 }
             }
-            level.sort { ordered($0.entry, $1.entry, choice: choice, foldersFirst: foldersFirst, size: size) }
+            level.sort { ordered($0.entry, $1.entry, choice: choice, foldersFirst: foldersFirst, size: size, tags: tags) }
             for node in level {
                 if var children = node.children {
                     let previous = children
@@ -111,13 +119,13 @@ final class BrowserOrdering {
     /// Columns use the same policy for their own entries. No disk reads are needed by this comparator: metadata
     /// sources return only cached values, and a later metadata completion applies the updated order.
     func ordered(_ a: FileEntry, _ b: FileEntry) -> Bool {
-        ordered(a, b, choice: choice ?? folderChoice, foldersFirst: foldersFirst()) { entry in
+        ordered(a, b, choice: choice ?? folderChoice, foldersFirst: foldersFirst(), size: { entry in
             entry.isDirectory ? metadata.folderSize(entry.url) ?? -1 : entry.size ?? 0
-        }
+        }, tags: tagNames)
     }
 
     private func ordered(_ a: FileEntry, _ b: FileEntry, choice: Choice, foldersFirst: Bool,
-                         size: (FileEntry) -> Int64) -> Bool {
+                         size: (FileEntry) -> Int64, tags: (FileEntry) -> [String]) -> Bool {
         if foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
         let result: ComparisonResult
         switch choice.key {
@@ -127,6 +135,7 @@ final class BrowserOrdering {
         case .added: result = compare(a.added ?? .distantPast, b.added ?? .distantPast)
         case .size: result = compare(size(a), size(b))
         case .kind: result = a.kind.localizedStandardCompare(b.kind)
+        case .tags: result = compareTags(tags(a), tags(b))
         case .fileExtension: result = a.url.pathExtension.localizedStandardCompare(b.url.pathExtension)
         case .dimensions: result = compare(metadata.media(a)?.pixels ?? -1, metadata.media(b)?.pixels ?? -1)
         case .width: result = compare(metadata.media(a)?.width ?? -1, metadata.media(b)?.width ?? -1)
@@ -138,6 +147,18 @@ final class BrowserOrdering {
             return names == .orderedSame ? a.url.path < b.url.path : names == .orderedAscending
         }
         return choice.ascending ? result == .orderedAscending : result == .orderedDescending
+    }
+
+    private func tagNames(_ entry: FileEntry) -> [String] {
+        metadata.tags(entry.url).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    private func compareTags(_ a: [String], _ b: [String]) -> ComparisonResult {
+        for (left, right) in zip(a, b) {
+            let result = left.localizedStandardCompare(right)
+            if result != .orderedSame { return result }
+        }
+        return compare(a.count, b.count)
     }
 
     private func compare<T: Comparable>(_ a: T, _ b: T) -> ComparisonResult {

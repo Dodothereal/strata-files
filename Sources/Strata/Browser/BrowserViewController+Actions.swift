@@ -223,7 +223,7 @@ extension BrowserViewController {
 
     /// View ▸ Sort By: the same orders as the list's column headers, for every view. Tags follow `sortMenuKeys`.
     static let sortMenuKeys: [(key: NSUserInterfaceItemIdentifier, ascending: Bool)] = [
-        (.name, true), (.kind, true), (.modified, false), (.created, false), (.size, false),
+        (.name, true), (.kind, true), (.modified, false), (.created, false), (.size, false), (.tags, true),
     ]
 
     @objc func sortBy(_ sender: NSMenuItem) {
@@ -442,6 +442,7 @@ extension BrowserViewController {
     /// Tags changed (here or in another window) or were read: redraw what's shown.
     @objc func tagsChanged() {
         reloadVisibleCells()
+        if ordering.choice?.key == .tags { scheduleResort() }
     }
 
     /// Every view mode's visible items configured again (icons, badges, thumbnails).

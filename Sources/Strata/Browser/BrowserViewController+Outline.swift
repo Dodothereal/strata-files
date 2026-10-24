@@ -92,6 +92,8 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             }
             cell.configure(text ?? (info == nil && mediaInfo.canRead(entry) ? "…" : "—"),
                            alignment: column.headerCell.alignment, dimmed: dimmed)
+        case .tags: cell.configure(TagStore.shared.tags(for: entry.url).map(\.name).joined(separator: ", "),
+                                   alignment: .left, dimmed: dimmed)
         case .size: cell.configure(sizeText(node), alignment: .right, dimmed: dimmed)
         case .location: cell.configure(Format.tildePath(entry.url.deletingLastPathComponent()), alignment: .left, dimmed: dimmed)
         default: cell.configure(entry.kind, alignment: .left, dimmed: dimmed)
@@ -139,6 +141,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     }
 
     func applySort(_ key: SortKey, ascending direction: Bool, remember: Bool = true) {
+        if key == .tags, isShowingResults { TagStore.shared.load(nodes.flatMap { $0.children ?? [$0] }.map(\.entry)) }
         ordering.choose(.init(key: key, ascending: direction), remember: remember)
         syncSortDescriptor()
         if remember { preferences.sortColumn = key.rawValue; preferences.sortAscending = direction }

@@ -60,6 +60,8 @@ struct BrowserOrderingTests {
         var sizes: [String: Int64] = [:]
         var batches: [URL: [String: Int64]] = [:]
         var media: [URL: MediaInfo] = [:]
+        var tags: [URL: [String]] = [:]
+        var tagReads: [URL] = []
         var sizeReads: [URL] = []
         var batchReads: [URL] = []
         var requests: [URL] = []
@@ -67,7 +69,8 @@ struct BrowserOrderingTests {
             BrowserOrdering(choice: .init(key: key, ascending: ascending), foldersFirst: { self.foldersFirst },
                 metadata: .init(folderSize: { self.sizeReads.append($0); return self.sizes[$0.standardizedFileURL.path] },
                     childFolderSizes: { self.batchReads.append($0); return self.batches[$0] ?? [:] },
-                    media: { self.media[$0.url] }, requestMedia: { self.requests.append($0.url) }))
+                    media: { self.media[$0.url] }, requestMedia: { self.requests.append($0.url) },
+                    tags: { self.tagReads.append($0); return self.tags[$0] ?? [] }))
         }
     }
 
@@ -82,6 +85,9 @@ struct BrowserOrderingTests {
                           created: key == .created ? date : nil, added: key == .added ? date : nil,
                           kind: key == .kind ? "Type 10" : "Document")
             switch key {
+            case .tags:
+                metadata.tags[a.url] = ["Tag 2"]
+                metadata.tags[b.url] = ["Tag 10"]
             case .dimensions:
                 metadata.media[a.url] = MediaInfo(width: 25, height: 6)
                 metadata.media[b.url] = MediaInfo(width: 9, height: 100)
@@ -107,6 +113,26 @@ struct BrowserOrderingTests {
             #expect(metadata.requests.isEmpty == !key.isMedia)
             #expect(metadata.sizeReads.isEmpty && metadata.batchReads.isEmpty)
         }
+    }
+
+
+    @Test func tagSortUsesEveryNameAndCachesEachItemOncePerPass() {
+        let metadata = Metadata(), order = metadata.ordering(.tags)
+        let a = entry("z"), b = entry("a"), c = entry("b"), empty = entry("empty")
+        metadata.tags[a.url] = ["Zebra", "Alpha"]
+        metadata.tags[b.url] = ["Beta", "Alpha"]
+        metadata.tags[c.url] = ["Alpha"]
+        var nodes = [a, b, c, empty].map { FileNode(entry: $0) }
+        order.sort(&nodes)
+        #expect(nodes.map(\.url) == [empty.url, c.url, b.url, a.url])
+        #expect(Set(metadata.tagReads) == Set(nodes.map(\.url)))
+        #expect(metadata.tagReads.count == nodes.count)
+        metadata.tags[a.url] = ["Aardvark"]
+        metadata.tagReads = []
+        order.sort(&nodes)
+        #expect(nodes.map(\.url) == [empty.url, a.url, c.url, b.url])
+        #expect(metadata.tagReads.count == nodes.count)
+        #expect(metadata.requests.isEmpty && metadata.sizeReads.isEmpty && metadata.batchReads.isEmpty)
     }
 
     @Test func equalValuesKeepAscendingNameAndPathTiesInBothDirections() {

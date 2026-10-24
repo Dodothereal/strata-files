@@ -456,6 +456,14 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         if let preview, let entry = preview.entry { preview.show(entry) }
     }
 
+    /// Metadata can arrive after a deeper column was sorted. Keep each column's selection and defer native editing.
+    func resortLoadedColumns() {
+        for pane in panes.dropFirst() {
+            let sorted = pane.entries.sorted(by: sortComparator)
+            if sorted.map(\.url) != pane.entries.map(\.url) { pane.setEntries(sorted, matches: [:]) }
+        }
+    }
+
     /// Row height and text size changed (Settings ▸ Appearance).
     func restyle() {
         for pane in panes {

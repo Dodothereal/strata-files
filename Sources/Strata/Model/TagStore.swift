@@ -65,6 +65,9 @@ final class TagStore {
     /// reading on the main thread (slow on network disks).
     private var loading: Set<String> = []
 
+    /// Cached tags only: sorting must never read extended attributes inside its comparator.
+    func cachedTags(for url: URL) -> [FinderTag] { cache[url.standardizedFileURL.path] ?? [] }
+
     /// `url`'s tags, in the order they were added.
     func tags(for url: URL) -> [FinderTag] {
         let path = url.standardizedFileURL.path
@@ -77,15 +80,17 @@ final class TagStore {
     }
 
     /// Reads the tags of a folder's items off the main thread, then shows them (cells redraw on `.tagsChanged`).
-    func load(_ entries: [FileEntry], in folder: URL) {
-        let key = folder.standardizedFileURL.path
-        loading.insert(key)
+    @discardableResult
+    func load(_ entries: [FileEntry], in folder: URL? = nil) -> Task<Void, Never> {
+        let folders = folder.map { Set([$0.standardizedFileURL.path]) }
+            ?? Set(entries.map { $0.url.deletingLastPathComponent().standardizedFileURL.path })
+        loading.formUnion(folders)
         let paths = entries.map { $0.url.standardizedFileURL.path }
         let labels = NSWorkspace.shared.fileLabels
-        Task {
+        return Task {
             let tags = await Self.readAll(paths, labels: labels)
             for (path, list) in tags { cache[path] = list }
-            loading.remove(key)
+            loading.subtract(folders)
             NotificationCenter.default.post(name: .tagsLoaded, object: nil)
         }
     }

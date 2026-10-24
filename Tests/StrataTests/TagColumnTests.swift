@@ -1,0 +1,132 @@
+import AppKit
+import Testing
+@testable import Strata
+
+struct TagColumnTests {
+    private func write(_ names: [String], to url: URL) throws {
+        let data = try PropertyListSerialization.data(fromPropertyList: names.map { "\($0)\n0" }, format: .binary, options: 0)
+        let result = data.withUnsafeBytes {
+            setxattr(url.path, "com.apple.metadata:_kMDItemUserTags", $0.baseAddress, data.count, 0, XATTR_NOFOLLOW)
+        }
+        #expect(result == 0)
+    }
+
+    @Test func nativeColumnShowsCustomNamesAndKeepsItsSavedVisibility() async throws {
+        let tree = try TestTree("a", "b")
+        let state = try TestTree()
+        let environment = try PreviewEnvironment(state)
+        let browser = BrowserViewController(services: environment.services)
+        browser.view.frame = NSRect(x: 0, y: 0, width: 1100, height: 600)
+        browser.setMode(.list, remember: false)
+        let column = try #require(browser.outlineView.tableColumn(withIdentifier: .tags))
+        #expect(column.isHidden && column.title == ListColumn.tags.title)
+        let menuItem = try #require(browser.outlineView.headerView?.menu?.items.first { ($0.representedObject as? String) == "tags" })
+        let action = try #require(menuItem.action)
+        browser.perform(action, with: menuItem)
+        #expect(!column.isHidden && menuItem.state == .on)
+        try write(["Client work", "Urgent"], to: tree.url("a"))
+        let entries = try ["a", "b"].map { try #require(FileEntry(url: tree.url($0))) }
+        browser.showResults(entries, total: entries.count)
+        await TagStore.shared.load(entries).value
+        let node = try #require(browser.node(for: tree.url("a")))
+        let cell = try #require(browser.outlineView(browser.outlineView, viewFor: column, item: node) as? TextCellView)
+        #expect(cell.textField?.stringValue == "Client work, Urgent")
+        #expect(column.sortDescriptorPrototype?.key == "tags" && column.sortDescriptorPrototype?.ascending == true)
+        let reopened = BrowserViewController(services: environment.services)
+        reopened.loadViewIfNeeded()
+        #expect(reopened.outlineView.tableColumn(withIdentifier: .tags)?.isHidden == false)
+        #expect(ListColumn.hidden(stored: [], known: ["kind", "size"]).contains("tags"))
+        browser.stopBackgroundWork(); reopened.stopBackgroundWork()
+        #expect(tree.snapshot() == ["a", "b"])
+        withExtendedLifetime((environment, state)) {}
+    }
+
+
+    @Test func tagSortIncludesExpandedChildrenAndRetainsTheirSelection() async throws {
+        let tree = try TestTree("group/a", "group/z")
+        let state = try TestTree()
+        let environment = try PreviewEnvironment(state)
+        try write(["Zulu"], to: tree.url("group/a"))
+        try write(["Alpha"], to: tree.url("group/z"))
+        let entries = try ["group/a", "group/z"].map { try #require(FileEntry(url: tree.url($0))) }
+        await TagStore.shared.load(entries).value
+        let browser = BrowserViewController(services: environment.services)
+        browser.loadViewIfNeeded()
+        browser.showGroups([(title: "Group", detail: "", entries: entries)], summary: "Group")
+        browser.select([entries[0].url], scroll: false)
+        browser.applySort(.tags, ascending: true)
+        let group = try #require(browser.allRows.first)
+        #expect(group.children?.map(\.entry.name) == ["z", "a"])
+        #expect(browser.selectedURLs == [entries[0].url])
+        browser.stopBackgroundWork()
+        #expect(tree.snapshot() == ["group/", "group/a", "group/z"])
+        withExtendedLifetime((environment, state)) {}
+    }
+
+
+    @Test func deeperColumnsApplyLateTagOrderWithoutChangingSelection() async throws {
+        let tree = try TestTree("folder/a", "folder/z")
+        let state = try TestTree()
+        let environment = try PreviewEnvironment(state)
+        let columns = ColumnBrowserViewController(preferences: environment.preferences, copies: environment.services.copies,
+                                                   clipboard: environment.services.clipboard)
+        columns.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 600)
+        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false))
+        columns.select([tree.url("folder")])
+        let strip = try #require((columns.view as? NSScrollView)?.documentView)
+        let pane = try #require(strip.subviews.compactMap { $0 as? ColumnPane }.last)
+        await pane.directoryReads.task?.value
+        columns.select([tree.url("folder/a")])
+        try write(["Zulu"], to: tree.url("folder/a"))
+        try write(["Alpha"], to: tree.url("folder/z"))
+        await TagStore.shared.load(pane.entries).value
+        let order = BrowserOrdering(choice: .init(key: .tags, ascending: true), foldersFirst: { true },
+            metadata: .init(folderSize: { _ in nil }, childFolderSizes: { _ in [:] }, media: { _ in nil },
+                            requestMedia: { _ in }, tags: { TagStore.shared.cachedTags(for: $0).map(\.name) }))
+        columns.sortComparator = order.ordered
+        columns.resortLoadedColumns()
+        #expect(pane.entries.map(\.name) == ["z", "a"])
+        #expect(columns.selectedEntries.map(\.name) == ["a"])
+        columns.stopBackgroundWork()
+        #expect(tree.snapshot() == ["folder/", "folder/a", "folder/z"])
+        withExtendedLifetime((environment, state)) {}
+    }
+
+    @Test func lateTagsPreserveSelectionAndWaitForInlineRename() async throws {
+        let tree = try TestTree("a", "z")
+        let state = try TestTree()
+        let environment = try PreviewEnvironment(state)
+        let browser = BrowserViewController(services: environment.services)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 600),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentViewController = browser
+        defer { window.contentViewController = nil; browser.stopBackgroundWork() }
+        browser.setMode(.list, remember: false)
+        let entries = try ["a", "z"].map { try #require(FileEntry(url: tree.url($0))) }
+        browser.showResults(entries, total: entries.count)
+        browser.ordering.choose(.init(key: .tags, ascending: true))
+        browser.select([tree.url("a")], scroll: false)
+        browser.renameSelection(nil)
+        let field = try #require(browser.renamingField)
+        let editor = try #require(field.currentEditor())
+        try write(["Zulu"], to: tree.url("a"))
+        try write(["Alpha"], to: tree.url("z"))
+        TagStore.shared.invalidate(tree.root)
+        await TagStore.shared.load(entries).value
+        browser.tagsChanged()
+        #expect(browser.resortWork != nil)
+        browser.resortWork?.cancel()
+        browser.resortAfterMetadata()
+        #expect(field.currentEditor() === editor)
+        #expect(browser.topLevelEntries.map(\.name) == ["a", "z"])
+        window.makeFirstResponder(browser.outlineView)
+        #expect(browser.topLevelEntries.map(\.name) == ["z", "a"])
+        #expect(browser.selectedURLs.map(\.lastPathComponent) == ["a"])
+        browser.applySort(.tags, ascending: false)
+        #expect(environment.preferences.sortColumn == "tags")
+        #expect(browser.topLevelEntries.map(\.name) == ["a", "z"])
+        #expect(!window.isVisible)
+        #expect(tree.snapshot() == ["a", "z"])
+        withExtendedLifetime((environment, state)) {}
+    }
+}

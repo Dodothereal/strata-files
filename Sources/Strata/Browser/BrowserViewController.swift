@@ -28,6 +28,7 @@ extension NSUserInterfaceItemIdentifier {
     static let fileExtension = Self("extension")
     static let size = Self("size")
     static let kind = Self("kind")
+    static let tags = Self("tags")
     static let location = Self("location")
     static let nameCell = Self("NameCell")
     static let textCell = Self("TextCell")
@@ -71,7 +72,7 @@ final class BrowserViewController: NSViewController {
         let spacing = outlineView.intercellSpacing.width * CGFloat(visible.count + 1)
         var excess = visible.reduce(0) { $0 + $1.width } + spacing - scrollView.contentView.bounds.width
         guard excess > 1 else { return }
-        for id in [NSUserInterfaceItemIdentifier.kind, .location, .fileExtension, .dimensions, .width, .height, .duration, .added, .created, .modified, .name] {
+        for id in [NSUserInterfaceItemIdentifier.kind, .tags, .location, .fileExtension, .dimensions, .width, .height, .duration, .added, .created, .modified, .name] {
             guard excess > 0, let column = outlineView.tableColumn(withIdentifier: id), !column.isHidden else { continue }
             let give = min(excess, column.width - column.minWidth)
             guard give > 0 else { continue }
@@ -123,7 +124,8 @@ final class BrowserViewController: NSViewController {
         metadata: .init(folderSize: { [weak self] in self?.folderSize($0)?.bytes },
                         childFolderSizes: { FileIndex.shared.childFolderSizes($0).mapValues(\.bytes) },
                         media: { [weak self] in self?.mediaInfo.cached($0) },
-                        requestMedia: { [weak self] in self?.mediaInfo.request($0) }))
+                        requestMedia: { [weak self] in self?.mediaInfo.request($0) },
+                        tags: { TagStore.shared.cachedTags(for: $0).map(\.name) }))
     var updatingSortDescriptor = false
     /// Selected once the folder shows them (after the reload a change brings).
     var pendingSelection: [URL]?
@@ -728,6 +730,7 @@ final class BrowserViewController: NSViewController {
     func resortAfterMetadata() {
         guard ordering.choice != nil, filter.isEmpty else { return }
         if isRenamingInPlace { deferredMetadataOrder = true; return }
+        if ordering.choice?.key == .tags { columnController?.resortLoadedColumns() }
         let selection = selectedURLs
         var sorted = nodes
         let changedParents = ordering.sort(&sorted)

@@ -4853,5 +4853,12 @@
     "replace": "!owner.isClosed,",
     "rule": "Navigation gestures ignore a cancelled attempt after the window loses key status",
     "tests": "PointerNavigationTests/cancelledAndStaleSwipes"
+  },
+  {
+    "file": "Strata/Browser/BrowserOrdering.swift",
+    "find": "case .tags: result = compareTags(tags(a), tags(b))",
+    "replace": "case .tags: result = .orderedSame",
+    "rule": "Tags sort uses the tag names instead of the file names",
+    "tests": "BrowserOrderingTests/everySortKeyUsesItsValueAndDirection|TagColumnTests"
   }
 ]
