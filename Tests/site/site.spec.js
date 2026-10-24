@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+test.use({ colorScheme: 'dark' });
 
 async function prepare(page) {
   const errors = [];
@@ -28,6 +29,7 @@ for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     const errors = await prepare(page);
     await page.goto('/');
+    expect(await page.locator('header.nav').evaluate(el => el.getBoundingClientRect().top)).toBe(0);
     await expect(page.locator('[data-download]').first()).toHaveAttribute('href', /\/v0\.6\.4\/Strata\.dmg$/);
     await expect.poll(() => page.evaluate(() => window.analyticsLoaded)).toBe(true);
     const viewTabs = page.getByRole('tablist', { name: 'Views', exact: true }).getByRole('tab');
@@ -54,9 +56,11 @@ for (const width of [320, 390, 768, 1440]) {
       })));
     expect(targets.filter(target => target.height < 43.99 || target.width < 43.99)).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(await page.locator('header.nav').evaluate(el => el.getBoundingClientRect().top)).toBe(0);
     expect(await page.evaluate(() => window.policyViolations)).toEqual([]);
     expect(errors).toEqual([]);
-    await expect(page.locator('#themes')).toContainText('Make yourself at home');
+    await expect(page.locator('#themes .lede')).toHaveText(
+      'Follow the system or choose Light or Dark. Keep native Mac colors, or pick one of fourteen themes.');
     for (const image of await page.locator('img:visible').all()) {
       await image.scrollIntoViewIfNeeded();
       await expect.poll(() => image.evaluate(el => el.complete && el.naturalWidth > 0)).toBe(true);

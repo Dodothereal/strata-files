@@ -3,12 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="/appearance.js"></script>
   <title>Strata Files: the fast Finder alternative for Mac</title>
   <meta name="description" content="Strata is a free, native file manager for macOS. Find any file in milliseconds, see live folder sizes and a disk usage map, and work in dual pane or from ⌘K.">
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
   <link rel="canonical" href="https://stratafiles.app/">
   <meta name="theme-color" content="#07060d">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="light dark">
   <meta name="apple-mobile-web-app-title" content="Strata">
 
   <meta property="og:type" content="website">
@@ -110,7 +111,7 @@
         "iCloud Drive and cloud folder status",
         "Regular-expression, exact-case and Spotlight metadata search",
         "Custom keyboard shortcuts and appearance settings",
-        "Eight preset color themes with light and dark palettes, native macOS controls and optional window tint",
+        "Fourteen color themes with light and dark palettes, native macOS controls and optional window tint",
         "Multiple languages",
         "Signed automatic updates",
         "Command palette (⌘K)",
@@ -437,12 +438,16 @@
 
     <!-- Color themes -->
     <section class="section section--tight" id="themes">
-      <div class="wrap">
-        <header class="section__head reveal">
+      <div class="wrap split">
+        <header class="split__text themes__text reveal">
           <p class="eyebrow">Color themes</p>
           <h2>Your colors. Still your Mac.</h2>
-          <p class="lede">Make yourself at home. Choose from eight beautiful color themes, from soft pastels to rich dark tones, with the familiar feel of your Mac.</p>
+          <p class="lede">Follow the system or choose Light or Dark. Keep native Mac colors, or pick one of fourteen themes.</p>
         </header>
+        <figure class="split__media themes__shot reveal">
+          <img class="shot" src="screenshots/strata-appearance-theme-selection.webp" srcset="screenshots/strata-appearance-theme-selection-480.webp 480w, screenshots/strata-appearance-theme-selection-800.webp 800w, screenshots/strata-appearance-theme-selection-1100.webp 1100w, screenshots/strata-appearance-theme-selection.webp 1264w" sizes="(max-width: 640px) calc(100vw - 32px), (max-width: 980px) 632px, (max-width: 1228px) 52vw, 632px" width="1264" height="1440" loading="lazy" decoding="async"
+               alt="Appearance settings showing all fourteen color themes and System">
+        </figure>
       </div>
     </section>
 
@@ -452,8 +457,34 @@
         <header class="section__head reveal">
           <p class="eyebrow">For developers</p>
           <h2>It knows your projects.</h2>
-          <p class="lede">Every file shows its git status, and the current branch sits in the path bar. The inspector recognizes Node, Rust, Swift, .NET, Python, Go and more, lists a project’s scripts, and frees the space taken by build folders like <code>node_modules</code> in a click. They go to the Trash, so nothing is lost. Servers too: SFTP servers and S3 buckets open like folders (⌥⌘K), through your own SSH setup, with an S3 key kept in your keychain. Containers too: with Docker Desktop, OrbStack, Colima or Podman running, browse your containers’ files like folders, start and stop them, and open a terminal in one.</p>
+          <p class="lede">Repositories, servers and containers, with tools built into your file manager.</p>
         </header>
+        <div class="cards developer-groups">
+          <article class="card reveal">
+            <h3>Repositories</h3>
+            <ul>
+              <li>See Git status on each file and the current branch in the path bar.</li>
+              <li>Run project scripts for Node, Rust, Swift, .NET, Python, Go and more. Send build folders such as <code>node_modules</code> to the Trash.</li>
+              <li>Preview code, Markdown, HTML, JSON, CSV, SQLite databases and archives.</li>
+            </ul>
+          </article>
+          <article class="card reveal">
+            <h3>Servers</h3>
+            <ul>
+              <li>Connect to SFTP servers and S3 buckets with ⌥⌘K.</li>
+              <li>Use your SSH config, keys and agent. S3 secret keys stay in Keychain.</li>
+              <li>Browse every view, use Quick Look, and copy, move, rename or delete files.</li>
+            </ul>
+          </article>
+          <article class="card reveal">
+            <h3>Containers</h3>
+            <ul>
+              <li>Browse files read-only and copy them out with Docker Desktop, OrbStack, Colima, Podman or Rancher Desktop.</li>
+              <li>Start, stop, restart or pause containers, and open a terminal inside.</li>
+              <li>Manage Compose stacks and inspect images, ports and mounts.</li>
+            </ul>
+          </article>
+        </div>
         <div class="tabs reveal" data-tabs>
           <div class="tabs__list" role="tablist" aria-label="Developer features">
             <button role="tab" id="tab-git" aria-controls="panel-git" aria-selected="true">Git &amp; previews</button>

@@ -6,6 +6,11 @@ Its PNG is shared by the README and the website; the build creates responsive lo
 at 800, 1100, 1400, 2360 and the original 3960 pixels. The homepage preload and image use the same
 responsive candidates so only the appropriate size is downloaded.
 
+The Color Themes section pairs its copy with the approved Appearance settings capture, `docs/screenshots/appearance.png`.
+It shows all fourteen themes plus System in the actual settings window, with its native border, shadow and transparency.
+The portrait image is displayed at up to 632 CSS pixels; lossless WebP delivery preserves palette colors and alpha at
+480, 800, 1100 and the original 1264 pixels. The README shares the primary `appearance.webp` export.
+
 The Quick Look image uses live Strata windows with Acme Studio demo files. Native window captures retain the real
 controls, materials, borders and shadows at their screen positions; the selected Brand Assets folder stays visible
 above the preview. Its PNG master is `docs/screenshots/quicklook.png`. The README uses the matching WebP export;
@@ -116,3 +121,18 @@ Browser checks discover catalogs too. They cover each language at phone and desk
 keyboard access to the picker, privacy/404 navigation, pages without JavaScript, browser-language aliases, remembered
 choices, section anchors and CSP. Python checks verify catalog completeness, schema/visible-answer consistency,
 reciprocal SEO links, sitemap coverage, and adding a language without changing application code.
+
+## Website appearance
+
+The website follows the system's light or dark appearance by default, including live changes. The header's
+appearance picker offers System, Light and Dark in every language. Light and Dark overrides are remembered in
+local storage and shared across pages, languages and open tabs; System clears the override. Blocked storage still
+allows a choice for the current page. This setting is separate from the app's color themes.
+
+`appearance.js` runs before styles paint, applying a saved choice without flashing the opposite appearance.
+CSS `light-dark()` colors follow the system even without JavaScript; the picker stays hidden when it cannot work.
+Older browsers without `light-dark()` retain the original dark palette. The same palette tokens cover the homepage,
+privacy pages, 404 pages, navigation, menus, cards and demos. Existing app screenshots retain their actual colors.
+
+Browser checks cover both appearances in every language at narrow and desktop widths, keyboard access, live system
+changes, persistence, blocked storage, tab synchronization, no-JavaScript fallback and the fixed header.

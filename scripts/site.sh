@@ -35,6 +35,7 @@ shots=(
   "devmode:strata-git-status-code-preview:1400,800"
   "project:strata-project-inspector:1400,800"
   "themes:strata-color-themes:3960,2360,1400,800"
+  "appearance:strata-appearance-theme-selection:1264,800"
   "shortcuts:strata-keyboard-shortcuts:full"
 )
 webp=(-quiet -q 86 -alpha_q 85 -m 6 -sharp_yuv -metadata none)
@@ -47,6 +48,9 @@ for shot in "${shots[@]}"; do
   if [[ "$source" == "themes" ]]; then
     options=(-quiet -lossless -z 9 -exact -metadata none)
     sizes=(800 1100 1400 2360)
+  elif [[ "$source" == "appearance" ]]; then
+    options=(-quiet -lossless -z 9 -exact -metadata icc)
+    sizes=(480 800 1100)
   elif [[ "$source" =~ ^(quicklook|grid|list|columns|gallery|disk-usage|dual)$ ]]; then
     # Two pixels per point at the largest displayed width, keeping full alpha precision and source color profiles.
     options=(-quiet -q 95 -alpha_q 100 -m 6 -sharp_yuv -metadata icc)
@@ -61,7 +65,7 @@ for shot in "${shots[@]}"; do
       cwebp "${options[@]}" -resize "$width" 0 "docs/screenshots/$source.png" -o "$out/screenshots/$name-$width.webp"
     done
   fi
-  if [[ "${1:-}" == "--refresh-readme" && "$source" =~ ^(quicklook|grid|list|columns|gallery|treemap|disk-usage|dual)$ ]]; then
+  if [[ "${1:-}" == "--refresh-readme" && "$source" =~ ^(appearance|quicklook|grid|list|columns|gallery|treemap|disk-usage|dual)$ ]]; then
     cp "$out/screenshots/$name.webp" "docs/screenshots/$source.webp"
   fi
 done

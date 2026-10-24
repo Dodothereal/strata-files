@@ -14,7 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 ORIGIN = 'https://stratafiles.app'
 PAGES = {'home': 'index.html', 'privacy': 'privacy/index.html', '404': '404.html'}
 UI = ['Language', 'Languages', 'This website is also available in {language}.',
-      'Continue in {language}', 'Dismiss', 'Version {version} · {size} · Free', 'Star · {count}']
+      'Continue in {language}', 'Dismiss', 'Version {version} · {size} · Free', 'Star · {count}',
+      'Appearance', 'System', 'Light', 'Dark']
 VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'}
 INLINE = {'a', 'b', 'br', 'code', 'em', 'kbd', 'small', 'span', 'strong', 'time'}
 BLOCK = {'title', 'p', 'h1', 'h2', 'h3', 'h4', 'li', 'summary', 'button', 'figcaption', 'dt', 'dd', 'a', 'span', 'strong', 'small', 'label'}
@@ -227,6 +228,18 @@ def route(locale, page):
     return prefix + {'home': '', 'privacy': 'privacy/', '404': '404.html'}[page]
 
 
+def appearance_picker(locale):
+    t = locale['strings']
+    buttons = ''.join('<button type="button" data-appearance-choice="' + choice.lower() + '" aria-pressed="' +
+                      ('true' if choice == 'System' else 'false') + '">' + html.escape(t[choice]) + '</button>'
+                      for choice in ['System', 'Light', 'Dark'])
+    return ('<details class="appearance-picker" name="website-preferences" hidden><summary aria-label="' +
+            html.escape(t['Appearance'], quote=True) + '"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">'
+            '<circle cx="12" cy="12" r="9" fill="none"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor" stroke="none"/>'
+            '</svg></summary><div class="appearance-picker__options" role="group" aria-label="' +
+            html.escape(t['Appearance'], quote=True) + '">' + buttons + '</div></details>')
+
+
 def language_picker(locale, locales, page):
     t = locale['strings']
     links = ''.join('<a href="' + route(other, page) + '" lang="' + other['code'] + '" hreflang="' + other['code'] + '" data-language="' + other['code'] + '"' + (' aria-current="true"' if other == locale else '') + '>' + html.escape(other['language']) + '</a>' for other in locales)
@@ -270,11 +283,12 @@ def render(source, locale, locales, page):
         source = source.replace('</head>', alternate + '\n</head>')
     manifest_url = ('/' + locale['slug'] if locale['slug'] else '') + '/site.webmanifest'
     source = source.replace('rel="manifest" href="/site.webmanifest"', 'rel="manifest" href="' + manifest_url + '"')
-    picker = language_picker(locale, locales, page)
+    picker = appearance_picker(locale) + language_picker(locale, locales, page).replace(
+        'class="language-picker"', 'class="language-picker" name="website-preferences"', 1)
     if '<div class="nav__actions">' in source:
         source = source.replace('<div class="nav__actions">', '<div class="nav__actions">\n        ' + picker, 1)
     elif '<main class="notfound">' in source:
-        source = source.replace('<main class="notfound">', '<main class="notfound">\n    ' + picker, 1)
+        source = source.replace('<main class="notfound">', '<main class="notfound">\n    <div class="notfound__preferences">' + picker + '</div>', 1)
     else:
         raise ValueError('No language picker placement for ' + page)
     data_path = ('/' + locale['slug'] if locale['slug'] else '') + '/locale-data.js'

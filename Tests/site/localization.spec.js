@@ -22,10 +22,27 @@ async function prepare(page) {
 for (const locale of locales) {
   test(`${locale.code}: translated home, picker, privacy and 404 remain usable`, async ({ page }) => {
     const errors = await prepare(page);
-    for (const width of [320, 1440]) {
+    for (const [width, colorScheme] of [[320, 'light'], [1440, 'light'], [320, 'dark'], [1440, 'dark']]) {
+      await page.emulateMedia({ colorScheme });
       await page.setViewportSize({ width, height: 900 });
       await page.goto(route(locale));
       await expect(page.locator('html')).toHaveAttribute('lang', locale.code);
+      await expect(page.locator('body')).toHaveCSS('background-color', colorScheme === 'light' ? 'rgb(250, 249, 253)' : 'rgb(7, 6, 13)');
+      await page.locator('.appearance-picker summary').click();
+      await expect(page.locator('[data-appearance-choice]')).toHaveText(
+        ['System', 'Light', 'Dark'].map(key => locale.strings[key]));
+      const appearanceBounds = await page.locator('.appearance-picker__options').boundingBox();
+      expect(appearanceBounds.x).toBeGreaterThanOrEqual(0);
+      expect(appearanceBounds.x + appearanceBounds.width).toBeLessThanOrEqual(width);
+      await page.keyboard.press('Escape');
+      const groups = page.locator('.developer-groups article');
+      await expect(groups).toHaveCount(3);
+      for (const [index, heading] of ['Repositories', 'Servers', 'Containers'].entries()) {
+        await expect(groups.nth(index).locator('h3')).toHaveText(locale.strings[heading]);
+        await expect(groups.nth(index).locator('li')).toHaveCount(3);
+      }
+      await expect(page.locator('#themes .lede')).toHaveText(locale.strings[
+        'Follow the system or choose Light or Dark. Keep native Mac colors, or pick one of fourteen themes.']);
       await expect.poll(() => page.evaluate(() => window.strataLocale?.code)).toBe(locale.code);
       await expect(page.locator('[data-version]').first()).toContainText('0.7.1');
       const version = locale.strings['Version {version} · {size} · Free'].split('{size}')[1];
