@@ -94,3 +94,35 @@ appearance. GUI checks must not manipulate the installed Strata or change the us
   20-test native selection pass after adding the command-palette responder guard. All seven grid mutations are
   caught, all 44 Python regressions pass, 22 catalogs remain complete and both source audits pass. The preview
   cannot open the underlying browser's file-command palette while it has focus.
+
+- Selective archive stage implemented and reviewed. A standalone C helper reads a pinned
+  archive descriptor using macOS's libarchive. It has no filesystem, network or subprocess access after entering
+  its sandbox. Passwords arrive through stdin and stay with this preview; they never enter arguments, preferences,
+  logs or the keychain. Encrypted ZIP is supported; unsupported 7z/RAR encryption is reported without repeated prompts.
+- Selected regular files render through the existing file preview. Explicit Copy stages exactly the chosen member
+  or subtree for the owning clipboard and transfer queue; Paste and Move copies temporary sources, and normal Paste
+  supplies conflict handling, History and Undo. Open also keeps its exported file alive beyond the preview. A delayed
+  Copy respects a newer clipboard choice. Small completed exports reuse their content for the preview.
+- Materialization uses private modes, clears inherited root ACLs, preserves archive quarantine and records each
+  created identity before publication. Cleanup never adopts a replacement or removes foreign children. Closing,
+  replacing the source or selection, and Cancel stop work and discard late responses. Copy Path remains the archive
+  member's location, never a private staging path.
+- Limits are explicit: 32 MiB per automatic member preview, 60 MiB of worker output per selection, 128 MiB of preview
+  cache including orphaned files, 50,000 archive headers, 128 path components, 1 GiB of cumulative input reads, and a
+  20-second worker deadline. The isolated helper also has a CPU limit and a sampled 256 MiB resident-memory ceiling;
+  this does not guarantee a per-allocation limit inside the system parser. System libarchive itself is not sanitizer
+  instrumented. Unknown cache files are counted and left alone rather than deleted to reclaim space.
+- Selective extraction deliberately refuses links, special files, duplicate/ambiguous paths and members with a
+  resource fork. Full extraction remains available for those items; selective Copy never silently drops a fork.
+  Only file data and quarantine are copied, with safe new permissions; other archive metadata is not applied.
+- The native password field uses the owning themed window and preserves its input in all 36 palette/appearance
+  combinations. These remain headless native checks, not live compositor verification.
+- Final archive verification: 957 tests in 114 suites pass under Debug Address Sanitizer; the final 33-test
+  sanitizer selection also passes. The broader 117-test preview/provider run passes, and 13 standalone C helper
+  cases pass under Undefined Behavior Sanitizer. All 15 archive mutations are caught. One initially exposed a gap
+  in the test: a second guard still refused a symlink after transient scratch creation. The test now checks the
+  unchosen target directory's timestamps as well as its contents, proving refusal occurs before that creation.
+  The final mutation runner independently builds and passes its unchanged baseline before breaking the guard.
+- All 22 catalogs contain 1,432 complete strings. The 44 Python regressions, destructive-action audit (122 mapped
+  functions), theme audit (61 reviewed exceptions) and whitespace check pass. Temporary verification worktrees are
+  removed. Runtime sanitizer checks do not instrument the system libarchive binary.

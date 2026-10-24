@@ -46,6 +46,10 @@ nonisolated struct CopyProviders: Sendable {
     private func provider(for url: URL) -> (any CopyProvider)? { providers.first { $0.contains(url) } }
 
     func contains(_ url: URL) -> Bool { provider(for: url) != nil }
+    func isClipboardStaging(_ url: URL) -> Bool {
+        let root = clipboardRoot.standardizedFileURL.path, path = url.standardizedFileURL.path
+        return path == root || path.hasPrefix(root + "/")
+    }
     func isPlaceholder(_ url: URL) -> Bool { provider(for: url)?.isPlaceholder(url) ?? false }
     func containsPlaceholder(in urls: [URL]) -> Bool {
         func check(_ url: URL) -> Bool {

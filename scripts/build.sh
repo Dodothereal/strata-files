@@ -26,6 +26,7 @@ if [[ -n "${STRATA_BUILD_NUMBER:-}" && ! "$STRATA_BUILD_NUMBER" =~ ^[0-9]+$ ]]; 
 fi
 swift build -c "$config" --arch arm64 --product Strata
 swift build -c "$config" --arch arm64 --product StrataCLI
+swift build -c "$config" --arch arm64 --product StrataArchiveWorker
 bins="$(swift build -c "$config" --arch arm64 --show-bin-path)"
 
 app=build/Strata.app
@@ -43,6 +44,8 @@ if [[ -n "$sparkle" ]]; then
 fi
 # The command-line tool lives in Helpers: "strata" would clash with "Strata" in MacOS on a case-insensitive disk.
 cp "$bins/StrataCLI" "$app/Contents/Helpers/strata"
+cp "$bins/StrataArchiveWorker" "$app/Contents/Helpers/StrataArchiveWorker"
+cp Resources/ArchivePreviewNotice.txt "$app/Contents/Resources/ArchivePreviewNotice.txt"
 cp Resources/Info.plist "$app/Contents/Info.plist"
 if [[ -n "${STRATA_VERSION:-}" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $STRATA_VERSION" "$app/Contents/Info.plist"
@@ -81,6 +84,7 @@ if [[ -d "$framework" ]]; then
   codesign "${sign[@]}" "$framework" >/dev/null
 fi
 codesign "${sign[@]}" "$app/Contents/Helpers/strata" >/dev/null
+codesign "${sign[@]}" "$app/Contents/Helpers/StrataArchiveWorker" >/dev/null
 codesign "${sign[@]}" "$app" >/dev/null
 if [[ -n "$identity" ]]; then signer="Developer ID"; else signer="ad-hoc"; fi
 echo "Built $app ($config, signed $signer)"

@@ -14,6 +14,7 @@ import Quartz
     private var ownerID: ObjectIdentifier?
     private var ownerRevision = 0
     private var rootKey: String?
+    private let passwordPrompt = PreviewPasswordPrompt()
     private(set) var panel: NSPanel?
     private(set) var content: PreviewBrowserController?
 
@@ -37,6 +38,11 @@ import Quartz
         let created = content == nil
         if content == nil {
             let session = PreviewSession(reader: directories)
+            session.archiveAccess.requestPassword = { [weak self] name in
+                guard let prompt = self?.passwordPrompt else { return nil }
+                return await prompt.request(name, in: self?.panel)
+            }
+            session.archiveAccess.cancelPassword = { [weak self] in self?.passwordPrompt.cancel() }
             let content = PreviewBrowserController(session: session, preferences: preferences, thumbnails: thumbnails, copies: copies)
             let panel = PreviewPanel(contentRect: NSRect(x: 0, y: 0, width: 940, height: 600),
                                      styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
@@ -78,6 +84,23 @@ import Quartz
         guard let browser = owner, browser.navigationRevision == ownerRevision,
               let content, content.canPerform(action, target: target), target.matches(content.session) else { return }
         switch action {
+        case .copy where target.entry == nil:
+            let clipboardChange = clipboard.pasteboard.changeCount
+            content.copyArchiveMember(target) { [weak self, weak content, weak browser] lease in
+                guard let self, let content, let browser, owner === browser,
+                      browser.navigationRevision == ownerRevision, self.content === content,
+                      target.matches(content.session), clipboard.pasteboard.changeCount == clipboardChange else { return }
+                lease.keepForClipboard()
+                clipboard.write([lease.url], cut: false)
+            }
+        case .open where target.entry == nil:
+            content.openArchiveMember(target) { [weak self, weak content, weak browser] lease in
+                guard let self, let content, let browser, owner === browser,
+                      browser.navigationRevision == ownerRevision, self.content === content,
+                      target.matches(content.session) else { return }
+                lease.keepForClipboard()
+                openFile(lease.url)
+            }
         case .copy:
             guard let entry = target.entry else { return }
             clipboard.write([entry.url], cut: false)

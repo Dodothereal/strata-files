@@ -16,6 +16,9 @@ extension ColorThemeTests {
         let coordinator = environment.services.previews
         coordinator.show(try #require(FileEntry(url: tree.url("folder"))), from: browser, present: false)
         let window = try #require(coordinator.panel)
+        let password = PreviewPasswordPrompt.makeAlert("fixture.zip")
+        let passwordField = try #require(password.accessoryView as? NSSecureTextField)
+        passwordField.stringValue = "keep this input"
         let content = try #require(coordinator.content)
         await content.session.task?.value
         window.contentView?.layoutSubtreeIfNeeded()
@@ -39,9 +42,10 @@ extension ColorThemeTests {
         for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
             let appearance = try #require(NSAppearance(named: appearanceName))
             window.appearance = appearance
+            password.window.appearance = appearance
             for highContrast in [false, true] {
                 for palette in ColorTheme.allCases {
-                    ThemeStyle.apply(ColorThemeOptions(palette: palette), windows: [window], highContrast: highContrast)
+                    ThemeStyle.apply(ColorThemeOptions(palette: palette), windows: [window, password.window], highContrast: highContrast)
                     cell.backgroundStyle = .emphasized
                     let labelColor = try #require(cell.textField?.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)
                     #expect(try chromeColorPixel(labelColor, appearance: appearance)
@@ -52,6 +56,8 @@ extension ColorThemeTests {
                         #expect(try chromePixel(controlsBackdrop, at: NSPoint(x: 4, y: 4), appearance: appearance)
                                 == chromeColorPixel(ThemeStyle.surface(.content), appearance: appearance))
                     }
+                    #expect(password.accessoryView === passwordField && passwordField.stringValue == "keep this input")
+                    #expect(passwordField.isBezeled && !password.window.isVisible)
                     #expect(content.controls.search.isBezeled == searchBezel)
                     #expect(content.session.selected === selectedItem && content.outline.selectedRow == 0)
                     #expect(text.textStorage === storage && text.selectedRange() == selectedText)

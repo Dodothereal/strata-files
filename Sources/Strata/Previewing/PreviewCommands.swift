@@ -50,8 +50,8 @@ enum PreviewAction: CaseIterable {
         switch action {
         case .copyPath: return path(copies: copies) != nil
         case .showInStrata: return entry != nil
-        case .copy: return entry.map { !copies.contains($0.url) } ?? false
-        case .open: return entry.map { !copies.isPlaceholder($0.url) } ?? false
+        case .copy: return entry.map { !copies.contains($0.url) } ?? (item != nil)
+        case .open: return entry.map { !copies.isPlaceholder($0.url) } ?? (item?.isDirectory == false)
         }
     }
 

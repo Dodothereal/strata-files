@@ -165,7 +165,8 @@ new test guards its rule: break the rule once, watch the test fail, restore it.
   Sanitizers do not instrument prebuilt system frameworks or prove unexecuted paths safe. Optimized persistence
   tests also use temporary storage; preferences and other dependencies still need explicit test isolation.
   Apple's Undefined Behavior Sanitizer supports C-based languages, not Swift; accepting the compiler flag is not
-  evidence of Swift coverage. Strata currently has no C/C++/Objective-C source targets to instrument with it.
+  evidence of Swift coverage. `CArchivePreview` and the standalone `StrataArchiveWorker` are C targets; exercise
+  their real parser callbacks with Address Sanitizer and Undefined Behavior Sanitizer when changing them.
 - Treat file contents, authenticated saved data, process output and macOS callback values as external input.
   Validate array shapes, offsets, counts, parent/child links and cycles before indexing or walking them. Verify
   CF type IDs before casts, and finite values and representable ranges before numeric conversion. Exercise empty,

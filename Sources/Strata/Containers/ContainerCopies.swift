@@ -454,6 +454,7 @@ nonisolated enum ReadOnlyCopies {
 
     static func contains(_ url: URL, copies: CopyProviders) -> Bool {
         ArchiveCache.contains(url) || ContainerCopies.contains(url) || RemoteCopies.contains(url)
+            || copies.isClipboardStaging(url)
             || copies.contains(url) || copies.remoteCopies.contains(url) || copies.containerCopies.contains(url)
     }
 }

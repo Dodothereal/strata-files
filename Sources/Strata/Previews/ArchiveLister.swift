@@ -59,6 +59,15 @@ nonisolated package struct ArchiveListing: Sendable {
     package let compressed: Int64?
     /// Why the listing is incomplete, if it is.
     package let note: String?
+
+    package init(root: Handoff<ArchiveNode>, files: Int, folders: Int, uncompressed: Int64, compressed: Int64?, note: String?) {
+        self.root = root
+        self.files = files
+        self.folders = folders
+        self.uncompressed = uncompressed
+        self.compressed = compressed
+        self.note = note
+    }
 }
 
 nonisolated package enum ArchiveLister {
@@ -267,12 +276,16 @@ nonisolated package enum ProcessRunner {
 
     package static let outputLimit = 64 << 20
 
-    package static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval) async throws -> Result {
+    /// Optional small stdin and one retained file descriptor are for the archive worker. Secrets stay off argv.
+    /// The file is duplicated to descriptor 3 in the child; the caller retains it until this call returns.
+    package static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval,
+                            input: Data? = nil, file: FileHandle? = nil) async throws -> Result {
+        guard (input?.count ?? 0) <= 8192 else { throw CocoaError(.fileReadTooLarge) }
         let box = ProcessBox()
         let result = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Result, Error>) in
                 DispatchQueue.global(qos: .userInitiated).async {
-                    continuation.resume(with: Swift.Result { try box.run(executable, arguments, timeout: timeout) })
+                    continuation.resume(with: Swift.Result { try box.run(executable, arguments, timeout: timeout, input: input, file: file) })
                 }
             }
         } onCancel: {
@@ -290,12 +303,12 @@ nonisolated package enum ProcessRunner {
         private var timedOut = false
         private var cancelled = false
 
-        func run(_ executable: String, _ arguments: [String], timeout: TimeInterval) throws -> Result {
+        func run(_ executable: String, _ arguments: [String], timeout: TimeInterval, input: Data?, file: FileHandle?) throws -> Result {
             let reader = try lock.withLock {
                 guard !cancelled else { throw CancellationError() }
-                let child = try Self.launch(executable, arguments)
+                let child = try Self.launch(executable, arguments, hasInput: input != nil, file: file)
                 pid = child.pid
-                return FileHandle(fileDescriptor: child.output, closeOnDealloc: true)
+                return child
             }
             let deadline = DispatchWorkItem { [weak self] in
                 guard let self, lock.withLock({ () -> Bool in
@@ -307,9 +320,16 @@ nonisolated package enum ProcessRunner {
             }
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: deadline)
             defer { deadline.cancel() }
+            if let fd = reader.input {
+                let writer = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+                do { try writer.write(contentsOf: input ?? Data()) }
+                catch { terminate() }
+                try? writer.close()
+            }
+            let outputReader = FileHandle(fileDescriptor: reader.output, closeOnDealloc: true)
             var output = Data(), truncated = false
             do {
-                while let chunk = try reader.read(upToCount: 1 << 16), !chunk.isEmpty {
+                while let chunk = try outputReader.read(upToCount: 1 << 16), !chunk.isEmpty {
                     let room = ProcessRunner.outputLimit - output.count
                     output.append(chunk.prefix(room))
                     if chunk.count > room { truncated = true; terminate(); break }
@@ -318,7 +338,7 @@ nonisolated package enum ProcessRunner {
                 truncated = true
                 terminate()
             }
-            try? reader.close()
+            try? outputReader.close()
             var status: Int32 = 0
             while true {
                 let finished = lock.withLock { () -> Bool in
@@ -355,9 +375,9 @@ nonisolated package enum ProcessRunner {
             }
         }
 
-        /// A separate process group lets cancellation stop decompressors too. All other inherited descriptors
-        /// close on exec; stdin and stderr go to /dev/null and only stdout reaches the bounded reader.
-        private static func launch(_ executable: String, _ arguments: [String]) throws -> (pid: pid_t, output: Int32) {
+        /// A separate process group lets cancellation stop decompressors too. Only stdout, optional stdin and
+        /// the supplied archive descriptor are inherited; stderr and unused stdin go to /dev/null.
+        private static func launch(_ executable: String, _ arguments: [String], hasInput: Bool, file: FileHandle?) throws -> (pid: pid_t, output: Int32, input: Int32?) {
             var descriptors = [Int32](repeating: -1, count: 2)
             guard pipe(&descriptors) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             var succeeded = false
@@ -365,8 +385,21 @@ nonisolated package enum ProcessRunner {
                 close(descriptors[1])
                 if !succeeded { close(descriptors[0]) }
             }
-            fcntl(descriptors[0], F_SETFD, FD_CLOEXEC)
-            fcntl(descriptors[1], F_SETFD, FD_CLOEXEC)
+            _ = fcntl(descriptors[0], F_SETFD, FD_CLOEXEC)
+            _ = fcntl(descriptors[1], F_SETFD, FD_CLOEXEC)
+            var incoming = [Int32](repeating: -1, count: 2)
+            if hasInput {
+                guard pipe(&incoming) == 0 else { throw POSIXError(.EIO) }
+                _ = fcntl(incoming[0], F_SETFD, FD_CLOEXEC)
+                _ = fcntl(incoming[1], F_SETFD, FD_CLOEXEC)
+                guard fcntl(incoming[1], F_SETNOSIGPIPE, 1) == 0 else {
+                    close(incoming[0]); close(incoming[1]); throw POSIXError(.EIO)
+                }
+            }
+            defer {
+                if incoming[0] >= 0 { close(incoming[0]) }
+                if !succeeded, incoming[1] >= 0 { close(incoming[1]) }
+            }
             var actions: posix_spawn_file_actions_t?
             var attributes: posix_spawnattr_t?
             func checked(_ code: Int32) throws {
@@ -377,8 +410,16 @@ nonisolated package enum ProcessRunner {
             try checked(posix_spawnattr_init(&attributes))
             defer { posix_spawnattr_destroy(&attributes) }
             try checked(posix_spawn_file_actions_adddup2(&actions, descriptors[1], STDOUT_FILENO))
-            try checked(posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0))
+            if hasInput { try checked(posix_spawn_file_actions_adddup2(&actions, incoming[0], STDIN_FILENO)) }
+            else { try checked(posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0)) }
             try checked(posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0))
+            // Darwin leaves FD_CLOEXEC set for dup2(fd, fd). Always use a distinct source descriptor.
+            let archiveFD = file.map { fcntl($0.fileDescriptor, F_DUPFD_CLOEXEC, 4) }
+            defer { if let archiveFD, archiveFD >= 0 { close(archiveFD) } }
+            if let archiveFD {
+                guard archiveFD >= 0 else { throw POSIXError(.EBADF) }
+                try checked(posix_spawn_file_actions_adddup2(&actions, archiveFD, 3))
+            }
             try checked(posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETPGROUP)))
             try checked(posix_spawnattr_setpgroup(&attributes, 0))
             var child: pid_t = 0
@@ -388,7 +429,7 @@ nonisolated package enum ProcessRunner {
                 }
             }
             succeeded = true
-            return (child, descriptors[0])
+            return (child, descriptors[0], hasInput ? incoming[1] : nil)
         }
 
         private static func cStrings<T>(_ values: [String], _ body: (UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) throws -> T) throws -> T {

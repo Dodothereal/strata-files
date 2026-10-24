@@ -12,7 +12,8 @@ import StrataPreviews
     }
 
     private let reader: DirectoryReader
-    private let archiveReader: ArchiveReader
+    private let archiveReader: ArchiveReader?
+    let archiveAccess: PreviewArchiveAccess
     private let rootRead: DirectoryReadSession
     private var childReads: [ObjectIdentifier: DirectoryReadSession] = [:]
     private var items: Set<ObjectIdentifier> = []
@@ -38,10 +39,11 @@ import StrataPreviews
         return root.isFolder || (!root.isDirectory && ArchiveKind(fileName: root.name) != nil)
     }
 
-    init(reader: DirectoryReader, archiveReader: @escaping ArchiveReader = { try await ArchiveLister.list($0, kind: $1) }) {
+    init(reader: DirectoryReader, archiveReader: ArchiveReader? = nil, archiveAccess: PreviewArchiveAccess = PreviewArchiveAccess()) {
         let reader = reader.forPreview
         self.reader = reader
         self.archiveReader = archiveReader
+        self.archiveAccess = archiveAccess
         rootRead = DirectoryReadSession(reader: reader)
     }
 
@@ -68,11 +70,15 @@ import StrataPreviews
         } else if !entry.isDirectory, !entry.isSymlink, let kind = ArchiveKind(fileName: entry.name) {
             isLoading = true
             let read = archiveReader
+            let access = archiveAccess
+            do { access.reset(try PreviewArchiveSource(entry.url)) }
+            catch { self.error = error; isLoading = false; onChange?(.root); return }
             archiveTask = Task { [weak self] in
                 let result: Result<ArchiveListing, Error>
                 do {
                     try Task.checkCancellation()
-                    result = .success(try await read(entry.url, kind))
+                    if let read { result = .success(try await read(entry.url, kind)) }
+                    else { result = .success(try PreviewArchiveReader.listing(await access.read())) }
                 } catch { result = .failure(error) }
                 guard let self, !isClosed, self.revision == revision, !Task.isCancelled else { return }
                 archiveTask = nil
@@ -82,7 +88,7 @@ import StrataPreviews
                     archive = listing
                     roots = listing.root.value.children.map { PreviewItem(.member($0, path: [$0.name])) }
                     register(roots)
-                case .failure(let error): self.error = error
+                case .failure(let error): if !(error is CancellationError) { self.error = error }
                 }
                 onChange?(.root)
             }
@@ -96,6 +102,7 @@ import StrataPreviews
         rootRead.invalidate()
         childReads.values.forEach { $0.invalidate() }
         childReads = [:]
+        archiveAccess.reset()
         archiveTask?.cancel()
         archiveTask = nil
         roots = []
@@ -106,6 +113,16 @@ import StrataPreviews
         rootIdentity = nil
         error = nil
         isLoading = false
+    }
+
+    func cancelLoading() {
+        let wasLoading = isLoading
+        archiveTask?.cancel()
+        archiveTask = nil
+        rootRead.invalidate()
+        archiveAccess.cancelPassword?()
+        isLoading = false
+        if wasLoading { onChange?(.root) }
     }
 
     func select(_ item: PreviewItem?) {

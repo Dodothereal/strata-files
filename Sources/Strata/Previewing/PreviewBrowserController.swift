@@ -5,6 +5,7 @@ import StrataPreviews
 @MainActor final class PreviewBrowserController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
     let session: PreviewSession
     let outline = PreviewOutlineView()
+    let archiveContent: PreviewArchiveContent
     let fileView: PreviewFileView
     let controls = PreviewControls()
     let listing = PreviewListing()
@@ -24,6 +25,7 @@ import StrataPreviews
     private let path = NSTextField(labelWithString: "")
     private let status = NSTextField(labelWithString: "")
     private let progress = NSProgressIndicator()
+    let cancelButton = NSButton(title: String(localized: "Cancel"), target: nil, action: nil)
     private let nameColumn = NSTableColumn(identifier: .init("previewName"))
     private let sizeColumn = NSTableColumn(identifier: .init("previewSize"))
     private let kindColumn = NSTableColumn(identifier: .init("previewKind"))
@@ -37,6 +39,7 @@ import StrataPreviews
         self.preferences = preferences
         self.thumbnails = thumbnails
         self.copies = copies
+        archiveContent = PreviewArchiveContent(copies: copies)
         fileView = PreviewFileView(thumbnails: thumbnails, copies: copies)
         let tree = NSViewController()
         tree.view = treeHost
@@ -52,6 +55,11 @@ import StrataPreviews
         split.addSplitViewItem(treeItem)
         split.addSplitViewItem(previewItem)
         session.onChange = { [weak self] in self?.changed($0) }
+        archiveContent.onChange = { [weak self] in self?.updateFooter() }
+        archiveContent.onReady = { [weak self] item, lease in
+            guard let self, session.selected === item, !session.isClosed else { return }
+            fileView.show(item, root: session.root, materialized: lease.url)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -92,7 +100,11 @@ import StrataPreviews
         progress.style = .spinning
         progress.controlSize = .small
         progress.isDisplayedWhenStopped = false
-        let footer = NSStackView(views: [path, progress, status])
+        cancelButton.controlSize = .small
+        cancelButton.target = self
+        cancelButton.action = #selector(cancelPreviewLoading)
+        cancelButton.isHidden = true
+        let footer = NSStackView(views: [path, progress, status, cancelButton])
         footer.orientation = .horizontal
         footer.spacing = 12
         footer.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
@@ -188,11 +200,13 @@ import StrataPreviews
             updateMode()
             refreshTree()
             fileView.show(nil, root: session.root)
+            archiveContent.select(in: session)
             view.window?.title = session.root?.displayName ?? ""
         case .children:
             refreshTree()
         case .selection:
             fileView.show(session.selected, root: session.root)
+            archiveContent.select(in: session)
             if mode == .icons { grid?.select(session.selected) }
         }
         if commandTarget?.isActive(in: session) != true {
@@ -260,12 +274,13 @@ import StrataPreviews
         if case .member(_, let components) = session.selected?.source {
             path.stringValue += "!/" + components.joined(separator: "/")
         }
-        if session.isLoading {
+        cancelButton.isHidden = !session.isLoading && !archiveContent.isLoading
+        if session.isLoading || archiveContent.isLoading {
             progress.startAnimation(nil)
             status.stringValue = String(localized: "Loading…")
         } else {
             progress.stopAnimation(nil)
-            if let error = session.error {
+            if let error = archiveContent.error ?? session.error {
                 status.stringValue = error.localizedDescription
             } else if session.isContainer, !listing.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 status.stringValue = String(localized: "\(listing.roots.count.formatted()) of \(session.roots.count) items") + (session.archive?.note.map { " · " + $0 } ?? "")
@@ -279,9 +294,16 @@ import StrataPreviews
         }
     }
 
+    @objc func cancelPreviewLoading(_ sender: Any?) {
+        archiveContent.cancel()
+        session.cancelLoading()
+        updateFooter()
+    }
+
     func close() {
         session.close()
         fileView.close()
+        archiveContent.close()
         grid?.close()
         gridScope = nil
         listing.rebuild([])
@@ -290,6 +312,14 @@ import StrataPreviews
         applying = false
         commandTarget = nil
         controls.update(nil)
+    }
+
+    func copyArchiveMember(_ target: PreviewCommandTarget, completion: @escaping (PreviewArchiveLease) -> Void) {
+        archiveContent.export(target, session: session, completion: completion)
+    }
+
+    func openArchiveMember(_ target: PreviewCommandTarget, completion: @escaping (PreviewArchiveLease) -> Void) {
+        archiveContent.export(target, session: session, completion: completion)
     }
 
     func chooseMode(_ mode: PreviewViewMode) {

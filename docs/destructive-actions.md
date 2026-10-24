@@ -72,6 +72,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 | Sync (copies and extras to the Trash) | `FolderCompare.defaultAction`, `syncPlan` | `FolderSyncTests/*` |
 | Compress | `Archiver.compress`, `place` | `MetadataEditTests/compressingAddsOneArchiveAndNeverReplacesOne`, `aLinkIsArchivedAsALink` |
 | Extract and browse an archive | `Archiver.extract`, `extractContents` | `ArchiveSafetyTests/*`, including `browsingAnArchiveNeverReplacesAnExistingFolder` for the copy used to browse |
+| Copy an archive member from Space preview, then Paste or Paste and Move | `PreviewArchiveReader`, `PreviewArchiveSource`, `PreviewArchiveLease`, `PreviewArchiveContent`, `PreviewCoordinator`, `ReadOnlyCopies` | `PreviewArchiveTests/*`: exact members/subtrees, unsafe and duplicate paths, source stamps, cancellation, private permissions/ACLs/quarantine, bounded cache, replaced leaves/parents/root, clipboard replacement, resource forks refused, owning copy queue and Undo; mutations: “Space preview archives” |
 | Ask Strata plans (rename, move, trash, new folders), their undo and redo | `PlanValidator`, `PlanExecutor`, `PlanTransaction`; created folders use `CreatedFolders` and `removeEmptyFolders` | `PlanSafetyTests/*`, including `undoKeepsAReplacementAtACreatedFolderPath` |
 | Cleanup and recreation of folders made for Put Back, queued transfers and History | `CreatedFolders`, `TransferUndo`, `OperationLog.undo`, `FileOps.removeEmptyFolders` | `CreatedFolderOwnershipTests/*` covers captured ownership, replacements before and after transfer completion, symlink targets, failed reads, legacy History, repeated Undo/Redo and cross-disk completion |
 | Project cleanup | `ProjectDetector.detectSync`, `isRealDirectory` | `ProjectCleanupTests/*` |
@@ -195,6 +196,12 @@ on any function that is in neither this table nor a mutation.
   changes, and it isn't tested.
 
 ## Every function, by file
+
+| Selective archive preview functions | Headless coverage |
+|---|---|
+| `Previewing/PreviewArchiveLease :: init`, `prepare`, `makeFolders`, `mark`, `clean` | `PreviewArchiveTests/*`; identity receipts, no-follow parents, private modes/ACLs, quarantine, only owned leaves and empty folders removed. All functions have “Space preview archives” mutations. |
+| `CArchivePreview/ArchivePreview :: strata_archive_preview_worker`, `input`, `seek_input`, `valid_path`, `needs_full_extraction` | `PreviewArchiveTests/*` invokes the real standalone C helper. It writes only its output pipe; no filesystem opens/writes, network or subprocesses are allowed after entering its sandbox. Bounds and selection/fork rules have “Space preview archives” mutations; wrapper callbacks also run under ASan and UBSan. |
+
 
 What the audit found (`scripts/audit-destructive.py` lists each function in `Sources/` holding a call that can delete,
 move, rename, overwrite, truncate, evict or change metadata, or that runs a tool), and what covers it. Functions that

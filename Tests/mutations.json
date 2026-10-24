@@ -4437,5 +4437,110 @@
     "replace": "// Restart the thumbnail for each point of the slider.",
     "rule": "Space preview grid: resizing within one bucket keeps its current thumbnail request",
     "tests": "PreviewGridTests/resizingWithinAThumbnailBucketKeepsItsRequestAndCrossingTheBucketCancelsOnlyThatCell"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "find": "if acl_set_fd_np(rootFD, empty, ACL_TYPE_EXTENDED) != 0, errno != ENOTSUP { throw POSIXError(.EIO) }",
+    "replace": "if false { throw POSIXError(.EIO) }",
+    "rule": "Space preview archives: inherited access grants survive in private staging",
+    "tests": "PreviewArchiveTests"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "find": "let next = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)",
+    "replace": "let next = openat(fd, name, O_RDONLY | O_DIRECTORY | O_CLOEXEC)",
+    "rule": "Space preview archives: staging follows a planted parent link",
+    "tests": "PreviewArchiveTests"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "find": "guard mkdirat(parent, parts[depth], 0o700) == 0 else",
+    "replace": "guard mkdirat(parent, parts[depth], 0o000) == 0 else",
+    "rule": "Space preview archives: selected folders cannot be read after copying",
+    "tests": "PreviewArchiveTests"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "find": "let result = quarantine.withUnsafeBytes { fsetxattr(fd, \"com.apple.quarantine\", $0.baseAddress, quarantine.count, 0, 0) }",
+    "replace": "let result: Int32 = 0",
+    "rule": "Space preview archives: copied members lose the archive quarantine",
+    "tests": "PreviewArchiveTests"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "find": "FileIdentity.from(info) == receipt.identity else { continue }",
+    "replace": "true else { continue }",
+    "rule": "Space preview archives: cleanup deletes a replacement leaf or folder",
+    "tests": "PreviewArchiveTests"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "find": "guard fstatat(parentFD, root.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) == 0,\n              FileIdentity.from(info) == rootIdentity else { return }\n        for (key, receipt)",
+    "replace": "if false { return }\n        for (key, receipt)",
+    "rule": "Space preview archives: cleanup adopts a moved or replaced staging root",
+    "tests": "PreviewArchiveTests"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "find": "try validate(records, member: member)",
+    "replace": "// Entire-batch validation omitted.",
+    "rule": "Space preview archives: an unsafe later member creates partial staging",
+    "tests": "PreviewArchiveTests"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "find": "records[0].size <= PreviewArchiveReader.previewLimit",
+    "replace": "true",
+    "rule": "Space preview archives: automatic previews exceed their byte limit",
+    "tests": "PreviewArchiveTests"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "find": "guard existing <= cacheLimit - records[0].size else",
+    "replace": "guard true else",
+    "rule": "Space preview archives: orphaned cache bytes do not count against the ceiling",
+    "tests": "PreviewArchiveTests"
+  },
+  {
+    "file": "Strata/Previewing/PreviewCoordinator.swift",
+    "find": ", clipboard.pasteboard.changeCount == clipboardChange",
+    "replace": "",
+    "rule": "Space preview archives: an older archive copy overwrites a newer clipboard choice",
+    "tests": "PreviewArchiveTests"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveReader.swift",
+    "find": "guard chosen, directory || parts.count == member.count, kind != 3,",
+    "replace": "guard true, directory || parts.count == member.count, kind != 3,",
+    "rule": "Space preview archives: unselected bytes enter the parent protocol parser",
+    "tests": "PreviewArchiveTests"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveReader.swift",
+    "find": "a.identity == b.identity && a.size == b.size && a.modified.tv_sec == b.modified.tv_sec\n                && a.modified.tv_nsec == b.modified.tv_nsec && a.changed.tv_sec == b.changed.tv_sec\n                && a.changed.tv_nsec == b.changed.tv_nsec",
+    "replace": "a.identity == b.identity",
+    "rule": "Space preview archives: changed archive contents are read after the choice was captured",
+    "tests": "PreviewArchiveTests"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "path_length > 4096 || password_length > 1024",
+    "replace": "path_length > 4097 || password_length > 1024",
+    "rule": "Space preview archives: the fixed request path buffer accepts an oversized declaration",
+    "tests": "PreviewArchiveTests"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "path[path_length] == '/'",
+    "replace": "1",
+    "rule": "Space preview archives: folder selection also selects a look-alike sibling",
+    "tests": "PreviewArchiveTests"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "if (extracting && needs_full_extraction(entry))",
+    "replace": "if (0 && needs_full_extraction(entry))",
+    "rule": "Space preview archives: selective copy silently drops a resource fork",
+    "tests": "PreviewArchiveTests"
   }
 ]

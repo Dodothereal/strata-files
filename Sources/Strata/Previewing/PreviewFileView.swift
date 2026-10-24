@@ -52,7 +52,7 @@ import UniformTypeIdentifiers
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(_ item: PreviewItem?, root: FileEntry?) {
+    func show(_ item: PreviewItem?, root: FileEntry?, materialized: URL? = nil) {
         guard !isClosed else { return }
         generation += 1
         let generation = generation
@@ -63,7 +63,7 @@ import UniformTypeIdentifiers
         summary.isHidden = false
         shownURL = nil
         guard let root else { title.stringValue = ""; detail.stringValue = ""; icon.image = nil; return }
-        let entry = item?.entry ?? (item == nil ? root : nil)
+        let entry = materialized.flatMap(FileEntry.init(url:)) ?? item?.entry ?? (item == nil ? root : nil)
         title.stringValue = item?.name ?? root.displayName
         detail.stringValue = item?.kind ?? root.kind
         if let entry {
