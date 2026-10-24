@@ -58,6 +58,7 @@ let appModelSources = [
     "Places.swift",
     "Privacy.swift",
     "SavedSearches.swift",
+    "SavedNavigation.swift",
     "ServerConnectionSettings.swift",
     "TagStore.swift",
     "Trash.swift",

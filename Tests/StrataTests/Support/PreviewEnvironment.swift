@@ -14,7 +14,8 @@ final class PreviewEnvironment {
     init(_ tree: TestTree, reader: DirectoryReader? = nil, windows: BrowserWindows = .headless,
          makeThumbnails: ((CopyProviders, ContainerStore) -> FileThumbnails)? = nil,
          providers: [any CopyProvider]? = nil,
-         cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] }) throws {
+         cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
+         remoteConnector: RemoteConnector = RemoteConnector { _, _ in throw RemoteError.unknownServer }) throws {
         _ = NSApplication.shared
         defaults = try #require(UserDefaults(suiteName: domain))
         preferences = Prefs(defaults: defaults, domainName: domain, notifications: NotificationCenter())
@@ -24,7 +25,7 @@ final class PreviewEnvironment {
             copy: { _ in (errSecItemNotFound, nil) }, add: { _ in errSecSuccess },
             update: { _, _ in errSecSuccess }, delete: { _ in errSecSuccess }))
         let remote = RemoteServices(preferences: preferences, credentials: credentials,
-                                    copyRoot: tree.url("environment/servers"), notifications: NotificationCenter())
+                                    copyRoot: tree.url("environment/servers"), connector: remoteConnector, notifications: NotificationCenter())
         let containers = ContainerFiles(copies: ContainerCopyStore(root: tree.url("environment/containers")))
         let copies = providers.map { CopyProviders($0, remoteCopies: remote.copies, containerCopies: containers.copies,
                                                   clipboardRoot: tree.url("environment/clipboard")) }

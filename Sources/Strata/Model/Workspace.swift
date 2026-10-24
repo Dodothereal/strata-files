@@ -11,6 +11,22 @@ nonisolated struct Workspace: Codable, Equatable, Sendable {
     /// The network shares its folders are on: where each was mounted, and the address that mounts it again (never with
     /// a password). Opening the workspace connects to them again.
     var shares: [String: String]? = nil
+    /// Automatic session state. Named workspaces continue to save folders and views without browsing history.
+    var navigation: [[SavedNavigation]]? = nil
+    var activePanes: [Int]? = nil
+    var selectedTab: Int? = nil
+
+    private enum CodingKeys: String, CodingKey { case name, tabs, modes, saved, shares, navigation, activePanes, selectedTab }
+
+    func history(tab: Int, pane: Int) -> SavedNavigation? {
+        guard let navigation, navigation.indices.contains(tab), navigation[tab].indices.contains(pane) else { return nil }
+        return navigation[tab][pane]
+    }
+
+    func activePane(tab: Int) -> Int? {
+        guard let activePanes, activePanes.indices.contains(tab) else { return nil }
+        return activePanes[tab]
+    }
 
     var isDualPane: Bool { tabs.contains { $0.count > 1 } }
 
@@ -31,19 +47,42 @@ nonisolated struct Workspace: Codable, Equatable, Sendable {
         var copy = self
         var tabs: [[String]] = []
         var modes: [[Int]] = []
+        var navigation: [[SavedNavigation]] = []
+        var active: [Int] = []
+        var keptTabs: [Int] = []
         for (t, tab) in self.tabs.enumerated() {
             let kept = tab.indices.filter { !gone.contains(tab[$0]) }
             guard !kept.isEmpty else { continue }
+            keptTabs.append(t)
             tabs.append(kept.map { tab[$0] })
+            navigation.append(kept.map { history(tab: t, pane: $0) ?? SavedNavigation() })
+            active.append(kept.firstIndex(of: activePane(tab: t) ?? 0) ?? 0)
             // -1 (no such view): that pane opens in the view it would anyway.
             modes.append(kept.map { mode(tab: t, pane: $0) ?? -1 })
         }
         copy.tabs = tabs
         copy.modes = self.modes == nil ? nil : modes
+        copy.navigation = self.navigation == nil ? nil : navigation
+        copy.activePanes = activePanes == nil ? nil : active
+        copy.selectedTab = selectedTab.flatMap { keptTabs.firstIndex(of: $0) }
         let paths = Set(tabs.joined())
         let shares = self.shares?.filter { share in paths.contains { $0 == share.key || $0.hasPrefix(share.key + "/") } }
         copy.shares = shares?.isEmpty == false ? shares : nil
         return copy
+    }
+}
+
+extension Workspace {
+    nonisolated init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        name = try values.decode(String.self, forKey: .name)
+        tabs = try values.decode([[String]].self, forKey: .tabs)
+        modes = try? values.decode([[Int]].self, forKey: .modes)
+        saved = try? values.decode(Date.self, forKey: .saved)
+        shares = try? values.decode([String: String].self, forKey: .shares)
+        navigation = try? values.decode([[SavedNavigation]].self, forKey: .navigation)
+        activePanes = try? values.decode([Int].self, forKey: .activePanes)
+        selectedTab = try? values.decode(Int.self, forKey: .selectedTab)
     }
 }
 
@@ -67,9 +106,12 @@ nonisolated struct WorkspacePlan: Equatable, Sendable {
         var mode: Int?
         /// Set when the folder can't be shown yet: on a share to connect first, or on a disk that isn't connected.
         var waiting: WaitingFolder?
+        var navigation: SavedNavigation? = nil
+        var active = false
     }
 
     var tabs: [[Pane]] = []
+    var selectedTab: Int? = nil
     /// Folders that aren't there, in the order they were saved.
     var missing: [String] = []
     /// Folders on disks that aren't connected (not gone: they're kept).
@@ -82,24 +124,30 @@ nonisolated struct WorkspacePlan: Equatable, Sendable {
         for (t, tab) in workspace.tabs.enumerated() {
             var panes: [Pane] = []
             for (p, path) in tab.enumerated().prefix(2) where !path.isEmpty {
+                guard SavedDestination.validPath(path) else { missing.append(path); continue }
                 let mode = workspace.mode(tab: t, pane: p)
+                var pane = Pane(path: path, mode: mode, navigation: workspace.history(tab: t, pane: p),
+                                active: workspace.activePane(tab: t) == p)
                 if let id = server(path) {
-                    // A server's files are read again each time: the pane waits for its server.
-                    panes.append(Pane(path: path, mode: mode, waiting: WaitingFolder(path: path, mode: mode, server: id)))
+                    pane.waiting = WaitingFolder(path: path, mode: mode, server: id)
                 } else if exists(path) {
-                    panes.append(Pane(path: path, mode: mode))
+                    // An available folder opens immediately.
                 } else if let share = workspace.share(for: path), !exists(share.mountPoint) {
-                    panes.append(Pane(path: path, mode: mode,
-                                      waiting: WaitingFolder(path: path, mode: mode, mountPoint: share.mountPoint, address: share.address)))
+                    pane.waiting = WaitingFolder(path: path, mode: mode, mountPoint: share.mountPoint, address: share.address)
                     shares[share.mountPoint] = share.address
                 } else if let volume = Self.volume(of: path), !exists(volume) {
-                    panes.append(Pane(path: path, mode: mode, waiting: WaitingFolder(path: path, mode: mode)))
+                    pane.waiting = WaitingFolder(path: path, mode: mode)
                     offline.append(path)
                 } else {
                     missing.append(path)
+                    continue
                 }
+                panes.append(pane)
             }
-            if !panes.isEmpty { tabs.append(panes) }
+            if !panes.isEmpty {
+                if workspace.selectedTab == t { selectedTab = tabs.count }
+                tabs.append(panes)
+            }
         }
     }
 

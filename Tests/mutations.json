@@ -4881,5 +4881,33 @@
     "replace": "cache = cache.filter { !$0.key.hasPrefix(prefix) }",
     "rule": "Tags cache keeps last known metadata during an ancestor refresh",
     "tests": "TagColumnTests/invalidationKeepsLastKnownSortValuesUntilFreshTagsArrive"
+  },
+  {
+    "file": "Strata/Window/BrowserSession.swift",
+    "find": "pane.backStack = navigation.back.compactMap { $0.destination(services: services) }",
+    "replace": "pane.backStack = []",
+    "rule": "Session navigation restores each panes own Back history",
+    "tests": "SessionNavigationTests/realSessionWriterReopensEachPanesHistoryAndActiveSide"
+  },
+  {
+    "file": "Strata/Model/SavedNavigation.swift",
+    "find": "if invalid { kind = \"\" }",
+    "replace": "if false { kind = \"\" }",
+    "rule": "Session navigation refuses malformed scopes instead of searching everywhere",
+    "tests": "SessionNavigationTests/malformedOptionalScopeFieldsNeverBroadenASearch"
+  },
+  {
+    "file": "Strata/Model/SavedNavigation.swift",
+    "find": "guard data.count <= byteLimit, let records",
+    "replace": "guard true, let records",
+    "rule": "Session navigation rejects oversized input before decoding",
+    "tests": "SessionNavigationTests/oldSessionsAndIndependentValidWindowsSurviveMalformedNeighbors"
+  },
+  {
+    "file": "Strata/Window/BrowserSession.swift",
+    "find": "navigation.current?.server == nil,",
+    "replace": "true,",
+    "rule": "Session navigation never starts a remote search automatically",
+    "tests": "SessionNavigationTests/serverHistoryUsesItsOwnersCacheAndReopeningNeverStartsALogin"
   }
 ]

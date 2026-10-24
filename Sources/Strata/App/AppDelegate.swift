@@ -267,21 +267,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard !controllers.isEmpty else { continue }
             // The window remembers the workspace it came from, so Update and bringing it forward still work, and panes
             // waiting for a share keep its address.
-            windows.append(Workspaces.workspace(named: controllers[0].groupWorkspaceName ?? "", of: controllers))
+            windows.append(Workspaces.workspace(named: controllers[0].groupWorkspaceName ?? "", of: controllers, includingNavigation: true))
         }
-        Prefs.shared.defaults.set(try? JSONEncoder().encode(windows), forKey: Self.sessionKey)
+        if let data = SessionStorage.encode(windows) {
+            browserServices.preferences.defaults.set(data, forKey: Self.sessionKey)
+        }
     }
 
     /// Reopens the last session's windows (Settings ▸ General ▸ Reopen windows). False when there's nothing to open.
     private func restoreSession() -> Bool {
-        guard Prefs.shared.reopenWindows, let data = Prefs.shared.defaults.data(forKey: Self.sessionKey),
-              let windows = try? JSONDecoder().decode([Workspace].self, from: data) else { return false }
+        guard browserServices.preferences.reopenWindows, let data = browserServices.preferences.defaults.data(forKey: Self.sessionKey),
+              let windows = SessionStorage.decode(data) else { return false }
         var opened = false
         // Back to front, so the frontmost window ends up in front again. Folders that are gone are skipped.
         for window in windows.reversed() {
             // Shares aren't connected at launch (no login windows out of nowhere): their panes wait, and opening the
             // workspace connects them.
-            let plan = WorkspacePlan(window, exists: Workspaces.isThere, server: Workspaces.server(of:))
+            let plan = browserServices.workspaces.plan(window)
             guard !plan.tabs.isEmpty else { continue }
             let controllers = browserServices.workspaces.openWindows(plan, name: window.name.isEmpty ? "" : browserServices.workspaces.named(window.name)?.name ?? "")
             opened = opened || !controllers.isEmpty

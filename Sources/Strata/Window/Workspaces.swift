@@ -53,12 +53,26 @@ final class Workspaces {
 
     /// A workspace named `name` of `controllers`' tabs and panes, as they are now.
     /// Panes waiting for a share keep its address, so the folder still opens next time.
-    static func workspace(named name: String, of controllers: [BrowserWindowController]) -> Workspace {
+    static func workspace(named name: String, of controllers: [BrowserWindowController], includingNavigation: Bool = false) -> Workspace {
         let tabs = controllers.map(\.snapshot)
         var found = shares(for: tabs.flatMap { $0 }) ?? [:]
         for controller in controllers { found.merge(controller.waitingShares) { current, _ in current } }
-        return Workspace(name: name, tabs: tabs, modes: controllers.map(\.snapshotModes), saved: Date(),
-                         shares: found.isEmpty ? nil : found)
+        var workspace = Workspace(name: name, tabs: tabs, modes: controllers.map(\.snapshotModes), saved: Date(),
+                                  shares: found.isEmpty ? nil : found)
+        if includingNavigation {
+            workspace.navigation = controllers.map(\.snapshotNavigation)
+            workspace.activePanes = controllers.map { owner in owner.panes.firstIndex { $0 === owner.pane } ?? 0 }
+            let selected = controllers.first?.window?.tabGroup?.selectedWindow
+            workspace.selectedTab = controllers.firstIndex { $0.window === selected } ?? 0
+            for (t, owner) in controllers.enumerated() {
+                for (p, pane) in owner.panes.enumerated() where pane.waiting == nil {
+                    if SavedDestination.capture(.folder(pane.location), services: owner.services) == nil {
+                        workspace.tabs[t][p] = Places.home.path
+                    }
+                }
+            }
+        }
+        return workspace
     }
 
     /// The network shares `paths` are on, with the address each mounts from. Only the kinds Connect to Server supports
@@ -256,9 +270,12 @@ final class Workspaces {
                 if let waiting = pane.waiting { controller.wait(pane: index, for: waiting) }
             }
             controller.workspaceName = name.isEmpty ? nil : name
+            controller.restoreNavigation(tab)
             controllers.append(controller)
         }
-        if let first = controllers.first?.window { first.tabGroup?.selectedWindow = first }
+        let selected = plan.selectedTab.flatMap { controllers.indices.contains($0) ? controllers[$0].window : nil }
+            ?? controllers.first?.window
+        if let selected { selected.tabGroup?.selectedWindow = selected }
         return controllers
     }
 
