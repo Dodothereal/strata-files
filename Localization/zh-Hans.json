@@ -35,6 +35,7 @@
     "%@ to copy →": "%@将拷贝 →",
     "%@ to reclaim": "可释放%@",
     "%@ to the Trash": "%@移到废纸篓",
+    "%@ · %@ on disk": "%@ · 占用磁盘空间 %@",
     "%@ — only %@": "%@——仅限%@",
     "%@ — Strata’s built-in rules handle common requests.": "%@——Strata的内置规则可处理常见请求。",
     "%@+": "%@+",
@@ -359,6 +360,7 @@
     "Ask Strata: describe a bulk change": "询问Strata：描述批量更改",
     "Ask Strata…": "询问Strata…",
     "at least %@": "至少%@",
+    "At least %@ · %@ on disk": "至少 %@ · 占用磁盘空间 %@",
     "at least %lld pages": {
       "other": "至少%lld页"
     },
@@ -400,6 +402,7 @@
     "By date (today, yesterday, 2026, >30d)": "按日期（today, yesterday, 2026, >30d）",
     "By size (also size:1mb..1gb)": "按大小（也可用size:1mb..1gb）",
     "by “%@”": "作者“%@”",
+    "Calculate Size": "计算大小",
     "Calculating sizes…": "正在计算大小…",
     "Calculating…": "正在计算…",
     "camera": "相机",

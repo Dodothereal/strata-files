@@ -46,6 +46,7 @@
     "%@ to copy →": "%@ для копирования →",
     "%@ to reclaim": "Можно освободить %@",
     "%@ to the Trash": "%@ в Корзину",
+    "%@ · %@ on disk": "%@ · %@ на диске",
     "%@ — only %@": "%@ — только %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — типичные запросы обработают встроенные правила Strata.",
     "%@+": "%@+",
@@ -586,6 +587,7 @@
     "Ask Strata: describe a bulk change": "Спросить Strata: опишите массовое изменение",
     "Ask Strata…": "Спросить Strata…",
     "at least %@": "не меньше %@",
+    "At least %@ · %@ on disk": "Не менее %@ · %@ на диске",
     "at least %lld pages": {
       "one": "не меньше %lld страницы",
       "few": "не меньше %lld страниц",
@@ -633,6 +635,7 @@
     "By date (today, yesterday, 2026, >30d)": "По дате (today, yesterday, 2026, >30d)",
     "By size (also size:1mb..1gb)": "По размеру (также size:1mb..1gb)",
     "by “%@”": "автор «%@»",
+    "Calculate Size": "Рассчитать размер",
     "Calculating sizes…": "Вычисление размеров…",
     "Calculating…": "Вычисление…",
     "camera": "камера",

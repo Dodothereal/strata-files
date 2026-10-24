@@ -35,6 +35,7 @@
     "%@ to copy →": "%@件をコピー →",
     "%@ to reclaim": "%@を解放可能",
     "%@ to the Trash": "%@件をゴミ箱へ",
+    "%@ · %@ on disk": "%@ · ディスク上のサイズ %@",
     "%@ — only %@": "%@ — %@のみ",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — 一般的な依頼にはStrataの内蔵ルールで対応します。",
     "%@+": "%@+",
@@ -359,6 +360,7 @@
     "Ask Strata: describe a bulk change": "Strataに依頼: 一括変更の内容を入力",
     "Ask Strata…": "Strataに依頼…",
     "at least %@": "%@以上",
+    "At least %@ · %@ on disk": "少なくとも %@ · ディスク上のサイズ %@",
     "at least %lld pages": {
       "other": "%lldページ以上"
     },
@@ -400,6 +402,7 @@
     "By date (today, yesterday, 2026, >30d)": "日付で（today、yesterday、2026、>30d）",
     "By size (also size:1mb..1gb)": "サイズで（size:1mb..1gbも可）",
     "by “%@”": "作成者「%@」",
+    "Calculate Size": "サイズを計算",
     "Calculating sizes…": "サイズを計算中…",
     "Calculating…": "計算中…",
     "camera": "カメラ",

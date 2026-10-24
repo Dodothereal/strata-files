@@ -38,6 +38,7 @@
     "%@ to copy →": "%@ kopyalanacak →",
     "%@ to reclaim": "%@ geri kazanılabilir",
     "%@ to the Trash": "%@ Çöp Sepeti’ne",
+    "%@ · %@ on disk": "%@ · diskte %@",
     "%@ — only %@": "%@ — yalnızca %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — Yaygın istekleri Strata’nın yerleşik kuralları karşılar.",
     "%@+": "%@+",
@@ -434,6 +435,7 @@
     "Ask Strata: describe a bulk change": "Strata’ya Sor: toplu bir değişikliği tarif edin",
     "Ask Strata…": "Strata’ya Sor…",
     "at least %@": "en az %@",
+    "At least %@ · %@ on disk": "En az %@ · diskte %@",
     "at least %lld pages": {
       "one": "en az %lld sayfa",
       "other": "en az %lld sayfa"
@@ -477,6 +479,7 @@
     "By date (today, yesterday, 2026, >30d)": "Tarihe göre (today, yesterday, 2026, >30d)",
     "By size (also size:1mb..1gb)": "Büyüklüğe göre (ayrıca size:1mb..1gb)",
     "by “%@”": "yazar “%@”",
+    "Calculate Size": "Boyutu Hesapla",
     "Calculating sizes…": "Büyüklükler hesaplanıyor…",
     "Calculating…": "Hesaplanıyor…",
     "camera": "kamera",

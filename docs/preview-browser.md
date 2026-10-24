@@ -126,3 +126,21 @@ appearance. GUI checks must not manipulate the installed Strata or change the us
 - All 22 catalogs contain 1,432 complete strings. The 44 Python regressions, destructive-action audit (122 mapped
   functions), theme audit (61 reviewed exceptions) and whitespace check pass. Temporary verification worktrees are
   removed. Runtime sanitizer checks do not instrument the system libarchive binary.
+
+- Size reporting implemented and reviewed. A file's logical bytes and filesystem-reported
+  allocated blocks are separate. Sparse files use metadata only. Calculate Size explicitly starts a bounded folder
+  walk; Cancel, selection changes and closure stop it and discard late results. Hidden contents are included,
+  hard links are counted once, links contribute only their own bytes, and mounted volumes are not traversed.
+- Measurements stop after 100,000 entries, 128 directory levels or five seconds. Unreadable or skipped contents and
+  reached limits produce an “At least” lower bound, never a completed total. Cancellation produces no new result.
+  The root and parent stay pinned, directory streams close before descending, and opened child identities match the
+  names captured without following links. Filesystem allocation can include shared APFS extents more than once;
+  this is the space the filesystem reports for these files, not exclusive ownership of physical blocks.
+- Provider contents never measure their host caches or fetch a folder to calculate its size. The native controls
+  reuse the existing themed footer and summary, and results survive every palette/light/dark/contrast change.
+  Archive limit notices remain visible while unrelated metadata loads. No measurement writes to user files.
+- Final size verification: all 967 tests in 115 suites pass under Debug Address Sanitizer without runtime
+  diagnostics. The focused 22-test preview/measurement/theme selection passes, all ten size mutations are caught,
+  and 44 Python regressions, all 22 catalogs (1,435 strings), both source audits and the whitespace check pass.
+  Review fixes keep archive-limit notices visible during metadata loading, count invalid directory records against
+  the entry budget, refuse host-cache measurements for providers, and prevent closed measurement owners restarting.

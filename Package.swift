@@ -66,6 +66,7 @@ let modelSources = [
     "ChosenFile.swift",
     "FileIdentity.swift",
     "FileInfoEditing.swift",
+    "FileFootprint.swift",
     "FolderSizer.swift",
     "MediaInfo.swift",
     "PipeRead.swift",

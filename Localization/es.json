@@ -38,6 +38,7 @@
     "%@ to copy →": "%@ para copiar →",
     "%@ to reclaim": "%@ recuperables",
     "%@ to the Trash": "%@ a la Papelera",
+    "%@ · %@ on disk": "%@ · %@ en disco",
     "%@ — only %@": "%@ — solo %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — las reglas integradas de Strata resuelven las peticiones habituales.",
     "%@+": "%@+",
@@ -434,6 +435,7 @@
     "Ask Strata: describe a bulk change": "Pedir a Strata: describe un cambio en bloque",
     "Ask Strata…": "Pedir a Strata…",
     "at least %@": "al menos %@",
+    "At least %@ · %@ on disk": "Al menos %@ · %@ en disco",
     "at least %lld pages": {
       "one": "al menos %lld página",
       "other": "al menos %lld páginas"
@@ -477,6 +479,7 @@
     "By date (today, yesterday, 2026, >30d)": "Por fecha (today, yesterday, 2026, >30d)",
     "By size (also size:1mb..1gb)": "Por tamaño (también size:1mb..1gb)",
     "by “%@”": "de «%@»",
+    "Calculate Size": "Calcular tamaño",
     "Calculating sizes…": "Calculando tamaños…",
     "Calculating…": "Calculando…",
     "camera": "cámara",

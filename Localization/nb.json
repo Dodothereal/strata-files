@@ -38,6 +38,7 @@
     "%@ to copy →": "%@ å kopiere →",
     "%@ to reclaim": "%@ kan frigjøres",
     "%@ to the Trash": "%@ til papirkurven",
+    "%@ · %@ on disk": "%@ · %@ på disk",
     "%@ — only %@": "%@ – bare %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ – Stratas innebygde regler håndterer vanlige forespørsler.",
     "%@+": "%@+",
@@ -434,6 +435,7 @@
     "Ask Strata: describe a bulk change": "Spør Strata: beskriv en masseendring",
     "Ask Strata…": "Spør Strata…",
     "at least %@": "minst %@",
+    "At least %@ · %@ on disk": "Minst %@ · %@ på disk",
     "at least %lld pages": {
       "one": "minst %lld side",
       "other": "minst %lld sider"
@@ -477,6 +479,7 @@
     "By date (today, yesterday, 2026, >30d)": "Etter dato (today, yesterday, 2026, >30d)",
     "By size (also size:1mb..1gb)": "Etter størrelse (også size:1mb..1gb)",
     "by “%@”": "av «%@»",
+    "Calculate Size": "Beregn størrelse",
     "Calculating sizes…": "Beregner størrelser…",
     "Calculating…": "Beregner…",
     "camera": "kamera",

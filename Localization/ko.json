@@ -35,6 +35,7 @@
     "%@ to copy →": "%@ 복사 예정 →",
     "%@ to reclaim": "%@ 확보 가능",
     "%@ to the Trash": "%@ 휴지통으로",
+    "%@ · %@ on disk": "%@ · 디스크 사용량 %@",
     "%@ — only %@": "%@ — %@만",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — Strata의 내장 규칙으로 일반적인 요청을 처리할 수 있습니다.",
     "%@+": "%@ 이상",
@@ -359,6 +360,7 @@
     "Ask Strata: describe a bulk change": "Strata에게 요청: 일괄 변경 사항 설명",
     "Ask Strata…": "Strata에게 요청…",
     "at least %@": "%@ 이상",
+    "At least %@ · %@ on disk": "최소 %@ · 디스크 사용량 %@",
     "at least %lld pages": {
       "other": "%lld페이지 이상"
     },
@@ -400,6 +402,7 @@
     "By date (today, yesterday, 2026, >30d)": "날짜별(today, yesterday, 2026, >30d)",
     "By size (also size:1mb..1gb)": "크기별(size:1mb..1gb도 가능)",
     "by “%@”": "작성자 ‘%@’",
+    "Calculate Size": "크기 계산",
     "Calculating sizes…": "크기 계산 중…",
     "Calculating…": "계산 중…",
     "camera": "카메라",

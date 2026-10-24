@@ -44,6 +44,7 @@
     "%@ to copy →": "%@ do skopiowania →",
     "%@ to reclaim": "%@ do odzyskania",
     "%@ to the Trash": "%@ do Kosza",
+    "%@ · %@ on disk": "%@ · %@ na dysku",
     "%@ — only %@": "%@ — tylko %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — typowe prośby obsłużą wbudowane reguły Strata.",
     "%@+": "%@+",
@@ -584,6 +585,7 @@
     "Ask Strata: describe a bulk change": "Zapytaj Strata: opisz zmianę wielu plików naraz",
     "Ask Strata…": "Zapytaj Strata…",
     "at least %@": "co najmniej %@",
+    "At least %@ · %@ on disk": "Co najmniej %@ · %@ na dysku",
     "at least %lld pages": {
       "one": "co najmniej %lld strona",
       "few": "co najmniej %lld strony",
@@ -631,6 +633,7 @@
     "By date (today, yesterday, 2026, >30d)": "Wg daty (today, yesterday, 2026, >30d)",
     "By size (also size:1mb..1gb)": "Wg wielkości (także size:1mb..1gb)",
     "by “%@”": "autor: „%@”",
+    "Calculate Size": "Oblicz wielkość",
     "Calculating sizes…": "Obliczam wielkości…",
     "Calculating…": "Obliczam…",
     "camera": "aparat",

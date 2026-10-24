@@ -4542,5 +4542,83 @@
     "replace": "if (0 && needs_full_extraction(entry))",
     "rule": "Space preview archives: selective copy silently drops a resource fork",
     "tests": "PreviewArchiveTests"
+  },
+  {
+    "file": "Strata/Previewing/PreviewMeasurement.swift",
+    "find": "if !source.isDirectory { start(recursive: false) }",
+    "replace": "if true { start(recursive: true) }",
+    "rule": "Space preview sizes: folders start walking without Calculate Size",
+    "tests": "PreviewMeasurementTests"
+  },
+  {
+    "file": "Strata/Previewing/PreviewMeasurement.swift",
+    "find": "!copies.contains(entry.url), !copies.isPlaceholder(entry.url)",
+    "replace": "true, true",
+    "rule": "Space preview sizes: provider contents measure the host copy cache",
+    "tests": "PreviewMeasurementTests"
+  },
+  {
+    "file": "Strata/Previewing/PreviewMeasurement.swift",
+    "edits": [
+      {
+        "find": "guard let self, request == id, !Task.isCancelled, session?.isClosed == false else { return }",
+        "replace": "guard let self, true, !Task.isCancelled, session?.isClosed == false else { return }"
+      },
+      {
+        "find": "request = UUID()\n        task?.cancel()\n        task = nil",
+        "replace": "request = UUID()\n        // Cancellation omitted.\n        task = nil"
+      }
+    ],
+    "rule": "Space preview sizes: an older selection publishes its completed walk",
+    "tests": "PreviewMeasurementTests"
+  },
+  {
+    "file": "Strata/Model/FileFootprint.swift",
+    "find": "return blocks > Int64.max / 512 ? .max : blocks * 512",
+    "replace": "return blocks > Int64.max / 512 ? .max : blocks",
+    "rule": "Space preview sizes: allocated block counts are treated as bytes",
+    "tests": "PreviewMeasurementTests"
+  },
+  {
+    "file": "Strata/Model/FileFootprint.swift",
+    "find": "// A link contributes its own bytes, never anything reached through it.\n                    guard seen.insert(Identity(info)).inserted else",
+    "replace": "// Hard-link deduplication omitted.\n                    guard true else",
+    "rule": "Space preview sizes: hard-linked files are counted twice",
+    "tests": "PreviewMeasurementTests"
+  },
+  {
+    "file": "Strata/Model/FileFootprint.swift",
+    "find": "fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW)",
+    "replace": "fstatat(fd, name, &info, 0)",
+    "rule": "Space preview sizes: measurement follows links to other files or folders",
+    "tests": "PreviewMeasurementTests"
+  },
+  {
+    "file": "Strata/Model/FileFootprint.swift",
+    "find": "guard remaining > 0 else",
+    "replace": "guard true else",
+    "rule": "Space preview sizes: the entry limit does not bound the walk",
+    "tests": "PreviewMeasurementTests"
+  },
+  {
+    "file": "Strata/Model/FileFootprint.swift",
+    "find": "guard depth < limits.depth else",
+    "replace": "guard true else",
+    "rule": "Space preview sizes: the depth limit does not bound the walk",
+    "tests": "PreviewMeasurementTests"
+  },
+  {
+    "file": "Strata/Model/FileFootprint.swift",
+    "find": "guard now() < deadline else",
+    "replace": "guard true else",
+    "rule": "Space preview sizes: the time limit does not bound the walk",
+    "tests": "PreviewMeasurementTests"
+  },
+  {
+    "file": "Strata/Model/FileFootprint.swift",
+    "find": "guard !cancelled() else",
+    "replace": "guard true else",
+    "rule": "Space preview sizes: a cancelled walk keeps running and reports a finished size",
+    "tests": "PreviewMeasurementTests"
   }
 ]

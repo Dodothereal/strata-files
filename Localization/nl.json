@@ -38,6 +38,7 @@
     "%@ to copy →": "%@ te kopiëren →",
     "%@ to reclaim": "%@ terug te winnen",
     "%@ to the Trash": "%@ naar prullenmand",
+    "%@ · %@ on disk": "%@ · %@ op schijf",
     "%@ — only %@": "%@ — alleen %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — De ingebouwde regels van Strata verwerken veelvoorkomende verzoeken.",
     "%@+": "%@+",
@@ -434,6 +435,7 @@
     "Ask Strata: describe a bulk change": "Vraag Strata: beschrijf een bulkwijziging",
     "Ask Strata…": "Vraag Strata…",
     "at least %@": "minstens %@",
+    "At least %@ · %@ on disk": "Minstens %@ · %@ op schijf",
     "at least %lld pages": {
       "one": "minstens %lld pagina",
       "other": "minstens %lld pagina’s"
@@ -477,6 +479,7 @@
     "By date (today, yesterday, 2026, >30d)": "Op datum (today, yesterday, 2026, >30d)",
     "By size (also size:1mb..1gb)": "Op grootte (ook size:1mb..1gb)",
     "by “%@”": "door “%@”",
+    "Calculate Size": "Bereken grootte",
     "Calculating sizes…": "Groottes berekenen…",
     "Calculating…": "Berekenen…",
     "camera": "camera",

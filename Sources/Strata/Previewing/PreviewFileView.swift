@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
     private let icon = NSImageView()
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
+    private let sizeSummary = NSTextField(labelWithString: "")
     private let summary = NSStackView()
     private var rich: NSView?
     private(set) var shownURL: URL?
@@ -29,10 +30,14 @@ import UniformTypeIdentifiers
         detail.font = .systemFont(ofSize: 12)
         detail.textColor = .secondaryLabelColor
         detail.lineBreakMode = .byTruncatingMiddle
+        sizeSummary.font = .systemFont(ofSize: 12)
+        sizeSummary.textColor = .secondaryLabelColor
+        sizeSummary.lineBreakMode = .byTruncatingTail
+        sizeSummary.isHidden = true
         summary.orientation = .vertical
         summary.alignment = .centerX
         summary.spacing = 10
-        for child in [icon, title, detail] { summary.addArrangedSubview(child) }
+        for child in [icon, title, detail, sizeSummary] { summary.addArrangedSubview(child) }
         summary.translatesAutoresizingMaskIntoConstraints = false
         native.translatesAutoresizingMaskIntoConstraints = false
         addSubview(native)
@@ -62,6 +67,7 @@ import UniformTypeIdentifiers
         native.isHidden = true
         summary.isHidden = false
         shownURL = nil
+        setSizeSummary(nil)
         guard let root else { title.stringValue = ""; detail.stringValue = ""; icon.image = nil; return }
         let entry = materialized.flatMap(FileEntry.init(url:)) ?? item?.entry ?? (item == nil ? root : nil)
         title.stringValue = item?.name ?? root.displayName
@@ -95,6 +101,12 @@ import UniformTypeIdentifiers
         } else {
             showNative(url)
         }
+    }
+
+    func setSizeSummary(_ text: String?) {
+        guard !isClosed else { return }
+        sizeSummary.stringValue = text ?? ""
+        sizeSummary.isHidden = text == nil
     }
 
     func close() {

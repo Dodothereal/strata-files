@@ -41,6 +41,7 @@
     "%@ to copy →": "%@ de copiat →",
     "%@ to reclaim": "%@ de recuperat",
     "%@ to the Trash": "%@ în Coș",
+    "%@ · %@ on disk": "%@ · %@ pe disc",
     "%@ — only %@": "%@ — doar %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — regulile integrate ale Strata gestionează cererile obișnuite.",
     "%@+": "%@+",
@@ -509,6 +510,7 @@
     "Ask Strata: describe a bulk change": "Întreabă Strata: descrie o modificare în bloc",
     "Ask Strata…": "Întreabă Strata…",
     "at least %@": "cel puțin %@",
+    "At least %@ · %@ on disk": "Cel puțin %@ · %@ pe disc",
     "at least %lld pages": {
       "one": "cel puțin %lld pagină",
       "few": "cel puțin %lld pagini",
@@ -554,6 +556,7 @@
     "By date (today, yesterday, 2026, >30d)": "După dată (today, yesterday, 2026, >30d)",
     "By size (also size:1mb..1gb)": "După dimensiune (și size:1mb..1gb)",
     "by “%@”": "de „%@”",
+    "Calculate Size": "Calculează dimensiunea",
     "Calculating sizes…": "Se calculează dimensiunile…",
     "Calculating…": "Se calculează…",
     "camera": "aparat foto",

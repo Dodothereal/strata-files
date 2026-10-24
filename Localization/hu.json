@@ -38,6 +38,7 @@
     "%@ to copy →": "%@ másolandó →",
     "%@ to reclaim": "%@ felszabadítható",
     "%@ to the Trash": "%@ a Kukába",
+    "%@ · %@ on disk": "%@ · %@ a lemezen",
     "%@ — only %@": "%@ – csak %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ – a Strata beépített szabályai kezelik a gyakori kéréseket.",
     "%@+": "%@+",
@@ -434,6 +435,7 @@
     "Ask Strata: describe a bulk change": "Kérdezze a Stratát: írjon le egy tömeges módosítást",
     "Ask Strata…": "Kérdezze a Stratát…",
     "at least %@": "legalább %@",
+    "At least %@ · %@ on disk": "Legalább %@ · %@ a lemezen",
     "at least %lld pages": {
       "one": "legalább %lld oldal",
       "other": "legalább %lld oldal"
@@ -477,6 +479,7 @@
     "By date (today, yesterday, 2026, >30d)": "Dátum szerint (today, yesterday, 2026, >30d)",
     "By size (also size:1mb..1gb)": "Méret szerint (vagy size:1mb..1gb)",
     "by “%@”": "szerző: „%@”",
+    "Calculate Size": "Méret kiszámítása",
     "Calculating sizes…": "Méretek kiszámítása…",
     "Calculating…": "Számítás…",
     "camera": "fényképezőgép",

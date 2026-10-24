@@ -41,6 +41,7 @@
     "%@ to copy →": "%@ ke zkopírování →",
     "%@ to reclaim": "%@ k uvolnění",
     "%@ to the Trash": "%@ do koše",
+    "%@ · %@ on disk": "%@ · %@ na disku",
     "%@ — only %@": "%@ — pouze %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — běžné požadavky zvládnou vestavěná pravidla Strata.",
     "%@+": "%@+",
@@ -509,6 +510,7 @@
     "Ask Strata: describe a bulk change": "Zeptat se aplikace Strata: popište hromadnou změnu",
     "Ask Strata…": "Zeptat se aplikace Strata…",
     "at least %@": "alespoň %@",
+    "At least %@ · %@ on disk": "Alespoň %@ · %@ na disku",
     "at least %lld pages": {
       "one": "alespoň %lld strana",
       "few": "alespoň %lld strany",
@@ -554,6 +556,7 @@
     "By date (today, yesterday, 2026, >30d)": "Podle data (today, yesterday, 2026, >30d)",
     "By size (also size:1mb..1gb)": "Podle velikosti (také size:1mb..1gb)",
     "by “%@”": "autor „%@“",
+    "Calculate Size": "Vypočítat velikost",
     "Calculating sizes…": "Výpočet velikostí…",
     "Calculating…": "Výpočet…",
     "camera": "fotoaparát",
