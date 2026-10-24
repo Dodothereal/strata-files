@@ -60,6 +60,13 @@ your folders as a map, then use **Large Files** and **Duplicates** in the sideba
 
 <p align="center"><img src="docs/screenshots/treemap.png" alt="The disk usage map of a folder" width="820"></p>
 
+## Look inside. Stay where you are.
+
+Press **Space** on a folder or archive to look inside. Browse the list or thumbnails and preview files alongside,
+without leaving your current folder. Filter, sort, and open or copy just what you need.
+
+<p align="center"><img src="docs/screenshots/quicklook.png" alt="Quick Look above the main Strata window, browsing Brand Assets and previewing a Markdown brand guide" width="820"></p>
+
 ## Five views. Two panes.
 
 Icons, List, Columns, Gallery and Disk Usage, one keystroke apart (⌘1–⌘5, in Finder's order), with ⌘+ and ⌘− for the
@@ -87,7 +94,7 @@ using the palette for selections and accents. You can also adjust row density an
 Strata knows your projects. Every file shows its git status, the current branch sits in the path bar, and the
 inspector recognizes Node, Rust, Swift, .NET, Python, Go and more. It lists a project's scripts and frees up the
 space taken by build folders like `node_modules` in a click (they go to the Trash, so nothing is lost). Code,
-Markdown, JSON, CSV, SQLite databases and archives preview right in the inspector, beautifully.
+Markdown, HTML, JSON, CSV, SQLite databases and archives preview right in the inspector, beautifully.
 
 Containers too. With Docker Desktop, OrbStack, Colima, Podman or Rancher Desktop running, **Containers** in the sidebar
 shows your containers as folders. Open one to browse its files like any folder (read-only, read from the container as
@@ -155,7 +162,7 @@ permissions, network connections and your controls.
 
 ## Translations
 
-Strata comes in 21 languages and follows your Mac's (or pick one in Settings ▸ General). Each language is one plain
+Strata comes in 22 languages and follows your Mac's (or pick one in Settings ▸ General). Each language is one plain
 JSON file in [Localization](Localization): improving a translation or adding a language is a pull request, no Xcode
 needed. [Localization/README.md](Localization/README.md) has the four steps.
 

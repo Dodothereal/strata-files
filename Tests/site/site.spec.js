@@ -51,9 +51,10 @@ for (const width of [320, 390, 768, 1440]) {
     expect(await page.evaluate(() => window.policyViolations)).toEqual([]);
     expect(errors).toEqual([]);
     await expect(page.locator('#themes')).toContainText('Make yourself at home');
-    const themes = page.locator('.hero__shot img');
-    await themes.scrollIntoViewIfNeeded();
-    await expect.poll(() => themes.evaluate(el => el.complete && el.naturalWidth > 0)).toBe(true);
+    for (const image of await page.locator('img:visible').all()) {
+      await image.scrollIntoViewIfNeeded();
+      await expect.poll(() => image.evaluate(el => el.complete && el.naturalWidth > 0)).toBe(true);
+    }
   });
 }
 

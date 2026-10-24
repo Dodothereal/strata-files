@@ -6,6 +6,10 @@ Its PNG is shared by the README and the website; the build creates responsive lo
 at 800, 1100, 1400, 2360 and the original 3960 pixels. The homepage preload and image use the same
 responsive candidates so only the appropriate size is downloaded.
 
+The Quick Look image uses headless AppKit rendering with Acme Studio demo files, showing the main browser behind
+the preview window. Its shared source is `docs/screenshots/quicklook.png`; the website build creates 800, 1100 and
+1400-pixel WebP versions. Keep it immediately after Disk Usage in both the README and the homepage.
+
 Run the same checks locally as the Website workflow:
 
 ```sh

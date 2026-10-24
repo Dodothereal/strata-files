@@ -24,6 +24,7 @@ shots=(
   "search:strata-plain-english-file-search:1400,800"
   "palette:strata-command-palette:1400,800"
   "treemap:strata-disk-usage-map:1400,800"
+  "quicklook:strata-quick-look-folders-archives:1400,800"
   "grid:strata-icon-view-thumbnails:1400,800"
   "dual:strata-dual-pane:1400,800"
   "devmode:strata-git-status-code-preview:1400,800"

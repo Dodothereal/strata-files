@@ -2,12 +2,13 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url>
     <loc>https://stratafiles.app/</loc>
-    <lastmod>2026-10-20</lastmod>
+    <lastmod>2026-10-24</lastmod>
     <image:image><image:loc>https://stratafiles.app/screenshots/strata-color-themes.webp</image:loc></image:image>
     <image:image><image:loc>https://stratafiles.app/screenshots/strata-mac-file-manager-list-view.webp</image:loc></image:image>
     <image:image><image:loc>https://stratafiles.app/screenshots/strata-plain-english-file-search.webp</image:loc></image:image>
     <image:image><image:loc>https://stratafiles.app/screenshots/strata-command-palette.webp</image:loc></image:image>
     <image:image><image:loc>https://stratafiles.app/screenshots/strata-disk-usage-map.webp</image:loc></image:image>
+    <image:image><image:loc>https://stratafiles.app/screenshots/strata-quick-look-folders-archives.webp</image:loc></image:image>
     <image:image><image:loc>https://stratafiles.app/screenshots/strata-icon-view-thumbnails.webp</image:loc></image:image>
     <image:image><image:loc>https://stratafiles.app/screenshots/strata-dual-pane.webp</image:loc></image:image>
     <image:image><image:loc>https://stratafiles.app/screenshots/strata-git-status-code-preview.webp</image:loc></image:image>
