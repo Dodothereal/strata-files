@@ -3,6 +3,8 @@
 // the star count.
 (() => {
   document.documentElement.classList.add('js');
+  const locale = window.strataLocale || { code: 'en', strings: {} };
+  const text = (key, values) => (locale.strings[key] || key).replace(/\{([a-z]+)\}/g, (_, name) => values[name]);
   const REPO = 'cristipufu/strata-files';
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -20,7 +22,7 @@
     return value;
   };
 
-  const megabytes = (bytes) => `${Math.max(1, Math.round(bytes / 1e6))} MB`;
+  const megabytes = (bytes) => new Intl.NumberFormat(locale.code, { style: 'unit', unit: 'megabyte', unitDisplay: 'short', maximumFractionDigits: 0 }).format(Math.max(1, bytes / 1e6));
 
   cached('strata-release', `https://api.github.com/repos/${REPO}/releases/latest`)
     .then((release) => {
@@ -32,7 +34,7 @@
       });
       const version = String(release.tag_name || '').replace(/^v/, '');
       document.querySelectorAll('[data-version]').forEach((label) => {
-        label.textContent = `Version ${version} · ${megabytes(asset.size)} · Free`;
+        label.textContent = text('Version {version} · {size} · Free', { version, size: megabytes(asset.size) });
       });
     })
     .catch(() => { /* links keep pointing at the Releases page */ });
@@ -41,8 +43,8 @@
     .then((repo) => {
       const stars = repo.stargazers_count;
       if (!stars) return;
-      const label = stars >= 1000 ? `${(stars / 1000).toFixed(stars >= 10000 ? 0 : 1)}k` : String(stars);
-      document.querySelectorAll('[data-stars]').forEach((el) => { el.textContent = `Star · ${label}`; });
+      const label = new Intl.NumberFormat(locale.code, { notation: 'compact', maximumFractionDigits: 1 }).format(stars);
+      document.querySelectorAll('[data-stars]').forEach((el) => { el.textContent = text('Star · {count}', { count: label }); });
     })
     .catch(() => {});
 

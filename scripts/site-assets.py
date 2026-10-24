@@ -110,8 +110,8 @@ def prepare(root):
             if not re.search(r'\bsrc=', script[1]) and 'application/ld+json' not in script[1] and script[2].strip():
                 raise ValueError('Executable inline JavaScript in ' + base)
         # Keep the homepage's first paint independent of a stylesheet request.
-        if base == 'index.html':
-            link = '<link rel="stylesheet" href="styles.css">'
+        if base == 'index.html' or '<main id="main">' in content:
+            link = '<link rel="stylesheet" href="/styles.css">' if 'href="/styles.css"' in content else '<link rel="stylesheet" href="styles.css">'
             if content.count(link) != 1:
                 raise ValueError('Homepage must link styles.css exactly once before packaging')
             content = content.replace(link, '<style>\n' + (root / 'styles.css').read_text() + '</style>')

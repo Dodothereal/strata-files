@@ -10,6 +10,9 @@ on:
       - "docs/screenshots/**"
       - "scripts/site.sh"
       - "scripts/site-assets.py"
+      - "scripts/site-localize.py"
+      - "Tests/test_site_localization.py"
+      - "Localization/*.json"
       - "Tests/site/**"
       - "Tests/test_site.py"
       - ".github/workflows/pages.yml"
@@ -19,6 +22,9 @@ on:
       - "docs/screenshots/**"
       - "scripts/site.sh"
       - "scripts/site-assets.py"
+      - "scripts/site-localize.py"
+      - "Tests/test_site_localization.py"
+      - "Localization/*.json"
       - "Tests/site/**"
       - "Tests/test_site.py"
       - ".github/workflows/pages.yml"
@@ -53,7 +59,7 @@ jobs:
           cache-dependency-path: Tests/site/package-lock.json
 
       - name: Check asset packaging
-        run: python3 -m unittest discover -s Tests -p test_site.py
+        run: python3 -m unittest discover -s Tests -p 'test_site*.py'
 
       - name: Assemble the site
         env:

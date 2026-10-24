@@ -66,6 +66,9 @@ for shot in "${shots[@]}"; do
   fi
 done
 
+# Build every language before fingerprinting the shared assets.
+python3 scripts/site-localize.py build "$out"
+
 # CI retains previous fingerprinted assets so cached pages keep working after an update.
 if [[ -n "${SITE_PREVIOUS_ORIGIN:-}" ]]; then
   python3 scripts/site-assets.py "$out" --previous-origin "$SITE_PREVIOUS_ORIGIN"

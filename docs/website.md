@@ -31,7 +31,7 @@ Run `scripts/site.sh --refresh-readme` after changing these PNG masters to refre
 Run the same checks locally as the Website workflow:
 
 ```sh
-python3 -m unittest discover -s Tests -p test_site.py
+python3 -m unittest discover -s Tests -p 'test_site*.py'
 scripts/site.sh
 npm ci --prefix Tests/site --ignore-scripts
 cd Tests/site && npx playwright install chromium && npm test
@@ -65,3 +65,54 @@ The retained archive is deliberately bounded at 2,000 files or 128 MiB. Reaching
 retention review rather than silently breaking old URLs. If hosting later supports response headers, use
 short HTML caching and long-lived immutable caching for `/immutable/`, and enforce framing restrictions
 through HTTP headers. Do not claim those protections are active until live responses confirm them.
+
+## Website localization
+
+The English templates in `site/index.html`, `site/privacy/index.html` and `site/404.html` are shared by every
+language. `scripts/site-localize.py` builds complete HTML pages before asset packaging. English stays at `/`;
+other languages use their lower-case language code, for example `/fr/`, `/pt-br/` and `/zh-hant/`. Each has its own
+privacy page and a translated `404.html`. GitHub Pages uses the root English `404.html` for unknown URLs; its
+language links let readers switch explicitly.
+
+A page has its own canonical URL, translated title, description, social metadata and structured data, plus reciprocal
+`hreflang` links to every language and an English `x-default`. The FAQ's structured data reuses the visible answers.
+The sitemap includes every homepage and privacy page, and `llms.txt` gains the same language links automatically.
+Screenshots and assets are shared across languages. Their English demo files and working English search examples
+remain intact; their descriptions and surrounding content are translated.
+
+The native-language picker uses ordinary links and works without JavaScript. On the default homepage, browser language
+preferences can suggest another language, without redirecting. An explicit URL always wins; a picker choice or a dismissed
+suggestion is remembered locally. Detection uses language tags, including regional aliases for Chinese, Portuguese and
+Norwegian, without IP geolocation or a translation service at runtime. This follows Google's guidance on
+[multilingual URLs and language selection](https://developers.google.com/search/docs/specialty/international/managing-multi-regional-sites)
+and [localized versions](https://developers.google.com/search/docs/specialty/international/localized-versions).
+
+### Add a language
+
+1. Copy `site/localization/en.json` to a file named for the new language, such as `fi.json`.
+2. Set `code` to `fi`, `language` to its native name (`Suomi`), `slug` to the lower-case code (`fi`), and `ogLocale`
+   to its Open Graph locale (`fi_FI`). Optional `aliases` list browser-language aliases; `direction` can be `rtl`.
+3. Translate all values under `strings`, retaining the English keys, inline HTML, links, command examples, keycaps
+   and `{placeholders}`. Keep `Strata Files` as a product name. Review terminology against the app catalog, along
+   with regional vocabulary, register, punctuation, dates and keyboard-key names. Brazilian and European Portuguese,
+   and Simplified and Traditional Chinese, have separate catalogs.
+4. Run the checks below. The catalog automatically creates its routes, picker entries, language matching, SEO links,
+   sitemap entries and machine-readable discovery links. No language arrays or page copies need editing.
+
+```sh
+python3 scripts/site-localize.py extract   # after editing English website text
+python3 scripts/site-localize.py check
+python3 -m unittest discover -s Tests -p 'test_site*.py'
+scripts/site.sh
+npm test --prefix Tests/site
+```
+
+Extraction updates only English. Complete the corresponding translations before committing changed copy; the build
+rejects missing, obsolete or blank messages, malformed markup, altered commands/links/placeholders, draft markers and
+changed product names. Every app language must have a website catalog. Website-only languages can also be added.
+Translations are checked-in build inputs: the production build never requests translations from an external service.
+
+Browser checks discover catalogs too. They cover each language at phone and desktop widths, translated downloads,
+keyboard access to the picker, privacy/404 navigation, pages without JavaScript, browser-language aliases, remembered
+choices, section anchors and CSP. Python checks verify catalog completeness, schema/visible-answer consistency,
+reciprocal SEO links, sitemap coverage, and adding a language without changing application code.
