@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": "plum",
+  "name": "Plum",
+  "comment": "Color theme: dusty pink-purple",
+  "order": 120,
+  "seed": [
+    0.57,
+    0.34,
+    0.52
+  ],
+  "tintStrength": 0.7,
+  "lightnessShift": {
+    "light": 0,
+    "dark": 0
+  }
+}

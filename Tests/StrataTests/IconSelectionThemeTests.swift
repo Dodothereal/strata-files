@@ -26,7 +26,7 @@ extension ColorThemeTests {
                     appearance.performAsCurrentDrawingAppearance {
                         icon.draw(icon.bounds)
                         let expected: NSColor = palette == .system ? .unemphasizedSelectedContentBackgroundColor
-                            : palette.seed.surface(.chrome, dark: appearance.isDark)
+                            : palette.surface(.chrome, dark: appearance.isDark)
                         expected.setFill()
                         NSRect(x: 120, y: 0, width: 20, height: 150).fill()
                     }

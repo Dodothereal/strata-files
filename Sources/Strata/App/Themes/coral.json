@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": "coral",
+  "name": "Coral",
+  "comment": "Color theme: warm peach-red",
+  "order": 110,
+  "seed": [
+    0.8,
+    0.43,
+    0.34
+  ],
+  "tintStrength": 0.75,
+  "lightnessShift": {
+    "light": 0,
+    "dark": 0
+  }
+}

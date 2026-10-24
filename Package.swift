@@ -31,6 +31,7 @@ let appOnlySources = [
 let themeSources = [
     "Appearance.swift",
     "ColorTheme.swift",
+    "ThemeCatalog.swift",
     "HeaderMaterialTint.swift",
     "NativeHeaderFillTint.swift",
     "NavigationItemTheme.swift",
@@ -106,6 +107,7 @@ let package = Package(
             path: "Sources/Strata/App",
             exclude: appOnlySources,
             sources: themeSources,
+            resources: [.copy("Themes")],
             swiftSettings: strataSwiftSettings
         ),
         .target(
@@ -141,7 +143,7 @@ let package = Package(
                 "StrataIndex",
             ],
             path: "Sources/Strata",
-            exclude: ["Support", "Previews"]
+            exclude: ["Support", "Previews", "App/Themes"]
                 + themeSources.map { "App/\($0)" }
                 + modelSources.map { "Model/\($0)" }
                 + indexSources.map { "Index/\($0)" },

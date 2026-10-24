@@ -176,9 +176,9 @@ extension ColorThemeTests {
         }
         for scheme in [ColorScheme.light, .dark] {
             let preview = VStack(spacing: 20) {
-                ForEach(0..<3) { row in
+                ForEach(0..<((ColorTheme.allCases.count + 2) / 3)) { row in
                     HStack(spacing: 20) {
-                        ForEach(Array(ColorTheme.allCases[(row * 3)..<(row * 3 + 3)]), id: \.self) { palette in
+                        ForEach(Array(ColorTheme.allCases[(row * 3)..<min(row * 3 + 3, ColorTheme.allCases.count)]), id: \.self) { palette in
                             ThemePreview(palette: palette, selected: true, options: ColorThemeOptions(palette: palette))
                                 .frame(width: 200)
                         }

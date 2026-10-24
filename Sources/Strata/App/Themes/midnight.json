@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": "midnight",
+  "name": "Midnight",
+  "comment": "Color theme: deep navy",
+  "order": 140,
+  "seed": [
+    0.22,
+    0.31,
+    0.5
+  ],
+  "tintStrength": 1.05,
+  "lightnessShift": {
+    "light": 0.02,
+    "dark": -0.11
+  }
+}

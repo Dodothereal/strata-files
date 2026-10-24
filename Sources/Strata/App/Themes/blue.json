@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": "blue",
+  "name": "Blue",
+  "comment": "Color theme: blue",
+  "order": 20,
+  "seed": [
+    0.38,
+    0.44,
+    0.67
+  ],
+  "tintStrength": 1,
+  "lightnessShift": {
+    "light": 0,
+    "dark": 0
+  }
+}

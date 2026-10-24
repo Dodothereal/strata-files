@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": "slate",
+  "name": "Slate",
+  "comment": "Color theme: cool blue-gray",
+  "order": 90,
+  "seed": [
+    0.39,
+    0.46,
+    0.55
+  ],
+  "tintStrength": 0.25,
+  "lightnessShift": {
+    "light": 0,
+    "dark": -0.04
+  }
+}

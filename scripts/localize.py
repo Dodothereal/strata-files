@@ -152,6 +152,18 @@ def language_files():
 
 # MARK: - extract
 
+def theme_strings():
+    """Theme names use the same catalogs as code strings; contributors do not need a Swift switch."""
+    found = {}
+    for path in sorted((ROOT / "Sources/Strata/App/Themes").glob("*.json")):
+        data = load(path)
+        name, comment = data["name"], data["comment"]
+        if not has_text(name) or not has_text(comment) or name in found:
+            raise ValueError(f"Invalid or duplicate theme name: {path.name}")
+        found[name] = {"comments": {comment}, "places": [f"Themes/{path.name}"], "value": None}
+    return found
+
+
 def extract():
     """Builds the app with the compiler's string extraction on, then rewrites en.json: new strings added (as their own
     English), gone ones removed, plural forms and translators' notes kept."""
@@ -179,6 +191,10 @@ def extract():
                 if entry.get("value"):
                     note["value"] = entry["value"]
                 note["places"].append(where)
+    for name, info in theme_strings().items():
+        note = found.setdefault(name, {"comments": set(), "places": [], "value": None})
+        note["comments"].update(info["comments"])
+        note["places"].extend(info["places"])
     for name, text in info_plist_strings().items():
         found[PLIST_PREFIX + name] = {"comments": {"macOS permission prompt (Info.plist), shown the first time Strata opens that place"},
                                       "places": [f"Info.plist {name}"], "value": text}

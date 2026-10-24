@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": "ice",
+  "name": "Ice",
+  "comment": "Color theme: pale cyan",
+  "order": 130,
+  "seed": [
+    0.27,
+    0.55,
+    0.66
+  ],
+  "tintStrength": 0.55,
+  "lightnessShift": {
+    "light": 0.02,
+    "dark": 0
+  }
+}

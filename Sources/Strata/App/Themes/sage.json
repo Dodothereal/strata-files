@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": "sage",
+  "name": "Sage",
+  "comment": "Color theme: muted gray-green",
+  "order": 100,
+  "seed": [
+    0.43,
+    0.57,
+    0.47
+  ],
+  "tintStrength": 0.45,
+  "lightnessShift": {
+    "light": 0,
+    "dark": 0
+  }
+}

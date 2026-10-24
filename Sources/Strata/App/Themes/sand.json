@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": "sand",
+  "name": "Sand",
+  "comment": "Color theme: warm brown",
+  "order": 50,
+  "seed": [
+    0.69,
+    0.43,
+    0.19
+  ],
+  "tintStrength": 1,
+  "lightnessShift": {
+    "light": 0,
+    "dark": 0
+  }
+}

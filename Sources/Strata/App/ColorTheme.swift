@@ -2,34 +2,45 @@ import AppKit
 import Synchronization
 
 /// A hue shared by the entire browser; file types, tags and status colors keep their meanings.
-nonisolated package enum ColorTheme: String, CaseIterable, Sendable {
-    case system, graphite, blue, green, purple, sand, teal, rose, amber
+nonisolated package struct ColorTheme: RawRepresentable, CaseIterable, Hashable, Sendable {
+    package let rawValue: String
+    private let definition: ThemeDefinition?
 
-    package var title: String {
-        switch self {
-        case .system: String(localized: "System", comment: "Color theme: use the Mac’s colors")
-        case .graphite: String(localized: "Graphite", comment: "Color theme: neutral gray")
-        case .blue: String(localized: "Blue", comment: "Color theme")
-        case .green: String(localized: "Green", comment: "Color theme")
-        case .purple: String(localized: "Purple", comment: "Color theme")
-        case .sand: String(localized: "Sand", comment: "Color theme: warm brown")
-        case .teal: String(localized: "Teal", comment: "Color theme: blue-green")
-        case .rose: String(localized: "Rose", comment: "Color theme: warm muted red")
-        case .amber: String(localized: "Amber", comment: "Color theme: warm gold")
-        }
+    package static let system = ColorTheme()
+    package static let allCases: [ColorTheme] = [.system] + ThemeCatalog.bundled
+
+    // Existing call sites keep their typed names; contributed themes need no Swift declaration.
+    package static let graphite = ColorTheme(rawValue: "graphite") ?? .system
+    package static let blue = ColorTheme(rawValue: "blue") ?? .system
+    package static let green = ColorTheme(rawValue: "green") ?? .system
+    package static let purple = ColorTheme(rawValue: "purple") ?? .system
+    package static let sand = ColorTheme(rawValue: "sand") ?? .system
+    package static let teal = ColorTheme(rawValue: "teal") ?? .system
+    package static let rose = ColorTheme(rawValue: "rose") ?? .system
+    package static let amber = ColorTheme(rawValue: "amber") ?? .system
+
+    private init() { rawValue = "system"; definition = nil }
+    package init(definition: ThemeDefinition) { rawValue = definition.id; self.definition = definition }
+
+    package init?(rawValue: String) {
+        guard let theme = Self.allCases.first(where: { $0.rawValue == rawValue }) else { return nil }
+        self = theme
     }
 
-    package var seed: ThemeRGB {
-        switch self {
-        case .system, .blue: ThemeRGB(red: 0.38, green: 0.44, blue: 0.67)
-        case .graphite: ThemeRGB(red: 0.39, green: 0.39, blue: 0.39)
-        case .green: ThemeRGB(red: 0.46, green: 0.65, blue: 0.32)
-        case .purple: ThemeRGB(red: 0.50, green: 0.33, blue: 0.67)
-        case .sand: ThemeRGB(red: 0.69, green: 0.43, blue: 0.19)
-        case .teal: ThemeRGB(red: 0.28, green: 0.52, blue: 0.54)
-        case .rose: ThemeRGB(red: 0.74, green: 0.34, blue: 0.37)
-        case .amber: ThemeRGB(red: 0.72, green: 0.56, blue: 0.16)
-        }
+    package static func == (lhs: Self, rhs: Self) -> Bool { lhs.rawValue == rhs.rawValue }
+    package func hash(into hasher: inout Hasher) { hasher.combine(rawValue) }
+
+    package var title: String {
+        guard let definition else { return String(localized: "System", comment: "Color theme: use the Mac’s colors") }
+        // localize.py extracts names and translator notes from the theme files.
+        return String(localized: String.LocalizationValue(definition.name))
+    }
+
+    package var seed: ThemeRGB { definition?.seed ?? ThemeRGB(red: 0.38, green: 0.44, blue: 0.67) }
+
+    package func surface(_ role: ThemeSurfaceRole, dark: Bool) -> NSColor {
+        seed.surface(role, dark: dark, tintStrength: definition?.tintStrength ?? 1,
+                     brightnessShift: dark ? (definition?.darkShift ?? 0) : (definition?.lightShift ?? 0))
     }
 
     /// Light selections use a stronger shade of the pastel surfaces; dark selections keep readable light text.
@@ -41,7 +52,7 @@ nonisolated package enum ColorTheme: String, CaseIterable, Sendable {
         return NSColor(name: nil) { appearance in
             if highContrast || appearance.isHighContrast { return .selectedContentBackgroundColor }
             if appearance.isDark { return rgb.selectionColor }
-            let surface = rgb.surface(.chrome, dark: false)
+            let surface = self.surface(.chrome, dark: false)
             return surface.blended(withFraction: 0.08, of: .black) ?? surface
         }
     }
@@ -92,7 +103,8 @@ nonisolated package struct ThemeRGB: Equatable, Sendable {
 
     package var selectionColor: NSColor { selectionRGB.color }
 
-    package func surface(_ role: ThemeSurfaceRole, dark: Bool) -> NSColor {
+    package func surface(_ role: ThemeSurfaceRole, dark: Bool, tintStrength: CGFloat = 1,
+                         brightnessShift: CGFloat = 0) -> NSColor {
         let maxChannel = max(red, green, blue), minChannel = min(red, green, blue)
         let chroma = maxChannel - minChannel
         var hue: CGFloat = 0
@@ -103,7 +115,7 @@ nonisolated package struct ThemeRGB: Equatable, Sendable {
             hue /= 6
             if hue < 0 { hue += 1 }
         }
-        let saturation: CGFloat = chroma < 0.025 ? 0 : (dark ? 0.33 : 0.40)
+        let saturation: CGFloat = chroma < 0.025 ? 0 : (dark ? 0.33 : 0.40) * tintStrength
         var level: CGFloat
         switch role {
         case .content: level = dark ? 0.29 : 0.92
@@ -114,6 +126,7 @@ nonisolated package struct ThemeRGB: Equatable, Sendable {
         case .alternatingRow: level = dark ? 0.31 : 0.90
         }
         if dark, chroma < 0.025 { level -= 0.10 }
+        level = min(max(level + brightnessShift, 0), 1)
         let c = (1 - abs(2 * level - 1)) * saturation
         let x = c * (1 - abs((hue * 6).truncatingRemainder(dividingBy: 2) - 1))
         let m = level - c / 2
@@ -188,7 +201,7 @@ nonisolated package struct ColorThemeOptions: Equatable, Sendable {
                               role: ThemeSurfaceRole = .sidebar) -> NSColor {
         guard palette != .system, tintsWindow, !highContrast, !appearance.isHighContrast else { return role.nativeColor }
         // Opaque coordinated surfaces stay consistent over wallpaper and in full screen, including Reduce Transparency.
-        return seed.surface(role, dark: appearance.isDark)
+        return palette.surface(role, dark: appearance.isDark)
     }
 
     package var windowColor: NSColor { windowColor(highContrast: false) }
@@ -227,7 +240,7 @@ package enum ThemeStyle {
         guard options.palette != .system, !highContrast else { return .unemphasizedSelectedContentBackgroundColor }
         let chosen = options
         return NSColor(name: nil) { appearance in
-            appearance.isHighContrast ? .unemphasizedSelectedContentBackgroundColor : chosen.seed.surface(.chrome, dark: appearance.isDark)
+            appearance.isHighContrast ? .unemphasizedSelectedContentBackgroundColor : chosen.palette.surface(.chrome, dark: appearance.isDark)
         }
     }
 

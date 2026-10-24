@@ -45,6 +45,8 @@ fi
 # The command-line tool lives in Helpers: "strata" would clash with "Strata" in MacOS on a case-insensitive disk.
 cp "$bins/StrataCLI" "$app/Contents/Helpers/strata"
 cp "$bins/StrataArchiveWorker" "$app/Contents/Helpers/StrataArchiveWorker"
+# SwiftPM resources are shipped with the app, so theme discovery also works away from the checkout.
+cp -R "$bins/Strata_StrataTheme.bundle" "$app/Contents/Resources/Strata_StrataTheme.bundle"
 cp Resources/ArchivePreviewNotice.txt "$app/Contents/Resources/ArchivePreviewNotice.txt"
 cp Resources/Info.plist "$app/Contents/Info.plist"
 if [[ -n "${STRATA_VERSION:-}" ]]; then

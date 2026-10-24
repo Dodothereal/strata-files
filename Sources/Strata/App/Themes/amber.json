@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": "amber",
+  "name": "Amber",
+  "comment": "Color theme: warm gold",
+  "order": 80,
+  "seed": [
+    0.72,
+    0.56,
+    0.16
+  ],
+  "tintStrength": 1,
+  "lightnessShift": {
+    "light": 0,
+    "dark": 0
+  }
+}

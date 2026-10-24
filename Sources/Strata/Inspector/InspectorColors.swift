@@ -31,7 +31,7 @@ nonisolated enum InspectorColors {
             var foreground: NSColor?
             appearance.performAsCurrentDrawingAppearance { foreground = native.usingColorSpace(.sRGB) }
             guard let foreground,
-                  let background = state.options.seed.surface(.inspector, dark: appearance.isDark).usingColorSpace(.sRGB) else { return native }
+                  let background = state.options.palette.surface(.inspector, dark: appearance.isDark).usingColorSpace(.sRGB) else { return native }
             let base = luminance(background.redComponent, background.greenComponent, background.blueComponent)
             let target: CGFloat = appearance.isDark ? 1 : 0
             for step in 0...20 {

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": "teal",
+  "name": "Teal",
+  "comment": "Color theme: blue-green",
+  "order": 60,
+  "seed": [
+    0.28,
+    0.52,
+    0.54
+  ],
+  "tintStrength": 1,
+  "lightnessShift": {
+    "light": 0,
+    "dark": 0
+  }
+}

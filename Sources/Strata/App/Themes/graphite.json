@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": "graphite",
+  "name": "Graphite",
+  "comment": "Color theme: neutral gray",
+  "order": 10,
+  "seed": [
+    0.39,
+    0.39,
+    0.39
+  ],
+  "tintStrength": 1,
+  "lightnessShift": {
+    "light": 0,
+    "dark": 0
+  }
+}

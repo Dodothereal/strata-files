@@ -66,7 +66,7 @@ extension ColorThemeTests {
             legend.appearance = appearance
             for palette in ColorTheme.allCases {
                 ThemeStyle.apply(ColorThemeOptions(palette: palette), windows: [], highContrast: false)
-                let expected = palette == .system ? NSColor.controlBackgroundColor : palette.seed.surface(.content, dark: appearance.isDark)
+                let expected = palette == .system ? NSColor.controlBackgroundColor : palette.surface(.content, dark: appearance.isDark)
                 #expect(try chromePixel(legend, at: NSPoint(x: 4, y: 4), appearance: appearance)
                         == chromeColorPixel(expected, appearance: appearance))
                 #expect(legend.subviews == children)

@@ -26,6 +26,30 @@ NEW_LABELS = [
 
 
 class CatalogTranslationTests(unittest.TestCase):
+    def test_contributed_theme_names_are_extracted_with_notes_and_translated(self):
+        themes = localize.theme_strings()
+        english = localize.load(localize.SOURCE)["strings"]
+        self.assertTrue(themes)
+        for path in localize.language_files():
+            strings = localize.load(path)["strings"]
+            for name, info in themes.items():
+                with self.subTest(language=path.stem, theme=name):
+                    self.assertIn(name, english)
+                    self.assertTrue(strings[name].strip())
+                    self.assertTrue(info["comments"])
+
+    def test_new_theme_names_need_no_swift_localization_declaration(self):
+        with tempfile.TemporaryDirectory(prefix="strata-theme-strings-") as scratch:
+            root = Path(scratch)
+            themes = root / "Sources/Strata/App/Themes"
+            themes.mkdir(parents=True)
+            (themes / "meadow.json").write_text(json.dumps({"name": "Meadow", "comment": "A soft green"}))
+            with patch.object(localize, "ROOT", root):
+                strings = localize.theme_strings()
+            self.assertEqual(set(strings), {"Meadow"})
+            self.assertEqual(strings["Meadow"]["places"], ["Themes/meadow.json"])
+            self.assertEqual(strings["Meadow"]["comments"], {"A soft green"})
+
     def test_supported_languages_have_every_source_translation(self):
         english = localize.load(localize.SOURCE)["strings"]
         for path in localize.language_files():

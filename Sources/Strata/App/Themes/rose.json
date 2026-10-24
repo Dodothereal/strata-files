@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": "rose",
+  "name": "Rose",
+  "comment": "Color theme: warm muted red",
+  "order": 70,
+  "seed": [
+    0.74,
+    0.34,
+    0.37
+  ],
+  "tintStrength": 1,
+  "lightnessShift": {
+    "light": 0,
+    "dark": 0
+  }
+}
