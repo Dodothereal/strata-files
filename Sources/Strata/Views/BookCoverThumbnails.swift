@@ -1,7 +1,7 @@
 import AppKit
 
 /// Cover reads share a two-worker allowance; scrolling cannot launch an archive process for every offscreen book.
-final class BookCoverThumbnails {
+@MainActor final class BookCoverThumbnails {
     typealias Reader = @Sendable (PreviewArchiveSource, Int) async throws -> CGImage
     private struct Request {
         let id: Int

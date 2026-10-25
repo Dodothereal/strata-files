@@ -1,7 +1,7 @@
 import AppKit
 
 /// Virtual pages are decoded in memory; contact sheets never create export leases or ask for passwords.
-final class PreviewArchiveThumbnails {
+@MainActor final class PreviewArchiveThumbnails {
     private struct Request {
         let id = UUID()
         let owner: ObjectIdentifier
