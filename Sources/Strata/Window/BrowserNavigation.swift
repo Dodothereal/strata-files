@@ -106,6 +106,12 @@ final class BrowserWindow: NSWindow {
     weak var navigation: BrowserNavigation?
 
     override func sendEvent(_ event: NSEvent) {
+        if (event.type == .rightMouseDown || event.type == .leftMouseDown && event.modifierFlags.contains(.control)),
+           toolbar != nil, event.locationInWindow.y >= contentLayoutRect.maxY,
+           event.window == nil || event.window === self {
+            BrowserToolbar.withAlignedContextMenu { super.sendEvent(event) }
+            return
+        }
         if (event.type == .otherMouseUp || event.type == .swipe), (event.window == nil || event.window === self) {
             if event.type == .otherMouseUp, let direction = BrowserNavigation.direction(button: event.buttonNumber),
                navigation?.handle(direction, at: event.locationInWindow) == true { return }

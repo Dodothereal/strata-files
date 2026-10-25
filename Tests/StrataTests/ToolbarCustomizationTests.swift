@@ -3,6 +3,46 @@ import Testing
 @testable import Strata
 
 struct ToolbarCustomizationTests {
+    @Test func nativeContextMenuKeepsItsWrenchAndTextInTheDisplayOptionsColumns() throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 500),
+                              styleMask: [.titled, .resizable, .closable, .fullSizeContentView], backing: .buffered, defer: false)
+        window.contentView = NSView()
+        window.toolbarStyle = .unified
+        let toolbar = NSToolbar(identifier: "ToolbarMenuTests." + UUID().uuidString)
+        toolbar.allowsUserCustomization = true
+        toolbar.autosavesConfiguration = false
+        window.toolbar = toolbar
+        defer { window.contentView = nil }
+        let frame = try #require(window.contentView?.superview)
+        let event = try #require(NSEvent.mouseEvent(with: .rightMouseDown, location: NSPoint(x: 300, y: 480),
+                                                   modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                                                   eventNumber: 0, clickCount: 1, pressure: 0))
+        let native = try #require(frame.menu(for: event))
+        let original = try #require(native.items.first { $0.action == #selector(NSWindow.runToolbarCustomizationPalette(_:)) })
+        let icon = try #require(original.image)
+        let unrelated = NSMenuItem(title: "Other", action: #selector(NSText.selectAll(_:)), keyEquivalent: "")
+        unrelated.image = icon
+        var menus: [NSMenu] = []
+        BrowserToolbar.withAlignedContextMenu {
+            // A new native menu is generated each time; no translated title or private AppKit action identifies it.
+            for _ in 0..<2 { if let menu = frame.menu(for: event) { menus.append(menu) } }
+            let other = NSMenu(); other.addItem(unrelated)
+            #expect(unrelated.image === icon && unrelated.offStateImage == nil)
+        }
+        #expect(menus.count == 2)
+        for menu in menus {
+            let customize = try #require(menu.items.first { $0.action == original.action })
+            #expect(customize.image == nil && customize.offStateImage?.size == icon.size)
+            #expect(customize.state == .off && customize.indentationLevel == original.indentationLevel)
+            #expect(customize.action == original.action && customize.target === original.target)
+            #expect(menu.items.map(\.title) == native.items.map(\.title))
+            #expect(menu.items.filter { !$0.isSeparatorItem }.allSatisfy { $0.image == nil })
+        }
+        let later = try #require(frame.menu(for: event))
+        #expect(later.items.first { $0.action == original.action }?.image != nil)
+    }
+
     private func controller(_ tree: TestTree, _ environment: PreviewEnvironment) -> BrowserWindowController {
         let controller = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"), services: environment.services)
         controller.window?.setFrameAutosaveName("")

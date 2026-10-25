@@ -13,6 +13,38 @@ final class BrowserToolbar {
     static func command(_ id: NSToolbarItem.Identifier) -> StrataCommand? { commands.first { identifier($0) == id } }
     static var allowed: [NSToolbarItem.Identifier] { defaults + commands.map(identifier) + [.space] }
 
+    /// AppKit creates this menu on demand. Keep the wrench in its existing state column, beside the display-mode
+    /// checkmarks, rather than adding an image column that indents only Customize Toolbar.
+    static func withAlignedContextMenu(_ dispatch: () -> Void) {
+        let observation = ContextMenuAlignment(center: .default)
+        defer { observation.stop() }
+        dispatch()
+    }
+
+    private final class ContextMenuAlignment: NSObject {
+        private let center: NotificationCenter
+
+        init(center: NotificationCenter) {
+            self.center = center
+            super.init()
+            // These synchronous AppKit notifications stay on the event's main actor, including native menu updates.
+            for name in [NSMenu.didAddItemNotification, NSMenu.didChangeItemNotification] {
+                center.addObserver(self, selector: #selector(align(_:)), name: name, object: nil)
+            }
+        }
+
+        func stop() { center.removeObserver(self) }
+
+        @objc private func align(_ notification: Notification) {
+            guard let menu = notification.object as? NSMenu, menu.showsStateColumn else { return }
+            for item in menu.items where item.action == #selector(NSWindow.runToolbarCustomizationPalette(_:)) && item.view == nil && item.state == .off {
+                guard let image = item.image else { continue }
+                item.image = nil
+                item.offStateImage = image
+            }
+        }
+    }
+
     /// Ignore obsolete identifiers and duplicate controls, retaining repeated spacers and an intentionally empty bar.
     static func layout(_ stored: [String]?) -> [NSToolbarItem.Identifier]? {
         guard let stored, stored.count <= 64 else { return nil }
