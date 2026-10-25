@@ -58,7 +58,13 @@ struct ToolbarCustomizationTests {
         let toolbar = try #require(first.window?.toolbar)
         #expect(toolbar.allowsUserCustomization && !toolbar.autosavesConfiguration)
         #expect(first.toolbarDefaultItemIdentifiers(toolbar) == BrowserToolbar.defaults)
-        #expect(BrowserToolbar.defaults.count == 15)
+        #expect(BrowserToolbar.defaults.count == 16)
+        // Reload belongs beside the view controls: a visible refresh button, without opening Customize Toolbar.
+        let reload = BrowserToolbar.identifier(.reloadFolder)
+        #expect(BrowserToolbar.defaults.contains(reload))
+        #expect(BrowserToolbar.defaults.firstIndex(of: reload).flatMap { index in
+            BrowserToolbar.defaults.firstIndex(of: .viewMode).map { $0 < index }
+        } == true)
         for command in BrowserToolbar.commands { #expect(first.toolbarAllowedItemIdentifiers(toolbar).contains(BrowserToolbar.identifier(command))) }
         let ids: [NSToolbarItem.Identifier] = [.toggleSidebar, BrowserToolbar.identifier(.newFolder), .flexibleSpace, .pathBar]
         toolbar.itemIdentifiers = ids

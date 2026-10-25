@@ -4,7 +4,8 @@ import AppKit
 final class BrowserToolbar {
     static let defaults: [NSToolbarItem.Identifier] = [
         .toggleSidebar, .sidebarMode, .sidebarTrackingSeparator, .back, .forward, .flexibleSpace, .pathBar,
-        .flexibleSpace, .viewMode, .dualPane, .share, .search, .transfers, .inspectorTrackingSeparator, .toggleInspector,
+        .flexibleSpace, .viewMode, identifier(.reloadFolder), .dualPane, .share, .search, .transfers,
+        .inspectorTrackingSeparator, .toggleInspector,
     ]
     static let commands: [StrataCommand] = [
         .newFolder, .newFile, .moveToTrash, .openInTerminal, .toggleQuickLook, .reloadFolder, .showCommandPalette,
