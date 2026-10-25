@@ -36,6 +36,7 @@ import StrataPreviews
     private var fittingColumns = false
     private var columnWidths: [String: Double]
     private var shownGeneration = -1
+    private var comicMode: PreviewViewMode?
     var focusView: NSView { if mode == .icons, let grid { return grid.collection }; return outline }
 
     init(session: PreviewSession, preferences: Prefs, thumbnails: FileThumbnails, copies: CopyProviders) {
@@ -65,6 +66,7 @@ import StrataPreviews
         archiveContent.onReady = { [weak self] item, lease in
             guard let self, session.selected === item, !session.isClosed else { return }
             fileView.show(item, root: session.root, materialized: lease.url)
+            grid?.updateAppearance()
         }
     }
 
@@ -150,6 +152,8 @@ import StrataPreviews
     }
 
     private func configureOutline() {
+        outline.setDraggingSourceOperationMask(.copy, forLocal: true)
+        outline.setDraggingSourceOperationMask(.copy, forLocal: false)
         nameColumn.title = String(localized: "Name", comment: "Column title")
         sizeColumn.title = String(localized: "Size", comment: "Column title")
         kindColumn.title = String(localized: "Kind", comment: "Column title")
@@ -242,6 +246,7 @@ import StrataPreviews
         case .root:
             if shownGeneration != session.generation {
                 shownGeneration = session.generation
+                comicMode = session.root.map { BookFormat.comics.contains($0.url.pathExtension.lowercased()) } == true ? .icons : nil
                 listing.query = ""
                 controls.search.stringValue = ""
                 gridScope = nil
@@ -403,7 +408,12 @@ import StrataPreviews
 
     func chooseMode(_ mode: PreviewViewMode) {
         guard !session.isClosed else { return }
-        preferences.previewViewMode = mode
+        if comicMode != nil {
+            comicMode = mode
+            previewOptionsChanged()
+        } else {
+            preferences.previewViewMode = mode
+        }
     }
 
     func chooseIconSize(_ size: Double) {
@@ -422,7 +432,7 @@ import StrataPreviews
     }
 
     private func updateMode() {
-        let next = session.isContainer ? preferences.previewViewMode : .list
+        let next = session.isContainer ? (comicMode ?? preferences.previewViewMode) : .list
         if mode != .icons, next == .icons { gridScope = session.selected?.parent }
         mode = next
         scroll.isHidden = mode == .icons
@@ -438,6 +448,8 @@ import StrataPreviews
     private func ensureGrid() -> PreviewGridController {
         if let grid { return grid }
         let grid = PreviewGridController(preferences: preferences, thumbnails: thumbnails)
+        grid.archiveThumbnails = PreviewArchiveThumbnails(access: session.archiveAccess)
+        grid.onDrag = { [weak self] item in self?.draggedPage(item) }
         treeController.addChild(grid)
         grid.view.translatesAutoresizingMaskIntoConstraints = false
         treeHost.addSubview(grid.view)
@@ -454,6 +466,15 @@ import StrataPreviews
         grid.onContextMenu = { [weak self] in self?.controls.actionMenu() }
         self.grid = grid
         return grid
+    }
+
+    func draggedPage(_ item: PreviewItem) -> NSPasteboardWriting? {
+        archiveContent.draggedPage(item, in: session).map { $0 as NSURL }
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+        guard let item = item as? PreviewItem else { return nil }
+        return draggedPage(item)
     }
 
     private func refreshGrid(resetScroll: Bool = false) {

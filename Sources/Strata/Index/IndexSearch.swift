@@ -25,7 +25,7 @@ nonisolated package func indexStamp(_ date: Date) -> UInt32 {
 /// `!word` to exclude, `"exact phrase"`, and `a/b` to match a folder named like `a` above a name like `b`.
 nonisolated package struct IndexQuery: Sendable {
     package enum Kind: String, Sendable {
-        case folder, file, image, video, audio, document, code, archive, app
+        case folder, file, image, video, audio, document, book, comic, code, archive, app
     }
 
     package var terms: [[UInt8]] = []
@@ -183,6 +183,8 @@ nonisolated package struct IndexQuery: Sendable {
         case "video", "videos", "movie", "movies": .video
         case "audio", "music", "sound", "song": .audio
         case "doc", "docs", "document", "documents", "text": .document
+        case "book", "books", "ebook", "ebooks": .book
+        case "comic", "comics": .comic
         case "code", "source", "src": .code
         case "archive", "archives", "zip", "compressed": .archive
         case "app", "apps", "application", "applications": .app
@@ -320,9 +322,11 @@ nonisolated package enum IndexSearch {
         .image: ["jpg", "jpeg", "png", "gif", "heic", "heif", "webp", "tif", "tiff", "bmp", "svg", "raw", "cr2", "cr3", "nef", "arw", "dng", "psd", "ico", "icns", "avif"],
         .video: ["mp4", "mov", "m4v", "avi", "mkv", "webm", "wmv", "flv", "mpg", "mpeg", "3gp"],
         .audio: ["mp3", "m4a", "wav", "aiff", "aif", "flac", "ogg", "aac", "opus", "wma", "caf"],
-        .document: ["pdf", "doc", "docx", "pages", "txt", "rtf", "md", "markdown", "key", "ppt", "pptx", "xls", "xlsx", "numbers", "csv", "odt", "ods", "epub", "tex"],
+        .document: ["pdf", "doc", "docx", "pages", "txt", "rtf", "md", "markdown", "key", "ppt", "pptx", "xls", "xlsx", "numbers", "csv", "odt", "ods", "epub", "mobi", "azw", "azw3", "djvu", "djv", "fb2", "tex"],
+        .book: ["epub", "mobi", "azw", "azw3", "djvu", "djv", "fb2"],
+        .comic: ["cbz", "cbr", "cb7", "cbt"],
         .code: ["swift", "rs", "ts", "tsx", "js", "jsx", "mjs", "py", "go", "c", "h", "cpp", "hpp", "cc", "m", "mm", "cs", "java", "kt", "rb", "php", "sh", "zsh", "json", "yaml", "yml", "toml", "html", "css", "scss", "xml", "sql", "gd", "lua", "dart", "vue", "svelte"],
-        .archive: ["zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "dmg", "pkg", "iso", "zst"],
+        .archive: ["zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "dmg", "pkg", "iso", "zst", "cbz", "cbr", "cb7", "cbt"],
     ]
 
     package static func extensions(for kind: IndexQuery.Kind) -> Set<String> {
@@ -457,6 +461,7 @@ nonisolated package enum IndexSearch {
         case .folder: if !isDirectory || isPackage { return nil }
         case .file: if isDirectory && !isPackage { return nil }
         case .app: if !isPackage { return nil }
+        case .book, .comic: if isDirectory { return nil }
         default: break
         }
         if let minSize = query.minSize, c.size[i] < minSize { return nil }

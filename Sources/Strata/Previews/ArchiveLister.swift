@@ -18,8 +18,8 @@ nonisolated package enum ArchiveKind: Sendable {
         }
     }
 
-    private static let zipExtensions: Set<String> = ["zip", "jar", "war", "ear", "aar", "apk", "aab", "ipa", "nupkg", "vsix", "whl", "xpi"]
-    private static let tarExtensions: Set<String> = ["tar", "tgz", "tbz", "tbz2", "txz", "tzst", "tlz", "7z", "rar", "cpio", "xar", "iso"]
+    private static let zipExtensions: Set<String> = ["cbz", "zip", "jar", "war", "ear", "aar", "apk", "aab", "ipa", "nupkg", "vsix", "whl", "xpi"]
+    private static let tarExtensions: Set<String> = ["cbr", "cb7", "cbt", "tar", "tgz", "tbz", "tbz2", "txz", "tzst", "tlz", "7z", "rar", "cpio", "xar", "iso"]
     private static let compressedTarSuffixes = [".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst", ".tar.lz", ".tar.lzma", ".tar.z"]
 }
 

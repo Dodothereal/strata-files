@@ -19,7 +19,7 @@ final class SearchFiltersController: NSViewController {
     override func loadView() {
         kind.addItem(withTitle: String(localized: "Any Kind"))
         kind.lastItem?.representedObject = ""
-        let values = ["folder", "document", "pdf", "text", "image", "video", "audio", "archive", "code", "spreadsheet", "presentation", "app", "diskimage"]
+        let values = ["folder", "document", "pdf", "text", "image", "video", "audio", "archive", "code", "spreadsheet", "presentation", "app", "diskimage", "book", "comic"]
         for (item, value) in zip(SearchFilter.Kind.allCases, values) {
             kind.addItem(withTitle: item.title); kind.lastItem?.representedObject = value
         }

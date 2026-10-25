@@ -21,6 +21,8 @@ nonisolated enum NaturalQuery {
             case .folder: query.kind = .folder
             case .application: query.kind = .app
             case .pdf: extensions.insert("pdf")
+            case .book: extensions.formUnion(IndexSearch.extensions(for: .book))
+            case .comic: extensions.formUnion(IndexSearch.extensions(for: .comic))
             case .image: extensions.formUnion(IndexSearch.extensions(for: .image))
             case .movie: extensions.formUnion(IndexSearch.extensions(for: .video))
             case .audio: extensions.formUnion(IndexSearch.extensions(for: .audio))

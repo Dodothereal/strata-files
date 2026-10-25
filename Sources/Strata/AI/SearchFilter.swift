@@ -5,10 +5,12 @@ import UniformTypeIdentifiers
 /// Metadata fields are for the filename index; `contentQuery` is for `SemanticIndex`.
 nonisolated struct SearchFilter: Sendable, Hashable, Codable {
     enum Kind: String, Sendable, Hashable, Codable, CaseIterable {
-        case folder, document, pdf, text, image, movie, audio, archive, code, spreadsheet, presentation, application, diskImage
+        case folder, document, pdf, text, image, movie, audio, archive, code, spreadsheet, presentation, application, diskImage, book, comic
 
         var title: String {
             switch self {
+            case .book: String(localized: "Books")
+            case .comic: String(localized: "Comics")
             case .folder: String(localized: "Folders", comment: "Kind of items; also the name of a folder a plan groups them into")
             case .document: String(localized: "Documents", comment: "Kind of items; also the name of a folder a plan groups them into")
             case .pdf: String(localized: "PDFs", comment: "Kind of items; also the name of a folder a plan groups them into")
@@ -28,6 +30,8 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
         /// The title in English: the name of a folder a plan groups this kind into when the translation can't be one.
         var englishTitle: String {
             switch self {
+            case .book: "Books"
+            case .comic: "Comics"
             case .folder: "Folders"
             case .document: "Documents"
             case .pdf: "PDFs"
@@ -47,6 +51,8 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
         /// The kind inside a sentence ("Move into “Archive” — only images named “Screenshot”").
         var noun: String {
             switch self {
+            case .book: String(localized: "books")
+            case .comic: String(localized: "comics")
             case .folder: String(localized: "folders", comment: "Kind of items, inside a sentence: “only folders named “2024””")
             case .document: String(localized: "documents", comment: "Kind of items, inside a sentence: “only documents named “Invoice””")
             case .pdf: String(localized: "PDFs", comment: "Kind of items; also the name of a folder a plan groups them into")
@@ -65,6 +71,8 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
 
         var symbol: String {
             switch self {
+            case .book: "book.closed"
+            case .comic: "book.pages"
             case .folder: "folder"
             case .document: "doc.text"
             case .pdf: "doc.richtext"
@@ -89,12 +97,14 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
                 return identifiers.contains { UTType($0).map(type.conforms(to:)) ?? false }
             }
             switch self {
+            case .book: return !isDirectory && IndexSearch.extensions(for: .book).contains(ext)
+            case .comic: return !isDirectory && IndexSearch.extensions(for: .comic).contains(ext)
             case .folder: return false
             case .pdf: return ext == "pdf" || type?.conforms(to: .pdf) == true
             case .image: return type?.conforms(to: .image) == true
             case .movie: return type?.conforms(to: .movie) == true || type?.conforms(to: .video) == true
             case .audio: return type?.conforms(to: .audio) == true
-            case .archive: return type?.conforms(to: .archive) == true && type?.conforms(to: .diskImage) != true
+            case .archive: return (type?.conforms(to: .archive) == true && type?.conforms(to: .diskImage) != true) || (!isDirectory && BookFormat.comics.contains(ext))
             case .code:
                 return type?.conforms(to: .sourceCode) == true || type?.conforms(to: .script) == true
                     || ["swift", "py", "js", "ts", "go", "rs", "rb", "java", "kt", "c", "h", "m", "cpp", "cs", "sh", "json", "yaml", "yml"].contains(ext)
@@ -113,7 +123,7 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
                     || (type?.conforms(to: .plainText) == true && type?.conforms(to: .sourceCode) != true)
                     || conforms(["org.openxmlformats.wordprocessingml.document", "com.microsoft.word.doc", "com.apple.iwork.pages.sffpages",
                                  "com.apple.iwork.pages.pages", "org.oasis-open.opendocument.text"])
-                    || ["docx", "doc", "pages", "odt", "md"].contains(ext)
+                    || ["docx", "doc", "pages", "odt", "md"].contains(ext) || IndexSearch.extensions(for: .book).contains(ext)
             }
         }
     }

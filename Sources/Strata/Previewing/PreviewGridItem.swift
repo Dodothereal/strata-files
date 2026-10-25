@@ -9,10 +9,12 @@ enum PreviewViewMode: Int { case list, icons }
     let itemView = GridItemView()
     private(set) var item: PreviewItem?
     private weak var requests: PreviewThumbnails?
+    private weak var archiveRequests: PreviewArchiveThumbnails?
     private var thumbnailBucket: CGFloat?
     private var thumbnailScale: CGFloat = 0
+    private var archiveSourceID: ObjectIdentifier?
 
-    isolated deinit { requests?.cancel(for: self) }
+    isolated deinit { requests?.cancel(for: self); archiveRequests?.cancel(self) }
 
     override func loadView() { view = itemView; imageView = itemView.imageView }
 
@@ -26,18 +28,23 @@ enum PreviewViewMode: Int { case list, icons }
         itemView.setImage(nil, animated: false)
     }
 
-    func stop() { requests?.cancel(for: self); thumbnailBucket = nil }
+    func stop() { requests?.cancel(for: self); archiveRequests?.cancel(self); thumbnailBucket = nil }
 
     func configure(_ item: PreviewItem, metrics: GridMetrics, preferences: Prefs, thumbnails: FileThumbnails,
-                   requests: PreviewThumbnails, scale: CGFloat) {
+                   requests: PreviewThumbnails, scale: CGFloat, archiveRequests: PreviewArchiveThumbnails? = nil) {
         let entry = item.entry
-        let canRequest = preferences.showIconPreviews && entry.map {
+        let canRequestFile = preferences.showIconPreviews && entry.map {
             PreviewFileView.isRegularFile($0.url) && thumbnails.canThumbnail($0)
         } == true
+        let canRequestArchive = preferences.showIconPreviews && archiveRequests?.canRequest(item) == true
+        let sourceID = canRequestArchive ? archiveRequests?.sourceID : nil
+        let canRequest = canRequestFile || canRequestArchive
         let bucket = FileThumbnails.bucket(for: metrics.iconSize)
-        let keep = self.item === item && self.requests === requests && thumbnailBucket == bucket && thumbnailScale == scale && canRequest
+        let keep = self.item === item && self.requests === requests && self.archiveRequests === archiveRequests
+            && archiveSourceID == sourceID && thumbnailBucket == bucket && thumbnailScale == scale && canRequest
         if !keep { stop() }
         self.requests = requests
+        self.archiveRequests = archiveRequests
         self.item = item
         itemView.configure(name: item.name, matches: [], detail: item.size.map(Format.bytes), metrics: metrics)
         itemView.setAccessibilityHelp(item.kind)
@@ -46,7 +53,21 @@ enum PreviewViewMode: Int { case list, icons }
         let icon = item.entry.map(thumbnails.icon)
             ?? IconCache.shared.icon(forType: item.isDirectory ? .folder : UTType(filenameExtension: (item.name as NSString).pathExtension) ?? .data)
         itemView.setImage(icon, animated: false)
-        guard canRequest, let entry else { return }
+        if canRequestArchive {
+            thumbnailBucket = bucket; thumbnailScale = scale; archiveSourceID = sourceID
+            var delivered = false
+            archiveRequests?.request(self, item: item, pixels: Int(min(1024, bucket * max(1, scale))), finished: { [weak self, weak item] in
+                guard let self, let item, self.item === item, thumbnailBucket == bucket, thumbnailScale == scale else { return }
+                if !delivered { thumbnailBucket = nil }
+            }) { [weak self, weak item] image in
+                guard let self, let item, self.item === item else { return }
+                delivered = true
+                itemView.setImage(image, animated: true, upscale: false)
+            }
+            return
+        }
+        guard canRequestFile, let entry else { return }
+        archiveSourceID = nil
         thumbnailBucket = bucket
         thumbnailScale = scale
         if let cached = thumbnails.cached(entry, size: metrics.iconSize, scale: scale) {

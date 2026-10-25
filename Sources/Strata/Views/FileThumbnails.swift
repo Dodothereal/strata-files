@@ -28,6 +28,7 @@ final class FileThumbnails {
         var entry: FileEntry
         var request: QLThumbnailGenerator.Request
         var generation: Int
+        var coverSource: PreviewArchiveSource?
         var callbacks: [Int: Observer]
     }
 
@@ -36,6 +37,7 @@ final class FileThumbnails {
         let finished: (() -> Void)?
     }
 
+    private let covers: BookCoverThumbnails
     private let cache: ThumbnailCache
     let copies: CopyProviders
     let containerStore: ContainerStore
@@ -47,12 +49,13 @@ final class FileThumbnails {
     private var keysByPath: [String: Set<String>] = [:]
     private var nextID = 0
 
-    init(cache: ThumbnailCache = ThumbnailCache(), copies: CopyProviders = .live, containerStore: ContainerStore = .shared, generate: @escaping Generate = { request, completion in
+    init(cache: ThumbnailCache = ThumbnailCache(), coverReader: @escaping BookCoverThumbnails.Reader = { try await BookFormat.cover($0, pixels: $1) }, copies: CopyProviders = .live, containerStore: ContainerStore = .shared, generate: @escaping Generate = { request, completion in
         QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, error in
             let cancelled = (error as? CocoaError)?.code == .userCancelled || (error as NSError?)?.code == NSUserCancelledError
             completion(representation?.cgImage, cancelled)
         }
     }, cancel: @escaping (QLThumbnailGenerator.Request) -> Void = { QLThumbnailGenerator.shared.cancel($0) }) {
+        covers = BookCoverThumbnails(reader: coverReader)
         self.cache = cache
         self.copies = copies
         self.containerStore = containerStore
@@ -74,10 +77,11 @@ final class FileThumbnails {
 
     /// Whether to ask Quick Look for a thumbnail. Like Finder, every file is asked, so any type with a thumbnail
     /// (including ones an app adds) gets one, and Quick Look's "no thumbnail" keeps the icon. Folders, apps and other
-    /// bundles, archives, disk images and executables are pictured by their icon, and links keep their arrow.
+    /// bundles, ordinary archives, disk images and executables are pictured by their icon, and links keep their arrow.
     static func canThumbnail(_ entry: FileEntry, copies: CopyProviders = .live) -> Bool {
         // A container's file not fetched yet has nothing to show.
         guard !entry.isFolder, !entry.isSymlink, !copies.isPlaceholder(entry.url) else { return false }
+        if BookFormat.hasCover(entry.url) { return !entry.isPackage }
         guard let type = entry.contentType else { return !entry.isPackage }
         return !(type.conforms(to: .bundle) || type.conforms(to: .application) || type.conforms(to: .archive)
             || type.conforms(to: .diskImage) || type.conforms(to: .unixExecutable) || type.conforms(to: .aliasFile)
@@ -101,6 +105,7 @@ final class FileThumbnails {
             cache.remove(forKey: key)
             failed.remove(key)
             if let item = pending.removeValue(forKey: key) {
+                covers.cancel(item.generation)
                 cancelGeneration(item.request)
                 for observer in item.callbacks.values { observer.finished?() }
             }
@@ -156,7 +161,8 @@ final class FileThumbnails {
             keysByPath.removeAll(keepingCapacity: true)
         }
         keysByPath[entry.url.path, default: []].insert(key)
-        pending[key] = Pending(entry: entry, request: request, generation: generation,
+        let coverSource = BookFormat.hasCover(entry.url) ? try? PreviewArchiveSource(entry.url) : nil
+        pending[key] = Pending(entry: entry, request: request, generation: generation, coverSource: coverSource,
                                callbacks: [ticket.id: Observer(image: completion, finished: finished)])
         generate(request) { [weak self] original, cancelled in
             let original = original.flatMap { Self.bounded($0) ? $0 : nil }
@@ -166,7 +172,14 @@ final class FileThumbnails {
             let cost = original.map { $0.bytesPerRow * $0.height } ?? 0
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    self?.finish(key, generation: generation, image, cancelled: cancelled, cost: cost)
+                    guard let self, self.pending[key]?.generation == generation else { return }
+                    if image == nil, !cancelled, let source = self.pending[key]?.coverSource, self.canThumbnail(entry) {
+                        self.covers.request(id: generation, source: source, pixels: Int(min(2048, bucket * max(scale, 1)))) { [weak self] cover in
+                            self?.finish(key, generation: generation, cover, cancelled: false, cost: cover.map { $0.bytesPerRow * $0.height } ?? 0)
+                        }
+                    } else {
+                        self.finish(key, generation: generation, image, cancelled: cancelled, cost: cost)
+                    }
                 }
             }
         }
@@ -184,6 +197,7 @@ final class FileThumbnails {
         entry.callbacks[ticket.id] = nil
         if entry.callbacks.isEmpty {
             pending[ticket.key] = nil
+            covers.cancel(entry.generation)
             cancelGeneration(entry.request)
         } else {
             pending[ticket.key] = entry

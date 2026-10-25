@@ -1,9 +1,10 @@
 import Foundation
-import StrataPreviews
+import StrataModel
+import StrataSupport
 
-nonisolated enum PreviewArchiveError: Error, LocalizedError {
+nonisolated package enum PreviewArchiveError: Error, LocalizedError {
     case password, limit, unsafe, unreadable, encryption, needsExtraction
-    var errorDescription: String? {
+    package var errorDescription: String? {
         switch self {
         case .needsExtraction: String(localized: "Extract the archive first to preview or copy this item.")
         case .encryption: String(localized: "This archive’s encryption isn’t supported.")
@@ -16,8 +17,8 @@ nonisolated enum PreviewArchiveError: Error, LocalizedError {
 }
 
 /// Pins the chosen archive before any password sheet or worker starts. Contents must stay unchanged too.
-nonisolated final class PreviewArchiveSource: Sendable {
-    let chosen: ChosenFile
+nonisolated package final class PreviewArchiveSource: Sendable {
+    package let chosen: ChosenFile
     private let stamp: Stamp
     private struct Stamp: Equatable, Sendable {
         let identity: FileIdentity
@@ -27,13 +28,13 @@ nonisolated final class PreviewArchiveSource: Sendable {
         init(_ info: stat) {
             identity = .from(info); size = info.st_size; modified = info.st_mtimespec; changed = info.st_ctimespec
         }
-        static func == (a: Self, b: Self) -> Bool {
+        package static func == (a: Self, b: Self) -> Bool {
             a.identity == b.identity && a.size == b.size && a.modified.tv_sec == b.modified.tv_sec
                 && a.modified.tv_nsec == b.modified.tv_nsec && a.changed.tv_sec == b.changed.tv_sec
                 && a.changed.tv_nsec == b.changed.tv_nsec
         }
     }
-    init(_ url: URL) throws {
+    package init(_ url: URL) throws {
         guard url.isFileURL else { throw PreviewArchiveError.unreadable }
         chosen = try ChosenFile(url)
         stamp = try chosen.withParent { _, _, info in
@@ -41,7 +42,7 @@ nonisolated final class PreviewArchiveSource: Sendable {
             return Stamp(info)
         }
     }
-    func open() throws -> FileHandle {
+    package func open() throws -> FileHandle {
         try chosen.withParent { parent, name, _ in
             let fd = openat(parent, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
             guard fd >= 0 else { throw PreviewArchiveError.unreadable }
@@ -52,7 +53,7 @@ nonisolated final class PreviewArchiveSource: Sendable {
             return FileHandle(fileDescriptor: fd, closeOnDealloc: true)
         }
     }
-    func verify(_ file: FileHandle) throws {
+    package func verify(_ file: FileHandle) throws {
         var info = stat()
         guard fstat(file.fileDescriptor, &info) == 0, Stamp(info) == stamp else { throw POSIXError(.ESTALE) }
         try chosen.withParent { _, _, current in
@@ -61,20 +62,23 @@ nonisolated final class PreviewArchiveSource: Sendable {
     }
 }
 
-nonisolated struct PreviewArchiveRecord: Sendable {
-    let path: [String]
-    let kind: UInt8
-    let size: Int64
-    let modified: Date
-    let body: Data?
+nonisolated package struct PreviewArchiveRecord: Sendable {
+    package let path: [String]
+    package let kind: UInt8
+    package let size: Int64
+    package let modified: Date
+    package let body: Data?
+    package init(path: [String], kind: UInt8, size: Int64, modified: Date, body: Data?) {
+        self.path = path; self.kind = kind; self.size = size; self.modified = modified; self.body = body
+    }
 }
 
 /// Parses only the worker's bounded, length-delimited protocol. Text command listings never authorize extraction.
-nonisolated enum PreviewArchiveReader {
-    static let previewLimit = 32 << 20
-    static let outputLimit = 60 << 20
+nonisolated package enum PreviewArchiveReader {
+    package static let previewLimit = 32 << 20
+    package static let outputLimit = 60 << 20
 
-    static var executable: URL {
+    package static var executable: URL {
         let bundle = Bundle(for: PreviewArchiveBundle.self)
         if bundle.bundleURL.pathExtension == "app" {
             return bundle.bundleURL.appendingPathComponent("Contents/Helpers/StrataArchiveWorker")
@@ -82,8 +86,14 @@ nonisolated enum PreviewArchiveReader {
         return bundle.bundleURL.deletingLastPathComponent().appendingPathComponent("StrataArchiveWorker")
     }
 
-    @concurrent static func read(_ source: PreviewArchiveSource, member: [String]? = nil, directory: Bool = false,
+    @concurrent package static func read(_ source: PreviewArchiveSource, member: [String]? = nil, directory: Bool = false,
                                 password: String? = nil) async throws -> [PreviewArchiveRecord] {
+        let allowance = ArchiveReadAllowance.shared, id = UUID()
+        try await withTaskCancellationHandler {
+            try await allowance.enter(id)
+        } onCancel: { Task { await allowance.cancel(id) } }
+        defer { Task { await allowance.leave() } }
+        try Task.checkCancellation()
         let path = member?.joined(separator: "/") ?? ""
         guard path.utf8.count <= 4096, (password?.utf8.count ?? 0) <= 1024,
               !path.utf8.contains(0), !(password?.utf8.contains(0) ?? false) else { throw PreviewArchiveError.limit }
@@ -113,7 +123,7 @@ nonisolated enum PreviewArchiveReader {
         return try parse(run.output, member: member, directory: directory)
     }
 
-    static func parse(_ data: Data, member: [String]?, directory: Bool) throws -> [PreviewArchiveRecord] {
+    package static func parse(_ data: Data, member: [String]?, directory: Bool) throws -> [PreviewArchiveRecord] {
         guard data.count <= outputLimit, data.starts(with: Data("SAP1".utf8)) else { throw PreviewArchiveError.unreadable }
         var offset = 4, records: [PreviewArchiveRecord] = []
         var seen: Set<Data> = [], spellings: [String: Data] = [:], types: [String: UInt8] = [:]
@@ -168,7 +178,7 @@ nonisolated enum PreviewArchiveReader {
         throw PreviewArchiveError.unreadable
     }
 
-    static func listing(_ records: [PreviewArchiveRecord]) throws -> ArchiveListing {
+    package static func listing(_ records: [PreviewArchiveRecord]) throws -> ArchiveListing {
         let root = ArchiveNode(name: "", isDirectory: true)
         var nodes: [String: ArchiveNode] = ["": root], files = 0, folders = 0
         var total: Int64 = 0

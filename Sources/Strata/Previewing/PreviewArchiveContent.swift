@@ -17,10 +17,24 @@ import Foundation
 
     init(copies: CopyProviders) {
         clipboardRoot = copies.clipboardRoot
-        previewRoot = copies.clipboardRoot.deletingLastPathComponent().appendingPathComponent("Previews.noindex", isDirectory: true)
+        previewRoot = copies.previewRoot
     }
 
     isolated deinit { cancel() }
+
+    /// Dragging a previewed page publishes the complete, verified copy and keeps it alive after the panel closes.
+    func draggedPage(_ item: PreviewItem, in session: PreviewSession) -> URL? {
+        guard !session.isClosed, session.selected === item, case .member = item.source, !item.isDirectory,
+              BookFormat.images.contains((item.name as NSString).pathExtension.lowercased()),
+              let lease, let source = session.archiveAccess.source else { return nil }
+        do {
+            let file = try source.open(); defer { try? file.close() }
+            try source.verify(file)
+            try lease.verify()
+            lease.keepForClipboard()
+            return lease.url
+        } catch { return nil }
+    }
 
     func select(in session: PreviewSession) {
         cancel()
@@ -28,7 +42,9 @@ import Foundation
         error = nil
         guard case .member(_, let path) = session.selected?.source, let item = session.selected,
               !item.isDirectory, let source = session.archiveAccess.source else { return }
-        let id = previewID, generation = session.generation, access = session.archiveAccess, root = previewRoot
+        let id = previewID, generation = session.generation, access = session.archiveAccess
+        // Pages that can be dragged share the clipboard cache’s next-launch cleanup.
+        let root = BookFormat.images.contains((item.name as NSString).pathExtension.lowercased()) ? clipboardRoot : previewRoot
         archiveAccess = access
         isLoading = true
         task = Task { [weak self, weak session] in

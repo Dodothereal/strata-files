@@ -158,6 +158,7 @@ Works with **Docker Desktop, OrbStack, Colima, Podman and Rancher Desktop**.
 | **Trash** | In the sidebar, like Finder: Put Back (also what Finder trashed), Delete Immediately and Empty Trash, with other disks' Trashes counted. |
 | **Archives** | Compress and extract zip, tar, 7z, rar and more, safely: nothing escapes its folder and downloads stay quarantined. Or double-click a zip to browse it like a folder and copy things out. |
 | **Tags** | Finder's tags everywhere: colored dots, the color row in the context menu, a tag field in the inspector, a Tags section in the sidebar and `tag:` in search. |
+| **Books and comics** | Cover thumbnails for EPUB, CBZ, CBR, CB7 and CBT. Browse comic pages with Space, read EPUB chapters in Quick Look or the inspector, and search with `kind:book` or `kind:comic`. |
 | **Batch rename** | Replace text (or a regular expression), add text, number with a format or change case, previewed live, undone in one step. |
 | **Get Info** | Edit comments, the app a file opens with, Locked and permissions right in the inspector. |
 | **App updates** | Right-click apps and choose Check for Updates… to see which have a newer version, from their own update feed or the App Store. |

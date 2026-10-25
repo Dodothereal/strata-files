@@ -19,7 +19,7 @@ import AppKit
         cancelPassword?()
     }
 
-    func read(member: [String]? = nil, directory: Bool = false) async throws -> [PreviewArchiveRecord] {
+    func read(member: [String]? = nil, directory: Bool = false, prompt: Bool = true) async throws -> [PreviewArchiveRecord] {
         guard let source else { throw PreviewArchiveError.unreadable }
         var attempts = 0
         while true {
@@ -34,6 +34,7 @@ import AppKit
             catch PreviewArchiveError.password {
                 try Task.checkCancellation()
                 guard self.source === source else { throw CancellationError() }
+                guard prompt else { throw PreviewArchiveError.password }
                 password = nil
                 guard attempts < 3, let requestPassword else { throw PreviewArchiveError.password }
                 attempts += 1

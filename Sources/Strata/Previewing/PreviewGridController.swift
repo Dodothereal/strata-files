@@ -2,6 +2,7 @@ import AppKit
 
 /// Native collection selection and scrolling, fed by the same ordered preview items as List.
 @MainActor final class PreviewGridController: NSViewController, NSCollectionViewDataSource, NSCollectionViewDelegate {
+    var archiveThumbnails: PreviewArchiveThumbnails?
     let collection = PreviewCollectionView()
     let layout = GridLayout()
     private let scroll = NSScrollView()
@@ -16,6 +17,7 @@ import AppKit
     var onActivate: ((PreviewItem) -> Void)?
     var onClose: (() -> Void)?
     var onContextMenu: (() -> NSMenu?)?
+    var onDrag: ((PreviewItem) -> NSPasteboardWriting?)?
 
     init(preferences: Prefs, thumbnails: FileThumbnails) {
         self.preferences = preferences
@@ -33,6 +35,8 @@ import AppKit
         collection.dataSource = self
         collection.delegate = self
         collection.isSelectable = true
+        collection.setDraggingSourceOperationMask(.copy, forLocal: true)
+        collection.setDraggingSourceOperationMask(.copy, forLocal: false)
         collection.allowsMultipleSelection = false
         collection.allowsEmptySelection = true
         collection.register(PreviewGridItem.self, forItemWithIdentifier: PreviewGridItem.identifier)
@@ -83,6 +87,7 @@ import AppKit
     func pause() {
         isActive = false
         requests.cancelAll()
+        archiveThumbnails?.cancelAll()
         collection.visibleItems().compactMap { $0 as? PreviewGridItem }.forEach { $0.stop() }
     }
 
@@ -90,6 +95,7 @@ import AppKit
         isClosed = true
         isActive = false
         requests.close()
+        archiveThumbnails?.cancelAll()
         items = []
         applying = true
         collection.reloadData()
@@ -99,7 +105,7 @@ import AppKit
     private func configure(_ cell: PreviewGridItem, item: PreviewItem) {
         guard isActive, !isClosed else { return }
         cell.configure(item, metrics: layout.metrics, preferences: preferences, thumbnails: thumbnails, requests: requests,
-                       scale: view.window?.backingScaleFactor ?? 2)
+                       scale: view.window?.backingScaleFactor ?? 2, archiveRequests: archiveThumbnails)
     }
 
     private func activate() {
@@ -119,6 +125,10 @@ import AppKit
 
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) { selectionChanged() }
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) { selectionChanged() }
+    func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
+        guard !isClosed, isActive, indexPath.count == 2, indexPath.section == 0, items.indices.contains(indexPath.item) else { return nil }
+        return onDrag?(items[indexPath.item])
+    }
 
     private func selectionChanged() {
         guard !applying, isActive, !isClosed else { return }

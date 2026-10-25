@@ -17,6 +17,7 @@ package class PreviewView: NSView {
     package var fallback: (() -> Void)?
     /// False once content or a message is showing.
     package private(set) var isLoading = false
+    package var loadingTask: Task<Void, Never>? { task }
 
     package let contentView = NSView()
     package let footer = PreviewFooter()
@@ -45,6 +46,12 @@ package class PreviewView: NSView {
     package required init?(coder: NSCoder) { fatalError() }
 
     deinit { task?.cancel() }
+
+    package final func cancelLoad() {
+        task?.cancel(); task = nil
+        isLoading = false
+        hideSpinner()
+    }
 
     /// Runs `operation` off the main thread and hands its result to `apply`, unless the view is gone or a newer load started.
     package final func load<Value: Sendable>(_ operation: @escaping @concurrent @Sendable () async throws -> Value,

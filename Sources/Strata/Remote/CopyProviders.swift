@@ -56,6 +56,7 @@ nonisolated struct CopyProviders: Sendable {
         let root = clipboardRoot.standardizedFileURL.path, path = url.standardizedFileURL.path
         return path == root || path.hasPrefix(root + "/")
     }
+    var previewRoot: URL { clipboardRoot.deletingLastPathComponent().appendingPathComponent("Previews.noindex", isDirectory: true) }
     func isPlaceholder(_ url: URL) -> Bool { provider(for: url)?.isPlaceholder(url) ?? false }
     func containsPlaceholder(in urls: [URL]) -> Bool {
         func check(_ url: URL) -> Bool {

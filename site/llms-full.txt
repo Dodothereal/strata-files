@@ -69,6 +69,8 @@ Settings ▸ Appearance ▸ Color theme offers System (the Mac’s own colors) a
 - Server and container folders use metadata-only listings. Supported files are fetched individually when selected, rather than downloading a whole folder to open its preview.
 - The window remembers manual resizing, divider proportions and metadata column widths, fits the current display, and follows Strata's theme. Single-file previews use the full window while keeping the folder split for later.
 
+- Books and comics: EPUB and CBZ/CBR/CB7/CBT cover thumbnails; Space browses comic pages in a contact sheet; EPUB chapters preview offline in Quick Look and the inspector. Search kinds: `kind:book` / `kind:ebook`, `kind:comic`. MOBI, AZW3 and DjVu are searchable by kind; their reading previews are not included.
+
 ## File operations
 
 - A copy queue runs big copies in the background with pause, resume and cancel.

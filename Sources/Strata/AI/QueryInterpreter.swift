@@ -487,6 +487,7 @@ private nonisolated final class Parser {
         "spreadsheet": .spreadsheet, "spreadsheets": .spreadsheet, "presentation": .presentation, "presentations": .presentation,
         "app": .application, "apps": .application, "application": .application, "applications": .application,
         "diskimage": .diskImage, "dmg": .diskImage,
+        "book": .book, "books": .book, "ebook": .book, "ebooks": .book, "comic": .comic, "comics": .comic,
     ]
 
     private func kindsPass() {
@@ -528,6 +529,8 @@ private nonisolated final class Parser {
             return true
         }
         let kindWords: [(String, SearchFilter.Kind)] = [
+            ("\\b(?:comic\\s+books?|comics?)\\b", .comic),
+            ("\\b(?:books?|ebooks?)\\b", .book),
             ("\\b(?:disk\\s+images?|installers?)\\b", .diskImage),
             ("\\b(?:source\\s+code|source\\s+files?|code\\s+files?|code|scripts?)\\b", .code),
             ("\\b(?:text\\s+files?|plain\\s+text|txt\\s+files?)\\b", .text),

@@ -108,7 +108,7 @@ nonisolated package struct SpotlightQuery: Equatable, Sendable {
                              label: String(localized: "camera “\(value)”", comment: "Search summary: taken with a camera, like “camera “iPhone””"))
         case "author", "by":
             // Authors only: kMDItemCreator is the app that made the file.
-            return Condition(attributes: ["kMDItemAuthors"], test: .contains(value),
+            return Condition(attributes: ["kMDItemAuthors"], test: .anyContains(value),
                              label: String(localized: "by “\(value)”", comment: "Search summary: written by an author"))
         case "artist":
             return Condition(attributes: ["kMDItemAuthors", "kMDItemComposer"], test: .contains(value),

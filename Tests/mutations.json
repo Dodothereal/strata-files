@@ -4509,14 +4509,14 @@
     "tests": "PreviewArchiveTests"
   },
   {
-    "file": "Strata/Previewing/PreviewArchiveReader.swift",
+    "file": "Strata/Previews/PreviewArchiveReader.swift",
     "find": "guard chosen, directory || parts.count == member.count, kind != 3,",
     "replace": "guard true, directory || parts.count == member.count, kind != 3,",
     "rule": "Space preview archives: unselected bytes enter the parent protocol parser",
     "tests": "PreviewArchiveTests"
   },
   {
-    "file": "Strata/Previewing/PreviewArchiveReader.swift",
+    "file": "Strata/Previews/PreviewArchiveReader.swift",
     "find": "a.identity == b.identity && a.size == b.size && a.modified.tv_sec == b.modified.tv_sec\n                && a.modified.tv_nsec == b.modified.tv_nsec && a.changed.tv_sec == b.changed.tv_sec\n                && a.changed.tv_nsec == b.changed.tv_nsec",
     "replace": "a.identity == b.identity",
     "rule": "Space preview archives: changed archive contents are read after the choice was captured",
@@ -4958,5 +4958,83 @@
     "replace": "let next = archiveJobs.last(where: { !$0.isBrowse && $0.state == .queued })",
     "rule": "Queue order gives a prioritized archive the next archive slot",
     "tests": "QueueOrderingTests/runNextArchiveReallyRunsBeforeAnEarlierQueuedArchive"
+  },
+  {
+    "file": "Strata/Previews/ArchiveLister.swift",
+    "find": "[\"cbz\", \"zip\", \"jar\"",
+    "replace": "[\"zip\", \"jar\"",
+    "rule": "Book previews: comic aliases reach the same read-only selection and Undo pipeline",
+    "tests": "BookPreviewTests"
+  },
+  {
+    "file": "Strata/Previews/BookArchive.swift",
+    "rule": "Book previews: refuse XML entity expansion before package parsing",
+    "tests": "BookPreviewTests/documentDeclarationsNeverPermitInternalSubsetsOrEntityExpansion",
+    "edits": [
+      {
+        "find": "Data(try withoutDocumentType(text).utf8)",
+        "replace": "data"
+      },
+      {
+        "find": "!text.localizedCaseInsensitiveContains(\"<!ENTITY\")",
+        "replace": "true"
+      }
+    ]
+  },
+  {
+    "file": "Strata/Views/FileThumbnails.swift",
+    "find": "let source = self.pending[key]?.coverSource",
+    "replace": "let source = try? PreviewArchiveSource(entry.url)",
+    "rule": "Book previews: cover extraction keeps the file chosen before a delayed Quick Look callback",
+    "tests": "BookPreviewTests/aCoverRequestPinsTheFileBeforeQuickLookReturns"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveContent.swift",
+    "find": "            try lease.verify()",
+    "replace": "            // Publish a replacement without checking the creation receipt.",
+    "rule": "Book previews: dragging refuses a replacement at the previewed page path",
+    "tests": "BookPreviewTests/draggingAPreviewedPageKeepsItsReadOnlyCopyAndRejectsOtherRowsAndReplacements"
+  },
+  {
+    "file": "Strata/Containers/ContainerCopies.swift",
+    "find": "|| copies.isClipboardStaging(url)",
+    "replace": "",
+    "rule": "Book previews: dragged pages stay read-only and a requested move copies them instead",
+    "tests": "BookPreviewTests/draggingAPreviewedPageKeepsItsReadOnlyCopyAndRejectsOtherRowsAndReplacements"
+  },
+  {
+    "file": "Strata/Previews/BookArchive.swift",
+    "find": "titles[key] = Self.label(title)",
+    "replace": "titles[key] = title",
+    "rule": "Book previews: chapter labels bound combining sequences before native menu creation",
+    "tests": "BookPreviewTests/chapterTitlesBoundCombiningSequencesBeforeBuildingNativeMenus"
+  },
+  {
+    "file": "Strata/Previews/EPUBPreviewHeader.swift",
+    "find": "chapters.menu?.addItem(item)",
+    "replace": "chapters.addItem(withTitle: chapter.title); chapters.lastItem?.tag = index",
+    "rule": "Book previews: repeated chapter titles keep all native menu items and spine positions",
+    "tests": "BookPreviewTests/nativeContentsKeepsDuplicateTitlesAndTheirSpinePositions"
+  },
+  {
+    "file": "Strata/Previewing/PreviewGridItem.swift",
+    "find": "let canRequest = canRequestFile || canRequestArchive",
+    "replace": "let canRequest = canRequestFile",
+    "rule": "Book previews: refreshing archive cells keeps in-flight and cached page thumbnails",
+    "tests": "BookPreviewTests/archiveGridReconfigurationKeepsInFlightAndCachedPageThumbnails"
+  },
+  {
+    "file": "Strata/Previews/EPUBPreviewView.swift",
+    "find": "if book == nil { openBook() } else { chapterChanged() }",
+    "replace": "if book != nil { chapterChanged() }",
+    "rule": "Book previews: a detached initial load restarts in its new window",
+    "tests": "BookPreviewTests/reattachingDuringTheInitialBookReadRestartsItAndRejectsItsOldCompletion"
+  },
+  {
+    "file": "Strata/Previews/BookArchive.swift",
+    "find": "return target == cover",
+    "replace": "return true",
+    "rule": "Book previews: only a wrapper for the actual cover receives the Cover label",
+    "tests": "BookPreviewTests/coverWrappersAndUntitledSectionsNeverExposeInternalFilenames"
   }
 ]
