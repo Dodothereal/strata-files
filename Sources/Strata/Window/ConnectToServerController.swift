@@ -20,6 +20,9 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
     private let address = NSComboBox()
     private let hint = NSTextField(wrappingLabelWithString: "")
     private let clearRecents = NSButton(title: String(localized: "Clear Recents", comment: "Button: forget the recently used server addresses"), target: nil, action: nil)
+    private let sftpForm = NSGridView()
+    private let sftpName = NSTextField()
+    private let sftpStartFolder = NSTextField()
     private let s3Form = NSGridView()
     private let s3Name = NSTextField()
     private let s3Bucket = NSTextField()
@@ -69,17 +72,18 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         title.font = .systemFont(ofSize: 15, weight: .semibold)
         setUpKindPicker()
         setUpAddress()
+        buildSFTPForm()
         buildS3Form()
         let footer = footer()
 
-        let stack = NSStackView(views: [title, kindPicker, address, s3Form, hint, message, footer])
+        let stack = NSStackView(views: [title, kindPicker, address, sftpForm, s3Form, hint, message, footer])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
         stack.setCustomSpacing(14, after: title)
         stack.setCustomSpacing(14, after: kindPicker)
         stack.setCustomSpacing(16, after: message)
-        let (container, constraints) = SheetColumn.container(for: stack, spanning: [address, s3Form, hint, message, footer])
+        let (container, constraints) = SheetColumn.container(for: stack, spanning: [address, sftpForm, s3Form, hint, message, footer])
         NSLayoutConstraint.activate(constraints + [container.widthAnchor.constraint(equalToConstant: 480)])
         view = container
         showKind()
@@ -135,6 +139,23 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         return footer
     }
 
+    private func buildSFTPForm() {
+        let nameLabel = NSTextField(labelWithString: String(localized: "Name", comment: "Field: what the sidebar calls the server"))
+        let folderLabel = NSTextField(labelWithString: String(localized: "Start Folder", comment: "Field: the SFTP folder to open after connecting"))
+        for (label, field, identifier) in [(nameLabel, sftpName, "sftpName"), (folderLabel, sftpStartFolder, "sftpStartFolder")] {
+            label.alignment = .right
+            field.placeholderString = String(localized: "Optional", comment: "Placeholder: a field that can stay empty")
+            field.delegate = self
+            field.identifier = NSUserInterfaceItemIdentifier(identifier)
+            field.setAccessibilityLabel(label.stringValue)
+            sftpForm.addRow(with: [label, field])
+        }
+        sftpStartFolder.placeholderString = "/srv/projects"
+        sftpForm.column(at: 0).xPlacement = .trailing
+        sftpForm.rowSpacing = 6
+        sftpForm.columnSpacing = 8
+    }
+
     private func buildS3Form() {
         func label(_ text: String) -> NSTextField {
             let label = NSTextField(labelWithString: text)
@@ -163,7 +184,13 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
     private func fill(_ server: RemoteServer) {
         switch server.kind {
         case .sftp:
-            address.stringValue = server.address
+            var login = server
+            login.path = nil
+            address.stringValue = login.address
+            sftpName.stringValue = server.name
+            let path = server.path ?? ""
+            // Older saved paths were shown in the address, which supplied a leading slash.
+            sftpStartFolder.stringValue = path.isEmpty || path.hasPrefix("/") ? path : "/" + path
         case .s3:
             s3Name.stringValue = server.name
             s3Bucket.stringValue = server.bucket ?? ""
@@ -199,6 +226,7 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
 
     private func showKind() {
         address.isHidden = kind == .s3
+        sftpForm.isHidden = kind != .sftp
         s3Form.isHidden = kind != .s3
         address.removeAllItems()
         switch kind {
@@ -210,10 +238,15 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
             clearRecents.isHidden = settings.recents.isEmpty
         case .sftp:
             hint.stringValue = String(localized: "user@host, a Host from ~/.ssh/config, or sftp://user@host:port/folder. Your SSH keys and agent log in; a password is asked for when one is needed.")
+                + "\n" + String(localized: "Start Folder overrides the folder in the address. Leave it empty to use the address’s folder or the login’s starting folder.")
             address.placeholderString = "deploy@example.com"
             address.addItems(withObjectValues: connections.savedServers.filter { $0.kind == .sftp }.map(\.address))
             addHosts()
-            if editing == nil { address.stringValue = "" }
+            if editing == nil {
+                address.stringValue = ""
+                sftpName.stringValue = ""
+                sftpStartFolder.stringValue = ""
+            }
             clearRecents.isHidden = true
         case .s3:
             hint.stringValue = String(localized: "Amazon S3, or an S3-compatible service with its endpoint (Cloudflare R2, Backblaze B2, Wasabi, MinIO…). The secret key is kept in your keychain.")
@@ -246,6 +279,18 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
 
     private static func awsEndpoint(_ region: String) -> String {
         "s3.\(region).amazonaws.com"
+    }
+
+    func comboBoxSelectionDidChange(_ notification: Notification) {
+        guard let sender = notification.object as? NSComboBox, sender === address,
+              kind == .sftp, editing == nil, connecting == nil, !mounts.isConnecting else { return }
+        let selected = address.indexOfSelectedItem
+        let items = address.objectValues
+        guard items.indices.contains(selected), let value = items[selected] as? String,
+              let server = connections.savedServers.first(where: { $0.kind == .sftp && $0.address == value }) else { return }
+        // Saved paths are literal, unlike a URL typed into the address field.
+        fill(server)
+        message.isHidden = true
     }
 
     func controlTextDidChange(_ notification: Notification) {
@@ -295,11 +340,25 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         // The same login again is the saved server, not a second one.
         if let editing {
             server.id = editing.id
-            server.name = editing.name == editing.host ? server.host : editing.name
         } else if let saved = connections.savedServers.first(where: { $0.kind == .sftp && $0.host == server.host && $0.user == server.user && $0.port == server.port }) {
             server.id = saved.id
             server.name = saved.name
         }
+        let name = sftpName.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let editing, editing.name == editing.host, name == editing.name {
+            server.name = server.host
+        } else if !name.isEmpty {
+            server.name = name
+        }
+        // Keep path spelling, including spaces and percent signs: this field is a path, not a URL.
+        let path = sftpStartFolder.stringValue
+        if !path.isEmpty {
+            guard path.hasPrefix("/") else {
+                return show(String(localized: "Use an absolute folder path, starting with /."))
+            }
+            server.path = path
+        }
+        if let problem = server.validate() { return show(problem.message) }
         tryConnecting(server)
     }
 
@@ -389,7 +448,7 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         connectButton.isEnabled = !busy
         address.isEnabled = !busy
         kindPicker.isEnabled = !busy
-        for field in [s3Name, s3Bucket, s3Region, s3Endpoint, s3KeyID, s3Secret] { field.isEnabled = !busy }
+        for field in [sftpName, sftpStartFolder, s3Name, s3Bucket, s3Region, s3Endpoint, s3KeyID, s3Secret] { field.isEnabled = !busy }
         if busy { message.isHidden = true }
     }
 
