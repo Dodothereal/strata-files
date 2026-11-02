@@ -144,6 +144,14 @@ struct SFTPConnectionFormTests {
             picker.selectedSegment = kind.rawValue
             #expect(picker.sendAction(picker.action, to: picker.target))
         }
+        func selectSaved(_ server: RemoteServer, in sheet: ConnectToServerController) throws {
+            let delegate = try #require(address.delegate)
+            try #require(delegate === sheet)
+            try #require(delegate.responds(to: NSSelectorFromString("comboBoxSelectionDidChange:")))
+            let index = try #require(address.objectValues.firstIndex { ($0 as? String) == server.address })
+            address.selectItem(at: index)
+            delegate.comboBoxSelectionDidChange?(Notification(name: NSComboBox.selectionDidChangeNotification, object: address))
+        }
         func expectEnabled(_ enabled: Bool) {
             #expect(address.isEnabled == enabled && name.isEnabled == enabled && folder.isEnabled == enabled)
             #expect(connect.isEnabled == enabled && picker.isEnabled == enabled)
@@ -290,9 +298,7 @@ struct SFTPConnectionFormTests {
             let original = saved(path: path), environment = try Environment([original])
             let sheet = environment.sheet(), form = try Form(sheet)
             await sheet.readingHosts?.value
-            let index = try #require(form.address.objectValues.firstIndex { ($0 as? String) == original.address })
-            form.address.selectItem(at: index)
-            sheet.comboBoxSelectionDidChange(Notification(name: NSComboBox.selectionDidChangeNotification, object: form.address))
+            try form.selectSaved(original, in: sheet)
             #expect(form.address.stringValue == "sftp://deploy@fixture-alias:2222")
             #expect(form.name.stringValue == original.name && form.folder.stringValue == path)
             form.submit()
@@ -320,9 +326,7 @@ struct SFTPConnectionFormTests {
         await sheet.readingHosts?.value
         for next in [withoutPath, emptyPath] {
             for selected in [original, next] {
-                let index = try #require(form.address.objectValues.firstIndex { ($0 as? String) == selected.address })
-                form.address.selectItem(at: index)
-                sheet.comboBoxSelectionDidChange(Notification(name: NSComboBox.selectionDidChangeNotification, object: form.address))
+                try form.selectSaved(selected, in: sheet)
                 #expect(form.name.stringValue == selected.name)
                 #expect(form.folder.stringValue == (selected.path ?? ""))
             }
@@ -345,6 +349,60 @@ struct SFTPConnectionFormTests {
         #expect(form.address.stringValue == "other-fixture" && form.name.stringValue == "Draft")
         #expect(form.folder.stringValue == "/draft")
         #expect(await environment.logins.calls.isEmpty && environment.store.saves.isEmpty)
+    }
+
+    @Test func savedDropdownNotificationsCannotReplaceAnActiveAttempt() async throws {
+        _ = NSApplication.shared
+        let original = saved()
+        var other = saved(name: "Other", path: "/other")
+        other.host = "other-fixture"
+        let environment = try Environment([original, other]), sheet = environment.sheet(), form = try Form(sheet)
+        await sheet.readingHosts?.value
+        form.address.stringValue = original.address
+        form.name.stringValue = "Draft"
+        form.folder.stringValue = "/draft"
+        var delivered: [RemoteServer] = []
+        sheet.onServer = { delivered.append($0) }
+        form.submit()
+        let attempt = try #require(sheet.connecting)
+        await environment.logins.waitForCalls(1)
+        let calls = await environment.logins.calls
+        let proposed = try #require(calls.first?.server)
+        form.expectEnabled(false)
+        try form.selectSaved(other, in: sheet)
+        #expect(form.name.stringValue == "Draft" && form.folder.stringValue == "/draft")
+        #expect(sheet.connecting != nil && !attempt.isCancelled)
+        #expect(await environment.logins.calls == calls)
+        #expect(environment.store.saves.isEmpty && delivered.isEmpty)
+        form.expectEnabled(false)
+        await environment.logins.finish(0, with: Backend())
+        await attempt.value
+        #expect(sheet.connecting == nil)
+        #expect(proposed.id == original.id && proposed.name == "Draft" && proposed.path == "/draft")
+        #expect(environment.store.servers == [proposed, other] && environment.store.saves == [proposed])
+        #expect(delivered == [proposed])
+        #expect(await environment.logins.calls == calls)
+        #expect(await environment.logins.cancelled == [0: false])
+        form.expectEnabled(true)
+        await environment.sessions.disconnect(proposed.id)
+    }
+
+    @Test func savedDropdownNotificationsLeaveAnEditingDraftAlone() async throws {
+        _ = NSApplication.shared
+        let original = saved()
+        var other = saved(name: "Other", path: "/other")
+        other.host = "other-fixture"
+        let environment = try Environment([original, other])
+        let sheet = environment.sheet(editing: original), form = try Form(sheet)
+        await sheet.readingHosts?.value
+        form.name.stringValue = "Editing draft"
+        form.folder.stringValue = "/editing-draft"
+        try form.selectSaved(other, in: sheet)
+        #expect(form.name.stringValue == "Editing draft" && form.folder.stringValue == "/editing-draft")
+        #expect(sheet.connecting == nil && form.picker.isHidden)
+        #expect(await environment.logins.calls.isEmpty)
+        #expect(environment.store.servers == [original, other] && environment.store.saves.isEmpty)
+        form.expectEnabled(true)
     }
 
     @Test func invalidFoldersAreRefusedBeforeConnectingOrSaving() async throws {
